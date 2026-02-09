@@ -24,6 +24,10 @@ function isRowFilled(row) {
   return FILL_KEYS.every(k => String(row[k] || '').trim() !== '')
 }
 
+function renumberRows(rows) {
+  return rows.map((r, i) => ({ ...r, no: String(i + 1) }))
+}
+
 function emptyRow(no) {
   return {
     no: String(no),
@@ -291,21 +295,31 @@ export default function OrderForm({ quote, client, onClose }) {
     })
   }, [])
 
+  const insertRowBelow = useCallback((globalIdx) => {
+    setRows(prev => {
+      const next = [...prev]
+      next.splice(globalIdx + 1, 0, emptyRow(0))
+      return renumberRows(next)
+    })
+    setFinalTotalOverride(null)
+  }, [])
+
   const duplicateRow = useCallback((globalIdx) => {
     setRows(prev => {
       const next = [...prev]
-      const source = prev[globalIdx]
-      const targetIdx = globalIdx + 1
-      // If target doesn't exist, add a new page of rows first
-      if (targetIdx >= next.length) {
-        const startNo = next.length + 1
-        for (let i = 0; i < ROWS_PER_PAGE; i++) next.push(emptyRow(startNo + i))
-      }
-      next[targetIdx] = {
-        ...source,
-        no: next[targetIdx].no, // keep the original row number
-      }
-      return next
+      const copy = { ...prev[globalIdx] }
+      next.splice(globalIdx + 1, 0, copy)
+      return renumberRows(next)
+    })
+    setFinalTotalOverride(null)
+  }, [])
+
+  const deleteRow = useCallback((globalIdx) => {
+    setRows(prev => {
+      if (prev.length <= 1) return prev
+      const next = [...prev]
+      next.splice(globalIdx, 1)
+      return renumberRows(next)
     })
     setFinalTotalOverride(null)
   }, [])
@@ -516,7 +530,7 @@ export default function OrderForm({ quote, client, onClose }) {
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
                   ))}
-                  <col className="order-form-dup-col" style={{ width: 28 }} />
+                  <col className="order-form-dup-col" style={{ width: 72 }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -546,23 +560,55 @@ export default function OrderForm({ quote, client, onClose }) {
                             />
                           </td>
                         ))}
-                        <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: 28, verticalAlign: 'middle' }}>
+                        <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: 72, verticalAlign: 'middle' }}>
                           {isRowFilled(row) && (
-                            <button
-                              onClick={() => duplicateRow(globalIdx)}
-                              title="Duplicate row below"
-                              style={{
-                                width: 22, height: 22, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
-                                background: '#fff', color: '#999', fontSize: 13, lineHeight: '20px',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, fontFamily: fonts.body, transition: 'all .15s',
-                                marginLeft: 3,
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = colors.inkPlum; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = colors.inkPlum }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = colors.lineGray }}
-                            >
-                              &#x2750;
-                            </button>
+                            <div style={{ display: 'flex', gap: 2, marginLeft: 3 }}>
+                              {/* Add empty row below */}
+                              <button
+                                onClick={() => insertRowBelow(globalIdx)}
+                                title="Add empty row below"
+                                style={{
+                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: 13, lineHeight: '18px',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  padding: 0, fontFamily: fonts.body, transition: 'all .15s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = colors.inkPlum; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = colors.inkPlum }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = colors.lineGray }}
+                              >
+                                +
+                              </button>
+                              {/* Duplicate row below */}
+                              <button
+                                onClick={() => duplicateRow(globalIdx)}
+                                title="Duplicate row below"
+                                style={{
+                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: 12, lineHeight: '18px',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  padding: 0, fontFamily: fonts.body, transition: 'all .15s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = colors.inkPlum; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = colors.inkPlum }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = colors.lineGray }}
+                              >
+                                &#x2750;
+                              </button>
+                              {/* Delete row */}
+                              <button
+                                onClick={() => deleteRow(globalIdx)}
+                                title="Delete row"
+                                style={{
+                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: 12, lineHeight: '18px',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  padding: 0, fontFamily: fonts.body, transition: 'all .15s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#c0392b'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#c0392b' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = colors.lineGray }}
+                              >
+                                &#x2715;
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

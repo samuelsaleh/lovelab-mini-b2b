@@ -42,7 +42,7 @@ const AccordionSection = ({ label, value, isOpen, onToggle, children, isComplete
 )
 
 // ─── ColorConfigCard: one per-color config with carat, housing, shape, size, qty ───
-const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, defaultExpanded }) => {
+const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, defaultExpanded, simplified }) => {
   const [expanded, setExpanded] = useState(defaultExpanded)
 
   const patch = (updates) => onUpdate(cfg.id, updates)
@@ -97,13 +97,18 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, defaultExpande
             <span style={{ fontSize: 11, color: '#888' }}>{summary}</span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {isComplete && (
             <span style={{ fontSize: 10, color: colors.luxeGold, fontWeight: 600 }}>✓</span>
           )}
           <button
+            onClick={(e) => { e.stopPropagation(); onDuplicate(cfg.id) }}
+            style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 13, padding: '0 3px' }}
+            title="Duplicate this color config"
+          >❐</button>
+          <button
             onClick={(e) => { e.stopPropagation(); onRemove(cfg.id) }}
-            style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
+            style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 3px' }}
             title="Remove this color config"
           >×</button>
         </div>
@@ -112,133 +117,138 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, defaultExpande
       {/* Card body */}
       {expanded && (
         <div style={{ padding: '8px 12px 12px', borderTop: '1px solid #f5f5f5' }}>
-          {/* Carat */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ ...lbl, marginBottom: 4 }}>Carat</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {col.carats.map((ct, ci) => (
-                <button
-                  key={ct}
-                  onClick={() => patch({
-                    caratIdx: ci,
-                    housing: null, housingType: null, multiAttached: null,
-                    shape: null, size: null,
-                  })}
-                  style={tag(cfg.caratIdx === ci)}
-                >
-                  {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Carat / Housing / Shape / Size — hidden in simplified (consistent) mode */}
+          {!simplified && (
+            <>
+              {/* Carat */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ ...lbl, marginBottom: 4 }}>Carat</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {col.carats.map((ct, ci) => (
+                    <button
+                      key={ct}
+                      onClick={() => patch({
+                        caratIdx: ci,
+                        housing: null, housingType: null, multiAttached: null,
+                        shape: null, size: null,
+                      })}
+                      style={tag(cfg.caratIdx === ci)}
+                    >
+                      {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Housing (conditional) */}
-          {caratDone && hasHousing && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Housing</div>
-              {col.housing === 'standard' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {HOUSING.standard.map((h) => (
-                    <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
-                  ))}
-                </div>
-              )}
-              {col.housing === 'goldMetal' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {HOUSING.goldMetal.map((h) => (
-                    <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
-                  ))}
-                </div>
-              )}
-              {col.housing === 'multiThree' && (
-                <div>
-                  <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
-                    <button onClick={() => patch({ multiAttached: true, housing: null })} style={tag(cfg.multiAttached === true)}>Attached</button>
-                    <button onClick={() => patch({ multiAttached: false, housing: null })} style={tag(cfg.multiAttached === false)}>Not Attached</button>
-                  </div>
-                  {cfg.multiAttached !== null && (
+              {/* Housing (conditional) */}
+              {caratDone && hasHousing && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ ...lbl, marginBottom: 4 }}>Housing</div>
+                  {col.housing === 'standard' && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {(cfg.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map((h) => (
+                      {HOUSING.standard.map((h) => (
                         <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
                       ))}
                     </div>
                   )}
-                </div>
-              )}
-              {col.housing === 'matchy' && (
-                <div>
-                  <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
-                    <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
-                    <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
-                  </div>
-                  {cfg.housingType && (
+                  {col.housing === 'goldMetal' && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
-                        <button key={h.id || h} onClick={() => patch({ housing: h.label || h })} style={tag(cfg.housing === (h.label || h))}>
-                          {h.label || h}
-                        </button>
+                      {HOUSING.goldMetal.map((h) => (
+                        <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
                       ))}
                     </div>
                   )}
-                </div>
-              )}
-              {col.housing === 'shapyShine' && (
-                <div>
-                  {shapyShineBezelOnly ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {HOUSING.shapyShineBezel.map((h) => (
-                        <button key={h} onClick={() => patch({ housing: `Bezel ${h}`, housingType: 'bezel' })} style={tag(cfg.housing === `Bezel ${h}`)}>
-                          Bezel {h}
-                        </button>
-                      ))}
+                  {col.housing === 'multiThree' && (
+                    <div>
+                      <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                        <button onClick={() => patch({ multiAttached: true, housing: null })} style={tag(cfg.multiAttached === true)}>Attached</button>
+                        <button onClick={() => patch({ multiAttached: false, housing: null })} style={tag(cfg.multiAttached === false)}>Not Attached</button>
+                      </div>
+                      {cfg.multiAttached !== null && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {(cfg.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map((h) => (
+                            <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <>
+                  )}
+                  {col.housing === 'matchy' && (
+                    <div>
                       <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                         <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
                         <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
                       </div>
                       {cfg.housingType && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                          {(cfg.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map((h) => (
-                            <button key={h} onClick={() => patch({ housing: cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}` })} style={tag(cfg.housing === (cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`))}>
-                              {h}
+                          {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
+                            <button key={h.id || h} onClick={() => patch({ housing: h.label || h })} style={tag(cfg.housing === (h.label || h))}>
+                              {h.label || h}
                             </button>
                           ))}
                         </div>
                       )}
-                    </>
+                    </div>
+                  )}
+                  {col.housing === 'shapyShine' && (
+                    <div>
+                      {shapyShineBezelOnly ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {HOUSING.shapyShineBezel.map((h) => (
+                            <button key={h} onClick={() => patch({ housing: `Bezel ${h}`, housingType: 'bezel' })} style={tag(cfg.housing === `Bezel ${h}`)}>
+                              Bezel {h}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                            <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
+                            <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
+                          </div>
+                          {cfg.housingType && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                              {(cfg.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map((h) => (
+                                <button key={h} onClick={() => patch({ housing: cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}` })} style={tag(cfg.housing === (cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`))}>
+                                  {h}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
-            </div>
+
+              {/* Shape (conditional) */}
+              {caratDone && housingDone && hasShapes && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ ...lbl, marginBottom: 4 }}>Shape</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {col.shapes.map((s) => (
+                      <button key={s} onClick={() => patch({ shape: s })} style={tag(cfg.shape === s)}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Size (conditional) */}
+              {caratDone && housingDone && shapeDone && hasSizes && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ ...lbl, marginBottom: 4 }}>Size</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {col.sizes.map((s) => (
+                      <button key={s} onClick={() => patch({ size: s })} style={tag(cfg.size === s)}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
-          {/* Shape (conditional) */}
-          {caratDone && housingDone && hasShapes && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Shape</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {col.shapes.map((s) => (
-                  <button key={s} onClick={() => patch({ shape: s })} style={tag(cfg.shape === s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Size (conditional) */}
-          {caratDone && housingDone && shapeDone && hasSizes && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ ...lbl, marginBottom: 4 }}>Size</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {col.sizes.map((s) => (
-                  <button key={s} onClick={() => patch({ size: s })} style={tag(cfg.size === s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Quantity */}
+          {/* Quantity — always shown */}
           <div>
             <div style={{ ...lbl, marginBottom: 4 }}>Quantity</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -287,7 +297,26 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
 
   const [activeSection, setActiveSection] = useState('collection')
 
+  // Consistent mode: set carat/housing/shape/size once, auto-fill all colors
+  const [consistent, setConsistent] = useState(false)
+  const [sharedSettings, setSharedSettings] = useState({
+    caratIdx: null, housing: null, housingType: null,
+    multiAttached: null, shape: null, size: null,
+  })
+
   const set = (patch) => onChange(line.uid, patch)
+
+  // Helper: update a shared setting and propagate to all existing configs
+  const updateShared = (updates) => {
+    const next = { ...sharedSettings, ...updates }
+    setSharedSettings(next)
+    // Propagate to all existing color configs
+    if (line.colorConfigs.length > 0) {
+      set({
+        colorConfigs: line.colorConfigs.map((cfg) => ({ ...cfg, ...updates })),
+      })
+    }
+  }
 
   // Summary
   const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
@@ -312,7 +341,9 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   // Add color config
   const addColorConfig = (colorName) => {
     const minC = col ? col.minC : 3
-    const newCfg = mkColorConfig(colorName, minC)
+    const newCfg = consistent
+      ? { ...mkColorConfig(colorName, minC), ...sharedSettings }
+      : mkColorConfig(colorName, minC)
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
@@ -328,6 +359,18 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   // Remove a specific color config
   const removeConfig = (cfgId) => {
     set({ colorConfigs: line.colorConfigs.filter((c) => c.id !== cfgId) })
+  }
+
+  // Duplicate a specific color config (copies all settings, new id)
+  const duplicateConfig = (cfgId) => {
+    const original = line.colorConfigs.find((c) => c.id === cfgId)
+    if (!original) return
+    const copy = { ...original, id: Date.now() + Math.random() }
+    // Insert right after the original
+    const idx = line.colorConfigs.findIndex((c) => c.id === cfgId)
+    const updated = [...line.colorConfigs]
+    updated.splice(idx + 1, 0, copy)
+    set({ colorConfigs: updated })
   }
 
   // Apply first complete config's settings to all other configs
@@ -442,7 +485,164 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
             </div>
           </AccordionSection>
 
-          {/* 2. Colors & Per-color configs */}
+          {/* 2. Consistent toggle + shared selectors */}
+          {col && (
+            <div style={{ borderBottom: '1px solid #f0f0f0', padding: '10px 14px 10px 42px' }}>
+              {/* Toggle row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: consistent ? 10 : 0 }}>
+                <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>Same settings for all colors?</span>
+                <button
+                  onClick={() => setConsistent(!consistent)}
+                  style={{
+                    padding: '4px 14px', borderRadius: 14, fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+                    border: consistent ? `1px solid ${colors.luxeGold}` : '1px solid #ddd',
+                    background: consistent ? colors.luxeGold : '#f5f5f5',
+                    color: consistent ? '#fff' : '#999',
+                  }}
+                >
+                  {consistent ? 'ON' : 'OFF'}
+                </button>
+              </div>
+
+              {/* Shared selectors (only when consistent is ON) */}
+              {consistent && (
+                <div>
+                  {/* Shared Carat */}
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ ...lbl, marginBottom: 4 }}>Carat</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {col.carats.map((ct, ci) => (
+                        <button
+                          key={ct}
+                          onClick={() => updateShared({
+                            caratIdx: ci,
+                            housing: null, housingType: null, multiAttached: null,
+                            shape: null, size: null,
+                          })}
+                          style={tag(sharedSettings.caratIdx === ci)}
+                        >
+                          {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Shared Housing */}
+                  {sharedSettings.caratIdx !== null && !!col.housing && (() => {
+                    const sCarat = col.carats[sharedSettings.caratIdx]
+                    const sBezelOnly = col.housing === 'shapyShine' && sCarat === '0.10'
+                    return (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ ...lbl, marginBottom: 4 }}>Housing</div>
+                        {col.housing === 'standard' && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            {HOUSING.standard.map((h) => (
+                              <button key={h} onClick={() => updateShared({ housing: h })} style={tag(sharedSettings.housing === h)}>{h}</button>
+                            ))}
+                          </div>
+                        )}
+                        {col.housing === 'goldMetal' && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            {HOUSING.goldMetal.map((h) => (
+                              <button key={h} onClick={() => updateShared({ housing: h })} style={tag(sharedSettings.housing === h)}>{h}</button>
+                            ))}
+                          </div>
+                        )}
+                        {col.housing === 'multiThree' && (
+                          <div>
+                            <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                              <button onClick={() => updateShared({ multiAttached: true, housing: null })} style={tag(sharedSettings.multiAttached === true)}>Attached</button>
+                              <button onClick={() => updateShared({ multiAttached: false, housing: null })} style={tag(sharedSettings.multiAttached === false)}>Not Attached</button>
+                            </div>
+                            {sharedSettings.multiAttached !== null && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                {(sharedSettings.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map((h) => (
+                                  <button key={h} onClick={() => updateShared({ housing: h })} style={tag(sharedSettings.housing === h)}>{h}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {col.housing === 'matchy' && (
+                          <div>
+                            <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                              <button onClick={() => updateShared({ housingType: 'bezel', housing: null })} style={tag(sharedSettings.housingType === 'bezel')}>Bezel</button>
+                              <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prong</button>
+                            </div>
+                            {sharedSettings.housingType && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                {(sharedSettings.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
+                                  <button key={h.id || h} onClick={() => updateShared({ housing: h.label || h })} style={tag(sharedSettings.housing === (h.label || h))}>
+                                    {h.label || h}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {col.housing === 'shapyShine' && (
+                          <div>
+                            {sBezelOnly ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                {HOUSING.shapyShineBezel.map((h) => (
+                                  <button key={h} onClick={() => updateShared({ housing: `Bezel ${h}`, housingType: 'bezel' })} style={tag(sharedSettings.housing === `Bezel ${h}`)}>
+                                    Bezel {h}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                                  <button onClick={() => updateShared({ housingType: 'bezel', housing: null })} style={tag(sharedSettings.housingType === 'bezel')}>Bezel</button>
+                                  <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prong</button>
+                                </div>
+                                {sharedSettings.housingType && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                    {(sharedSettings.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map((h) => (
+                                      <button key={h} onClick={() => updateShared({ housing: sharedSettings.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}` })} style={tag(sharedSettings.housing === (sharedSettings.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`))}>
+                                        {h}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Shared Shape */}
+                  {sharedSettings.caratIdx !== null && (!col.housing || !!sharedSettings.housing) && col.shapes && col.shapes.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ ...lbl, marginBottom: 4 }}>Shape</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {col.shapes.map((s) => (
+                          <button key={s} onClick={() => updateShared({ shape: s })} style={tag(sharedSettings.shape === s)}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shared Size */}
+                  {sharedSettings.caratIdx !== null && (!col.housing || !!sharedSettings.housing) && (!col.shapes || !col.shapes.length || !!sharedSettings.shape) && col.sizes && col.sizes.length > 0 && (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ ...lbl, marginBottom: 4 }}>Size</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {col.sizes.map((s) => (
+                          <button key={s} onClick={() => updateShared({ size: s })} style={tag(sharedSettings.size === s)}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. Colors & Per-color configs */}
           {col && (
             <AccordionSection
               label="Colors & Configuration"
@@ -487,8 +687,8 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                 </div>
               </div>
 
-              {/* Apply to all button */}
-              {hasAnyComplete && line.colorConfigs.length > 1 && (
+              {/* Apply to all button — only in non-consistent mode */}
+              {!consistent && hasAnyComplete && line.colorConfigs.length > 1 && (
                 <button
                   onClick={applyToAll}
                   style={{
@@ -514,7 +714,9 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                       palette={palette}
                       onUpdate={updateConfig}
                       onRemove={removeConfig}
-                      defaultExpanded={i === line.colorConfigs.length - 1}
+                      onDuplicate={duplicateConfig}
+                      defaultExpanded={!consistent && i === line.colorConfigs.length - 1}
+                      simplified={consistent}
                     />
                   ))}
                 </div>

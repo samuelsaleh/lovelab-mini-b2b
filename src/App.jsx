@@ -59,6 +59,11 @@ export default function App() {
   // Builder state (shared — AI results can populate this)
   const [lines, setLines] = useState([mkLine()])
 
+  // Builder budget tracker
+  const [builderBudget, setBuilderBudget] = useState('')
+  const [budgetRecommendations, setBudgetRecommendations] = useState(null) // { loading, message, suggestions }
+  const [showRecommendations, setShowRecommendations] = useState(false)
+
   // Quote state
   const [curQuote, setCurQuote] = useState(null)
   const [showQuote, setShowQuote] = useState(false)
@@ -186,6 +191,45 @@ export default function App() {
     setShowQuote(true)
   }, [])
 
+  // ─── Budget Recommendations (AI suggests what to ADD with remaining budget) ───
+  const handleBudgetRecommendations = useCallback(async () => {
+    const budgetNum = parseFloat(builderBudget)
+    if (!budgetNum || budgetNum <= 0) return
+    const quote = calculateQuote(lines)
+    const spent = quote.total
+    const remaining = budgetNum - spent
+    if (remaining <= 0) return
+
+    setBudgetRecommendations({ loading: true, message: null, suggestions: null })
+    setShowRecommendations(true)
+
+    // Build a description of what the user already has
+    const currentItems = quote.lines.map((ln) =>
+      `${ln.product} ${ln.carat}ct ${ln.colorName}${ln.housing ? ` (${ln.housing})` : ''}${ln.shape ? ` ${ln.shape}` : ''} ×${ln.qty}`
+    ).join('; ')
+
+    const prompt = `The client has a budget of €${budgetNum}. They have already built an order worth €${spent} (after any discounts). They have €${remaining} remaining.
+
+Current order: ${currentItems || 'empty'}
+
+IMPORTANT: Do NOT change or remove anything from the current order. Only suggest what to ADD on top of it.
+Based on what they already like (their chosen collections, colors, carat sizes), suggest 3-5 smart additions they could make with the remaining €${remaining}. Consider:
+- Adding more pieces of collections they already chose (safe upsell)
+- Trying a new complementary collection
+- Upgrading carat size on an existing line
+- Adding new colors of something they already have
+
+For each suggestion, give a short one-line description and the approximate cost.
+Keep it very concise — this is for a salesperson at a trade fair.`
+
+    try {
+      const parsed = await sendChat([{ role: 'user', content: prompt }])
+      setBudgetRecommendations({ loading: false, message: parsed.message, suggestions: parsed.quote })
+    } catch {
+      setBudgetRecommendations({ loading: false, message: 'Could not generate recommendations. Please try again.', suggestions: null })
+    }
+  }, [builderBudget, lines])
+
   // ─── Finalize order (from QuoteModal → OrderForm) ───
   const handleFinalize = useCallback(() => {
     setShowQuote(false)
@@ -267,6 +311,22 @@ export default function App() {
 
     const missing = computeAiMissingDetails()
     if (missing.length > 0) {
+      // Pre-fill sensible defaults to reduce friction (still editable in wizard).
+      // This helps ensure the AI always receives a size even if the user skips it.
+      setAiDetailsByCollection((prev) => {
+        const copy = { ...prev }
+        for (const colId of missing) {
+          const col = COLLECTIONS.find((c) => c.id === colId)
+          if (!col) continue
+          const cur = copy[colId] || {}
+          if ((!cur.size || cur.size === '') && Array.isArray(col.sizes) && col.sizes.length > 0) {
+            // Prefer a common default if present.
+            const preferred = col.sizes.includes('M') ? 'M' : (col.sizes.includes('S/M') ? 'S/M' : col.sizes[0])
+            copy[colId] = { ...cur, size: preferred }
+          }
+        }
+        return copy
+      })
       setAiPendingOverrideMsg(typeof overrideMsg === 'string' ? overrideMsg : null)
       setAiWizardOpen(true)
       return
@@ -382,6 +442,9 @@ export default function App() {
     setAiDetailsByCollection({})
     setAiWizardOpen(false)
     setAiPendingOverrideMsg(null)
+    setBuilderBudget('')
+    setBudgetRecommendations(null)
+    setShowRecommendations(false)
     try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
   }
 
@@ -411,6 +474,7 @@ export default function App() {
         if (state.aiColors) setAiColors(state.aiColors)
         if (state.aiCarats) setAiCarats(state.aiCarats)
         if (state.aiQty) setAiQty(state.aiQty)
+        if (state.builderBudget) setBuilderBudget(state.builderBudget)
       }
     } catch { /* ignore corrupt localStorage */ }
   }, [])
@@ -419,10 +483,10 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty,
+        lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty, builderBudget,
       }))
     } catch { /* ignore quota errors */ }
-  }, [lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty])
+  }, [lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty, builderBudget])
 
   // ─── Client Gate (first screen) ───
   if (!clientReady) {
@@ -692,6 +756,12 @@ export default function App() {
             lines={lines}
             setLines={setLines}
             onGenerateQuote={handleGenerateQuote}
+            budget={builderBudget}
+            setBudget={setBuilderBudget}
+            budgetRecommendations={budgetRecommendations}
+            showRecommendations={showRecommendations}
+            setShowRecommendations={setShowRecommendations}
+            onRequestRecommendations={handleBudgetRecommendations}
           />
         </>
       ) : (
@@ -699,7 +769,7 @@ export default function App() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <AiMissingFieldsWizard
             open={aiWizardOpen}
-            collectionIds={computeAiMissingDetails()}
+            collectionIds={aiCollections}
             aiCarats={aiCarats}
             values={aiDetailsByCollection}
             onChange={onWizardChange}
