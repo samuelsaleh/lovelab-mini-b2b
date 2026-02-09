@@ -162,22 +162,39 @@ export async function validateVATviaPerplexity(vatNumber, countryCode) {
   const cleanVat = vatNumber.replace(/^[A-Z]{2}/i, '').trim()
   const fullVat = `${countryCode}${cleanVat}`
   
-  const prompt = `Search for information about this EU VAT number: ${fullVat}
+  // For French VAT: extract SIREN (VAT format is FR XX 123456789 where 123456789 is SIREN)
+  let sirenHint = ''
+  if (countryCode === 'FR' && cleanVat.length >= 9) {
+    const siren = cleanVat.slice(-9)
+    sirenHint = `\n\nNote: For French TVA numbers, the last 9 digits are the SIREN number: ${siren}. Search for this SIREN on societe.com, infogreffe.fr, or pappers.fr.`
+  }
+  
+  const countryNames = {
+    'FR': 'French (France)',
+    'BE': 'Belgian', 
+    'DE': 'German',
+    'IT': 'Italian',
+    'NL': 'Dutch',
+    'ES': 'Spanish',
+    'AT': 'Austrian',
+    'LU': 'Luxembourg',
+  }
+  const countryName = countryNames[countryCode] || 'European'
+  
+  const prompt = `Find the company registered with this ${countryName} VAT/TVA number: ${fullVat}
 
-I need to verify if this VAT/TVA number is valid and find the registered company details.
+Search business registries and company databases for this VAT number. Try:
+- societe.com, infogreffe.fr, pappers.fr (for French companies)
+- companyweb.be, kbo-bce.fgov.be (for Belgian companies)
+- handelsregister.de (for German companies)
+- kvk.nl (for Dutch companies)
+- Or any other official company registry${sirenHint}
 
-Search for:
-1. "${fullVat}" OR "${cleanVat}" on business registries, company databases, or official sources
-2. The company name registered to this VAT number
-3. The company's registered business address
+Return ONLY a JSON object:
+{ "valid": true, "name": "company name", "address": "full address" }
 
-This is a ${countryCode === 'FR' ? 'French (France)' : countryCode === 'BE' ? 'Belgian' : countryCode === 'DE' ? 'German' : countryCode === 'IT' ? 'Italian' : 'European'} VAT number.
-
-Return ONLY a JSON object with your findings:
-{ "valid": true/false, "name": "company name", "address": "full address" }
-
-Set valid=true if you found a company registered with this VAT number.
-Set valid=false if you could not find any company or the VAT seems invalid.
+If you find the company, set valid=true and include the name and address.
+If you cannot find any company for this VAT, set valid=false and leave name/address empty.
 Output ONLY the JSON, nothing else.`
 
   const body = {
@@ -200,7 +217,9 @@ Output ONLY the JSON, nothing else.`
 
   const data = await res.json()
   const raw = data.choices?.[0]?.message?.content || ''
+  console.log('Perplexity VAT lookup raw response:', raw)
   const parsed = extractJSON(raw)
+  console.log('Perplexity VAT lookup parsed:', parsed)
 
   return {
     valid: parsed.valid === true,

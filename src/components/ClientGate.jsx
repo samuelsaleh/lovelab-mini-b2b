@@ -212,12 +212,18 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: viesResult.valid ? '#d4edda' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#fff3cd' : '#f8d7da',
-                color: viesResult.valid ? '#155724' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#856404' : '#721c24',
+                background: viesResult.valid === true ? '#d4edda' : 
+                            viesResult.valid === null ? '#fff3cd' : // unverified = yellow
+                            viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#fff3cd' : '#f8d7da',
+                color: viesResult.valid === true ? '#155724' : 
+                       viesResult.valid === null ? '#856404' : // unverified = yellow
+                       viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#856404' : '#721c24',
                 fontSize: 14,
                 fontWeight: 700,
               }}>
-                {viesResult.valid ? '✓' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '!' : '✗'}
+                {viesResult.valid === true ? '✓' : 
+                 viesResult.valid === null ? '?' : // unverified = question mark
+                 viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '!' : '✗'}
               </div>
             )}
             {/* Manual verify button if Perplexity ran but no VIES yet and user has typed VAT */}

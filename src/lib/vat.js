@@ -168,27 +168,29 @@ export async function validateVAT(vatString) {
         error: undefined,
       }
     } else {
-      // Perplexity couldn't find any company info
+      // Perplexity couldn't find any company info - but don't mark as invalid
+      // Just mark as "unverified" (valid=null means unknown/neutral)
+      console.log('Perplexity could not find company info, marking as unverified')
       return {
-        valid: false,
+        valid: null, // null = unverified (neither valid nor invalid)
         name: '',
         address: '',
         countryCode: parsed.countryCode,
         vatNumber: parsed.number,
-        error: 'Could not verify VAT via VIES or Perplexity',
+        error: undefined, // No error - just couldn't verify
       }
     }
   } catch (perplexityErr) {
     console.log('Perplexity fallback also failed:', perplexityErr)
     
-    // Both VIES and Perplexity failed
+    // Both VIES and Perplexity failed - mark as unverified
     return {
-      valid: false,
+      valid: null, // null = unverified
       name: '',
       address: '',
       countryCode: parsed.countryCode,
       vatNumber: parsed.number,
-      error: 'Could not verify VAT via VIES or Perplexity',
+      error: undefined,
     }
   }
 }

@@ -348,7 +348,7 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      {client.vatValid === true ? '✓ ' : client.vatValid === false ? '✗ ' : ''}{client.vat}
+                      {client.vatValid === true ? '✓ ' : client.vatValid === false ? '✗ ' : '? '}{client.vat}
                     </>
                   )}
                 </span>
