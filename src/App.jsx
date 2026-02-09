@@ -1,56 +1,26 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
-import { sendChat, lookupCompany } from './lib/api'
+import { sendChat, sendRecommendationChat } from './lib/api'
 import { COLLECTIONS, CORD_COLORS, calculateQuote } from './lib/catalog'
-import { fmt, isLight } from './lib/utils'
-import { colors, fonts, modePill, presetCard, tag, lbl } from './lib/styles'
+import { fmt } from './lib/utils'
+import { colors, fonts, modePill } from './lib/styles'
 import { validateVAT } from './lib/vat'
 import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
+import OptionPicker from './components/OptionPicker'
 import BuilderPage, { mkLine, mkColorConfig } from './components/BuilderPage'
 import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
-import AiMissingFieldsWizard from './components/AiMissingFieldsWizard'
-
-// ─── Presets that pre-fill the builder ───
-// Each preset line uses colorConfigs (each color gets its own carat, etc.)
-function presetConfigs(colors, caratIdx, qty) {
-  return colors.map((name) => ({ ...mkColorConfig(name, qty), caratIdx }))
-}
-
-const PRESETS = [
-  {
-    label: 'Bestseller Starter',
-    desc: 'CUTY 0.10ct · 3 colors · 3 pcs/color',
-    lines: [{ collectionId: 'CUTY', colorConfigs: presetConfigs(['Black', 'Red', 'Navy Blue'], 1, 3) }],
-  },
-  {
-    label: 'Duo Collection',
-    desc: 'CUTY + SHAPY SHINE · 2 colors each',
-    lines: [
-      { collectionId: 'CUTY', colorConfigs: presetConfigs(['Black', 'Red'], 1, 3) },
-      { collectionId: 'SSF', colorConfigs: presetConfigs(['Black', 'Navy'], 1, 2) },
-    ],
-  },
-  {
-    label: 'Premium Selection',
-    desc: 'HOLY + SHAPY SPARKLE FANCY',
-    lines: [
-      { collectionId: 'HOLY', colorConfigs: presetConfigs(['Black', 'Ivory'], 1, 2) },
-      { collectionId: 'SSPF', colorConfigs: presetConfigs(['Black', 'Red'], 0, 2) },
-    ],
-  },
-]
 
 const STORAGE_KEY = 'lovelab-b2b-state'
 
-function applyPreset(preset) {
-  return preset.lines.map((l) => ({
-    uid: Date.now() + Math.random(),
-    ...l,
-    expanded: true,
-  }))
-}
+// Quick-start suggestion chips for the AI chat
+const AI_CHIPS = [
+  'I have a budget of €2000, suggest a starter order',
+  'Show me CUTY + CUBIX options in 3 colors',
+  'Build me a bestseller order for a boutique',
+  'What can I get for €800?',
+]
 
 export default function App() {
   // Mode: 'builder' or 'describe'
@@ -73,30 +43,74 @@ export default function App() {
   const [orderFormQuote, setOrderFormQuote] = useState(null) // null = blank manual entry
 
   // Client info (expanded for company lookup)
-  const [client, setClient] = useState({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
+  const [client, setClient] = useState({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
   const [clientReady, setClientReady] = useState(false) // Gate passed?
   const [showClientEdit, setShowClientEdit] = useState(false) // Edit mode after gate
 
-  // Describe mode state
-  const [descText, setDescText] = useState('')
+  // AI chat state
   const [descLoading, setDescLoading] = useState(false)
   const [aiMsgs, setAiMsgs] = useState([]) // conversation history: [{role, content, quote?}]
-  const [followUp, setFollowUp] = useState('') // follow-up input after AI responds
+  const [chatInput, setChatInput] = useState('') // main chat input
 
-  // AI mode structured filters
+  // AI quick-filter toggles (optional context for the chat)
+  const [aiFiltersOpen, setAiFiltersOpen] = useState(false)
   const [aiBudget, setAiBudget] = useState('')
-  const [aiCollections, setAiCollections] = useState([])  // array of collection ids
-  const [aiColors, setAiColors] = useState([])             // array of color names
-  const [aiCarats, setAiCarats] = useState({})             // { collectionId: [carat strings] }
-  const [aiQty, setAiQty] = useState({})                   // { collectionId: number } — qty per color
-  const [aiDetailsByCollection, setAiDetailsByCollection] = useState({}) // { [collectionId]: { housing, housingType, multiAttached, shape, size } }
-  const [aiWizardOpen, setAiWizardOpen] = useState(false)
-  const [aiPendingOverrideMsg, setAiPendingOverrideMsg] = useState(null) // string | null
+  const [aiCollections, setAiCollections] = useState([]) // array of collection ids
+  const [aiColors, setAiColors] = useState([]) // array of color names
 
-  const descRef = useRef(null)
   const chatEndRef = useRef(null)
+  const chatInputRef = useRef(null)
   const hasStarted = lines.some((l) => l.collectionId)
-  const hasAnything = hasStarted || aiCollections.length > 0 || aiBudget || aiMsgs.length > 0
+  const hasAnything = hasStarted || aiMsgs.length > 0
+
+  // Derive available colors from selected AI filter collections
+  const aiAvailableColors = useMemo(() => {
+    if (aiCollections.length === 0) return []
+    const colorMap = new Map()
+    aiCollections.forEach((colId) => {
+      const col = COLLECTIONS.find((c) => c.id === colId)
+      if (!col) return
+      const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
+      palette.forEach((c) => {
+        if (!colorMap.has(c.n)) colorMap.set(c.n, c.h)
+      })
+    })
+    return Array.from(colorMap.entries()).map(([n, h]) => ({ n, h }))
+  }, [aiCollections])
+
+  const toggleAiCollection = (id) => {
+    setAiCollections((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      // Clean orphan colors
+      if (!next.includes(id)) {
+        const remainingPalettes = new Set()
+        next.forEach((colId) => {
+          const col = COLLECTIONS.find((c) => c.id === colId)
+          if (!col) return
+          const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
+          palette.forEach((c) => remainingPalettes.add(c.n))
+        })
+        setAiColors((prev) => prev.filter((name) => remainingPalettes.has(name)))
+      }
+      return next
+    })
+  }
+
+  const toggleAiColor = (name) => {
+    setAiColors((prev) => prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name])
+  }
+
+  // Build context prefix from filter toggles
+  const buildFilterContext = useCallback(() => {
+    const parts = []
+    if (aiBudget) parts.push(`Budget: €${aiBudget}.`)
+    if (aiCollections.length > 0) {
+      const names = aiCollections.map((id) => COLLECTIONS.find((c) => c.id === id)?.label || id).join(', ')
+      parts.push(`Collections: ${names}.`)
+    }
+    if (aiColors.length > 0) parts.push(`Colors: ${aiColors.join(', ')}.`)
+    return parts.length > 0 ? `[Context: ${parts.join(' ')}]\n` : ''
+  }, [aiBudget, aiCollections, aiColors])
 
   // ─── VAT banner (shown after quoting starts) ───
   const hasVat = Boolean(client.vat && client.vat.trim().length >= 4)
@@ -120,70 +134,6 @@ export default function App() {
         setClient((prev) => ({ ...prev, vatValid: null, vatValidating: false }))
       })
   }, [client.vat, client.vatValidating, setClient])
-
-  // Derive available colors from selected AI collections
-  const aiAvailableColors = useMemo(() => {
-    if (aiCollections.length === 0) return []
-    const colorMap = new Map()
-    aiCollections.forEach((colId) => {
-      const col = COLLECTIONS.find((c) => c.id === colId)
-      if (!col) return
-      const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
-      palette.forEach((c) => {
-        if (!colorMap.has(c.n)) colorMap.set(c.n, c.h)
-      })
-    })
-    return Array.from(colorMap.entries()).map(([n, h]) => ({ n, h }))
-  }, [aiCollections])
-
-  // Toggle helpers for multi-select
-  const toggleAiCollection = (id) => {
-    setAiCollections((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-      // Clean up carats and qty for removed collections
-      if (!next.includes(id)) {
-        setAiCarats((prev) => {
-          const copy = { ...prev }
-          delete copy[id]
-          return copy
-        })
-        setAiQty((prev) => {
-          const copy = { ...prev }
-          delete copy[id]
-          return copy
-        })
-        setAiDetailsByCollection((prev) => {
-          const copy = { ...prev }
-          delete copy[id]
-          return copy
-        })
-        // Clean up orphan colors: keep only colors available in remaining collections
-        const remainingPalettes = new Set()
-        next.forEach((colId) => {
-          const col = COLLECTIONS.find((c) => c.id === colId)
-          if (!col) return
-          const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
-          palette.forEach((c) => remainingPalettes.add(c.n))
-        })
-        setAiColors((prev) => prev.filter((name) => remainingPalettes.has(name)))
-      }
-      return next
-    })
-  }
-  const toggleAiColor = (name) => {
-    setAiColors((prev) => prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name])
-  }
-  const toggleAiCarat = (colId, ct) => {
-    setAiCarats((prev) => {
-      const existing = prev[colId] || []
-      const has = existing.includes(ct)
-      return { ...prev, [colId]: has ? existing.filter((x) => x !== ct) : [...existing, ct] }
-    })
-  }
-
-  // Check if AI mode has any content to send
-  const aiHasContent = aiBudget || aiCollections.length > 0 || descText.trim()
-  const totalSelectedCarats = Object.values(aiCarats).flat().length
 
   // ─── Generate quote from builder ───
   const handleGenerateQuote = useCallback((quote) => {
@@ -223,7 +173,7 @@ For each suggestion, give a short one-line description and the approximate cost.
 Keep it very concise — this is for a salesperson at a trade fair.`
 
     try {
-      const parsed = await sendChat([{ role: 'user', content: prompt }])
+      const parsed = await sendRecommendationChat(prompt)
       setBudgetRecommendations({ loading: false, message: parsed.message, suggestions: parsed.quote })
     } catch {
       setBudgetRecommendations({ loading: false, message: 'Could not generate recommendations. Please try again.', suggestions: null })
@@ -243,183 +193,112 @@ Keep it very concise — this is for a salesperson at a trade fair.`
     setShowOrderForm(true)
   }, [])
 
-  // ─── Build AI message from filters + text ───
-  const buildAiMessage = useCallback(() => {
-    const parts = []
-    if (aiBudget) parts.push(`Budget: €${aiBudget}`)
-    if (aiCollections.length > 0) {
-      aiCollections.forEach((id) => {
-        const col = COLLECTIONS.find((c) => c.id === id)
-        if (!col) return
-        const selectedCarats = aiCarats[id] || []
-        const qty = aiQty[id]
-        const det = aiDetailsByCollection[id] || {}
-        let line = col.label
-        if (selectedCarats.length > 0) line += `: preferred carats ${selectedCarats.join(', ')}ct`
-        if (qty) line += `, ${qty} pcs/color`
-        const detParts = []
-        if (det.housing) detParts.push(`housing ${det.housing}`)
-        if (det.shape) detParts.push(`shape ${det.shape}`)
-        if (det.size) detParts.push(`size ${det.size}`)
-        if (detParts.length > 0) line += ` (${detParts.join(', ')})`
-        parts.push(line)
-      })
-    }
-    if (aiColors.length > 0) parts.push(`Use ALL these colors in EACH collection: ${aiColors.join(', ')}`)
-    if (descText.trim()) parts.push(descText.trim())
-    return parts.join('\n')
-  }, [aiBudget, aiCollections, aiCarats, aiQty, aiDetailsByCollection, aiColors, descText])
-
-  const computeAiMissingDetails = useCallback(() => {
-    const missing = []
-    for (const colId of aiCollections) {
-      const col = COLLECTIONS.find((c) => c.id === colId)
-      if (!col) continue
-      const v = aiDetailsByCollection[colId] || {}
-      const hasHousing = Boolean(col.housing)
-      const hasShapes = Array.isArray(col.shapes) && col.shapes.length > 0
-      const hasSizes = Array.isArray(col.sizes) && col.sizes.length > 0
-
-      let housingOk = true
-      if (hasHousing) {
-        if (col.housing === 'multiThree') housingOk = v.multiAttached !== undefined && v.multiAttached !== null && !!v.housing
-        else if (col.housing === 'matchy') housingOk = !!v.housingType && !!v.housing
-        else if (col.housing === 'shapyShine') housingOk = !!v.housing
-        else housingOk = !!v.housing
-      }
-      const shapeOk = !hasShapes || !!v.shape
-      const sizeOk = !hasSizes || !!v.size
-
-      if (!housingOk || !shapeOk || !sizeOk) {
-        missing.push(colId)
-      }
-    }
-    return missing
-  }, [aiCollections, aiDetailsByCollection])
-
-  const onWizardChange = useCallback((colId, patch) => {
-    setAiDetailsByCollection((prev) => ({
-      ...prev,
-      [colId]: { ...(prev[colId] || {}), ...patch },
-    }))
-  }, [])
-
-  // ─── Send initial request or follow-up to AI ───
+  // ─── Send message to AI ───
   const handleAiSend = useCallback(async (overrideMsg) => {
-    const message = overrideMsg || buildAiMessage()
-    if (!message || descLoading) return
+    const rawMessage = typeof overrideMsg === 'string' ? overrideMsg : chatInput.trim()
+    if (!rawMessage || descLoading) return
 
-    const missing = computeAiMissingDetails()
-    if (missing.length > 0) {
-      // Pre-fill sensible defaults to reduce friction (still editable in wizard).
-      // This helps ensure the AI always receives a size even if the user skips it.
-      setAiDetailsByCollection((prev) => {
-        const copy = { ...prev }
-        for (const colId of missing) {
-          const col = COLLECTIONS.find((c) => c.id === colId)
-          if (!col) continue
-          const cur = copy[colId] || {}
-          if ((!cur.size || cur.size === '') && Array.isArray(col.sizes) && col.sizes.length > 0) {
-            // Prefer a common default if present.
-            const preferred = col.sizes.includes('M') ? 'M' : (col.sizes.includes('S/M') ? 'S/M' : col.sizes[0])
-            copy[colId] = { ...cur, size: preferred }
-          }
-        }
-        return copy
-      })
-      setAiPendingOverrideMsg(typeof overrideMsg === 'string' ? overrideMsg : null)
-      setAiWizardOpen(true)
-      return
-    }
+    // Prepend filter context to the first message or when filters are set
+    const context = buildFilterContext()
+    const message = context ? `${context}${rawMessage}` : rawMessage
 
+    setChatInput('')
     setDescLoading(true)
 
-    const userMsg = { role: 'user', content: message }
-    const newMsgs = [...aiMsgs, userMsg]
-    setAiMsgs(newMsgs)
-    if (!overrideMsg) setFollowUp('')
+    // Show the raw message in the UI, but send full message (with context) to the API
+    const displayMsg = { role: 'user', content: rawMessage }
+    const apiMsg = { role: 'user', content: message }
+    setAiMsgs((prev) => [...prev, displayMsg])
+    const apiMsgs = [...aiMsgs, apiMsg]
 
     try {
-      const parsed = await sendChat(newMsgs)
-      const assistantMsg = { role: 'assistant', content: parsed.message, quote: parsed.quote || null }
-      setAiMsgs((prev) => [...prev, assistantMsg])
+      const parsed = await sendChat(apiMsgs)
 
-      if (parsed.quote) {
-        setCurQuote(parsed.quote)
-        if (parsed.quote.lines && parsed.quote.lines.length > 0) {
-          // Group AI quote lines by collection to build builder lines with colorConfigs
-          const linesByCollection = new Map()
-          for (const ql of parsed.quote.lines) {
-            const colId = findCollectionId(ql.product)
-            if (!colId) continue
-            if (!linesByCollection.has(colId)) linesByCollection.set(colId, [])
-            linesByCollection.get(colId).push(ql)
-          }
-          const newLines = Array.from(linesByCollection.entries()).map(([colId, qls]) => {
-            const col = COLLECTIONS.find((c) => c.id === colId) || null
-            const colorConfigs = []
-
-            for (const ql of qls) {
-              const caratIdx = findCaratIdx(ql.product, ql.carat)
-              const base = {
-                caratIdx,
-                housing: ql.housing ?? null,
-                housingType: ql.housingType ?? null,
-                multiAttached: ql.multiAttached ?? null,
-                shape: ql.shape ?? null,
-                size: ql.size ?? null,
-              }
-
-              // Format A: colors[] + qtyPerColor (preferred)
-              if (Array.isArray(ql.colors) && ql.colors.length > 0) {
-                const per = Number(ql.qtyPerColor) || Number(ql.qty) || (col ? col.minC : 1) || 1
-                for (const cName of ql.colors) {
-                  const cfg = { ...mkColorConfig(cName, per), ...base, qty: per, colorName: cName }
-                  colorConfigs.push(cfg)
-                }
-                continue
-              }
-
-              // Format B: per-color line (colorName + qty)
-              const colorName = ql.colorName || ql.color || 'Unknown'
-              const qty = Number(ql.qty) || Number(ql.totalQty) || (col ? col.minC : 1) || 1
-              colorConfigs.push({ ...mkColorConfig(colorName, qty), ...base, qty, colorName })
-            }
-            return {
-              uid: Date.now() + Math.random(),
-              collectionId: colId,
-              colorConfigs,
-              expanded: false,
-            }
-          })
-          setLines(newLines)
+      let expandedQuote = null
+      if (parsed.quote && parsed.quote.lines && parsed.quote.lines.length > 0) {
+        // Group AI quote lines by collection to build builder lines with colorConfigs
+        const linesByCollection = new Map()
+        for (const ql of parsed.quote.lines) {
+          const colId = findCollectionId(ql.product)
+          if (!colId) continue
+          if (!linesByCollection.has(colId)) linesByCollection.set(colId, [])
+          linesByCollection.get(colId).push(ql)
         }
+        const newLines = Array.from(linesByCollection.entries()).map(([colId, qls]) => {
+          const col = COLLECTIONS.find((c) => c.id === colId) || null
+          const colorConfigs = []
+
+          for (const ql of qls) {
+            const caratIdx = findCaratIdx(ql.product, ql.carat)
+            const base = {
+              caratIdx,
+              housing: ql.housing ?? null,
+              housingType: ql.housingType ?? null,
+              multiAttached: ql.multiAttached ?? null,
+              shape: ql.shape ?? null,
+              size: ql.size ?? null,
+            }
+
+            // Format A: colors[] + qtyPerColor (preferred)
+            if (Array.isArray(ql.colors) && ql.colors.length > 0) {
+              const per = Number(ql.qtyPerColor) || Number(ql.qty) || (col ? col.minC : 1) || 1
+              for (const cName of ql.colors) {
+                const cfg = { ...mkColorConfig(cName, per), ...base, qty: per, colorName: cName }
+                colorConfigs.push(cfg)
+              }
+              continue
+            }
+
+            // Format B: per-color line (colorName + qty)
+            const colorName = ql.colorName || ql.color || 'Unknown'
+            const qty = Number(ql.qty) || Number(ql.totalQty) || (col ? col.minC : 1) || 1
+            colorConfigs.push({ ...mkColorConfig(colorName, qty), ...base, qty, colorName })
+          }
+          return {
+            uid: Date.now() + Math.random(),
+            collectionId: colId,
+            colorConfigs,
+            expanded: true,
+          }
+        })
+        setLines(newLines)
+        // Use calculateQuote on expanded builder lines so MiniQuote + QuoteModal get proper data
+        expandedQuote = calculateQuote(newLines)
+        setCurQuote(expandedQuote)
+      } else if (parsed.quote) {
+        setCurQuote(parsed.quote)
+        expandedQuote = parsed.quote
       }
+
+      // Store the expanded quote + options in the message so MiniQuote / OptionPicker display correctly
+      const assistantMsg = {
+        role: 'assistant',
+        content: parsed.message,
+        quote: expandedQuote,
+        options: Array.isArray(parsed.options) && parsed.options.length > 0 ? parsed.options : null,
+      }
+      setAiMsgs((prev) => [...prev, assistantMsg])
     } catch {
       setAiMsgs((prev) => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.', quote: null }])
     }
     setDescLoading(false)
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-  }, [buildAiMessage, computeAiMissingDetails, descLoading, aiMsgs])
+  }, [chatInput, descLoading, aiMsgs, buildFilterContext])
 
-  // ─── Send follow-up message ───
-  const handleFollowUp = useCallback(() => {
-    if (!followUp.trim() || descLoading) return
-    const msg = followUp.trim()
-    setFollowUp('')
+  // ─── Send suggestion request (doesn't modify order) ───
+  const handleSuggestFillOrder = useCallback(() => {
+    if (descLoading) return
+    const quote = curQuote
+    if (!quote) return
+    const currentItems = (quote.lines || []).map((ln) =>
+      `${ln.product} ${ln.carat}ct ${ln.colorName || ''}${ln.housing ? ` (${ln.housing})` : ''} ×${ln.qty}`
+    ).join('; ')
+    const gap = 800 - (quote.subtotal || 0)
+    const msg = gap > 0
+      ? `My current order is: ${currentItems}. Total is €${quote.subtotal}. I need €${gap} more to reach the €800 minimum. Give me 2-3 suggestions to fill the gap. Don't change my existing order.`
+      : `My current order is: ${currentItems}. Total is €${quote.subtotal}. Suggest 2-3 additions to complement what I have. Don't change my existing order.`
     handleAiSend(msg)
-  }, [followUp, descLoading, handleAiSend])
-
-  // Legacy alias for initial send
-  const handleDescribeSend = useCallback(() => {
-    handleAiSend()
-  }, [handleAiSend])
-
-  // ─── Apply a preset ───
-  const handlePreset = (preset) => {
-    setLines(applyPreset(preset))
-    setMode('builder')
-  }
+  }, [curQuote, descLoading, handleAiSend])
 
   // ─── Client Gate Complete ───
   const handleClientComplete = useCallback(() => {
@@ -431,17 +310,12 @@ Keep it very concise — this is for a salesperson at a trade fair.`
   const handleReset = () => {
     setLines([mkLine()])
     setCurQuote(null)
-    setDescText('')
     setAiMsgs([])
-    setFollowUp('')
+    setChatInput('')
     setAiBudget('')
     setAiCollections([])
     setAiColors([])
-    setAiCarats({})
-    setAiQty({})
-    setAiDetailsByCollection({})
-    setAiWizardOpen(false)
-    setAiPendingOverrideMsg(null)
+    setAiFiltersOpen(false)
     setBuilderBudget('')
     setBudgetRecommendations(null)
     setShowRecommendations(false)
@@ -450,7 +324,7 @@ Keep it very concise — this is for a salesperson at a trade fair.`
 
   // ─── New Client (go back to gate) ───
   const handleNewClient = () => {
-    setClient({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
+    setClient({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
     setClientReady(false)
     handleReset()
   }
@@ -464,17 +338,16 @@ Keep it very concise — this is for a salesperson at a trade fair.`
       if (saved) {
         const state = JSON.parse(saved)
         if (state.lines && state.lines.length > 0) setLines(state.lines)
-        if (state.client) setClient(state.client)
+        const ready = state.clientReady === true
+        if (ready && state.client) setClient(state.client)
         if (state.clientReady !== undefined) setClientReady(state.clientReady)
         if (state.curQuote) setCurQuote(state.curQuote)
         if (state.aiMsgs) setAiMsgs(state.aiMsgs)
         if (state.mode) setMode(state.mode)
+        if (state.builderBudget) setBuilderBudget(state.builderBudget)
         if (state.aiBudget) setAiBudget(state.aiBudget)
         if (state.aiCollections) setAiCollections(state.aiCollections)
         if (state.aiColors) setAiColors(state.aiColors)
-        if (state.aiCarats) setAiCarats(state.aiCarats)
-        if (state.aiQty) setAiQty(state.aiQty)
-        if (state.builderBudget) setBuilderBudget(state.builderBudget)
       }
     } catch { /* ignore corrupt localStorage */ }
   }, [])
@@ -483,10 +356,19 @@ Keep it very concise — this is for a salesperson at a trade fair.`
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty, builderBudget,
+        lines,
+        client: clientReady ? client : null,
+        clientReady,
+        curQuote,
+        aiMsgs,
+        mode,
+        builderBudget,
+        aiBudget,
+        aiCollections,
+        aiColors,
       }))
     } catch { /* ignore quota errors */ }
-  }, [lines, client, clientReady, curQuote, aiMsgs, mode, aiBudget, aiCollections, aiColors, aiCarats, aiQty, builderBudget])
+  }, [lines, client, clientReady, curQuote, aiMsgs, mode, builderBudget, aiBudget, aiCollections, aiColors])
 
   // ─── Client Gate (first screen) ───
   if (!clientReady) {
@@ -706,7 +588,7 @@ Keep it very concise — this is for a salesperson at a trade fair.`
             Build Manually
           </button>
           <button onClick={() => setMode('describe')} style={modePill(mode === 'describe')}>
-            Describe Situation
+            AI Advisor
           </button>
           <div style={{ flex: 1 }} />
           {hasAnything && (
@@ -723,34 +605,6 @@ Keep it very concise — this is for a salesperson at a trade fair.`
       {/* ─── Main Content ─── */}
       {mode === 'builder' ? (
         <>
-          {/* Presets — shown when builder is empty */}
-          {!hasStarted && (
-            <div style={{ padding: '18px 14px 0', flexShrink: 0 }}>
-              <div style={{ maxWidth: 640, margin: '0 auto' }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                  Quick Start
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {PRESETS.map((p, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handlePreset(p)}
-                      style={presetCard}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.background = '#fdf7fa' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e3e3e3'; e.currentTarget.style.background = '#fff' }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#222', marginBottom: 2 }}>{p.label}</div>
-                      <div style={{ fontSize: 10, color: '#999' }}>{p.desc}</div>
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11, color: '#bbb', marginTop: 12, textAlign: 'center' }}>
-                  Or start building below — select a collection, carat, colors & quantity.
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Builder */}
           <BuilderPage
             lines={lines}
@@ -765,275 +619,331 @@ Keep it very concise — this is for a salesperson at a trade fair.`
           />
         </>
       ) : (
-        /* ─── Describe Situation / AI Advisor Mode ─── */
+        /* ─── AI Advisor Chat Mode ─── */
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <AiMissingFieldsWizard
-            open={aiWizardOpen}
-            collectionIds={aiCollections}
-            aiCarats={aiCarats}
-            values={aiDetailsByCollection}
-            onChange={onWizardChange}
-            onCancel={() => {
-              setAiWizardOpen(false)
-              setAiPendingOverrideMsg(null)
-            }}
-            onConfirm={() => {
-              const stillMissing = computeAiMissingDetails()
-              if (stillMissing.length > 0) return
-              setAiWizardOpen(false)
-              const pending = aiPendingOverrideMsg
-              setAiPendingOverrideMsg(null)
-              // Re-trigger send: if pending is null, rebuild message with newly captured details.
-              if (pending) handleAiSend(pending)
-              else handleAiSend()
-            }}
-          />
+
+          {/* Persistent suggestion bar when below minimum */}
+          {curQuote && !curQuote.minimumMet && (
+            <div style={{
+              padding: '10px 14px',
+              background: '#fff8f0',
+              borderBottom: '1px solid #f0e0d0',
+              flexShrink: 0,
+            }}>
+              <div style={{ maxWidth: 640, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ fontSize: 12, color: '#856404', fontWeight: 600 }}>
+                  Order at {fmt(curQuote.subtotal)} / min {fmt(800)} — need {fmt(800 - curQuote.subtotal)} more
+                </div>
+                <button
+                  onClick={handleSuggestFillOrder}
+                  disabled={descLoading}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: colors.luxeGold,
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: descLoading ? 'default' : 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                    opacity: descLoading ? 0.6 : 1,
+                  }}
+                >
+                  Get suggestions
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Chat messages area */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '18px 14px' }}>
             <div style={{ maxWidth: 640, margin: '0 auto' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>AI Order Advisor</div>
-              <div style={{ fontSize: 12, color: '#999', marginBottom: 16, lineHeight: 1.5 }}>
-                Pick budget + collections + preferences. If required details are missing (housing/shape/size), you’ll get a quick wizard before the AI runs.
-              </div>
 
-              {/* Budget */}
-              <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>1) Budget (optional)</div>
-                <div style={{ position: 'relative', width: 160 }}>
-                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#aaa', fontWeight: 600 }}>€</span>
-                  <input
-                    type="number"
-                    value={aiBudget}
-                    onChange={(e) => setAiBudget(e.target.value)}
-                    placeholder="2000"
-                    style={{ width: '100%', padding: '8px 11px 8px 24px', borderRadius: 8, border: '1px solid #e3e3e3', fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fafaf8', boxSizing: 'border-box', color: '#333' }}
-                  />
-                </div>
-              </div>
-
-              {/* Collections multi-select */}
-              <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>2) Collections {aiCollections.length > 0 && `(${aiCollections.length})`}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {COLLECTIONS.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => toggleAiCollection(c.id)}
-                      style={tag(aiCollections.includes(c.id))}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Carats & Qty grouped by collection — only if collections selected */}
-              {aiCollections.length > 0 && (
-                <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                  <div style={lbl}>3) Carats & quantity by collection</div>
-                  {aiCollections.map((colId) => {
-                    const col = COLLECTIONS.find((c) => c.id === colId)
-                    if (!col) return null
-                    const selected = aiCarats[colId] || []
-                    const qty = aiQty[colId] || ''
-                    return (
-                      <div key={colId} style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f3f3f3' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#555' }}>{col.label}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 9, color: '#aaa' }}>pcs/color:</span>
-                            <input
-                              type="number"
-                              min="1"
-                              value={qty}
-                              onChange={(e) => setAiQty((prev) => ({ ...prev, [colId]: e.target.value ? parseInt(e.target.value, 10) : '' }))}
-                              placeholder={String(col.minC)}
-                              style={{ width: 48, padding: '3px 6px', borderRadius: 6, border: '1px solid #e3e3e3', fontSize: 11, textAlign: 'center', fontFamily: 'inherit', outline: 'none', background: '#fafaf8' }}
-                            />
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                          {col.carats.map((ct, ci) => (
-                            <button
-                              key={ct}
-                              onClick={() => toggleAiCarat(colId, ct)}
-                              style={tag(selected.includes(ct))}
-                            >
-                              {ct}ct — €{col.prices[ci]}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Colors multi-select — only if collections selected */}
-              {aiAvailableColors.length > 0 && (
-                <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                  <div style={lbl}>4) Colors {aiColors.length > 0 && `(${aiColors.length})`}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {aiAvailableColors.map((c) => (
+              {/* Welcome message when no conversation yet */}
+              {aiMsgs.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: colors.inkPlum, marginBottom: 6 }}>AI Order Advisor</div>
+                  <div style={{ fontSize: 13, color: '#999', lineHeight: 1.6, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
+                    Describe your client's needs in plain language. I'll build the optimal quote, suggest collections, and help you reach the minimum order.
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                    {AI_CHIPS.map((chip, i) => (
                       <button
-                        key={c.n}
-                        title={c.n}
-                        onClick={() => toggleAiColor(c.n)}
+                        key={i}
+                        onClick={() => { setChatInput(chip); setTimeout(() => chatInputRef.current?.focus(), 50) }}
                         style={{
-                          width: 28, height: 28, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
-                          border: aiColors.includes(c.n) ? '2.5px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
-                          cursor: 'pointer', transition: 'transform .1s',
-                          transform: aiColors.includes(c.n) ? 'scale(1.15)' : 'scale(1)',
-                          boxShadow: aiColors.includes(c.n) ? '0 0 0 2px rgba(0,0,0,0.08)' : 'none',
+                          padding: '8px 14px',
+                          borderRadius: 20,
+                          border: `1px solid ${colors.lineGray}`,
+                          background: '#fff',
+                          color: '#555',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          transition: 'all .12s',
+                          lineHeight: 1.3,
                         }}
-                      />
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.lineGray; e.currentTarget.style.color = '#555' }}
+                      >
+                        {chip}
+                      </button>
                     ))}
                   </div>
-                  {aiColors.length > 0 && (
-                    <div style={{ fontSize: 9, color: '#aaa', marginTop: 4 }}>{aiColors.join(', ')}</div>
-                  )}
                 </div>
               )}
 
-              {/* Additional notes / free text */}
-              <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>5) Notes (optional)</div>
-                <textarea
-                  ref={descRef}
-                  value={descText}
-                  onChange={(e) => setDescText(e.target.value)}
-                  placeholder="E.g. split budget 60/40, maximize carats, prefer bestsellers, need at least 5 colors per collection..."
-                  style={{
-                    width: '100%', minHeight: 80, padding: 10, borderRadius: 8,
-                    border: '1px solid #e3e3e3', fontSize: 12, fontFamily: 'inherit',
-                    outline: 'none', resize: 'vertical', lineHeight: 1.5, color: '#333',
-                    background: '#fafaf8', boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-
-              {/* Summary */}
-              {aiHasContent && (
-                <div style={{ marginBottom: 14, padding: 14, background: colors.ice, borderRadius: 10, border: `1px solid ${colors.lineGray}` }}>
-                  <div style={lbl}>Summary</div>
-                  <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5 }}>
-                    <div>
-                      <strong>Budget:</strong> {aiBudget ? `€${aiBudget}` : '—'}{' '}
-                      <span style={{ color: '#999' }}>·</span>{' '}
-                      <strong>Collections:</strong> {aiCollections.length ? aiCollections.map((id) => (COLLECTIONS.find((c) => c.id === id)?.label || id)).join(', ') : '—'}
-                    </div>
-                    <div style={{ marginTop: 4, color: '#666', fontSize: 11 }}>
-                      Carats selected: <strong>{totalSelectedCarats}</strong> · Colors: <strong>{aiColors.length}</strong>
-                      {aiCollections.length > 0 && computeAiMissingDetails().length > 0 && (
-                        <>
-                          {' '}· Missing details for: <strong>{computeAiMissingDetails().map((id) => (COLLECTIONS.find((c) => c.id === id)?.label || id)).join(', ')}</strong>
-                        </>
-                      )}
-                    </div>
-                    {aiCollections.length > 0 && computeAiMissingDetails().length > 0 && (
-                      <div style={{ marginTop: 6, fontSize: 11, color: '#856404' }}>
-                        When you press the button below, a quick wizard will ask for housing/shape/size so the AI quote exports cleanly to “Build manually”.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Send / Re-send button */}
-              <button
-                onClick={handleDescribeSend}
-                disabled={!aiHasContent || descLoading}
-                style={{
-                  width: '100%', padding: 14, borderRadius: 10, border: 'none',
-                  background: aiHasContent && !descLoading ? colors.inkPlum : '#e5e5e5',
-                  color: aiHasContent && !descLoading ? '#fff' : '#999',
-                  fontSize: 14, fontWeight: 700, cursor: aiHasContent && !descLoading ? 'pointer' : 'default',
-                  fontFamily: 'inherit', transition: 'background .15s',
-                }}
-              >
-                {descLoading ? 'Thinking...' : aiMsgs.length > 0 ? 'Re-send with updated filters →' : 'Ask AI for Best Quote →'}
-              </button>
-
-              {/* ─── Conversation Thread ─── */}
-              {aiMsgs.length > 0 && (
-                <div style={{ marginTop: 20, borderTop: '1px solid #eee', paddingTop: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-                    Conversation
-                  </div>
-
-                  {aiMsgs.map((m, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                      <div
-                        style={{
-                          maxWidth: '88%',
-                          padding: '10px 14px',
-                          borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                          background: m.role === 'user' ? colors.inkPlum : '#fff',
-                          color: m.role === 'user' ? '#fff' : '#333',
-                          fontSize: 12,
-                          lineHeight: 1.5,
-                          border: m.role === 'user' ? 'none' : '1px solid #eaeaea',
-                        }}
-                      >
-                        <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                        {m.quote && (
-                          <div style={{ marginTop: 8 }}>
-                            <MiniQuote
-                              q={m.quote}
-                              onView={() => { setCurQuote(m.quote); setShowQuote(true) }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {descLoading && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
-                      <div style={{ padding: '12px 16px', borderRadius: '12px 12px 12px 4px', background: '#fff', border: '1px solid #eaeaea' }}>
-                        <LoadingDots />
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={chatEndRef} />
-
-                  {/* Follow-up input */}
-                  {!descLoading && (
-                    <div style={{ display: 'flex', gap: 6, marginTop: 8, background: '#fff', borderRadius: 10, border: '1px solid #ddd', padding: 4, alignItems: 'flex-end' }}>
-                      <input
-                        value={followUp}
-                        onChange={(e) => setFollowUp(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleFollowUp() }}
-                        placeholder="Change colors, add pieces, ask about margin..."
-                        style={{ flex: 1, border: 'none', outline: 'none', fontSize: 12, fontFamily: 'inherit', padding: '8px 8px', color: '#222', background: 'transparent' }}
-                      />
-                      <button
-                        onClick={handleFollowUp}
-                        disabled={!followUp.trim()}
-                        style={{
-                          width: 34, height: 34, borderRadius: 8, border: 'none', flexShrink: 0,
-                          background: followUp.trim() ? colors.inkPlum : '#e5e5e5',
-                          color: '#fff', cursor: followUp.trim() ? 'pointer' : 'default',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-                        }}
-                      >
-                        ↑
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Switch to builder */}
-                  {curQuote && (
-                    <button
-                      onClick={() => setMode('builder')}
+              {/* Conversation thread */}
+              {aiMsgs.map((m, i) => {
+                // Options are "answered" if a subsequent user message exists after this one
+                const optionsAnswered = m.options && i < aiMsgs.length - 1
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+                    <div
                       style={{
-                        width: '100%', padding: 10, borderRadius: 8, marginTop: 10,
-                        border: '1px solid #e0e0e0', background: '#fafafa', fontSize: 12,
-                        fontWeight: 600, cursor: 'pointer', color: '#555', fontFamily: 'inherit',
+                        maxWidth: '88%',
+                        padding: '10px 14px',
+                        borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                        background: m.role === 'user' ? colors.inkPlum : '#fff',
+                        color: m.role === 'user' ? '#fff' : '#333',
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        border: m.role === 'user' ? 'none' : '1px solid #eaeaea',
                       }}
                     >
-                      Switch to Builder to edit this quote manually ↗
-                    </button>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+
+                      {/* Interactive option picker (when AI asks for missing info) */}
+                      {m.options && (
+                        <OptionPicker
+                          options={m.options}
+                          onSend={(msg) => handleAiSend(msg)}
+                          disabled={descLoading || optionsAnswered}
+                        />
+                      )}
+
+                      {m.quote && (
+                        <div style={{ marginTop: 8 }}>
+                          <MiniQuote
+                            q={m.quote}
+                            onView={() => { setCurQuote(m.quote); setShowQuote(true) }}
+                          />
+                          {/* Action buttons after quote */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                            <button
+                              onClick={handleSuggestFillOrder}
+                              disabled={descLoading}
+                              style={{
+                                width: '100%', padding: 8, borderRadius: 8,
+                                border: `1px solid ${colors.luxeGold}`, background: '#fff',
+                                fontSize: 11, fontWeight: 600, cursor: descLoading ? 'default' : 'pointer',
+                                color: colors.luxeGold, fontFamily: 'inherit',
+                                opacity: descLoading ? 0.6 : 1,
+                              }}
+                            >
+                              Suggest how to fill order
+                            </button>
+                            <button
+                              onClick={() => setMode('builder')}
+                              style={{
+                                width: '100%', padding: 8, borderRadius: 8,
+                                border: '1px solid #e0e0e0', background: '#fafafa',
+                                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                color: '#555', fontFamily: 'inherit',
+                              }}
+                            >
+                              Switch to Builder to edit manually
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {descLoading && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+                  <div style={{ padding: '12px 16px', borderRadius: '12px 12px 12px 4px', background: '#fff', border: '1px solid #eaeaea' }}>
+                    <LoadingDots />
+                  </div>
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+
+          {/* ─── Chat input bar (always visible at bottom) ─── */}
+          <div style={{
+            background: '#fff',
+            borderTop: '1px solid #eaeaea',
+            flexShrink: 0,
+          }}>
+            <div style={{ maxWidth: 640, margin: '0 auto' }}>
+
+              {/* Collapsible quick-filter panel */}
+              {aiFiltersOpen && (
+                <div style={{ padding: '12px 14px 6px', borderBottom: '1px solid #f0f0f0' }}>
+                  {/* Budget row */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Budget</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, color: '#999' }}>€</span>
+                      <input
+                        type="number"
+                        value={aiBudget}
+                        onChange={(e) => setAiBudget(e.target.value)}
+                        placeholder="e.g. 2000"
+                        style={{
+                          flex: 1, border: '1px solid #e0e0e0', borderRadius: 8,
+                          padding: '7px 10px', fontSize: 13, fontFamily: 'inherit',
+                          outline: 'none', color: '#222', maxWidth: 140,
+                        }}
+                        onFocus={(e) => { e.target.style.borderColor = colors.inkPlum }}
+                        onBlur={(e) => { e.target.style.borderColor = '#e0e0e0' }}
+                      />
+                      {aiBudget && (
+                        <button onClick={() => setAiBudget('')} style={{ background: 'none', border: 'none', color: '#bbb', cursor: 'pointer', fontSize: 14, padding: 2 }}>×</button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Collections row */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Collections</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {COLLECTIONS.map((col) => {
+                        const active = aiCollections.includes(col.id)
+                        return (
+                          <button
+                            key={col.id}
+                            onClick={() => toggleAiCollection(col.id)}
+                            style={{
+                              padding: '5px 10px', borderRadius: 16, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #ddd',
+                              background: active ? `${colors.inkPlum}12` : '#fafafa', color: active ? colors.inkPlum : '#666',
+                              fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit',
+                              transition: 'all .12s',
+                            }}
+                          >
+                            {col.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Colors row — only show when collections are selected */}
+                  {aiAvailableColors.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                        Colors {aiColors.length > 0 && <span style={{ color: colors.inkPlum }}>({aiColors.length})</span>}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {aiAvailableColors.map((c) => {
+                          const active = aiColors.includes(c.n)
+                          return (
+                            <button
+                              key={c.n}
+                              onClick={() => toggleAiColor(c.n)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                padding: '4px 8px', borderRadius: 12,
+                                border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #e0e0e0',
+                                background: active ? `${colors.inkPlum}10` : '#fff',
+                                cursor: 'pointer', fontFamily: 'inherit', transition: 'all .12s',
+                              }}
+                            >
+                              <span style={{
+                                width: 12, height: 12, borderRadius: '50%',
+                                background: c.h, border: '1px solid rgba(0,0,0,.1)',
+                                flexShrink: 0,
+                              }} />
+                              <span style={{
+                                fontSize: 10, fontWeight: active ? 700 : 400,
+                                color: active ? colors.inkPlum : '#666',
+                              }}>
+                                {c.n}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Input row */}
+              <div style={{ padding: '8px 14px 10px', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                {/* Filter toggle button */}
+                <button
+                  onClick={() => setAiFiltersOpen((v) => !v)}
+                  title="Quick filters"
+                  style={{
+                    width: 38, height: 38, borderRadius: 10, border: '1px solid #e0e0e0', flexShrink: 0,
+                    background: aiFiltersOpen || aiBudget || aiCollections.length > 0 ? `${colors.inkPlum}15` : '#f7f7f5',
+                    color: aiFiltersOpen || aiBudget || aiCollections.length > 0 ? colors.inkPlum : '#999',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                    transition: 'all .12s',
+                  }}
+                >
+                  {aiFiltersOpen ? '▾' : '▸'}
+                </button>
+
+                <div style={{ flex: 1, display: 'flex', gap: 6, background: '#f7f7f5', borderRadius: 12, border: '1px solid #e0e0e0', padding: 4, alignItems: 'flex-end' }}>
+                  <input
+                    ref={chatInputRef}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend() } }}
+                    placeholder={aiBudget || aiCollections.length ? 'Ask about your selections...' : 'Describe your client\'s needs...'}
+                    disabled={descLoading}
+                    style={{
+                      flex: 1, border: 'none', outline: 'none', fontSize: 13,
+                      fontFamily: 'inherit', padding: '10px 10px', color: '#222',
+                      background: 'transparent', lineHeight: 1.4,
+                    }}
+                  />
+                  <button
+                    onClick={() => handleAiSend()}
+                    disabled={!chatInput.trim() || descLoading}
+                    style={{
+                      width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
+                      background: chatInput.trim() && !descLoading ? colors.inkPlum : '#e5e5e5',
+                      color: '#fff', cursor: chatInput.trim() && !descLoading ? 'pointer' : 'default',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                      transition: 'background .15s',
+                    }}
+                  >
+                    ↑
+                  </button>
+                </div>
+              </div>
+
+              {/* Active filters summary (when collapsed but filters are set) */}
+              {!aiFiltersOpen && (aiBudget || aiCollections.length > 0 || aiColors.length > 0) && (
+                <div style={{ padding: '0 14px 8px', display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, color: '#aaa', marginRight: 2 }}>Context:</span>
+                  {aiBudget && (
+                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>
+                      €{aiBudget}
+                    </span>
+                  )}
+                  {aiCollections.map((id) => {
+                    const col = COLLECTIONS.find((c) => c.id === id)
+                    return col ? (
+                      <span key={id} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>
+                        {col.label}
+                      </span>
+                    ) : null
+                  })}
+                  {aiColors.length > 0 && (
+                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>
+                      {aiColors.length} color{aiColors.length !== 1 ? 's' : ''}
+                    </span>
                   )}
                 </div>
               )}

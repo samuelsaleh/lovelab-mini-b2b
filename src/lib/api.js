@@ -120,6 +120,62 @@ function stripMd(s) {
 }
 
 /**
+ * Send a budget-recommendation request to Claude.
+ * Uses a dedicated system prompt that allows longer, list-format answers
+ * instead of the strict 2-3 sentence quote-builder format.
+ */
+export async function sendRecommendationChat(userPrompt) {
+  const systemPrompt = `You are a concise B2B sales advisor for LoveLab Antwerp jewellery bracelets.
+The salesperson is at a trade fair and wants quick, actionable ideas for how to spend a client's remaining budget.
+
+RULES:
+- Output ONLY a JSON object: {"message":"...","quote":null}
+- The "message" field should contain 3-5 numbered suggestions, each on its own line.
+- Each suggestion: one line with product name, carat, approximate qty & cost. Keep each line under 120 chars.
+- At the end, add a one-line total summary.
+- Use plain text, no markdown, no bold, no bullets. Use "·" as separator within a line if needed.
+- Be specific: name real LoveLab products and realistic B2B prices.
+
+PRICES (B2B):
+CUTY: 0.05=€20, 0.10=€30, 0.20=€65, 0.30=€90
+CUBIX: 0.05=€24, 0.10=€34, 0.20=€70
+MULTI THREE: 0.15=€55, 0.30=€85, 0.60=€165, 0.90=€240
+MULTI FOUR: 0.20=€75, 0.40=€100
+MULTI FIVE: 0.25=€85, 0.50=€120
+MATCHY FANCY: 0.60=€180, 1.00=€290
+SHAPY SHINE FANCY: 0.10=€50, 0.30=€90, 0.50=€145
+SHAPY SPARKLE FANCY: 0.70=€225, 1.00=€300
+SHAPY SPARKLE RND G/H: 0.50=€115, 0.70=€145, 1.00=€205
+SHAPY SPARKLE RND D VVS: 0.50=€180, 0.70=€200, 1.00=€285
+HOLY (D VVS): 0.50=€260, 0.70=€425, 1.00=€550
+
+10% discount ONLY if subtotal >= €1600.`
+
+  const body = {
+    model: MODEL,
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }],
+  }
+
+  const res = await fetch('/api/anthropic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`)
+  }
+
+  const data = await res.json()
+  let raw = data.content?.map((b) => b.text || '').join('') || ''
+  let parsed = extractJSON(raw)
+  parsed.message = stripMd(parsed.message || 'No recommendations available.')
+  return parsed
+}
+
+/**
  * Country-specific names for the legal / terms pages where VAT is usually found.
  */
 const LEGAL_PAGE_NAMES = {

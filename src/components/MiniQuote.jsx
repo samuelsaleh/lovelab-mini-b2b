@@ -12,18 +12,24 @@ export default function MiniQuote({ q, onView }) {
       border: `1px solid ${colors.lineGray}`, 
       fontSize: isMobile() ? 11 : 12 
     }}>
-      {q.lines.map((ln, i) => (
-        <div key={i} style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          padding: '3px 0', 
-          borderBottom: i < q.lines.length - 1 ? `1px solid ${colors.lineGray}` : 'none',
-          color: colors.charcoal
-        }}>
-          <span style={{ fontWeight: 600 }}>{ln.product} {ln.carat}ct{ln.colorName ? ` · ${ln.colorName}` : ''}</span>
-          <span style={{ fontSize: isMobile() ? 10 : 11 }}>{ln.qty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
-        </div>
-      ))}
+      {q.lines.map((ln, i) => {
+        const details = [ln.housing, ln.shape, ln.size].filter(Boolean).join(' · ')
+        return (
+          <div key={i} style={{ 
+            padding: '4px 0', 
+            borderBottom: i < q.lines.length - 1 ? `1px solid ${colors.lineGray}` : 'none',
+            color: colors.charcoal
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontWeight: 600 }}>{ln.product} {ln.carat}ct{ln.colorName ? ` · ${ln.colorName}` : ''}</span>
+              <span style={{ fontSize: isMobile() ? 10 : 11, flexShrink: 0, marginLeft: 8 }}>{ln.qty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
+            </div>
+            {details && (
+              <div style={{ fontSize: 9, color: colors.lovelabMuted, marginTop: 1 }}>{details}</div>
+            )}
+          </div>
+        )
+      })}
       <div style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 

@@ -21,7 +21,8 @@ const COLUMNS = [
 const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'bpColor', 'size', 'colorCord', 'unitPrice']
 
 function isRowFilled(row) {
-  return FILL_KEYS.every(k => String(row[k] || '').trim() !== '')
+  // Show action buttons if any field has content (not just when ALL fields are filled)
+  return FILL_KEYS.some(k => String(row[k] || '').trim() !== '')
 }
 
 function renumberRows(rows) {
@@ -84,15 +85,6 @@ function prefillRows(quote) {
     rows.push(emptyRow(rows.length + 1))
   }
   return rows
-}
-
-function generateOrderNo() {
-  const now = new Date()
-  const y = String(now.getFullYear()).slice(-2)
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  const r = String(Math.floor(Math.random() * 1000)).padStart(3, '0')
-  return `LL-${y}${m}${d}-${r}`
 }
 
 // ─── Cell input ───
@@ -251,9 +243,14 @@ export default function OrderForm({ quote, client, onClose }) {
   const vatValid = client?.vatValid
   const [email, setEmail] = useState(client?.email || '')
   const [phone, setPhone] = useState(client?.phone || '')
-  const [orderNo, setOrderNo] = useState(() => generateOrderNo())
   const [date, setDate] = useState(today())
+  const [packaging, setPackaging] = useState('Black')  // Black or Pink
   const [remarks, setRemarks] = useState('')
+
+  // Prepayment & discount state
+  const [hasPrepayment, setHasPrepayment] = useState(false)
+  const [prepaymentAmount, setPrepaymentAmount] = useState('')
+  const [discountDisplay, setDiscountDisplay] = useState('')      // e.g. "10%" or "€500"
 
   // Table rows state
   const [rows, setRows] = useState(() => prefillRows(quote))
@@ -267,6 +264,21 @@ export default function OrderForm({ quote, client, onClose }) {
   }, [rows])
 
   const finalTotal = finalTotalOverride != null ? finalTotalOverride : subtotal
+
+  // Compute after-discount amount from discountDisplay (supports "10%" or "€500" or plain "500")
+  const afterDiscount = useMemo(() => {
+    const base = finalTotal || 0
+    const d = (discountDisplay || '').trim()
+    if (!d) return null
+    if (d.endsWith('%')) {
+      const pct = parseFloat(d) || 0
+      if (pct <= 0) return null
+      return base - base * pct / 100
+    }
+    const flat = parseFloat(d.replace(/[€,]/g, '')) || 0
+    if (flat <= 0) return null
+    return base - flat
+  }, [finalTotal, discountDisplay])
 
   // Row handlers
   const updateCell = useCallback((rowIdx, key, value) => {
@@ -502,21 +514,40 @@ export default function OrderForm({ quote, client, onClose }) {
                     <div style={hFieldLabel}>Phone :</div>
                     <input value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} />
                   </div>
-                  <div>
-                    <div style={hFieldLabel}>Orderform No.:</div>
-                    <input value={orderNo} onChange={(e) => setOrderNo(e.target.value)} style={hFieldInput} />
-                  </div>
                 </div>
               </div>
 
-              {/* Date */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Date :</span>
-                <input
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  style={{ ...hFieldInput, width: 120, borderBottom: `1px solid ${colors.lineGray}` }}
-                />
+              {/* Date & Packaging */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Date :</span>
+                  <input
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    style={{ ...hFieldInput, width: 120, borderBottom: `1px solid ${colors.lineGray}` }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Packaging :</span>
+                  <button
+                    onClick={() => setPackaging('Black')}
+                    style={{
+                      padding: '4px 10px', borderRadius: 4, border: 'none',
+                      background: packaging === 'Black' ? '#222' : '#f0f0f0',
+                      color: packaging === 'Black' ? '#fff' : '#666',
+                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                    }}
+                  >Black</button>
+                  <button
+                    onClick={() => setPackaging('Pink')}
+                    style={{
+                      padding: '4px 10px', borderRadius: 4, border: 'none',
+                      background: packaging === 'Pink' ? colors.softPink : '#f0f0f0',
+                      color: packaging === 'Pink' ? '#fff' : '#666',
+                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                    }}
+                  >Pink</button>
+                </div>
                 {pageIdx > 0 && (
                   <span style={{ fontSize: 9, color: colors.lovelabMuted, marginLeft: 'auto' }}>
                     Page {pageIdx + 1} of {pages.length}
@@ -636,17 +667,90 @@ export default function OrderForm({ quote, client, onClose }) {
                       }}
                     />
                   </div>
-                  <div style={{ textAlign: 'right', minWidth: 180 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>Final Total (€)</div>
+                  <div style={{ textAlign: 'right', minWidth: 200 }}>
+                    {/* Final Total (before discount) */}
+                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
+                      {afterDiscount != null ? 'Total Before Discount (€)' : 'Final Total (€)'}
+                    </div>
                     <input
                       value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
                       onChange={(e) => setFinalTotalOverride(Number(e.target.value) || 0)}
                       style={{
-                        fontSize: 18, fontWeight: 800, color: colors.inkPlum, border: 'none',
-                        borderBottom: `2px solid ${colors.inkPlum}`, outline: 'none', textAlign: 'right',
+                        fontSize: afterDiscount != null ? 14 : 18,
+                        fontWeight: 800,
+                        color: afterDiscount != null ? colors.lovelabMuted : colors.inkPlum,
+                        border: 'none',
+                        borderBottom: `2px solid ${afterDiscount != null ? colors.lineGray : colors.inkPlum}`,
+                        outline: 'none', textAlign: 'right',
                         fontFamily: fonts.body, background: 'transparent', width: 150,
+                        textDecoration: afterDiscount != null ? 'line-through' : 'none',
                       }}
                     />
+
+                    {/* Discount input */}
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal }}>Discount:</span>
+                      <input
+                        value={discountDisplay}
+                        onChange={(e) => setDiscountDisplay(e.target.value)}
+                        placeholder="e.g. 10% or €500"
+                        style={{
+                          width: 100, padding: '3px 6px', border: 'none',
+                          borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
+                          fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
+                          background: 'transparent', boxSizing: 'border-box', textAlign: 'right',
+                        }}
+                      />
+                    </div>
+
+                    {/* After Discount total */}
+                    {afterDiscount != null && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#27ae60', marginBottom: 4 }}>
+                          After Discount (€)
+                        </div>
+                        <div style={{
+                          fontSize: 20, fontWeight: 800, color: colors.inkPlum,
+                          borderBottom: `2px solid ${colors.inkPlum}`,
+                          paddingBottom: 2,
+                        }}>
+                          {fmt(afterDiscount)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Prepayment / Discount / Gift (last page only) ─── */}
+              {pageIdx === pages.length - 1 && (
+                <div style={{
+                  display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start',
+                  marginTop: 12, padding: '10px 0',
+                  borderTop: `1px solid ${colors.lineGray}`,
+                }}>
+                  {/* Prepayment */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 200 }}>
+                    <input
+                      type="checkbox"
+                      checked={hasPrepayment}
+                      onChange={(e) => setHasPrepayment(e.target.checked)}
+                      style={{ accentColor: colors.inkPlum, width: 14, height: 14, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, whiteSpace: 'nowrap' }}>Prepayment made</span>
+                    {hasPrepayment && (
+                      <input
+                        value={prepaymentAmount}
+                        onChange={(e) => setPrepaymentAmount(e.target.value)}
+                        placeholder="€ amount"
+                        style={{
+                          width: 90, padding: '3px 6px', border: 'none',
+                          borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
+                          fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
+                          background: 'transparent', boxSizing: 'border-box',
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               )}

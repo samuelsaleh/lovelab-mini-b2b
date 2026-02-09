@@ -87,20 +87,8 @@ export function calculateQuote(lines) {
   const totalRetail = qLines.reduce((s, l) => s + l.retailTotal, 0)
 
   const warnings = []
-  if (subtotal > 0 && subtotal < 1600 && totalPieces < 100) {
-    warnings.push('Below minimum order (€1,600 or 100 pcs)')
-  }
-  // Check each config's quantity against collection minimum
-  for (const l of lines) {
-    if (!l.collectionId) continue
-    const col = COLLECTIONS.find((c) => c.id === l.collectionId)
-    if (!col) continue
-    const configs = l.colorConfigs || []
-    for (const cfg of configs) {
-      if (cfg.qty < col.minC) {
-        warnings.push(`${col.label} (${cfg.colorName}): ${cfg.qty} pcs (recommended min: ${col.minC})`)
-      }
-    }
+  if (subtotal > 0 && subtotal < 800) {
+    warnings.push('Below minimum order of €800')
   }
 
   return {
@@ -111,7 +99,7 @@ export function calculateQuote(lines) {
     total,
     totalPieces,
     totalRetail,
-    minimumMet: subtotal >= 1600 || totalPieces >= 100,
+    minimumMet: subtotal >= 800,
     warnings,
   }
 }

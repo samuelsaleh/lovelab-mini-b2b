@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { COLLECTIONS, CORD_COLORS, HOUSING } from '../lib/catalog'
 import { isLight } from '../lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '../lib/styles'
@@ -62,7 +62,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
   const isComplete = caratDone && housingDone && shapeDone && sizeDone
 
   // Color swatch
-  const colorDef = palette.find((p) => p.n === cfg.colorName) || { h: '#ccc' }
+  const colorDef = palette.find((p) => p.n === cfg.colorName) || palette.find((p) => p.n?.toLowerCase?.() === cfg.colorName?.toLowerCase?.()) || { h: '#ccc' }
 
   // Build summary
   const summaryParts = []
@@ -347,6 +347,21 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
+  // Small UX helper: show the last added color name briefly
+  const [lastAddedColor, setLastAddedColor] = useState(null)
+  const lastAddedTimer = useRef(null)
+  useEffect(() => {
+    return () => {
+      if (lastAddedTimer.current) clearTimeout(lastAddedTimer.current)
+    }
+  }, [])
+
+  const announceAddedColor = (name) => {
+    setLastAddedColor(name)
+    if (lastAddedTimer.current) clearTimeout(lastAddedTimer.current)
+    lastAddedTimer.current = setTimeout(() => setLastAddedColor(null), 1100)
+  }
+
   // Update a specific color config
   const updateConfig = (cfgId, updates) => {
     set({
@@ -397,6 +412,25 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   line.colorConfigs.forEach((c) => {
     colorCounts[c.colorName] = (colorCounts[c.colorName] || 0) + 1
   })
+
+  // Swatch lookup (tries exact, then case-insensitive, then fuzzy, else grey)
+  const swatchForName = (name) => {
+    if (!palette || palette.length === 0) return '#ccc'
+    const exact = palette.find((p) => p.n === name) || palette.find((p) => p.n?.toLowerCase?.() === name?.toLowerCase?.())
+    if (exact?.h) return exact.h
+    const ln = (name || '').toLowerCase()
+    const fuzzy = palette.find((p) => (p.n || '').toLowerCase().includes(ln)) || palette.find((p) => ln.includes((p.n || '').toLowerCase()))
+    if (fuzzy?.h) return fuzzy.h
+    if (ln.includes('pink')) {
+      const anyPink = palette.find((p) => (p.n || '').toLowerCase().includes('pink'))
+      if (anyPink?.h) return anyPink.h
+    }
+    if (ln.includes('bordeaux')) {
+      const anyBdx = palette.find((p) => (p.n || '').toLowerCase().includes('bordeaux'))
+      if (anyBdx?.h) return anyBdx.h
+    }
+    return '#ccc'
+  }
 
   // Check if any config is complete (for "apply to all" button)
   const hasAnyComplete = col && line.colorConfigs.some((cfg) => {
@@ -651,9 +685,56 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               onToggle={() => setActiveSection(activeSection === 'colors' ? null : 'colors')}
               isCompleted={line.colorConfigs.length > 0 && completeConfigs === line.colorConfigs.length}
             >
+              {/* Added colors summary chips (name + count) */}
+              {Object.keys(colorCounts).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {Object.entries(colorCounts).map(([name, count]) => {
+                    const hex = swatchForName(name)
+                    return (
+                      <div
+                        key={name}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 7,
+                          padding: '6px 10px',
+                          borderRadius: 999,
+                          border: '1px solid #eee',
+                          background: '#fff',
+                          fontSize: 12,
+                          color: '#222',
+                          fontWeight: 600,
+                        }}
+                        title={`${name} ×${count}`}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: hex,
+                            border: isLight(hex) ? '1px solid #ddd' : '1px solid transparent',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span>{name}</span>
+                        <span style={{ fontSize: 11, color: '#999', fontWeight: 600 }}>×{count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* Color Palette Grid */}
               <div style={{ marginBottom: 14 }}>
-                <div style={{ ...lbl, marginBottom: 6 }}>Click a color to add it</div>
+                <div style={{ ...lbl, marginBottom: 6 }}>
+                  Click a color to add it
+                  {lastAddedColor && (
+                    <span style={{ marginLeft: 10, fontSize: 11, color: colors.luxeGold, fontWeight: 700, textTransform: 'none', letterSpacing: 0 }}>
+                      Added: {lastAddedColor}
+                    </span>
+                  )}
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {palette.map((c) => {
                     const count = colorCounts[c.n] || 0
@@ -661,7 +742,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                       <div key={c.n} style={{ position: 'relative' }}>
                         <button
                           title={c.n}
-                          onClick={() => addColorConfig(c.n)}
+                          onClick={() => { addColorConfig(c.n); announceAddedColor(c.n) }}
                           style={{
                             width: 32, height: 32, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
                             border: count > 0 ? '3px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',

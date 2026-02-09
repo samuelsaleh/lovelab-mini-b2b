@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useMemo, useRef, useState, useCallback } from 'react'
 import { colors, fonts, inp, lbl, isMobile } from '../lib/styles'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '../lib/vat'
 import { lookupCompany } from '../lib/api'
+import { COUNTRIES } from '../lib/countries'
 import LoadingDots from './LoadingDots'
 
 /**
@@ -16,6 +17,9 @@ export default function ClientGate({ client, setClient, onComplete }) {
   const [error, setError] = useState('')
   const [viesResult, setViesResult] = useState(null) // { valid, name, address, error }
   const [perplexityDone, setPerplexityDone] = useState(false)
+  const [countryOpen, setCountryOpen] = useState(false)
+  const [countryHi, setCountryHi] = useState(0)
+  const countryListRef = useRef(null)
 
   const canLookup = client.company.trim() && client.country.trim()
   const canStart = client.company.trim()
@@ -105,6 +109,38 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
   const mobile = isMobile()
 
+  const filteredCountries = useMemo(() => {
+    const q = (client.country || '').trim().toLowerCase()
+    if (!q) return COUNTRIES
+    // Prefer prefix matches, then substring matches.
+    const prefix = []
+    const inside = []
+    for (const c of COUNTRIES) {
+      const lc = c.toLowerCase()
+      if (lc.startsWith(q)) prefix.push(c)
+      else if (lc.includes(q)) inside.push(c)
+    }
+    return [...prefix, ...inside]
+  }, [client.country])
+
+  const scrollCountryIntoView = (idx) => {
+    const list = countryListRef.current
+    if (!list) return
+    const el = list.querySelector(`[data-idx="${idx}"]`)
+    if (!el) return
+    const top = el.offsetTop
+    const bottom = top + el.offsetHeight
+    if (top < list.scrollTop) list.scrollTop = top
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight
+  }
+
+  const selectCountry = (name) => {
+    setClient((c) => ({ ...c, country: name, address: '', city: '', zip: '', vat: '', vatValid: null }))
+    setViesResult(null)
+    setPerplexityDone(false)
+    setCountryOpen(false)
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -158,9 +194,33 @@ export default function ClientGate({ client, setClient, onComplete }) {
           <input
             value={client.name}
             onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
-            placeholder="John Smith"
+            placeholder="Name"
             style={{ ...inp, width: '100%' }}
           />
+        </div>
+
+        {/* Phone & Email */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>Phone</div>
+            <input
+              value={client.phone}
+              onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))}
+              placeholder="Phone number"
+              type="tel"
+              style={{ ...inp, width: '100%' }}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>Email</div>
+            <input
+              value={client.email}
+              onChange={(e) => setClient((c) => ({ ...c, email: e.target.value }))}
+              placeholder="Email address"
+              type="email"
+              style={{ ...inp, width: '100%' }}
+            />
+          </div>
         </div>
 
         {/* Company Name */}
@@ -174,7 +234,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
               setViesResult(null)
               setPerplexityDone(false)
             }}
-            placeholder="Acme Jewelry BV"
+            placeholder="Company name"
             style={{ ...inp, width: '100%' }}
           />
         </div>
@@ -182,17 +242,113 @@ export default function ClientGate({ client, setClient, onComplete }) {
         {/* Country */}
         <div style={{ marginBottom: 14 }}>
           <div style={lbl}>Country *</div>
-          <input
-            value={client.country}
-            onChange={(e) => {
-              // Clear VAT and address when country changes
-              setClient((c) => ({ ...c, country: e.target.value, address: '', city: '', zip: '', vat: '', vatValid: null }))
-              setViesResult(null)
-              setPerplexityDone(false)
-            }}
-            placeholder="Belgium"
-            style={{ ...inp, width: '100%' }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              value={client.country}
+              onFocus={() => {
+                setCountryOpen(true)
+                setCountryHi(0)
+                requestAnimationFrame(() => scrollCountryIntoView(0))
+              }}
+              onBlur={() => {
+                // Close dropdown when clicking outside.
+                setTimeout(() => setCountryOpen(false), 120)
+              }}
+              onChange={(e) => {
+                // Typing updates the filter and keeps dropdown open.
+                setClient((c) => ({ ...c, country: e.target.value }))
+                setCountryOpen(true)
+                setCountryHi(0)
+                requestAnimationFrame(() => scrollCountryIntoView(0))
+              }}
+              onKeyDown={(e) => {
+                if (!countryOpen && (e.key.length === 1 || e.key === 'ArrowDown')) {
+                  setCountryOpen(true)
+                  setCountryHi(0)
+                  requestAnimationFrame(() => scrollCountryIntoView(0))
+                  return
+                }
+                if (!countryOpen) return
+                if (e.key === 'Escape') {
+                  setCountryOpen(false)
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setCountryHi((h) => {
+                    const next = Math.min(filteredCountries.length - 1, h + 1)
+                    requestAnimationFrame(() => scrollCountryIntoView(next))
+                    return next
+                  })
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setCountryHi((h) => {
+                    const next = Math.max(0, h - 1)
+                    requestAnimationFrame(() => scrollCountryIntoView(next))
+                    return next
+                  })
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const pick = filteredCountries[countryHi]
+                  if (pick) selectCountry(pick)
+                }
+              }}
+              placeholder="Select country"
+              style={{ ...inp, width: '100%' }}
+            />
+
+            {countryOpen && (
+              <div
+                ref={countryListRef}
+                style={{
+                  position: 'absolute',
+                  zIndex: 20,
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  right: 0,
+                  maxHeight: 240,
+                  overflowY: 'auto',
+                  background: '#fff',
+                  border: '1px solid #eaeaea',
+                  borderRadius: 10,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.06)',
+                  padding: 6,
+                }}
+                onMouseDown={(e) => {
+                  // Prevent input blur while clicking options.
+                  e.preventDefault()
+                }}
+              >
+                {filteredCountries.length === 0 ? (
+                  <div style={{ padding: '8px 10px', fontSize: 12, color: '#999' }}>
+                    No matches.
+                  </div>
+                ) : (
+                  filteredCountries.map((name, idx) => (
+                    <button
+                      key={name}
+                      type="button"
+                      data-idx={idx}
+                      onClick={() => selectCountry(name)}
+                      onMouseEnter={() => setCountryHi(idx)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: idx === countryHi ? 'rgba(93, 58, 94, 0.10)' : 'transparent',
+                        color: '#333',
+                        fontFamily: 'inherit',
+                        fontSize: 12,
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* VAT Number */}
@@ -205,7 +361,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 setClient((c) => ({ ...c, vat: e.target.value, vatValid: null }))
                 setViesResult(null)
               }}
-              placeholder="BE0123456789"
+              placeholder="VAT number"
               style={{ ...inp, flex: 1 }}
             />
             {/* VIES status indicator */}
