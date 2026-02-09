@@ -158,18 +158,26 @@ const LEGAL_PAGE_NAMES = {
  * Returns { valid, name, address } or throws.
  */
 export async function validateVATviaPerplexity(vatNumber, countryCode) {
-  const prompt = `Go to the official EU VIES VAT validation website (https://ec.europa.eu/taxation_customs/vies/) and check if this VAT number is valid:
+  // Clean the VAT number (remove country prefix if present)
+  const cleanVat = vatNumber.replace(/^[A-Z]{2}/i, '').trim()
+  const fullVat = `${countryCode}${cleanVat}`
+  
+  const prompt = `Search for information about this EU VAT number: ${fullVat}
 
-Country code: ${countryCode}
-VAT number: ${vatNumber.replace(/^[A-Z]{2}/i, '')} (without country prefix)
+I need to verify if this VAT/TVA number is valid and find the registered company details.
 
-Search for this exact VAT number on the VIES website and tell me:
-1. Is the VAT number valid? (Yes/No)
-2. What is the registered company name?
-3. What is the registered address?
+Search for:
+1. "${fullVat}" OR "${cleanVat}" on business registries, company databases, or official sources
+2. The company name registered to this VAT number
+3. The company's registered business address
 
-Return ONLY a JSON object: { "valid": true/false, "name": "company name", "address": "full address" }
-If the VAT is invalid or not found, return { "valid": false, "name": "", "address": "" }
+This is a ${countryCode === 'FR' ? 'French (France)' : countryCode === 'BE' ? 'Belgian' : countryCode === 'DE' ? 'German' : countryCode === 'IT' ? 'Italian' : 'European'} VAT number.
+
+Return ONLY a JSON object with your findings:
+{ "valid": true/false, "name": "company name", "address": "full address" }
+
+Set valid=true if you found a company registered with this VAT number.
+Set valid=false if you could not find any company or the VAT seems invalid.
 Output ONLY the JSON, nothing else.`
 
   const body = {
