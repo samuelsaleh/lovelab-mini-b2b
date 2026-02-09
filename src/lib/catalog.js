@@ -55,15 +55,26 @@ export function calculateQuote(lines) {
       const col = COLLECTIONS.find((c) => c.id === l.collectionId)
       if (!col) return null
       const ci = l.caratIdx !== null && l.caratIdx !== undefined ? l.caratIdx : 0
-      const totalQty = l.colors.length * l.qty
+      // Handle both legacy (string array) and new (object array) color formats
+      // Legacy: ['Red', 'Blue'] with l.qty (uniform)
+      // New: [{name: 'Red', qty: 1}, {name: 'Blue', qty: 2}]
+      
+      const processedColors = l.colors.map(c => {
+        if (typeof c === 'string') return { name: c, qty: l.qty || 1 }
+        return c
+      })
+      
+      const totalQty = processedColors.reduce((sum, c) => sum + c.qty, 0)
+      
       return {
         product: col.label,
         carat: col.carats[ci],
         housing: l.housing || null,
         shape: l.shape || null,
         size: l.size || null,
-        colors: l.colors,
-        qtyPerColor: l.qty,
+        colors: processedColors.map(c => c.name), // Just names for display if needed
+        colorDetails: processedColors, // Full details with qty
+        qtyPerColor: null, // Deprecated, use colorDetails
         totalQty,
         unitB2B: col.prices[ci],
         lineTotal: totalQty * col.prices[ci],
@@ -88,8 +99,14 @@ export function calculateQuote(lines) {
     .filter((l) => l.collectionId)
     .forEach((l) => {
       const col = COLLECTIONS.find((c) => c.id === l.collectionId)
-      if (col && l.qty < col.minC) {
-        warnings.push(`${col.label}: ${l.qty}/color (recommended min: ${col.minC})`)
+      if (col) {
+        // Check each color's quantity
+        const processedColors = l.colors.map(c => (typeof c === 'string' ? { name: c, qty: l.qty || 1 } : c))
+        processedColors.forEach(c => {
+          if (c.qty < col.minC) {
+            warnings.push(`${col.label} (${c.name}): ${c.qty} pcs (recommended min: ${col.minC})`)
+          }
+        })
       }
     })
 

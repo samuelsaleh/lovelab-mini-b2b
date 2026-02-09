@@ -53,9 +53,20 @@ function prefillRows(quote) {
   let rowNum = 1
   for (const ln of quote.lines) {
     const col = findCollection(ln.product)
-    const colorsArr = ln.colors && ln.colors.length > 0 ? ln.colors : ['']
-    for (const color of colorsArr) {
-      const qty = ln.qtyPerColor || 0
+    
+    // Handle new colorDetails structure or fallback to legacy
+    let colorItems = []
+    if (ln.colorDetails && ln.colorDetails.length > 0) {
+      colorItems = ln.colorDetails
+    } else if (ln.colors && ln.colors.length > 0) {
+      // Legacy fallback
+      colorItems = ln.colors.map(c => ({ name: c, qty: ln.qtyPerColor || 0 }))
+    } else {
+      colorItems = [{ name: '', qty: 0 }]
+    }
+
+    for (const item of colorItems) {
+      const qty = item.qty || 0
       const unit = ln.unitB2B || 0
       rows.push({
         no: String(rowNum++),
@@ -65,7 +76,7 @@ function prefillRows(quote) {
         shape: ln.shape || '',
         bpColor: ln.housing || '',
         size: ln.size || '',
-        colorCord: color,
+        colorCord: item.name,
         unitPrice: unit ? String(unit) : '',
         total: qty && unit ? String(qty * unit) : '',
       })

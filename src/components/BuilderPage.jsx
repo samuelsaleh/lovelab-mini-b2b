@@ -29,6 +29,19 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.uid !== uid)))
   }, [setLines])
 
+  const duplicateLine = useCallback((uid) => {
+    setLines((prev) => {
+      const original = prev.find((l) => l.uid === uid)
+      if (!original) return prev
+      const copy = { ...original, uid: Date.now() + Math.random(), expanded: true }
+      // Insert after original
+      const idx = prev.findIndex((l) => l.uid === uid)
+      const newLines = [...prev]
+      newLines.splice(idx + 1, 0, copy)
+      return newLines
+    })
+  }, [setLines])
+
   const addLine = () => setLines((prev) => [...prev, mkLine()])
 
   // Live quote calculation
@@ -49,6 +62,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
               total={lines.length}
               onChange={updateLine}
               onRemove={removeLine}
+              onDuplicate={duplicateLine}
             />
           ))}
 

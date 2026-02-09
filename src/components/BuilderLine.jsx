@@ -52,7 +52,7 @@ const AccordionSection = ({ label, value, isOpen, onToggle, children, isComplete
   )
 }
 
-export default memo(function BuilderLine({ line, index, total, onChange, onRemove }) {
+export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate }) {
   const col = line.collectionId ? COLLECTIONS.find((c) => c.id === line.collectionId) : null
   const palette = col ? CORD_COLORS[col.cord] || CORD_COLORS.nylon : []
 
@@ -78,12 +78,41 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   }
 
   const toggleColor = (name) => {
-    const has = line.colors.includes(name)
-    set({ colors: has ? line.colors.filter((c) => c !== name) : [...line.colors, name] })
-    // For colors (multi-select), we don't auto-close. User must manually close or we just leave it open.
+    // If color is already selected, remove it
+    if (line.colors.some(c => (typeof c === 'string' ? c : c.name) === name)) {
+      set({ 
+        colors: line.colors.filter(c => (typeof c === 'string' ? c : c.name) !== name) 
+      })
+    } else {
+      // Add new color with default qty (using line.qty or 1)
+      set({ 
+        colors: [...line.colors, { name, qty: line.qty || 1 }] 
+      })
+    }
+  }
+
+  // Update qty for a specific color
+  const updateColorQty = (name, newQty) => {
+    set({
+      colors: line.colors.map(c => {
+        const cName = typeof c === 'string' ? c : c.name
+        if (cName === name) {
+          return { name: cName, qty: Math.max(1, newQty) }
+        }
+        return typeof c === 'string' ? { name: c, qty: line.qty || 1 } : c
+      })
+    })
+  }
+
+  // Helper to get qty for a color (handling legacy string format)
+  const getColorQty = (name) => {
+    const c = line.colors.find(c => (typeof c === 'string' ? c : c.name) === name)
+    if (!c) return 0
+    return typeof c === 'string' ? (line.qty || 1) : c.qty
   }
 
   // Summary string generation
+  const totalQty = line.colors.reduce((sum, c) => sum + (typeof c === 'string' ? (line.qty || 1) : c.qty), 0)
   const summaryLine = [
     col ? col.label : '',
     col && line.caratIdx !== null ? `${col.carats[line.caratIdx]}ct` : '',
@@ -91,7 +120,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
     line.shape,
     line.size,
     line.colors.length > 0 ? `${line.colors.length} col` : '',
-    line.colors.length > 0 ? `${line.colors.length * line.qty} pcs` : ''
+    line.colors.length > 0 ? `${totalQty} pcs` : ''
   ].filter(Boolean).join(' · ')
 
   return (
@@ -139,6 +168,15 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {col && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDuplicate && onDuplicate(line.uid) }}
+              style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#ccc', padding: 4 }}
+              title="Duplicate line"
+            >
+              ❐
+            </button>
+          )}
            {total > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(line.uid) }}
@@ -353,56 +391,73 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               onToggle={() => setActiveSection(activeSection === 'colors' ? null : 'colors')}
               isCompleted={line.colors.length > 0}
             >
-              <div style={{ marginBottom: 12 }}>
+              {/* Colors Grid */}
+              <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {palette.map((c) => (
-                    <button
-                      key={c.n}
-                      title={c.n}
-                      onClick={() => toggleColor(c.n)}
-                      style={{
-                        width: 32, height: 32, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
-                        border: line.colors.includes(c.n) ? '3px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
-                        cursor: 'pointer', transition: 'transform .1s',
-                        transform: line.colors.includes(c.n) ? 'scale(1.1)' : 'scale(1)',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                      }}
-                    />
-                  ))}
+                  {palette.map((c) => {
+                    const isSelected = line.colors.some(lc => (typeof lc === 'string' ? lc : lc.name) === c.n)
+                    return (
+                      <button
+                        key={c.n}
+                        title={c.n}
+                        onClick={() => toggleColor(c.n)}
+                        style={{
+                          width: 32, height: 32, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
+                          border: isSelected ? '3px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
+                          cursor: 'pointer', transition: 'transform .1s',
+                          transform: isSelected ? 'scale(1.1)' : 'scale(1)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                        }}
+                      />
+                    )
+                  })}
                 </div>
-                {line.colors.length > 0 && (
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 8 }}>
-                    Selected: <b>{line.colors.join(', ')}</b>
-                  </div>
-                )}
               </div>
               
-              {/* Qty Section inside Colors */}
+              {/* Selected Colors List with Individual Quantities */}
               {line.colors.length > 0 && (
                 <div style={{ paddingTop: 12, borderTop: '1px solid #f5f5f5' }}>
-                  <div style={lbl}>Quantity per color</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #eee' }}>
-                      <button style={qBtn} onClick={() => set({ qty: Math.max(1, line.qty - 1) })}>−</button>
-                      <input
-                        type="number"
-                        value={line.qty}
-                        onChange={(e) => set({ qty: Math.max(1, parseInt(e.target.value) || 1) })}
-                        style={qInp}
-                      />
-                      <button style={qBtn} onClick={() => set({ qty: line.qty + 1 })}>+</button>
-                    </div>
-                     <div style={{ display: 'flex', gap: 4 }}>
-                      {QTY_PRESETS.map((q) => (
-                        <button key={q} onClick={() => set({ qty: q })} style={qtyQuick(line.qty === q)}>
-                          {q}
-                        </button>
-                      ))}
-                    </div>
+                  <div style={{ ...lbl, marginBottom: 10 }}>Quantities per color</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {line.colors.map((c, i) => {
+                      const cName = typeof c === 'string' ? c : c.name
+                      const cQty = typeof c === 'string' ? (line.qty || 1) : c.qty
+                      const colorDef = palette.find(p => p.n === cName) || { h: '#ccc' }
+                      
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f9f9f9', padding: '6px 10px', borderRadius: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 16, height: 16, borderRadius: '50%', background: colorDef.h, border: '1px solid rgba(0,0,0,0.1)' }} />
+                            <span style={{ fontSize: 13, fontWeight: 500, color: '#333' }}>{cName}</span>
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #eee', background: '#fff' }}>
+                              <button style={{ ...qBtn, width: 24, height: 24, fontSize: 14 }} onClick={() => updateColorQty(cName, cQty - 1)}>−</button>
+                              <input
+                                type="number"
+                                value={cQty}
+                                onChange={(e) => updateColorQty(cName, parseInt(e.target.value) || 1)}
+                                style={{ ...qInp, width: 32, height: 24, fontSize: 12 }}
+                              />
+                              <button style={{ ...qBtn, width: 24, height: 24, fontSize: 14 }} onClick={() => updateColorQty(cName, cQty + 1)}>+</button>
+                            </div>
+                            <button 
+                              onClick={() => toggleColor(cName)}
+                              style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  {line.qty < col.minC && (
-                     <div style={{ fontSize: 11, color: '#e74c3c', marginTop: 6 }}>
-                        ⚠ Minimum recommended: {col.minC}
+
+                  {/* Min Quantity Warning */}
+                  {line.colors.some(c => (typeof c === 'string' ? (line.qty || 1) : c.qty) < col.minC) && (
+                     <div style={{ fontSize: 11, color: '#e74c3c', marginTop: 10 }}>
+                        ⚠ Minimum recommended per color: {col.minC}
                      </div>
                   )}
                 </div>
