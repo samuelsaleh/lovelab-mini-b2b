@@ -82,7 +82,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
             </div>
             <div style={totalBarMeta}>
               {quote.totalPieces > 0
-                ? `${quote.totalPieces} pcs · Retail ${fmt(quote.totalRetail)}${quote.totalRetail > 0 && quote.total > 0 ? ` · Margin ${Math.round(((quote.totalRetail - quote.total) / quote.total) * 100)}%` : ''}`
+                ? `${quote.totalPieces} pcs · Retail ${fmt(quote.totalRetail)}`
                 : 'Select collections, carats & colors to see total'
               }
             </div>

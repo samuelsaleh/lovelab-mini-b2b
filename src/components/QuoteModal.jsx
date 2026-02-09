@@ -177,11 +177,6 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: colors.lovelabMuted, marginTop: showBelgianVat ? 4 : 0 }}>
               <span>{q.totalPieces} pcs</span><span>Retail {fmt(q.totalRetail)}</span>
             </div>
-            {q.totalRetail > 0 && q.total > 0 && (
-              <div style={{ fontSize: 10, color: colors.luxeGold, textAlign: 'right', marginTop: 2, fontWeight: 600 }}>
-                Margin: {Math.round(((q.totalRetail - q.total) / q.total) * 100)}%
-              </div>
-            )}
           </div>
         </div>
 
