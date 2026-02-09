@@ -23,18 +23,28 @@ export const HOUSING = {
 }
 
 // ─── COLLECTIONS ───
+// Size options by bracelet type
+export const SIZES_NYLON = ['XS', 'S', 'M', 'L', 'XL']
+export const SIZES_SILK = ['S/M', 'L/XL']
+
+// Shape options by collection family
+export const SHAPES_HOLY = ['Cross', 'Hamsa', 'Star of David', 'Greek Cross']
+export const SHAPES_MATCHY = ['Pear', 'Heart', 'Emerald']
+export const SHAPES_SHAPY_SHINE = ['Heart', 'Pear', 'Marquise', 'Oval', 'Emerald', 'Cushion', 'Long Cushion']
+export const SHAPES_SHAPY_SPARKLE = ['Round', 'Pear', 'Oval', 'Heart', 'Princess', 'Cushion', 'Marquise', 'Emerald', 'Long Cushion']
+
 export const COLLECTIONS = [
-  { id: 'CUTY', label: 'CUTY', carats: ['0.05', '0.10', '0.20', '0.30'], prices: [20, 30, 65, 90], retail: [75, 120, 315, 430], minC: 3, cord: 'nylon', housing: 'standard' },
-  { id: 'CUBIX', label: 'CUBIX', carats: ['0.05', '0.10', '0.20'], prices: [24, 34, 70], retail: [95, 145, 340], minC: 3, cord: 'nylon', housing: 'goldMetal' },
-  { id: 'M3', label: 'MULTI THREE', carats: ['0.15', '0.30', '0.60', '0.90'], prices: [55, 85, 165, 240], retail: [260, 400, 800, 1150], minC: 2, cord: 'nylon', housing: 'multiThree' },
-  { id: 'M4', label: 'MULTI FOUR', carats: ['0.20', '0.40'], prices: [75, 100], retail: [360, 500], minC: 2, cord: 'nylon', housing: 'goldMetal' },
-  { id: 'M5', label: 'MULTI FIVE', carats: ['0.25', '0.50'], prices: [85, 120], retail: [400, 580], minC: 2, cord: 'nylon', housing: 'goldMetal' },
-  { id: 'MF', label: 'MATCHY FANCY', carats: ['0.60', '1.00'], prices: [180, 290], retail: [550, 885], minC: 2, cord: 'nylon', housing: 'matchy' },
-  { id: 'SSF', label: 'SHAPY SHINE FANCY', carats: ['0.10', '0.30', '0.50'], prices: [50, 90, 145], retail: [180, 330, 450], minC: 2, cord: 'shine', housing: 'shapyShine' },
-  { id: 'SSPF', label: 'SHAPY SPARKLE FANCY', carats: ['0.70', '1.00'], prices: [225, 300], retail: [550, 850], minC: 2, cord: 'silk' },
-  { id: 'SSRG', label: 'SHAPY SPARKLE RND G/H', carats: ['0.50', '0.70', '1.00'], prices: [115, 145, 205], retail: [290, 360, 500], minC: 2, cord: 'silk' },
-  { id: 'SSRD', label: 'SHAPY SPARKLE RND D VVS', carats: ['0.50', '0.70', '1.00'], prices: [180, 200, 285], retail: [550, 650, 850], minC: 2, cord: 'silk' },
-  { id: 'HOLY', label: 'HOLY (D VVS)', carats: ['0.50', '0.70', '1.00'], prices: [260, 425, 550], retail: [650, 1000, 1325], minC: 2, cord: 'holy', housing: 'standard' },
+  { id: 'CUTY', label: 'CUTY', carats: ['0.05', '0.10', '0.20', '0.30'], prices: [20, 30, 65, 90], retail: [75, 120, 315, 430], minC: 3, cord: 'nylon', housing: 'standard', sizes: SIZES_NYLON },
+  { id: 'CUBIX', label: 'CUBIX', carats: ['0.05', '0.10', '0.20'], prices: [24, 34, 70], retail: [95, 145, 340], minC: 3, cord: 'nylon', housing: 'goldMetal', sizes: SIZES_SILK },
+  { id: 'M3', label: 'MULTI THREE', carats: ['0.15', '0.30', '0.60', '0.90'], prices: [55, 85, 165, 240], retail: [260, 400, 800, 1150], minC: 2, cord: 'nylon', housing: 'multiThree', sizes: SIZES_NYLON },
+  { id: 'M4', label: 'MULTI FOUR', carats: ['0.20', '0.40'], prices: [75, 100], retail: [360, 500], minC: 2, cord: 'nylon', housing: 'goldMetal', sizes: SIZES_NYLON },
+  { id: 'M5', label: 'MULTI FIVE', carats: ['0.25', '0.50'], prices: [85, 120], retail: [400, 580], minC: 2, cord: 'nylon', housing: 'goldMetal', sizes: SIZES_NYLON },
+  { id: 'MF', label: 'MATCHY FANCY', carats: ['0.60', '1.00'], prices: [180, 290], retail: [550, 885], minC: 2, cord: 'nylon', housing: 'matchy', shapes: SHAPES_MATCHY, sizes: SIZES_NYLON },
+  { id: 'SSF', label: 'SHAPY SHINE FANCY', carats: ['0.10', '0.30', '0.50'], prices: [50, 90, 145], retail: [180, 330, 450], minC: 2, cord: 'shine', housing: 'shapyShine', shapes: SHAPES_SHAPY_SHINE, sizes: SIZES_NYLON },
+  { id: 'SSPF', label: 'SHAPY SPARKLE FANCY', carats: ['0.70', '1.00'], prices: [225, 300], retail: [550, 850], minC: 2, cord: 'silk', shapes: SHAPES_SHAPY_SPARKLE, sizes: SIZES_SILK },
+  { id: 'SSRG', label: 'SHAPY SPARKLE RND G/H', carats: ['0.50', '0.70', '1.00'], prices: [115, 145, 205], retail: [290, 360, 500], minC: 2, cord: 'silk', shapes: SHAPES_SHAPY_SPARKLE, sizes: SIZES_SILK },
+  { id: 'SSRD', label: 'SHAPY SPARKLE RND D VVS', carats: ['0.50', '0.70', '1.00'], prices: [180, 200, 285], retail: [550, 650, 850], minC: 2, cord: 'silk', shapes: SHAPES_SHAPY_SPARKLE, sizes: SIZES_SILK },
+  { id: 'HOLY', label: 'HOLY (D VVS)', carats: ['0.50', '0.70', '1.00'], prices: [260, 425, 550], retail: [650, 1000, 1325], minC: 2, cord: 'holy', housing: 'standard', shapes: SHAPES_HOLY, sizes: SIZES_NYLON },
 ]
 
 // ─── LOCAL QUOTE CALCULATION ───
@@ -50,6 +60,8 @@ export function calculateQuote(lines) {
         product: col.label,
         carat: col.carats[ci],
         housing: l.housing || null,
+        shape: l.shape || null,
+        size: l.size || null,
         colors: l.colors,
         qtyPerColor: l.qty,
         totalQty,

@@ -7,6 +7,7 @@ import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
 import BuilderPage, { mkLine } from './components/BuilderPage'
+import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
 
 // ─── Presets that pre-fill the builder ───
@@ -54,6 +55,10 @@ export default function App() {
   // Quote state
   const [curQuote, setCurQuote] = useState(null)
   const [showQuote, setShowQuote] = useState(false)
+
+  // Order form state
+  const [showOrderForm, setShowOrderForm] = useState(false)
+  const [orderFormQuote, setOrderFormQuote] = useState(null) // null = blank manual entry
 
   // Client info (expanded for company lookup)
   const [client, setClient] = useState({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
@@ -141,6 +146,19 @@ export default function App() {
   const handleGenerateQuote = useCallback((quote) => {
     setCurQuote(quote)
     setShowQuote(true)
+  }, [])
+
+  // ─── Finalize order (from QuoteModal → OrderForm) ───
+  const handleFinalize = useCallback(() => {
+    setShowQuote(false)
+    setOrderFormQuote(curQuote)
+    setShowOrderForm(true)
+  }, [curQuote])
+
+  // ─── Open blank order form for manual entry ───
+  const handleBlankOrderForm = useCallback(() => {
+    setOrderFormQuote(null)
+    setShowOrderForm(true)
   }, [])
 
   // ─── Build AI message from filters + text ───
@@ -293,7 +311,8 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: fonts.body, background: colors.lovelabBg, height: '100vh', display: 'flex', flexDirection: 'column', color: colors.charcoal }}>
-      {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} />}
+      {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => setShowOrderForm(false)} />}
 
       {/* ─── Header with compact client badge ─── */}
       <div style={{ background: '#fff', padding: '10px 14px', borderBottom: '1px solid #eaeaea', flexShrink: 0 }}>
@@ -301,14 +320,23 @@ export default function App() {
           {/* Logo row — logo centered, total button on right */}
           <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 8, minHeight: 60 }}>
             <img src="/logo.png" alt="LoveLab" style={{ height: 60, width: 'auto' }} />
-            {curQuote && (
+            <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 6, alignItems: 'center' }}>
+              {curQuote && (
+                <button
+                  onClick={() => setShowQuote(true)}
+                  style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                >
+                  {fmt(curQuote.total)}
+                </button>
+              )}
               <button
-                onClick={() => setShowQuote(true)}
-                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', padding: '5px 12px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                onClick={handleBlankOrderForm}
+                style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${colors.luxeGold}`, background: 'transparent', color: colors.luxeGold, fontSize: 9, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}
+                title="Open a blank order form for manual entry"
               >
-                {fmt(curQuote.total)}
+                Order Form
               </button>
-            )}
+            </div>
           </div>
 
           {/* Compact client badge */}

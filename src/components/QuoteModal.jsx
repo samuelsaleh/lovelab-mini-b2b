@@ -9,7 +9,7 @@ function isBelgian(client) {
   return country === 'belgium' || country === 'belgique' || country === 'belgie' || country === 'belgië' || vat.startsWith('BE')
 }
 
-export default function QuoteModal({ quote, client, onClose }) {
+export default function QuoteModal({ quote, client, onClose, onFinalize }) {
   if (!quote) return null
   const q = quote
   const d = today()
@@ -214,11 +214,37 @@ export default function QuoteModal({ quote, client, onClose }) {
           VAT: BE0627515170 · Delivery 4–6 weeks · 18KT gold on request{!showBelgianVat && ' · Prices excl. VAT'}
         </div>
 
+        {onFinalize && (
+          <button
+            onClick={onFinalize}
+            style={{ 
+              width: '100%', 
+              marginTop: 14, 
+              padding: isMobile() ? 14 : 11, 
+              borderRadius: 10, 
+              border: 'none', 
+              background: colors.luxeGold, 
+              color: '#fff', 
+              fontSize: 13, 
+              fontWeight: 700, 
+              cursor: 'pointer', 
+              fontFamily: 'inherit',
+              minHeight: isMobile() ? 48 : 'auto',
+              transition: 'opacity .15s',
+              letterSpacing: '0.02em',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+          >
+            Finalize My Order
+          </button>
+        )}
+
         <button
           onClick={onClose}
           style={{ 
             width: '100%', 
-            marginTop: 14, 
+            marginTop: 8, 
             padding: isMobile() ? 14 : 11, 
             borderRadius: 10, 
             border: 'none', 

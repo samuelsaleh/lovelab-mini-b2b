@@ -21,6 +21,8 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   if (col) steps.push(col.label)
   if (col && line.caratIdx !== null) steps.push(`${col.carats[line.caratIdx]}ct`)
   if (line.housing) steps.push(line.housing)
+  if (line.shape) steps.push(line.shape)
+  if (line.size) steps.push(line.size)
   if (line.colors.length > 0) steps.push(`${line.colors.length} colors`)
   if (line.colors.length > 0) steps.push(`${line.colors.length * line.qty} pcs`)
 
@@ -36,10 +38,29 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   const selectedCarat = col && line.caratIdx !== null ? col.carats[line.caratIdx] : null
   const shapyShineBezelOnly = col?.housing === 'shapyShine' && selectedCarat === '0.10'
   
-  // Colors only after housing is set (or if no housing needed)
+  // Shape logic
+  const hasShapes = col && col.shapes && col.shapes.length > 0
+  const needsShape = hasShapes && line.caratIdx !== null && (!hasHousing || line.housing) && !line.shape
+
+  // Size logic
+  const hasSizes = col && col.sizes && col.sizes.length > 0
+  const shapeDone = !hasShapes || line.shape
+  const needsSize = hasSizes && line.caratIdx !== null && (!hasHousing || line.housing) && shapeDone && !line.size
+
+  // Colors only after housing, shape, and size are done (or not needed)
   const housingDone = !hasHousing || line.housing
-  const needsColors = col && line.caratIdx !== null && housingDone && line.colors.length === 0
+  const sizeDone = !hasSizes || line.size
+  const allOptionsDone = housingDone && shapeDone && sizeDone
+  const needsColors = col && line.caratIdx !== null && allOptionsDone && line.colors.length === 0
   // Qty is always shown after colors are picked (has a default)
+
+  // Compute step numbers dynamically
+  const stepAfterCarat = 3 // ③ is always next after carat
+  let nextStep = stepAfterCarat
+  const housingStep = hasHousing ? nextStep++ : null
+  const shapeStep = hasShapes ? nextStep++ : null
+  const sizeStep = hasSizes ? nextStep++ : null
+  const colorStep = nextStep++
 
   return (
     <div style={{ border: '1px solid #eee', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
@@ -89,7 +110,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               {COLLECTIONS.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => set({ collectionId: line.collectionId === c.id ? null : c.id, caratIdx: null, housing: null, housingType: null, multiAttached: null, colors: [], qty: c.minC })}
+                  onClick={() => set({ collectionId: line.collectionId === c.id ? null : c.id, caratIdx: null, housing: null, housingType: null, multiAttached: null, shape: null, size: null, colors: [], qty: c.minC })}
                   style={tag(line.collectionId === c.id)}
                 >
                   {c.label}
@@ -106,7 +127,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {col.carats.map((ct, ci) => (
-                  <button key={ct} onClick={() => set({ caratIdx: line.caratIdx === ci ? null : ci, housing: null, housingType: null, multiAttached: null })} style={tag(line.caratIdx === ci)}>
+                  <button key={ct} onClick={() => set({ caratIdx: line.caratIdx === ci ? null : ci, housing: null, housingType: null, multiAttached: null, shape: null, size: null })} style={tag(line.caratIdx === ci)}>
                     {ct}ct — €{col.prices[ci]}
                     <span style={{ fontSize: 8, opacity: 0.5, marginLeft: 4 }}>ret €{col.retail[ci]}</span>
                   </button>
@@ -265,11 +286,43 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
             </div>
           )}
 
-          {/* Step 4: Colors — only after housing is done (or no housing needed) */}
-          {col && line.caratIdx !== null && housingDone && (
+          {/* Step: Shape — only for collections with shapes, after housing is done */}
+          {col && line.caratIdx !== null && housingDone && hasShapes && (
+            <div style={{ marginBottom: needsShape ? 0 : 12 }}>
+              <div style={{ ...lbl, color: needsShape ? colors.inkPlum : lbl.color }}>
+                {needsShape ? `${String.fromCharCode(0x2460 + shapeStep - 1)} Choose shape` : `Shape: ${line.shape || ''}`}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {col.shapes.map((s) => (
+                  <button key={s} onClick={() => set({ shape: line.shape === s ? null : s })} style={tag(line.shape === s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step: Size — for all collections with sizes, after shape is done */}
+          {col && line.caratIdx !== null && housingDone && shapeDone && hasSizes && (
+            <div style={{ marginBottom: needsSize ? 0 : 12 }}>
+              <div style={{ ...lbl, color: needsSize ? colors.inkPlum : lbl.color }}>
+                {needsSize ? `${String.fromCharCode(0x2460 + sizeStep - 1)} Choose size` : `Size: ${line.size || ''}`}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {col.sizes.map((s) => (
+                  <button key={s} onClick={() => set({ size: line.size === s ? null : s })} style={tag(line.size === s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step: Colors — only after all options are done */}
+          {col && line.caratIdx !== null && allOptionsDone && (
             <div style={{ marginBottom: needsColors ? 0 : 12 }}>
               <div style={{ ...lbl, color: needsColors ? colors.inkPlum : lbl.color }}>
-                {needsColors ? (hasHousing ? '④ Pick colors' : '③ Pick colors') : `Colors (${line.colors.length})`}
+                {needsColors ? `${String.fromCharCode(0x2460 + colorStep - 1)} Pick colors` : `Colors (${line.colors.length})`}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {palette.map((c) => (

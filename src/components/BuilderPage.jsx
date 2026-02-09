@@ -12,6 +12,8 @@ export function mkLine() {
     housing: null,           // selected housing value (string or id)
     housingType: null,       // for matchy: 'bezel' | 'prong'
     multiAttached: null,     // for multi three: true | false
+    shape: null,             // selected shape (for Holy, Matchy, Shapy collections)
+    size: null,              // selected size (XS/S/M/L/XL or S/M/L/XL)
     colors: [],
     qty: 3,
     expanded: true,
