@@ -168,7 +168,12 @@ export default function ClientGate({ client, setClient, onComplete }) {
           <div style={lbl}>Company Name *</div>
           <input
             value={client.company}
-            onChange={(e) => setClient((c) => ({ ...c, company: e.target.value }))}
+            onChange={(e) => {
+              // Clear VAT and address when company changes (they're fetched based on company)
+              setClient((c) => ({ ...c, company: e.target.value, address: '', city: '', zip: '', vat: '', vatValid: null }))
+              setViesResult(null)
+              setPerplexityDone(false)
+            }}
             placeholder="Acme Jewelry BV"
             style={{ ...inp, width: '100%' }}
           />
@@ -179,7 +184,12 @@ export default function ClientGate({ client, setClient, onComplete }) {
           <div style={lbl}>Country *</div>
           <input
             value={client.country}
-            onChange={(e) => setClient((c) => ({ ...c, country: e.target.value }))}
+            onChange={(e) => {
+              // Clear VAT and address when country changes
+              setClient((c) => ({ ...c, country: e.target.value, address: '', city: '', zip: '', vat: '', vatValid: null }))
+              setViesResult(null)
+              setPerplexityDone(false)
+            }}
             placeholder="Belgium"
             style={{ ...inp, width: '100%' }}
           />
