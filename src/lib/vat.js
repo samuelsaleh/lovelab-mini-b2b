@@ -151,7 +151,14 @@ export async function validateVAT(vatString) {
   try {
     const perplexityResult = await validateVATviaPerplexity(vatString, parsed.countryCode)
     
-    if (perplexityResult.valid) {
+    // Consider it valid if:
+    // 1. Perplexity explicitly says valid=true, OR
+    // 2. Perplexity found a company name (even if it said valid=false)
+    const foundCompany = perplexityResult.name && perplexityResult.name.trim().length > 0
+    const isValid = perplexityResult.valid === true || foundCompany
+    
+    if (isValid) {
+      console.log('Perplexity found company:', perplexityResult.name)
       return {
         valid: true,
         name: perplexityResult.name || '',
@@ -161,37 +168,27 @@ export async function validateVAT(vatString) {
         error: undefined,
       }
     } else {
-      // Perplexity says invalid - but we can't be 100% sure since it's web scraping
-      // Return as invalid but with a note
+      // Perplexity couldn't find any company info
       return {
         valid: false,
-        name: perplexityResult.name || '',
-        address: perplexityResult.address || '',
+        name: '',
+        address: '',
         countryCode: parsed.countryCode,
         vatNumber: parsed.number,
-        error: 'VAT not found via VIES website lookup',
+        error: 'Could not verify VAT via VIES or Perplexity',
       }
     }
   } catch (perplexityErr) {
     console.log('Perplexity fallback also failed:', perplexityErr)
     
-    // Both VIES and Perplexity failed - return clear error message
-    const errorMessages = {
-      'MS_MAX_CONCURRENT_REQ': 'Could not verify VAT via VIES or Perplexity',
-      'MS_UNAVAILABLE': 'Could not verify VAT via VIES or Perplexity',
-      'INVALID': 'VAT number format is invalid for this country.',
-      'SERVICE_UNAVAILABLE': 'Could not verify VAT via VIES or Perplexity',
-      'TIMEOUT': 'Could not verify VAT via VIES or Perplexity',
-      'NETWORK_ERROR': 'Could not verify VAT via VIES or Perplexity',
-    }
-    
+    // Both VIES and Perplexity failed
     return {
       valid: false,
       name: '',
       address: '',
       countryCode: parsed.countryCode,
       vatNumber: parsed.number,
-      error: errorMessages[lastErrorCode] || `Validation failed (${lastErrorCode})`,
+      error: 'Could not verify VAT via VIES or Perplexity',
     }
   }
 }
