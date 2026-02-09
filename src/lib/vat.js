@@ -1,8 +1,6 @@
 /**
- * EU VAT validation helper using VIES API with Perplexity fallback
+ * EU VAT validation helper using VIES API
  */
-
-import { validateVATviaPerplexity } from './api'
 
 // EU country codes supported by VIES
 export const EU_COUNTRIES = {
@@ -72,9 +70,8 @@ function sleep(ms) {
 /**
  * Validate a VAT number against the EU VIES database.
  * Includes retry logic with exponential backoff for rate-limited requests.
- * Falls back to Perplexity to check the VIES website if API fails.
  * @param {string} vatString - Full VAT number with country prefix (e.g., "BE0123456789")
- * @returns {Promise<{ valid: boolean, name: string, address: string, countryCode: string, vatNumber: string, error?: string }>}
+ * @returns {Promise<{ valid: boolean|null, name: string, address: string, countryCode: string, vatNumber: string, error?: string }>}
  */
 export async function validateVAT(vatString) {
   const parsed = parseVAT(vatString)
@@ -90,9 +87,9 @@ export async function validateVAT(vatString) {
     }
   }
   
-  // Retry config: up to 2 attempts with exponential backoff (reduced since we have Perplexity fallback)
-  const maxRetries = 2
-  const baseDelay = 1000 // 1 second
+  // Retry config: up to 3 attempts with exponential backoff
+  const maxRetries = 3
+  const baseDelay = 1500 // 1.5 seconds
   let lastErrorCode = ''
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -101,7 +98,12 @@ export async function validateVAT(vatString) {
       
       if (!res.ok) {
         lastErrorCode = `HTTP_${res.status}`
-        continue // Try again or fall through to Perplexity
+        if (attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt)
+          await sleep(delay)
+          continue
+        }
+        break
       }
       
       const data = await res.json()
@@ -112,13 +114,13 @@ export async function validateVAT(vatString) {
         
         // If rate limited (MS_MAX_CONCURRENT_REQ) or unavailable, retry with backoff
         if ((lastErrorCode === 'MS_MAX_CONCURRENT_REQ' || lastErrorCode === 'MS_UNAVAILABLE') && attempt < maxRetries - 1) {
-          const delay = baseDelay * Math.pow(2, attempt) // 1s, 2s
+          const delay = baseDelay * Math.pow(2, attempt) // 1.5s, 3s, 6s
           console.log(`VIES ${lastErrorCode}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
           await sleep(delay)
           continue
         }
         
-        // Fall through to Perplexity fallback after retries exhausted
+        // Retries exhausted - mark as unverified
         break
       }
       
@@ -140,58 +142,20 @@ export async function validateVAT(vatString) {
         await sleep(delay)
         continue
       }
-      // Fall through to Perplexity fallback
       break
     }
   }
   
-  // VIES API failed after retries - try Perplexity fallback
-  console.log(`VIES API failed (${lastErrorCode}), trying Perplexity fallback...`)
+  // VIES API failed after retries - mark as unverified (not invalid)
+  console.log(`VIES API failed after ${maxRetries} attempts (${lastErrorCode}), marking as unverified`)
   
-  try {
-    const perplexityResult = await validateVATviaPerplexity(vatString, parsed.countryCode)
-    
-    // Consider it valid if:
-    // 1. Perplexity explicitly says valid=true, OR
-    // 2. Perplexity found a company name (even if it said valid=false)
-    const foundCompany = perplexityResult.name && perplexityResult.name.trim().length > 0
-    const isValid = perplexityResult.valid === true || foundCompany
-    
-    if (isValid) {
-      console.log('Perplexity found company:', perplexityResult.name)
-      return {
-        valid: true,
-        name: perplexityResult.name || '',
-        address: perplexityResult.address || '',
-        countryCode: parsed.countryCode,
-        vatNumber: parsed.number,
-        error: undefined,
-      }
-    } else {
-      // Perplexity couldn't find any company info - but don't mark as invalid
-      // Just mark as "unverified" (valid=null means unknown/neutral)
-      console.log('Perplexity could not find company info, marking as unverified')
-      return {
-        valid: null, // null = unverified (neither valid nor invalid)
-        name: '',
-        address: '',
-        countryCode: parsed.countryCode,
-        vatNumber: parsed.number,
-        error: undefined, // No error - just couldn't verify
-      }
-    }
-  } catch (perplexityErr) {
-    console.log('Perplexity fallback also failed:', perplexityErr)
-    
-    // Both VIES and Perplexity failed - mark as unverified
-    return {
-      valid: null, // null = unverified
-      name: '',
-      address: '',
-      countryCode: parsed.countryCode,
-      vatNumber: parsed.number,
-      error: undefined,
-    }
+  return {
+    valid: null, // null = unverified (neither valid nor invalid)
+    name: '',
+    address: '',
+    countryCode: parsed.countryCode,
+    vatNumber: parsed.number,
+    error: undefined, // No error shown - just couldn't verify
   }
 }
 
