@@ -4,18 +4,25 @@ import { fmt } from '../lib/utils'
 import { lbl, inp, totalBar, totalBarAmount, totalBarMeta, colors } from '../lib/styles'
 import BuilderLine from './BuilderLine'
 
+export function mkColorConfig(colorName, minC = 3) {
+  return {
+    id: Date.now() + Math.random(),
+    colorName,
+    caratIdx: null,
+    housing: null,
+    housingType: null,
+    multiAttached: null,
+    shape: null,
+    size: null,
+    qty: minC,
+  }
+}
+
 export function mkLine() {
   return {
     uid: Date.now() + Math.random(),
     collectionId: null,
-    caratIdx: null,
-    housing: null,           // selected housing value (string or id)
-    housingType: null,       // for matchy: 'bezel' | 'prong'
-    multiAttached: null,     // for multi three: true | false
-    shape: null,             // selected shape (for Holy, Matchy, Shapy collections)
-    size: null,              // selected size (XS/S/M/L/XL or S/M/L/XL)
-    colors: [],
-    qty: 3,
+    colorConfigs: [],        // array of mkColorConfig entries
     expanded: true,
   }
 }
@@ -33,8 +40,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
     setLines((prev) => {
       const original = prev.find((l) => l.uid === uid)
       if (!original) return prev
-      const copy = { ...original, uid: Date.now() + Math.random(), expanded: true }
-      // Insert after original
+      // Deep-copy colorConfigs so each config gets a new id
+      const copiedConfigs = original.colorConfigs.map((cfg) => ({
+        ...cfg,
+        id: Date.now() + Math.random(),
+      }))
+      const copy = { ...original, uid: Date.now() + Math.random(), colorConfigs: copiedConfigs, expanded: true }
       const idx = prev.findIndex((l) => l.uid === uid)
       const newLines = [...prev]
       newLines.splice(idx + 1, 0, copy)
@@ -44,35 +55,42 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
 
   const addLine = () => setLines((prev) => [...prev, mkLine()])
 
+  // Check if a single color config is complete
+  const isConfigComplete = (cfg, col) => {
+    if (cfg.caratIdx === null) return false
+    if (col.housing && !cfg.housing) return false
+    if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
+    if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
+    return true
+  }
+
   // Validation: check if a line is complete
   const isLineComplete = (line) => {
-    if (!line.collectionId || line.caratIdx === null || line.colors.length === 0) return false
+    if (!line.collectionId || line.colorConfigs.length === 0) return false
     const col = COLLECTIONS.find((c) => c.id === line.collectionId)
     if (!col) return false
-    
-    // Check required fields
-    if (col.housing && !line.housing) return false
-    if (col.shapes && !line.shape) return false
-    if (col.sizes && !line.size) return false
-    
-    return true
+    return line.colorConfigs.every((cfg) => isConfigComplete(cfg, col))
   }
 
   // Get missing fields for a line
   const getMissingFields = (line) => {
-    const missing = []
     if (!line.collectionId) return ['collection']
-    if (line.caratIdx === null) return ['carat']
-    
+    if (line.colorConfigs.length === 0) return ['colors']
     const col = COLLECTIONS.find((c) => c.id === line.collectionId)
     if (!col) return []
-    
-    if (col.housing && !line.housing) missing.push('housing')
-    if (col.shapes && !line.shape) missing.push('shape')
-    if (col.sizes && !line.size) missing.push('size')
-    if (line.colors.length === 0) missing.push('colors')
-    
-    return missing
+
+    const incomplete = line.colorConfigs.filter((cfg) => !isConfigComplete(cfg, col))
+    if (incomplete.length === 0) return []
+
+    // Summarize what's missing across incomplete configs
+    const missing = new Set()
+    incomplete.forEach((cfg) => {
+      if (cfg.caratIdx === null) missing.add('carat')
+      if (col.housing && !cfg.housing) missing.add('housing')
+      if (col.shapes && col.shapes.length > 0 && !cfg.shape) missing.add('shape')
+      if (col.sizes && col.sizes.length > 0 && !cfg.size) missing.add('size')
+    })
+    return [...missing].map((f) => `${f} (${incomplete.length} color${incomplete.length > 1 ? 's' : ''})`)
   }
 
   // Live quote calculation

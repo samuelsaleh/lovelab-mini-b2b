@@ -3,34 +3,41 @@ import { sendChat, lookupCompany } from './lib/api'
 import { COLLECTIONS, CORD_COLORS, calculateQuote } from './lib/catalog'
 import { fmt, isLight } from './lib/utils'
 import { colors, fonts, modePill, presetCard, tag, lbl } from './lib/styles'
+import { validateVAT } from './lib/vat'
 import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
-import BuilderPage, { mkLine } from './components/BuilderPage'
+import BuilderPage, { mkLine, mkColorConfig } from './components/BuilderPage'
 import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
+import AiMissingFieldsWizard from './components/AiMissingFieldsWizard'
 
 // ─── Presets that pre-fill the builder ───
+// Each preset line uses colorConfigs (each color gets its own carat, etc.)
+function presetConfigs(colors, caratIdx, qty) {
+  return colors.map((name) => ({ ...mkColorConfig(name, qty), caratIdx }))
+}
+
 const PRESETS = [
   {
     label: 'Bestseller Starter',
     desc: 'CUTY 0.10ct · 3 colors · 3 pcs/color',
-    lines: [{ collectionId: 'CUTY', caratIdx: 1, colors: ['Black', 'Red', 'Navy Blue'], qty: 3 }],
+    lines: [{ collectionId: 'CUTY', colorConfigs: presetConfigs(['Black', 'Red', 'Navy Blue'], 1, 3) }],
   },
   {
     label: 'Duo Collection',
     desc: 'CUTY + SHAPY SHINE · 2 colors each',
     lines: [
-      { collectionId: 'CUTY', caratIdx: 1, colors: ['Black', 'Red'], qty: 3 },
-      { collectionId: 'SSF', caratIdx: 1, colors: ['Black', 'Navy'], qty: 2 },
+      { collectionId: 'CUTY', colorConfigs: presetConfigs(['Black', 'Red'], 1, 3) },
+      { collectionId: 'SSF', colorConfigs: presetConfigs(['Black', 'Navy'], 1, 2) },
     ],
   },
   {
     label: 'Premium Selection',
     desc: 'HOLY + SHAPY SPARKLE FANCY',
     lines: [
-      { collectionId: 'HOLY', caratIdx: 1, colors: ['Black', 'Ivory'], qty: 2 },
-      { collectionId: 'SSPF', caratIdx: 0, colors: ['Black', 'Red'], qty: 2 },
+      { collectionId: 'HOLY', colorConfigs: presetConfigs(['Black', 'Ivory'], 1, 2) },
+      { collectionId: 'SSPF', colorConfigs: presetConfigs(['Black', 'Red'], 0, 2) },
     ],
   },
 ]
@@ -77,11 +84,37 @@ export default function App() {
   const [aiColors, setAiColors] = useState([])             // array of color names
   const [aiCarats, setAiCarats] = useState({})             // { collectionId: [carat strings] }
   const [aiQty, setAiQty] = useState({})                   // { collectionId: number } — qty per color
+  const [aiDetailsByCollection, setAiDetailsByCollection] = useState({}) // { [collectionId]: { housing, housingType, multiAttached, shape, size } }
+  const [aiWizardOpen, setAiWizardOpen] = useState(false)
+  const [aiPendingOverrideMsg, setAiPendingOverrideMsg] = useState(null) // string | null
 
   const descRef = useRef(null)
   const chatEndRef = useRef(null)
   const hasStarted = lines.some((l) => l.collectionId)
   const hasAnything = hasStarted || aiCollections.length > 0 || aiBudget || aiMsgs.length > 0
+
+  // ─── VAT banner (shown after quoting starts) ───
+  const hasVat = Boolean(client.vat && client.vat.trim().length >= 4)
+  const showVatBanner = hasStarted && hasVat && (client.vatValidating || client.vatValid !== true)
+
+  const retryVatValidation = useCallback(() => {
+    const vat = client.vat?.trim()
+    if (!vat || vat.length < 4) return
+    if (client.vatValidating) return
+
+    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null }))
+    validateVAT(vat)
+      .then((viesRes) => {
+        setClient((prev) => ({
+          ...prev,
+          vatValid: viesRes.valid,
+          vatValidating: false,
+        }))
+      })
+      .catch(() => {
+        setClient((prev) => ({ ...prev, vatValid: null, vatValidating: false }))
+      })
+  }, [client.vat, client.vatValidating, setClient])
 
   // Derive available colors from selected AI collections
   const aiAvailableColors = useMemo(() => {
@@ -110,6 +143,11 @@ export default function App() {
           return copy
         })
         setAiQty((prev) => {
+          const copy = { ...prev }
+          delete copy[id]
+          return copy
+        })
+        setAiDetailsByCollection((prev) => {
           const copy = { ...prev }
           delete copy[id]
           return copy
@@ -171,21 +209,69 @@ export default function App() {
         if (!col) return
         const selectedCarats = aiCarats[id] || []
         const qty = aiQty[id]
+        const det = aiDetailsByCollection[id] || {}
         let line = col.label
         if (selectedCarats.length > 0) line += `: preferred carats ${selectedCarats.join(', ')}ct`
         if (qty) line += `, ${qty} pcs/color`
+        const detParts = []
+        if (det.housing) detParts.push(`housing ${det.housing}`)
+        if (det.shape) detParts.push(`shape ${det.shape}`)
+        if (det.size) detParts.push(`size ${det.size}`)
+        if (detParts.length > 0) line += ` (${detParts.join(', ')})`
         parts.push(line)
       })
     }
     if (aiColors.length > 0) parts.push(`Use ALL these colors in EACH collection: ${aiColors.join(', ')}`)
     if (descText.trim()) parts.push(descText.trim())
     return parts.join('\n')
-  }, [aiBudget, aiCollections, aiCarats, aiQty, aiColors, descText])
+  }, [aiBudget, aiCollections, aiCarats, aiQty, aiDetailsByCollection, aiColors, descText])
+
+  const computeAiMissingDetails = useCallback(() => {
+    const missing = []
+    for (const colId of aiCollections) {
+      const col = COLLECTIONS.find((c) => c.id === colId)
+      if (!col) continue
+      const v = aiDetailsByCollection[colId] || {}
+      const hasHousing = Boolean(col.housing)
+      const hasShapes = Array.isArray(col.shapes) && col.shapes.length > 0
+      const hasSizes = Array.isArray(col.sizes) && col.sizes.length > 0
+
+      let housingOk = true
+      if (hasHousing) {
+        if (col.housing === 'multiThree') housingOk = v.multiAttached !== undefined && v.multiAttached !== null && !!v.housing
+        else if (col.housing === 'matchy') housingOk = !!v.housingType && !!v.housing
+        else if (col.housing === 'shapyShine') housingOk = !!v.housing
+        else housingOk = !!v.housing
+      }
+      const shapeOk = !hasShapes || !!v.shape
+      const sizeOk = !hasSizes || !!v.size
+
+      if (!housingOk || !shapeOk || !sizeOk) {
+        missing.push(colId)
+      }
+    }
+    return missing
+  }, [aiCollections, aiDetailsByCollection])
+
+  const onWizardChange = useCallback((colId, patch) => {
+    setAiDetailsByCollection((prev) => ({
+      ...prev,
+      [colId]: { ...(prev[colId] || {}), ...patch },
+    }))
+  }, [])
 
   // ─── Send initial request or follow-up to AI ───
   const handleAiSend = useCallback(async (overrideMsg) => {
     const message = overrideMsg || buildAiMessage()
     if (!message || descLoading) return
+
+    const missing = computeAiMissingDetails()
+    if (missing.length > 0) {
+      setAiPendingOverrideMsg(typeof overrideMsg === 'string' ? overrideMsg : null)
+      setAiWizardOpen(true)
+      return
+    }
+
     setDescLoading(true)
 
     const userMsg = { role: 'user', content: message }
@@ -201,14 +287,51 @@ export default function App() {
       if (parsed.quote) {
         setCurQuote(parsed.quote)
         if (parsed.quote.lines && parsed.quote.lines.length > 0) {
-          const newLines = parsed.quote.lines.map((ql) => ({
-            uid: Date.now() + Math.random(),
-            collectionId: findCollectionId(ql.product),
-            caratIdx: findCaratIdx(ql.product, ql.carat),
-            colors: ql.colors || [],
-            qty: ql.qtyPerColor || 3,
-            expanded: false,
-          }))
+          // Group AI quote lines by collection to build builder lines with colorConfigs
+          const linesByCollection = new Map()
+          for (const ql of parsed.quote.lines) {
+            const colId = findCollectionId(ql.product)
+            if (!colId) continue
+            if (!linesByCollection.has(colId)) linesByCollection.set(colId, [])
+            linesByCollection.get(colId).push(ql)
+          }
+          const newLines = Array.from(linesByCollection.entries()).map(([colId, qls]) => {
+            const col = COLLECTIONS.find((c) => c.id === colId) || null
+            const colorConfigs = []
+
+            for (const ql of qls) {
+              const caratIdx = findCaratIdx(ql.product, ql.carat)
+              const base = {
+                caratIdx,
+                housing: ql.housing ?? null,
+                housingType: ql.housingType ?? null,
+                multiAttached: ql.multiAttached ?? null,
+                shape: ql.shape ?? null,
+                size: ql.size ?? null,
+              }
+
+              // Format A: colors[] + qtyPerColor (preferred)
+              if (Array.isArray(ql.colors) && ql.colors.length > 0) {
+                const per = Number(ql.qtyPerColor) || Number(ql.qty) || (col ? col.minC : 1) || 1
+                for (const cName of ql.colors) {
+                  const cfg = { ...mkColorConfig(cName, per), ...base, qty: per, colorName: cName }
+                  colorConfigs.push(cfg)
+                }
+                continue
+              }
+
+              // Format B: per-color line (colorName + qty)
+              const colorName = ql.colorName || ql.color || 'Unknown'
+              const qty = Number(ql.qty) || Number(ql.totalQty) || (col ? col.minC : 1) || 1
+              colorConfigs.push({ ...mkColorConfig(colorName, qty), ...base, qty, colorName })
+            }
+            return {
+              uid: Date.now() + Math.random(),
+              collectionId: colId,
+              colorConfigs,
+              expanded: false,
+            }
+          })
           setLines(newLines)
         }
       }
@@ -217,7 +340,7 @@ export default function App() {
     }
     setDescLoading(false)
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-  }, [buildAiMessage, descLoading, aiMsgs])
+  }, [buildAiMessage, computeAiMissingDetails, descLoading, aiMsgs])
 
   // ─── Send follow-up message ───
   const handleFollowUp = useCallback(() => {
@@ -256,6 +379,9 @@ export default function App() {
     setAiColors([])
     setAiCarats({})
     setAiQty({})
+    setAiDetailsByCollection({})
+    setAiWizardOpen(false)
+    setAiPendingOverrideMsg(null)
     try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
   }
 
@@ -420,6 +546,95 @@ export default function App() {
         </div>
       </div>
 
+      {/* ─── VAT status banner (after quoting starts) ─── */}
+      {showVatBanner && (
+        <div style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '8px 14px', flexShrink: 0 }}>
+          <div style={{ maxWidth: 640, margin: '0 auto' }}>
+            <div style={{
+              borderRadius: 10,
+              padding: '8px 10px',
+              border: `1px solid ${client.vatValidating ? '#e0e0e0' : client.vatValid === false ? '#f5c6cb' : '#ffeeba'}`,
+              background: client.vatValidating ? '#f7f7f7' : client.vatValid === false ? '#f8d7da' : '#fff3cd',
+              color: client.vatValidating ? '#555' : client.vatValid === false ? '#721c24' : '#856404',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              fontSize: 11,
+              lineHeight: 1.35,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <div style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  flexShrink: 0,
+                  background: client.vatValidating ? '#e8e8e8' : client.vatValid === false ? '#f5c6cb' : '#ffeeba',
+                  color: client.vatValidating ? '#666' : client.vatValid === false ? '#721c24' : '#856404',
+                }}>
+                  {client.vatValidating ? '…' : client.vatValid === false ? '✗' : '!'}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  {client.vatValidating ? (
+                    <span style={{ fontWeight: 700 }}>Checking VAT…</span>
+                  ) : client.vatValid === false ? (
+                    <span style={{ fontWeight: 700 }}>VAT invalid — VAT will be applied unless corrected.</span>
+                  ) : (
+                    <span style={{ fontWeight: 700 }}>VAT not verified (VIES busy/unavailable). You can retry.</span>
+                  )}
+                  <div style={{ fontSize: 10, opacity: 0.9, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    VAT: {client.vat}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {!client.vatValidating && (
+                  <button
+                    onClick={retryVatValidation}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: colors.inkPlum,
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
+                <button
+                  onClick={() => setClientReady(false)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    border: `1px solid ${colors.inkPlum}`,
+                    background: 'transparent',
+                    color: colors.inkPlum,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Edit VAT
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Mode Toggle ─── */}
       <div style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '8px 14px', flexShrink: 0 }}>
         <div style={{ maxWidth: 640, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 4, background: '#f5f5f3', borderRadius: 22, padding: 3 }}>
@@ -482,16 +697,37 @@ export default function App() {
       ) : (
         /* ─── Describe Situation / AI Advisor Mode ─── */
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <AiMissingFieldsWizard
+            open={aiWizardOpen}
+            collectionIds={computeAiMissingDetails()}
+            aiCarats={aiCarats}
+            values={aiDetailsByCollection}
+            onChange={onWizardChange}
+            onCancel={() => {
+              setAiWizardOpen(false)
+              setAiPendingOverrideMsg(null)
+            }}
+            onConfirm={() => {
+              const stillMissing = computeAiMissingDetails()
+              if (stillMissing.length > 0) return
+              setAiWizardOpen(false)
+              const pending = aiPendingOverrideMsg
+              setAiPendingOverrideMsg(null)
+              // Re-trigger send: if pending is null, rebuild message with newly captured details.
+              if (pending) handleAiSend(pending)
+              else handleAiSend()
+            }}
+          />
           <div style={{ flex: 1, overflowY: 'auto', padding: '18px 14px' }}>
             <div style={{ maxWidth: 640, margin: '0 auto' }}>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>AI Order Advisor</div>
               <div style={{ fontSize: 12, color: '#999', marginBottom: 16, lineHeight: 1.5 }}>
-                Select what you need below and/or describe the situation. The AI will calculate the optimal quote.
+                Pick budget + collections + preferences. If required details are missing (housing/shape/size), you’ll get a quick wizard before the AI runs.
               </div>
 
               {/* Budget */}
               <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>Budget (optional)</div>
+                <div style={lbl}>1) Budget (optional)</div>
                 <div style={{ position: 'relative', width: 160 }}>
                   <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#aaa', fontWeight: 600 }}>€</span>
                   <input
@@ -506,7 +742,7 @@ export default function App() {
 
               {/* Collections multi-select */}
               <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>Collections {aiCollections.length > 0 && `(${aiCollections.length})`}</div>
+                <div style={lbl}>2) Collections {aiCollections.length > 0 && `(${aiCollections.length})`}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                   {COLLECTIONS.map((c) => (
                     <button
@@ -523,7 +759,7 @@ export default function App() {
               {/* Carats & Qty grouped by collection — only if collections selected */}
               {aiCollections.length > 0 && (
                 <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                  <div style={lbl}>Carats & quantity by collection</div>
+                  <div style={lbl}>3) Carats & quantity by collection</div>
                   {aiCollections.map((colId) => {
                     const col = COLLECTIONS.find((c) => c.id === colId)
                     if (!col) return null
@@ -565,7 +801,7 @@ export default function App() {
               {/* Colors multi-select — only if collections selected */}
               {aiAvailableColors.length > 0 && (
                 <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                  <div style={lbl}>Colors {aiColors.length > 0 && `(${aiColors.length})`}</div>
+                  <div style={lbl}>4) Colors {aiColors.length > 0 && `(${aiColors.length})`}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {aiAvailableColors.map((c) => (
                       <button
@@ -590,7 +826,7 @@ export default function App() {
 
               {/* Additional notes / free text */}
               <div style={{ marginBottom: 14, padding: 14, background: '#fff', borderRadius: 10, border: '1px solid #eee' }}>
-                <div style={lbl}>Additional notes (optional)</div>
+                <div style={lbl}>5) Notes (optional)</div>
                 <textarea
                   ref={descRef}
                   value={descText}
@@ -604,6 +840,33 @@ export default function App() {
                   }}
                 />
               </div>
+
+              {/* Summary */}
+              {aiHasContent && (
+                <div style={{ marginBottom: 14, padding: 14, background: colors.ice, borderRadius: 10, border: `1px solid ${colors.lineGray}` }}>
+                  <div style={lbl}>Summary</div>
+                  <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5 }}>
+                    <div>
+                      <strong>Budget:</strong> {aiBudget ? `€${aiBudget}` : '—'}{' '}
+                      <span style={{ color: '#999' }}>·</span>{' '}
+                      <strong>Collections:</strong> {aiCollections.length ? aiCollections.map((id) => (COLLECTIONS.find((c) => c.id === id)?.label || id)).join(', ') : '—'}
+                    </div>
+                    <div style={{ marginTop: 4, color: '#666', fontSize: 11 }}>
+                      Carats selected: <strong>{totalSelectedCarats}</strong> · Colors: <strong>{aiColors.length}</strong>
+                      {aiCollections.length > 0 && computeAiMissingDetails().length > 0 && (
+                        <>
+                          {' '}· Missing details for: <strong>{computeAiMissingDetails().map((id) => (COLLECTIONS.find((c) => c.id === id)?.label || id)).join(', ')}</strong>
+                        </>
+                      )}
+                    </div>
+                    {aiCollections.length > 0 && computeAiMissingDetails().length > 0 && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#856404' }}>
+                        When you press the button below, a quick wizard will ask for housing/shape/size so the AI quote exports cleanly to “Build manually”.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Send / Re-send button */}
               <button
@@ -713,9 +976,23 @@ export default function App() {
 }
 
 // ─── Helpers to map AI response back to builder lines ───
+const AI_PRODUCT_ALIASES = {
+  'SHAPY SPARKLE ROUND(G/H VS)': 'SHAPY SPARKLE RND G/H',
+  'SHAPY SPARKLE ROUND(G/H)': 'SHAPY SPARKLE RND G/H',
+  'SHAPY SPARKLE ROUND(D VVS)': 'SHAPY SPARKLE RND D VVS',
+  'HOLY(D VVS)': 'HOLY (D VVS)',
+  'HOLY(DVVS)': 'HOLY (D VVS)',
+}
+
+function normalizeProductName(productName) {
+  if (!productName) return ''
+  const upper = String(productName).trim().toUpperCase()
+  return AI_PRODUCT_ALIASES[upper] || upper
+}
+
 function findCollectionId(productName) {
   if (!productName) return null
-  const name = productName.toUpperCase()
+  const name = normalizeProductName(productName)
   const match = COLLECTIONS.find(
     (c) => c.label.toUpperCase() === name || c.id.toUpperCase() === name
   )

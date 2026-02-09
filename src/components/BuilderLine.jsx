@@ -1,160 +1,388 @@
-import { memo, useState, useEffect } from 'react'
+import { memo, useState } from 'react'
 import { COLLECTIONS, CORD_COLORS, HOUSING } from '../lib/catalog'
 import { isLight } from '../lib/utils'
-import { lbl, tag, qBtn, qInp, qtyQuick, colors } from '../lib/styles'
+import { lbl, tag, qBtn, qInp, colors } from '../lib/styles'
+import { mkColorConfig } from './BuilderPage'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
-// Helper component for Accordion Sections
-const AccordionSection = ({ label, value, isOpen, onToggle, children, isCompleted }) => {
+// ─── Accordion Section (shared helper) ───
+const AccordionSection = ({ label, value, isOpen, onToggle, children, isCompleted }) => (
+  <div style={{ borderBottom: '1px solid #f0f0f0' }}>
+    <div
+      onClick={onToggle}
+      style={{
+        padding: '12px 14px', cursor: 'pointer', display: 'flex',
+        justifyContent: 'space-between', alignItems: 'center',
+        background: isOpen ? '#fafafa' : '#fff', transition: 'background 0.2s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 600,
+          color: isCompleted ? colors.luxeGold : '#999',
+          width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: `1px solid ${isCompleted ? colors.luxeGold : '#ddd'}`,
+          borderRadius: '50%', marginRight: 4,
+        }}>
+          {isCompleted ? '✓' : (isOpen ? '•' : '')}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: isOpen ? 600 : 400, color: '#222' }}>{label}</span>
+      </div>
+      {value && !isOpen && (
+        <span style={{ fontSize: 13, color: '#222', fontWeight: 500 }}>{value}</span>
+      )}
+    </div>
+    {isOpen && (
+      <div style={{ padding: '0 14px 14px 42px', animation: 'fadeIn 0.2s ease-in-out' }}>
+        {children}
+      </div>
+    )}
+  </div>
+)
+
+// ─── ColorConfigCard: one per-color config with carat, housing, shape, size, qty ───
+const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, defaultExpanded }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
+  const patch = (updates) => onUpdate(cfg.id, updates)
+
+  // Derived state
+  const selectedCarat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : null
+  const hasHousing = !!col.housing
+  const hasShapes = col.shapes && col.shapes.length > 0
+  const hasSizes = col.sizes && col.sizes.length > 0
+  const shapyShineBezelOnly = col.housing === 'shapyShine' && selectedCarat === '0.10'
+
+  // Completion checks
+  const caratDone = cfg.caratIdx !== null
+  const housingDone = !hasHousing || !!cfg.housing
+  const shapeDone = !hasShapes || !!cfg.shape
+  const sizeDone = !hasSizes || !!cfg.size
+  const isComplete = caratDone && housingDone && shapeDone && sizeDone
+
+  // Color swatch
+  const colorDef = palette.find((p) => p.n === cfg.colorName) || { h: '#ccc' }
+
+  // Build summary
+  const summaryParts = []
+  if (selectedCarat) summaryParts.push(`${selectedCarat}ct`)
+  if (cfg.housing) summaryParts.push(cfg.housing)
+  if (cfg.shape) summaryParts.push(cfg.shape)
+  if (cfg.size) summaryParts.push(cfg.size)
+  summaryParts.push(`qty ${cfg.qty}`)
+  const summary = summaryParts.join(' · ')
+
   return (
-    <div style={{ borderBottom: '1px solid #f0f0f0' }}>
-      <div 
-        onClick={onToggle}
-        style={{ 
-          padding: '12px 14px', 
-          cursor: 'pointer', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          background: isOpen ? '#fafafa' : '#fff',
-          transition: 'background 0.2s'
+    <div style={{
+      border: `1px solid ${isComplete ? '#e0e0e0' : '#f0e0d0'}`,
+      borderRadius: 10, marginBottom: 8, overflow: 'hidden', background: '#fff',
+    }}>
+      {/* Card header */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          padding: '8px 12px', cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+          background: expanded ? '#fafafa' : '#fff',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ 
-            fontSize: 11, 
-            fontWeight: 600, 
-            color: isCompleted ? colors.luxeGold : '#999',
-            width: 16, 
-            height: 16, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            border: `1px solid ${isCompleted ? colors.luxeGold : '#ddd'}`,
-            borderRadius: '50%',
-            marginRight: 4
-          }}>
-            {isCompleted ? '✓' : (isOpen ? '•' : '')}
-          </span>
-          <span style={{ fontSize: 13, fontWeight: isOpen ? 600 : 400, color: '#222' }}>{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 18, height: 18, borderRadius: '50%', background: colorDef.h,
+            border: isLight(colorDef.h) ? '1px solid #ddd' : '1px solid transparent', flexShrink: 0,
+          }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#222' }}>{cfg.colorName}</span>
+          {!expanded && (
+            <span style={{ fontSize: 11, color: '#888' }}>{summary}</span>
+          )}
         </div>
-        {value && !isOpen && (
-          <span style={{ fontSize: 13, color: '#222', fontWeight: 500 }}>{value}</span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isComplete && (
+            <span style={{ fontSize: 10, color: colors.luxeGold, fontWeight: 600 }}>✓</span>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(cfg.id) }}
+            style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
+            title="Remove this color config"
+          >×</button>
+        </div>
       </div>
-      {isOpen && (
-        <div style={{ padding: '0 14px 14px 42px', animation: 'fadeIn 0.2s ease-in-out' }}>
-          {children}
+
+      {/* Card body */}
+      {expanded && (
+        <div style={{ padding: '8px 12px 12px', borderTop: '1px solid #f5f5f5' }}>
+          {/* Carat */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ ...lbl, marginBottom: 4 }}>Carat</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {col.carats.map((ct, ci) => (
+                <button
+                  key={ct}
+                  onClick={() => patch({
+                    caratIdx: ci,
+                    housing: null, housingType: null, multiAttached: null,
+                    shape: null, size: null,
+                  })}
+                  style={tag(cfg.caratIdx === ci)}
+                >
+                  {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Housing (conditional) */}
+          {caratDone && hasHousing && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ ...lbl, marginBottom: 4 }}>Housing</div>
+              {col.housing === 'standard' && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {HOUSING.standard.map((h) => (
+                    <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
+                  ))}
+                </div>
+              )}
+              {col.housing === 'goldMetal' && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {HOUSING.goldMetal.map((h) => (
+                    <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
+                  ))}
+                </div>
+              )}
+              {col.housing === 'multiThree' && (
+                <div>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                    <button onClick={() => patch({ multiAttached: true, housing: null })} style={tag(cfg.multiAttached === true)}>Attached</button>
+                    <button onClick={() => patch({ multiAttached: false, housing: null })} style={tag(cfg.multiAttached === false)}>Not Attached</button>
+                  </div>
+                  {cfg.multiAttached !== null && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {(cfg.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map((h) => (
+                        <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {col.housing === 'matchy' && (
+                <div>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                    <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
+                    <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
+                  </div>
+                  {cfg.housingType && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
+                        <button key={h.id || h} onClick={() => patch({ housing: h.label || h })} style={tag(cfg.housing === (h.label || h))}>
+                          {h.label || h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {col.housing === 'shapyShine' && (
+                <div>
+                  {shapyShineBezelOnly ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {HOUSING.shapyShineBezel.map((h) => (
+                        <button key={h} onClick={() => patch({ housing: `Bezel ${h}`, housingType: 'bezel' })} style={tag(cfg.housing === `Bezel ${h}`)}>
+                          Bezel {h}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+                        <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
+                        <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
+                      </div>
+                      {cfg.housingType && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {(cfg.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map((h) => (
+                            <button key={h} onClick={() => patch({ housing: cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}` })} style={tag(cfg.housing === (cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`))}>
+                              {h}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Shape (conditional) */}
+          {caratDone && housingDone && hasShapes && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ ...lbl, marginBottom: 4 }}>Shape</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {col.shapes.map((s) => (
+                  <button key={s} onClick={() => patch({ shape: s })} style={tag(cfg.shape === s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Size (conditional) */}
+          {caratDone && housingDone && shapeDone && hasSizes && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ ...lbl, marginBottom: 4 }}>Size</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {col.sizes.map((s) => (
+                  <button key={s} onClick={() => patch({ size: s })} style={tag(cfg.size === s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quantity */}
+          <div>
+            <div style={{ ...lbl, marginBottom: 4 }}>Quantity</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #eee', background: '#fff' }}>
+                <button style={{ ...qBtn, width: 28, height: 28, fontSize: 14 }} onClick={() => patch({ qty: Math.max(1, cfg.qty - 1) })}>−</button>
+                <input
+                  type="number"
+                  value={cfg.qty}
+                  onChange={(e) => patch({ qty: Math.max(1, parseInt(e.target.value) || 1) })}
+                  style={{ ...qInp, width: 40, height: 28, fontSize: 12 }}
+                />
+                <button style={{ ...qBtn, width: 28, height: 28, fontSize: 14 }} onClick={() => patch({ qty: cfg.qty + 1 })}>+</button>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {QTY_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => patch({ qty: p })}
+                    style={{
+                      padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                      border: cfg.qty === p ? `1px solid ${colors.luxeGold}` : '1px solid #eee',
+                      background: cfg.qty === p ? '#fdf7f0' : '#fafafa',
+                      color: cfg.qty === p ? colors.luxeGold : '#888',
+                      fontFamily: 'inherit',
+                    }}
+                  >{p}</button>
+                ))}
+              </div>
+            </div>
+            {cfg.qty < col.minC && (
+              <div style={{ fontSize: 10, color: '#e74c3c', marginTop: 4 }}>
+                ⚠ Minimum recommended: {col.minC}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   )
 }
 
+// ─── Main BuilderLine ───
 export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate }) {
   const col = line.collectionId ? COLLECTIONS.find((c) => c.id === line.collectionId) : null
   const palette = col ? CORD_COLORS[col.cord] || CORD_COLORS.nylon : []
 
-  // Local state for the active accordion section
   const [activeSection, setActiveSection] = useState('collection')
 
   const set = (patch) => onChange(line.uid, patch)
 
-  // Logic to determine available options
-  const hasHousing = col && col.housing
-  const hasShapes = col && col.shapes && col.shapes.length > 0
-  const hasSizes = col && col.sizes && col.sizes.length > 0
-  const selectedCarat = col && line.caratIdx !== null ? col.carats[line.caratIdx] : null
-  const shapyShineBezelOnly = col?.housing === 'shapyShine' && selectedCarat === '0.10'
+  // Summary
+  const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
+  const completeConfigs = col
+    ? line.colorConfigs.filter((cfg) => {
+        if (cfg.caratIdx === null) return false
+        if (col.housing && !cfg.housing) return false
+        if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
+        if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
+        return true
+      }).length
+    : 0
+  const summaryLine = [
+    col ? col.label : '',
+    line.colorConfigs.length > 0 ? `${line.colorConfigs.length} color${line.colorConfigs.length > 1 ? 's' : ''}` : '',
+    line.colorConfigs.length > 0 ? `${totalQty} pcs` : '',
+    completeConfigs > 0 && completeConfigs < line.colorConfigs.length
+      ? `${completeConfigs}/${line.colorConfigs.length} complete`
+      : '',
+  ].filter(Boolean).join(' · ')
 
-  // Completion gates for progressive disclosure
-  const housingDone = !hasHousing || !!line.housing
-  const shapeDone = !hasShapes || !!line.shape
-  const sizeDone = !hasSizes || !!line.size
-
-  // Auto-open next section when a selection is made (if it wasn't already open)
-  // We use a small helper to update line AND move to next section
-  const updateAndNext = (patch, nextSection) => {
-    set(patch)
-    if (nextSection) {
-      setActiveSection(nextSection)
-    }
+  // Add color config
+  const addColorConfig = (colorName) => {
+    const minC = col ? col.minC : 3
+    const newCfg = mkColorConfig(colorName, minC)
+    set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
-  const toggleColor = (name) => {
-    // If color is already selected, remove it
-    if (line.colors.some(c => (typeof c === 'string' ? c : c.name) === name)) {
-      set({ 
-        colors: line.colors.filter(c => (typeof c === 'string' ? c : c.name) !== name) 
-      })
-    } else {
-      // Add new color with default qty (using line.qty or 1)
-      set({ 
-        colors: [...line.colors, { name, qty: line.qty || 1 }] 
-      })
-    }
-  }
-
-  // Update qty for a specific color
-  const updateColorQty = (name, newQty) => {
+  // Update a specific color config
+  const updateConfig = (cfgId, updates) => {
     set({
-      colors: line.colors.map(c => {
-        const cName = typeof c === 'string' ? c : c.name
-        if (cName === name) {
-          return { name: cName, qty: Math.max(1, newQty) }
-        }
-        return typeof c === 'string' ? { name: c, qty: line.qty || 1 } : c
-      })
+      colorConfigs: line.colorConfigs.map((c) =>
+        c.id === cfgId ? { ...c, ...updates } : c
+      ),
     })
   }
 
-  // Helper to get qty for a color (handling legacy string format)
-  const getColorQty = (name) => {
-    const c = line.colors.find(c => (typeof c === 'string' ? c : c.name) === name)
-    if (!c) return 0
-    return typeof c === 'string' ? (line.qty || 1) : c.qty
+  // Remove a specific color config
+  const removeConfig = (cfgId) => {
+    set({ colorConfigs: line.colorConfigs.filter((c) => c.id !== cfgId) })
   }
 
-  // Summary string generation
-  const totalQty = line.colors.reduce((sum, c) => sum + (typeof c === 'string' ? (line.qty || 1) : c.qty), 0)
-  const summaryLine = [
-    col ? col.label : '',
-    col && line.caratIdx !== null ? `${col.carats[line.caratIdx]}ct` : '',
-    line.housing,
-    line.shape,
-    line.size,
-    line.colors.length > 0 ? `${line.colors.length} col` : '',
-    line.colors.length > 0 ? `${totalQty} pcs` : ''
-  ].filter(Boolean).join(' · ')
+  // Apply first complete config's settings to all other configs
+  const applyToAll = () => {
+    if (line.colorConfigs.length < 2) return
+    const source = line.colorConfigs.find((cfg) => cfg.caratIdx !== null)
+    if (!source) return
+    set({
+      colorConfigs: line.colorConfigs.map((cfg) => ({
+        ...cfg,
+        caratIdx: source.caratIdx,
+        housing: source.housing,
+        housingType: source.housingType,
+        multiAttached: source.multiAttached,
+        shape: source.shape,
+        size: source.size,
+        // keep each config's own qty and colorName
+      })),
+    })
+  }
+
+  // Count how many configs exist per color name (for badge)
+  const colorCounts = {}
+  line.colorConfigs.forEach((c) => {
+    colorCounts[c.colorName] = (colorCounts[c.colorName] || 0) + 1
+  })
+
+  // Check if any config is complete (for "apply to all" button)
+  const hasAnyComplete = col && line.colorConfigs.some((cfg) => {
+    if (cfg.caratIdx === null) return false
+    if (col.housing && !cfg.housing) return false
+    if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
+    if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
+    return true
+  })
 
   return (
-    <div style={{ 
-      border: '1px solid #eee', 
-      borderRadius: 12, 
-      marginBottom: 12, 
-      overflow: 'hidden', 
-      background: '#fff',
-      boxShadow: '0 2px 5px rgba(0,0,0,0.02)'
+    <div style={{
+      border: '1px solid #eee', borderRadius: 12, marginBottom: 12,
+      overflow: 'hidden', background: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.02)',
     }}>
-      {/* Header - Always visible, collapses the whole line */}
+      {/* Header */}
       <div
-        style={{ 
-          padding: '14px 16px', 
-          background: '#fff', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          cursor: 'pointer',
-          borderBottom: line.expanded ? '1px solid #eee' : 'none'
+        style={{
+          padding: '14px 16px', background: '#fff', display: 'flex',
+          justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer',
+          borderBottom: line.expanded ? '1px solid #eee' : 'none',
         }}
         onClick={() => set({ expanded: !line.expanded })}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <div style={{
-            width: 24, height: 24, borderRadius: '50%', background: '#f5f5f5', 
+            width: 24, height: 24, borderRadius: '50%', background: '#f5f5f5',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 700, color: '#888'
+            fontSize: 12, fontWeight: 700, color: '#888',
           }}>
             {index + 1}
           </div>
@@ -163,9 +391,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               {col ? col.label : 'New Line'}
             </span>
             {col && (
-              <span style={{ fontSize: 12, color: '#888' }}>
-                {summaryLine}
-              </span>
+              <span style={{ fontSize: 12, color: '#888' }}>{summaryLine}</span>
             )}
             {!col && (
               <span style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic' }}>Start building...</span>
@@ -178,33 +404,27 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               onClick={(e) => { e.stopPropagation(); onDuplicate && onDuplicate(line.uid) }}
               style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#ccc', padding: 4 }}
               title="Duplicate line"
-            >
-              ❐
-            </button>
+            >❐</button>
           )}
-           {total > 1 && (
+          {total > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(line.uid) }}
               style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#ddd', padding: 4 }}
               title="Remove line"
-            >
-              ×
-            </button>
+            >×</button>
           )}
-          <span style={{ fontSize: 10, color: '#ccc', transform: line.expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s' }}>
-            ▼
-          </span>
+          <span style={{ fontSize: 10, color: '#ccc', transform: line.expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s' }}>▼</span>
         </div>
       </div>
 
-      {/* Body - Accordion Steps */}
+      {/* Body */}
       {line.expanded && (
         <div>
           {/* 1. Collection */}
-          <AccordionSection 
-            label="Collection" 
+          <AccordionSection
+            label="Collection"
             value={col ? col.label : null}
-            isOpen={activeSection === 'collection'} 
+            isOpen={activeSection === 'collection'}
             onToggle={() => setActiveSection(activeSection === 'collection' ? null : 'collection')}
             isCompleted={!!col}
           >
@@ -212,259 +432,97 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               {COLLECTIONS.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => updateAndNext(
-                    { collectionId: c.id, caratIdx: null, housing: null, housingType: null, multiAttached: null, shape: null, size: null, colors: [], qty: c.minC },
-                    'carat'
-                  )}
+                  onClick={() => {
+                    set({ collectionId: c.id, colorConfigs: [] })
+                    setActiveSection('colors')
+                  }}
                   style={tag(line.collectionId === c.id)}
-                >
-                  {c.label}
-                </button>
+                >{c.label}</button>
               ))}
             </div>
           </AccordionSection>
 
-          {/* 2. Carat */}
+          {/* 2. Colors & Per-color configs */}
           {col && (
-            <AccordionSection 
-              label="Carat" 
-              value={line.caratIdx !== null ? `${col.carats[line.caratIdx]}ct` : null}
-              isOpen={activeSection === 'carat'} 
-              onToggle={() => setActiveSection(activeSection === 'carat' ? null : 'carat')}
-              isCompleted={line.caratIdx !== null}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {col.carats.map((ct, ci) => (
-                  <button 
-                    key={ct} 
-                    onClick={() => updateAndNext(
-                      { caratIdx: ci, housing: null, housingType: null, multiAttached: null, shape: null, size: null },
-                      // Determine next step based on availability
-                      hasHousing ? 'housing' : (hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))
-                    )} 
-                    style={tag(line.caratIdx === ci)}
-                  >
-                    {ct}ct <span style={{ opacity: 0.4, margin: '0 4px' }}>|</span> €{col.prices[ci]}
-                  </button>
-                ))}
-              </div>
-            </AccordionSection>
-          )}
-
-          {/* 3. Housing (Conditional) */}
-          {col && line.caratIdx !== null && hasHousing && (
-            <AccordionSection 
-              label="Housing" 
-              value={line.housing}
-              isOpen={activeSection === 'housing'} 
-              onToggle={() => setActiveSection(activeSection === 'housing' ? null : 'housing')}
-              isCompleted={!!line.housing}
-            >
-              {/* Standard */}
-              {col.housing === 'standard' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {HOUSING.standard.map((h) => (
-                    <button key={h} onClick={() => updateAndNext({ housing: h }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === h)}>
-                      {h}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Gold Metal */}
-              {col.housing === 'goldMetal' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {HOUSING.goldMetal.map((h) => (
-                    <button key={h} onClick={() => updateAndNext({ housing: h }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === h)}>
-                      {h}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Multi Three */}
-              {col.housing === 'multiThree' && (
-                 <div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    <button onClick={() => set({ multiAttached: true, housing: null })} style={tag(line.multiAttached === true)}>Attached</button>
-                    <button onClick={() => set({ multiAttached: false, housing: null })} style={tag(line.multiAttached === false)}>Not Attached</button>
-                  </div>
-                  {line.multiAttached !== null && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {(line.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map((h) => (
-                        <button key={h} onClick={() => updateAndNext({ housing: h }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === h)}>
-                          {h}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                 </div>
-              )}
-              {/* Matchy */}
-              {col.housing === 'matchy' && (
-                 <div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    <button onClick={() => set({ housingType: 'bezel', housing: null })} style={tag(line.housingType === 'bezel')}>Bezel</button>
-                    <button onClick={() => set({ housingType: 'prong', housing: null })} style={tag(line.housingType === 'prong')}>Prong</button>
-                  </div>
-                  {line.housingType && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {(line.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
-                        <button key={h.id} onClick={() => updateAndNext({ housing: h.label }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === h.label)}>
-                          {h.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                 </div>
-              )}
-              {/* Shapy Shine */}
-              {col.housing === 'shapyShine' && (
-                 <div>
-                   {shapyShineBezelOnly ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {HOUSING.shapyShineBezel.map((h) => (
-                          <button key={h} onClick={() => updateAndNext({ housing: `Bezel ${h}`, housingType: 'bezel' }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === `Bezel ${h}`)}>
-                            Bezel {h}
-                          </button>
-                        ))}
-                      </div>
-                   ) : (
-                     <>
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                        <button onClick={() => set({ housingType: 'bezel', housing: null })} style={tag(line.housingType === 'bezel')}>Bezel</button>
-                        <button onClick={() => set({ housingType: 'prong', housing: null })} style={tag(line.housingType === 'prong')}>Prong</button>
-                      </div>
-                      {line.housingType && (
-                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                           {(line.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map((h) => (
-                             <button key={h} onClick={() => updateAndNext({ housing: line.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}` }, hasShapes ? 'shape' : (hasSizes ? 'size' : 'colors'))} style={tag(line.housing === (line.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`))}>
-                               {h}
-                             </button>
-                           ))}
-                         </div>
-                      )}
-                     </>
-                   )}
-                 </div>
-              )}
-            </AccordionSection>
-          )}
-
-          {/* 4. Shape (Conditional) */}
-          {col && line.caratIdx !== null && housingDone && hasShapes && (
-            <AccordionSection 
-              label="Shape" 
-              value={line.shape}
-              isOpen={activeSection === 'shape'} 
-              onToggle={() => setActiveSection(activeSection === 'shape' ? null : 'shape')}
-              isCompleted={!!line.shape}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {col.shapes.map((s) => (
-                  <button key={s} onClick={() => updateAndNext({ shape: s }, hasSizes ? 'size' : 'colors')} style={tag(line.shape === s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </AccordionSection>
-          )}
-
-          {/* 5. Size (Conditional) */}
-          {col && line.caratIdx !== null && housingDone && shapeDone && hasSizes && (
-             <AccordionSection 
-              label="Size" 
-              value={line.size}
-              isOpen={activeSection === 'size'} 
-              onToggle={() => setActiveSection(activeSection === 'size' ? null : 'size')}
-              isCompleted={!!line.size}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {col.sizes.map((s) => (
-                  <button key={s} onClick={() => updateAndNext({ size: s }, 'colors')} style={tag(line.size === s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </AccordionSection>
-          )}
-
-          {/* 6. Colors & Qty - Final Step */}
-          {col && line.caratIdx !== null && housingDone && shapeDone && sizeDone && (
-             <AccordionSection 
-              label="Colors & Quantity" 
-              value={line.colors.length > 0 ? `${line.colors.length} selected` : null}
-              isOpen={activeSection === 'colors'} 
+            <AccordionSection
+              label="Colors & Configuration"
+              value={line.colorConfigs.length > 0 ? `${line.colorConfigs.length} added` : null}
+              isOpen={activeSection === 'colors'}
               onToggle={() => setActiveSection(activeSection === 'colors' ? null : 'colors')}
-              isCompleted={line.colors.length > 0}
+              isCompleted={line.colorConfigs.length > 0 && completeConfigs === line.colorConfigs.length}
             >
-              {/* Colors Grid */}
-              <div style={{ marginBottom: 16 }}>
+              {/* Color Palette Grid */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ ...lbl, marginBottom: 6 }}>Click a color to add it</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {palette.map((c) => {
-                    const isSelected = line.colors.some(lc => (typeof lc === 'string' ? lc : lc.name) === c.n)
+                    const count = colorCounts[c.n] || 0
                     return (
-                      <button
-                        key={c.n}
-                        title={c.n}
-                        onClick={() => toggleColor(c.n)}
-                        style={{
-                          width: 32, height: 32, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
-                          border: isSelected ? '3px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
-                          cursor: 'pointer', transition: 'transform .1s',
-                          transform: isSelected ? 'scale(1.1)' : 'scale(1)',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                        }}
-                      />
+                      <div key={c.n} style={{ position: 'relative' }}>
+                        <button
+                          title={c.n}
+                          onClick={() => addColorConfig(c.n)}
+                          style={{
+                            width: 32, height: 32, borderRadius: '50%', background: c.h, flexShrink: 0, padding: 0,
+                            border: count > 0 ? '3px solid #222' : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
+                            cursor: 'pointer', transition: 'transform .1s',
+                            transform: count > 0 ? 'scale(1.1)' : 'scale(1)',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                          }}
+                        />
+                        {count > 0 && (
+                          <span style={{
+                            position: 'absolute', top: -4, right: -4,
+                            width: 16, height: 16, borderRadius: '50%',
+                            background: colors.luxeGold, color: '#fff',
+                            fontSize: 9, fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {count}
+                          </span>
+                        )}
+                      </div>
                     )
                   })}
                 </div>
               </div>
-              
-              {/* Selected Colors List with Individual Quantities */}
-              {line.colors.length > 0 && (
-                <div style={{ paddingTop: 12, borderTop: '1px solid #f5f5f5' }}>
-                  <div style={{ ...lbl, marginBottom: 10 }}>Quantities per color</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {line.colors.map((c, i) => {
-                      const cName = typeof c === 'string' ? c : c.name
-                      const cQty = typeof c === 'string' ? (line.qty || 1) : c.qty
-                      const colorDef = palette.find(p => p.n === cName) || { h: '#ccc' }
-                      
-                      return (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f9f9f9', padding: '6px 10px', borderRadius: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 16, height: 16, borderRadius: '50%', background: colorDef.h, border: '1px solid rgba(0,0,0,0.1)' }} />
-                            <span style={{ fontSize: 13, fontWeight: 500, color: '#333' }}>{cName}</span>
-                          </div>
-                          
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #eee', background: '#fff' }}>
-                              <button style={{ ...qBtn, width: 24, height: 24, fontSize: 14 }} onClick={() => updateColorQty(cName, cQty - 1)}>−</button>
-                              <input
-                                type="number"
-                                value={cQty}
-                                onChange={(e) => updateColorQty(cName, parseInt(e.target.value) || 1)}
-                                style={{ ...qInp, width: 32, height: 24, fontSize: 12 }}
-                              />
-                              <button style={{ ...qBtn, width: 24, height: 24, fontSize: 14 }} onClick={() => updateColorQty(cName, cQty + 1)}>+</button>
-                            </div>
-                            <button 
-                              onClick={() => toggleColor(cName)}
-                              style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
 
-                  {/* Min Quantity Warning */}
-                  {line.colors.some(c => (typeof c === 'string' ? (line.qty || 1) : c.qty) < col.minC) && (
-                     <div style={{ fontSize: 11, color: '#e74c3c', marginTop: 10 }}>
-                        ⚠ Minimum recommended per color: {col.minC}
-                     </div>
-                  )}
+              {/* Apply to all button */}
+              {hasAnyComplete && line.colorConfigs.length > 1 && (
+                <button
+                  onClick={applyToAll}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 8, marginBottom: 10,
+                    border: `1px solid ${colors.luxeGold}`, background: '#fffaf5',
+                    color: colors.luxeGold, fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'opacity .15s',
+                  }}
+                >
+                  Apply first completed settings to all colors
+                </button>
+              )}
+
+              {/* Color Config Cards */}
+              {line.colorConfigs.length > 0 && (
+                <div>
+                  {line.colorConfigs.map((cfg, i) => (
+                    <ColorConfigCard
+                      key={cfg.id}
+                      cfg={cfg}
+                      col={col}
+                      palette={palette}
+                      onUpdate={updateConfig}
+                      onRemove={removeConfig}
+                      defaultExpanded={i === line.colorConfigs.length - 1}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {line.colorConfigs.length === 0 && (
+                <div style={{ fontSize: 12, color: '#bbb', fontStyle: 'italic', textAlign: 'center', padding: 8 }}>
+                  Click colors above to start configuring
                 </div>
               )}
             </AccordionSection>

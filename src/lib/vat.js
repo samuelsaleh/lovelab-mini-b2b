@@ -108,30 +108,52 @@ export async function validateVAT(vatString) {
       
       const data = await res.json()
       
-      // Handle VIES error responses
-      if (data.error || data.errorWrappers || data.userError) {
-        lastErrorCode = data.userError || data.error || data.errorWrappers?.[0]?.error || 'UNKNOWN'
-        
-        // If rate limited (MS_MAX_CONCURRENT_REQ) or unavailable, retry with backoff
-        if ((lastErrorCode === 'MS_MAX_CONCURRENT_REQ' || lastErrorCode === 'MS_UNAVAILABLE') && attempt < maxRetries - 1) {
+      // Handle VIES error responses.
+      // NOTE: On the official VIES REST endpoint we call, `userError` is a STATUS string,
+      // and is present even on success (e.g. "VALID" / "INVALID"). Only treat other
+      // values as errors.
+      const wrapperErr = Array.isArray(data?.errorWrappers) && data.errorWrappers.length > 0
+        ? data.errorWrappers?.[0]?.error
+        : ''
+      const status = typeof data?.userError === 'string' ? data.userError : ''
+      const apiErr = typeof data?.error === 'string' ? data.error : ''
+      const isNormalStatus = status === 'VALID' || status === 'INVALID'
+      const errorCode = wrapperErr || apiErr || (status && !isNormalStatus ? status : '')
+
+      if (errorCode) {
+        lastErrorCode = errorCode || 'UNKNOWN'
+
+        // Retryable conditions (VIES / member state busy or unavailable)
+        const retryable = new Set([
+          'MS_MAX_CONCURRENT_REQ',
+          'MS_MAX_CONCURRENT_REQ_TIME',
+          'MS_UNAVAILABLE',
+          'SERVICE_UNAVAILABLE',
+          'TIMEOUT',
+          'GLOBAL_MAX_CONCURRENT_REQ',
+          'GLOBAL_MAX_CONCURRENT_REQ_TIME',
+        ])
+
+        if (retryable.has(lastErrorCode) && attempt < maxRetries - 1) {
           const delay = baseDelay * Math.pow(2, attempt) // 1.5s, 3s, 6s
           console.log(`VIES ${lastErrorCode}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
           await sleep(delay)
           continue
         }
-        
-        // Retries exhausted - mark as unverified
+
+        // Retries exhausted (or non-retryable) - mark as unverified
         break
       }
       
       // Success from VIES API
+      const isValid = (data?.isValid ?? data?.valid) === true
       return {
-        valid: data.isValid === true,
+        valid: isValid,
         name: data.name || '',
         address: data.address || '',
         countryCode: parsed.countryCode,
         vatNumber: data.vatNumber || parsed.number,
-        error: data.isValid === true ? undefined : 'VAT number not found in VIES database',
+        error: isValid ? undefined : 'VAT number not found in VIES database',
       }
     } catch (err) {
       lastErrorCode = 'NETWORK_ERROR'

@@ -20,8 +20,8 @@ export default function MiniQuote({ q, onView }) {
           borderBottom: i < q.lines.length - 1 ? `1px solid ${colors.lineGray}` : 'none',
           color: colors.charcoal
         }}>
-          <span style={{ fontWeight: 600 }}>{ln.product} {ln.carat}ct</span>
-          <span style={{ fontSize: isMobile() ? 10 : 11 }}>{ln.totalQty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
+          <span style={{ fontWeight: 600 }}>{ln.product} {ln.carat}ct{ln.colorName ? ` · ${ln.colorName}` : ''}</span>
+          <span style={{ fontSize: isMobile() ? 10 : 11 }}>{ln.qty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
         </div>
       ))}
       <div style={{ 

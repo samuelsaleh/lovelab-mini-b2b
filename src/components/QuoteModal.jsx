@@ -91,7 +91,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: isMobile() ? 11 : 12 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
-                {['Product', 'ct', 'Housing', 'Colors', 'Qty/C', 'Pcs', 'Unit', 'Total'].map((h) => (
+                {['Product', 'ct', 'Housing', 'Color', 'Shape', 'Size', 'Qty', 'Unit', 'Total'].map((h) => (
                   <th key={h} style={{ 
                     padding: isMobile() ? '6px 3px' : '7px 4px', 
                     textAlign: 'left', 
@@ -110,9 +110,10 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
                   <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontWeight: 600, color: colors.charcoal }}>{ln.product}</td>
                   <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', color: colors.charcoal }}>{ln.carat}</td>
                   <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontSize: isMobile() ? 9 : 10, color: colors.charcoal }}>{ln.housing || '—'}</td>
-                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontSize: isMobile() ? 9 : 10, maxWidth: isMobile() ? 80 : 100, color: colors.charcoal }}>{(ln.colors || []).join(', ') || '—'}</td>
-                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', color: colors.charcoal }}>{ln.qtyPerColor}</td>
-                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontWeight: 600, color: colors.charcoal }}>{ln.totalQty}</td>
+                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontSize: isMobile() ? 9 : 10, color: colors.charcoal }}>{ln.colorName || '—'}</td>
+                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontSize: isMobile() ? 9 : 10, color: colors.charcoal }}>{ln.shape || '—'}</td>
+                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontSize: isMobile() ? 9 : 10, color: colors.charcoal }}>{ln.size || '—'}</td>
+                  <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontWeight: 600, color: colors.charcoal }}>{ln.qty}</td>
                   <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', color: colors.charcoal }}>{fmt(ln.unitB2B)}</td>
                   <td style={{ padding: isMobile() ? '6px 3px' : '7px 4px', fontWeight: 700, color: colors.inkPlum }}>{fmt(ln.lineTotal)}</td>
                 </tr>

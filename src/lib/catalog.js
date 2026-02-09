@@ -49,43 +49,38 @@ export const COLLECTIONS = [
 
 // ─── LOCAL QUOTE CALCULATION ───
 export function calculateQuote(lines) {
-  const qLines = lines
-    .filter((l) => l.collectionId && l.colors.length > 0)
-    .map((l) => {
-      const col = COLLECTIONS.find((c) => c.id === l.collectionId)
-      if (!col) return null
-      const ci = l.caratIdx !== null && l.caratIdx !== undefined ? l.caratIdx : 0
-      // Handle both legacy (string array) and new (object array) color formats
-      // Legacy: ['Red', 'Blue'] with l.qty (uniform)
-      // New: [{name: 'Red', qty: 1}, {name: 'Blue', qty: 2}]
-      
-      const processedColors = l.colors.map(c => {
-        if (typeof c === 'string') return { name: c, qty: l.qty || 1 }
-        return c
-      })
-      
-      const totalQty = processedColors.reduce((sum, c) => sum + c.qty, 0)
-      
-      return {
+  const qLines = []
+
+  for (const l of lines) {
+    if (!l.collectionId) continue
+    const col = COLLECTIONS.find((c) => c.id === l.collectionId)
+    if (!col) continue
+
+    // New model: colorConfigs array (each with own carat/housing/shape/size/qty)
+    const configs = l.colorConfigs || []
+    if (configs.length === 0) continue
+
+    for (const cfg of configs) {
+      const ci = cfg.caratIdx !== null && cfg.caratIdx !== undefined ? cfg.caratIdx : 0
+      const qty = cfg.qty || 1
+      qLines.push({
         product: col.label,
         carat: col.carats[ci],
-        housing: l.housing || null,
-        shape: l.shape || null,
-        size: l.size || null,
-        colors: processedColors.map(c => c.name), // Just names for display if needed
-        colorDetails: processedColors, // Full details with qty
-        qtyPerColor: null, // Deprecated, use colorDetails
-        totalQty,
+        housing: cfg.housing || null,
+        shape: cfg.shape || null,
+        size: cfg.size || null,
+        colorName: cfg.colorName,
+        qty,
         unitB2B: col.prices[ci],
-        lineTotal: totalQty * col.prices[ci],
+        lineTotal: qty * col.prices[ci],
         retailUnit: col.retail[ci],
-        retailTotal: totalQty * col.retail[ci],
-      }
-    })
-    .filter(Boolean)
+        retailTotal: qty * col.retail[ci],
+      })
+    }
+  }
 
   const subtotal = qLines.reduce((s, l) => s + l.lineTotal, 0)
-  const totalPieces = qLines.reduce((s, l) => s + l.totalQty, 0)
+  const totalPieces = qLines.reduce((s, l) => s + l.qty, 0)
   const discountPercent = subtotal >= 1600 ? 10 : 0
   const discountAmount = Math.round((subtotal * discountPercent) / 100)
   const total = subtotal - discountAmount
@@ -95,20 +90,18 @@ export function calculateQuote(lines) {
   if (subtotal > 0 && subtotal < 1600 && totalPieces < 100) {
     warnings.push('Below minimum order (€1,600 or 100 pcs)')
   }
-  lines
-    .filter((l) => l.collectionId)
-    .forEach((l) => {
-      const col = COLLECTIONS.find((c) => c.id === l.collectionId)
-      if (col) {
-        // Check each color's quantity
-        const processedColors = l.colors.map(c => (typeof c === 'string' ? { name: c, qty: l.qty || 1 } : c))
-        processedColors.forEach(c => {
-          if (c.qty < col.minC) {
-            warnings.push(`${col.label} (${c.name}): ${c.qty} pcs (recommended min: ${col.minC})`)
-          }
-        })
+  // Check each config's quantity against collection minimum
+  for (const l of lines) {
+    if (!l.collectionId) continue
+    const col = COLLECTIONS.find((c) => c.id === l.collectionId)
+    if (!col) continue
+    const configs = l.colorConfigs || []
+    for (const cfg of configs) {
+      if (cfg.qty < col.minC) {
+        warnings.push(`${col.label} (${cfg.colorName}): ${cfg.qty} pcs (recommended min: ${col.minC})`)
       }
-    })
+    }
+  }
 
   return {
     lines: qLines,

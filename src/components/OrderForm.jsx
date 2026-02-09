@@ -18,6 +18,12 @@ const COLUMNS = [
   { key: 'total', label: 'Total (€)', width: 74 },
 ]
 
+const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'bpColor', 'size', 'colorCord', 'unitPrice']
+
+function isRowFilled(row) {
+  return FILL_KEYS.every(k => String(row[k] || '').trim() !== '')
+}
+
 function emptyRow(no) {
   return {
     no: String(no),
@@ -48,39 +54,24 @@ function prefillRows(quote) {
     return Array.from({ length: ROWS_PER_PAGE }, (_, i) => emptyRow(i + 1))
   }
 
-  // Expand: one row per color per quote line
+  // Each quote line is already one color config (1:1 mapping)
   const rows = []
   let rowNum = 1
   for (const ln of quote.lines) {
-    const col = findCollection(ln.product)
-    
-    // Handle new colorDetails structure or fallback to legacy
-    let colorItems = []
-    if (ln.colorDetails && ln.colorDetails.length > 0) {
-      colorItems = ln.colorDetails
-    } else if (ln.colors && ln.colors.length > 0) {
-      // Legacy fallback
-      colorItems = ln.colors.map(c => ({ name: c, qty: ln.qtyPerColor || 0 }))
-    } else {
-      colorItems = [{ name: '', qty: 0 }]
-    }
-
-    for (const item of colorItems) {
-      const qty = item.qty || 0
-      const unit = ln.unitB2B || 0
-      rows.push({
-        no: String(rowNum++),
-        quantity: qty ? String(qty) : '',
-        collection: ln.product || '',
-        carat: ln.carat || '',
-        shape: ln.shape || '',
-        bpColor: ln.housing || '',
-        size: ln.size || '',
-        colorCord: item.name,
-        unitPrice: unit ? String(unit) : '',
-        total: qty && unit ? String(qty * unit) : '',
-      })
-    }
+    const qty = ln.qty || 0
+    const unit = ln.unitB2B || 0
+    rows.push({
+      no: String(rowNum++),
+      quantity: qty ? String(qty) : '',
+      collection: ln.product || '',
+      carat: ln.carat || '',
+      shape: ln.shape || '',
+      bpColor: ln.housing || '',
+      size: ln.size || '',
+      colorCord: ln.colorName || '',
+      unitPrice: unit ? String(unit) : '',
+      total: qty && unit ? String(qty * unit) : '',
+    })
   }
 
   // Pad to fill complete pages (minimum ROWS_PER_PAGE)
@@ -300,6 +291,25 @@ export default function OrderForm({ quote, client, onClose }) {
     })
   }, [])
 
+  const duplicateRow = useCallback((globalIdx) => {
+    setRows(prev => {
+      const next = [...prev]
+      const source = prev[globalIdx]
+      const targetIdx = globalIdx + 1
+      // If target doesn't exist, add a new page of rows first
+      if (targetIdx >= next.length) {
+        const startNo = next.length + 1
+        for (let i = 0; i < ROWS_PER_PAGE; i++) next.push(emptyRow(startNo + i))
+      }
+      next[targetIdx] = {
+        ...source,
+        no: next[targetIdx].no, // keep the original row number
+      }
+      return next
+    })
+    setFinalTotalOverride(null)
+  }, [])
+
   // Split rows into pages
   const pages = useMemo(() => {
     const p = []
@@ -372,7 +382,7 @@ export default function OrderForm({ quote, client, onClose }) {
             width: 100% !important;
             background: #fff !important;
           }
-          .order-form-calculator, .order-form-toolbar, .order-form-add-page {
+          .order-form-calculator, .order-form-toolbar, .order-form-add-page, .order-form-dup-col {
             display: none !important;
           }
           .order-form-page {
@@ -506,12 +516,14 @@ export default function OrderForm({ quote, client, onClose }) {
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
                   ))}
+                  <col className="order-form-dup-col" style={{ width: 28 }} />
                 </colgroup>
                 <thead>
                   <tr>
                     {COLUMNS.map((col) => (
                       <th key={col.key} style={thStyle}>{col.label}</th>
                     ))}
+                    <th className="order-form-dup-col" style={{ ...thStyle, borderBottom: 'none' }} />
                   </tr>
                 </thead>
                 <tbody>
@@ -534,6 +546,25 @@ export default function OrderForm({ quote, client, onClose }) {
                             />
                           </td>
                         ))}
+                        <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: 28, verticalAlign: 'middle' }}>
+                          {isRowFilled(row) && (
+                            <button
+                              onClick={() => duplicateRow(globalIdx)}
+                              title="Duplicate row below"
+                              style={{
+                                width: 22, height: 22, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                background: '#fff', color: '#999', fontSize: 13, lineHeight: '20px',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 0, fontFamily: fonts.body, transition: 'all .15s',
+                                marginLeft: 3,
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = colors.inkPlum; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = colors.inkPlum }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#999'; e.currentTarget.style.borderColor = colors.lineGray }}
+                            >
+                              &#x2750;
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}
