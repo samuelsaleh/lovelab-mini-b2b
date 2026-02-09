@@ -153,6 +153,55 @@ const LEGAL_PAGE_NAMES = {
 }
 
 /**
+ * Validate a VAT number via Perplexity by checking the VIES website.
+ * Used as a fallback when the VIES API is rate-limited or unavailable.
+ * Returns { valid, name, address } or throws.
+ */
+export async function validateVATviaPerplexity(vatNumber, countryCode) {
+  const prompt = `Go to the official EU VIES VAT validation website (https://ec.europa.eu/taxation_customs/vies/) and check if this VAT number is valid:
+
+Country code: ${countryCode}
+VAT number: ${vatNumber.replace(/^[A-Z]{2}/i, '')} (without country prefix)
+
+Search for this exact VAT number on the VIES website and tell me:
+1. Is the VAT number valid? (Yes/No)
+2. What is the registered company name?
+3. What is the registered address?
+
+Return ONLY a JSON object: { "valid": true/false, "name": "company name", "address": "full address" }
+If the VAT is invalid or not found, return { "valid": false, "name": "", "address": "" }
+Output ONLY the JSON, nothing else.`
+
+  const body = {
+    model: 'sonar',
+    messages: [
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 400,
+  }
+
+  const res = await fetch('/api/perplexity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Perplexity API error: ${res.status}`)
+  }
+
+  const data = await res.json()
+  const raw = data.choices?.[0]?.message?.content || ''
+  const parsed = extractJSON(raw)
+
+  return {
+    valid: parsed.valid === true,
+    name: parsed.name || '',
+    address: parsed.address || '',
+  }
+}
+
+/**
  * Look up company address and VAT number via Perplexity API.
  * Returns { address, city, zip, country, vat } or throws.
  */

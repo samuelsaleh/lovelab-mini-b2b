@@ -1,6 +1,8 @@
 /**
- * EU VAT validation helper using VIES API
+ * EU VAT validation helper using VIES API with Perplexity fallback
  */
+
+import { validateVATviaPerplexity } from './api'
 
 // EU country codes supported by VIES
 export const EU_COUNTRIES = {
@@ -70,6 +72,7 @@ function sleep(ms) {
 /**
  * Validate a VAT number against the EU VIES database.
  * Includes retry logic with exponential backoff for rate-limited requests.
+ * Falls back to Perplexity to check the VIES website if API fails.
  * @param {string} vatString - Full VAT number with country prefix (e.g., "BE0123456789")
  * @returns {Promise<{ valid: boolean, name: string, address: string, countryCode: string, vatNumber: string, error?: string }>}
  */
@@ -87,58 +90,39 @@ export async function validateVAT(vatString) {
     }
   }
   
-  // Retry config: up to 3 attempts with exponential backoff
-  const maxRetries = 3
+  // Retry config: up to 2 attempts with exponential backoff (reduced since we have Perplexity fallback)
+  const maxRetries = 2
   const baseDelay = 1000 // 1 second
+  let lastErrorCode = ''
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const res = await fetch(`/api/vat?country=${parsed.countryCode}&number=${parsed.number}`)
       
       if (!res.ok) {
-        return {
-          valid: false,
-          name: '',
-          address: '',
-          countryCode: parsed.countryCode,
-          vatNumber: parsed.number,
-          error: `VIES service error: ${res.status}`,
-        }
+        lastErrorCode = `HTTP_${res.status}`
+        continue // Try again or fall through to Perplexity
       }
       
       const data = await res.json()
       
       // Handle VIES error responses
       if (data.error || data.errorWrappers || data.userError) {
-        const errorCode = data.userError || data.error || data.errorWrappers?.[0]?.error || ''
+        lastErrorCode = data.userError || data.error || data.errorWrappers?.[0]?.error || 'UNKNOWN'
         
-        // If rate limited (MS_MAX_CONCURRENT_REQ), retry with backoff
-        if (errorCode === 'MS_MAX_CONCURRENT_REQ' && attempt < maxRetries - 1) {
-          const delay = baseDelay * Math.pow(2, attempt) // 1s, 2s, 4s
-          console.log(`VIES rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
+        // If rate limited (MS_MAX_CONCURRENT_REQ) or unavailable, retry with backoff
+        if ((lastErrorCode === 'MS_MAX_CONCURRENT_REQ' || lastErrorCode === 'MS_UNAVAILABLE') && attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt) // 1s, 2s
+          console.log(`VIES ${lastErrorCode}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
           await sleep(delay)
           continue
         }
         
-        // Map known error codes to user-friendly messages
-        const errorMessages = {
-          'MS_MAX_CONCURRENT_REQ': 'VIES is busy (France/Italy often overloaded). Try again in a moment.',
-          'MS_UNAVAILABLE': 'Tax authority temporarily unavailable. Try again later.',
-          'INVALID': 'VAT number format is invalid for this country.',
-          'SERVICE_UNAVAILABLE': 'VIES service is down. Try again later.',
-          'TIMEOUT': 'Request timed out. Try again.',
-        }
-        
-        return {
-          valid: false,
-          name: '',
-          address: '',
-          countryCode: parsed.countryCode,
-          vatNumber: parsed.number,
-          error: errorMessages[errorCode] || errorCode || 'VIES service error',
-        }
+        // Fall through to Perplexity fallback after retries exhausted
+        break
       }
       
+      // Success from VIES API
       return {
         valid: data.isValid === true,
         name: data.name || '',
@@ -148,6 +132,7 @@ export async function validateVAT(vatString) {
         error: data.isValid === true ? undefined : 'VAT number not found in VIES database',
       }
     } catch (err) {
+      lastErrorCode = 'NETWORK_ERROR'
       // On network error, retry if we have attempts left
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt)
@@ -155,26 +140,59 @@ export async function validateVAT(vatString) {
         await sleep(delay)
         continue
       }
-      
-      return {
-        valid: false,
-        name: '',
-        address: '',
-        countryCode: parsed.countryCode,
-        vatNumber: parsed.number,
-        error: 'Network error checking VAT',
-      }
+      // Fall through to Perplexity fallback
+      break
     }
   }
   
-  // Should not reach here, but just in case
-  return {
-    valid: false,
-    name: '',
-    address: '',
-    countryCode: parsed.countryCode,
-    vatNumber: parsed.number,
-    error: 'VIES validation failed after retries',
+  // VIES API failed after retries - try Perplexity fallback
+  console.log(`VIES API failed (${lastErrorCode}), trying Perplexity fallback...`)
+  
+  try {
+    const perplexityResult = await validateVATviaPerplexity(vatString, parsed.countryCode)
+    
+    if (perplexityResult.valid) {
+      return {
+        valid: true,
+        name: perplexityResult.name || '',
+        address: perplexityResult.address || '',
+        countryCode: parsed.countryCode,
+        vatNumber: parsed.number,
+        error: undefined,
+      }
+    } else {
+      // Perplexity says invalid - but we can't be 100% sure since it's web scraping
+      // Return as invalid but with a note
+      return {
+        valid: false,
+        name: perplexityResult.name || '',
+        address: perplexityResult.address || '',
+        countryCode: parsed.countryCode,
+        vatNumber: parsed.number,
+        error: 'VAT not found via VIES website lookup',
+      }
+    }
+  } catch (perplexityErr) {
+    console.log('Perplexity fallback also failed:', perplexityErr)
+    
+    // Both VIES and Perplexity failed - return clear error message
+    const errorMessages = {
+      'MS_MAX_CONCURRENT_REQ': 'Could not verify VAT via VIES or Perplexity',
+      'MS_UNAVAILABLE': 'Could not verify VAT via VIES or Perplexity',
+      'INVALID': 'VAT number format is invalid for this country.',
+      'SERVICE_UNAVAILABLE': 'Could not verify VAT via VIES or Perplexity',
+      'TIMEOUT': 'Could not verify VAT via VIES or Perplexity',
+      'NETWORK_ERROR': 'Could not verify VAT via VIES or Perplexity',
+    }
+    
+    return {
+      valid: false,
+      name: '',
+      address: '',
+      countryCode: parsed.countryCode,
+      vatNumber: parsed.number,
+      error: errorMessages[lastErrorCode] || `Validation failed (${lastErrorCode})`,
+    }
   }
 }
 

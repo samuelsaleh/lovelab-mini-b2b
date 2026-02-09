@@ -56,7 +56,7 @@ export default function App() {
   const [showQuote, setShowQuote] = useState(false)
 
   // Client info (expanded for company lookup)
-  const [client, setClient] = useState({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null })
+  const [client, setClient] = useState({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
   const [clientReady, setClientReady] = useState(false) // Gate passed?
   const [showClientEdit, setShowClientEdit] = useState(false) // Edit mode after gate
 
@@ -243,7 +243,7 @@ export default function App() {
 
   // ─── New Client (go back to gate) ───
   const handleNewClient = () => {
-    setClient({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null })
+    setClient({ name: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
     setClientReady(false)
     handleReset()
   }
@@ -334,11 +334,23 @@ export default function App() {
                   fontSize: 9, 
                   padding: '2px 6px', 
                   borderRadius: 4, 
-                  background: client.vatValid === true ? '#d4edda' : client.vatValid === false ? '#f8d7da' : '#fff3cd',
-                  color: client.vatValid === true ? '#155724' : client.vatValid === false ? '#721c24' : '#856404',
+                  background: client.vatValidating ? '#e8e8e8' : client.vatValid === true ? '#d4edda' : client.vatValid === false ? '#f8d7da' : '#fff3cd',
+                  color: client.vatValidating ? '#666' : client.vatValid === true ? '#155724' : client.vatValid === false ? '#721c24' : '#856404',
                   fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
                 }}>
-                  {client.vatValid === true ? '✓ ' : client.vatValid === false ? '✗ ' : ''}{client.vat}
+                  {client.vatValidating ? (
+                    <>
+                      <LoadingDots />
+                      <span>{client.vat}</span>
+                    </>
+                  ) : (
+                    <>
+                      {client.vatValid === true ? '✓ ' : client.vatValid === false ? '✗ ' : ''}{client.vat}
+                    </>
+                  )}
                 </span>
               )}
             </div>

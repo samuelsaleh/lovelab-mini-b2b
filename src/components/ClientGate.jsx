@@ -20,6 +20,31 @@ export default function ClientGate({ client, setClient, onComplete }) {
   const canLookup = client.company.trim() && client.country.trim()
   const canStart = client.company.trim()
 
+  // Fire VAT validation in background (non-blocking)
+  const startVatValidation = useCallback((vatNumber) => {
+    if (!vatNumber || vatNumber.length < 4) return
+    
+    setViesLoading(true)
+    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null }))
+    
+    // Fire and forget - runs in background
+    validateVAT(vatNumber)
+      .then((viesRes) => {
+        setViesResult(viesRes)
+        setViesLoading(false)
+        setClient((prev) => ({
+          ...prev,
+          vatValid: viesRes.valid,
+          vatValidating: false,
+        }))
+      })
+      .catch(() => {
+        setViesResult({ valid: false, error: 'Verification failed' })
+        setViesLoading(false)
+        setClient((prev) => ({ ...prev, vatValid: false, vatValidating: false }))
+      })
+  }, [setClient])
+
   // Handle the main lookup flow
   const handleLookup = useCallback(async () => {
     if (!canLookup) return
@@ -29,89 +54,44 @@ export default function ClientGate({ client, setClient, onComplete }) {
     setPerplexityDone(false)
 
     const hasVat = client.vat.trim().length >= 4
+    const vatToValidate = hasVat ? client.vat.trim() : null
 
     try {
-      if (hasVat) {
-        // VAT provided: run VIES and Perplexity in parallel
-        setViesLoading(true)
-        const [viesRes, perplexityRes] = await Promise.all([
-          validateVAT(client.vat.trim()),
-          lookupCompany(client.company.trim(), client.country.trim()),
-        ])
+      // Run Perplexity lookup (blocking - we need the address info)
+      const perplexityRes = await lookupCompany(client.company.trim(), client.country.trim())
 
-        // Update client with Perplexity results
-        setClient((prev) => ({
-          ...prev,
-          address: perplexityRes.address || prev.address,
-          city: perplexityRes.city || prev.city,
-          zip: perplexityRes.zip || prev.zip,
-          // Don't overwrite VAT if user already provided one
-        }))
+      // Update client with Perplexity results
+      const foundVat = perplexityRes.vat || ''
+      setClient((prev) => ({
+        ...prev,
+        address: perplexityRes.address || prev.address,
+        city: perplexityRes.city || prev.city,
+        zip: perplexityRes.zip || prev.zip,
+        // Only update VAT if user didn't provide one and Perplexity found one
+        vat: hasVat ? prev.vat : (foundVat || prev.vat),
+      }))
 
-        // Show VIES result
-        setViesResult(viesRes)
-        setViesLoading(false)
-        setPerplexityDone(true)
+      setPerplexityDone(true)
+      setLoading(false)
 
-        // Update client VAT validity
-        setClient((prev) => ({
-          ...prev,
-          vatValid: viesRes.valid,
-        }))
-
-      } else {
-        // No VAT: run Perplexity only
-        const perplexityRes = await lookupCompany(client.company.trim(), client.country.trim())
-
-        // Update client with results
-        setClient((prev) => ({
-          ...prev,
-          address: perplexityRes.address || prev.address,
-          city: perplexityRes.city || prev.city,
-          zip: perplexityRes.zip || prev.zip,
-          vat: perplexityRes.vat || prev.vat,
-        }))
-
-        setPerplexityDone(true)
-
-        // If Perplexity found a VAT, auto-validate with VIES
-        if (perplexityRes.vat) {
-          setViesLoading(true)
-          const viesRes = await validateVAT(perplexityRes.vat)
-          setViesResult(viesRes)
-          setViesLoading(false)
-          setClient((prev) => ({
-            ...prev,
-            vatValid: viesRes.valid,
-          }))
-        }
+      // Start VAT validation in background (non-blocking)
+      // Use user-provided VAT or Perplexity-found VAT
+      const vatForValidation = vatToValidate || foundVat
+      if (vatForValidation) {
+        startVatValidation(vatForValidation)
       }
     } catch (err) {
       setError('Lookup failed. Please try again or enter details manually.')
+      setLoading(false)
     }
-
-    setLoading(false)
-  }, [client.company, client.country, client.vat, canLookup, setClient])
+  }, [client.company, client.country, client.vat, canLookup, setClient, startVatValidation])
 
   // Manual VIES verification (when user types VAT after Perplexity didn't find one)
-  const handleVerifyVat = useCallback(async () => {
+  const handleVerifyVat = useCallback(() => {
     if (!client.vat.trim() || client.vat.trim().length < 4) return
-    setViesLoading(true)
     setViesResult(null)
-
-    try {
-      const viesRes = await validateVAT(client.vat.trim())
-      setViesResult(viesRes)
-      setClient((prev) => ({
-        ...prev,
-        vatValid: viesRes.valid,
-      }))
-    } catch {
-      setViesResult({ valid: false, error: 'Verification failed' })
-    }
-
-    setViesLoading(false)
-  }, [client.vat, setClient])
+    startVatValidation(client.vat.trim())
+  }, [client.vat, startVatValidation])
 
   // Skip gate entirely
   const handleSkip = useCallback(() => {
