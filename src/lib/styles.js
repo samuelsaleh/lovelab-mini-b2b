@@ -1,9 +1,6 @@
-export const fonts = {
-  body: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  mono: '"JetBrains Mono", monospace',
-}
-
+// ═══ LOVELAB BRAND COLORS ═══
 export const colors = {
+  // New Clean Palette
   bg: '#ffffff',
   bgOff: '#f9f9f9',
   text: '#111111',
@@ -11,10 +8,54 @@ export const colors = {
   border: '#eaeaea',
   primary: '#000000',
   accent: '#0070f3',
-  inkPlum: '#222', // Keeping the brand color but using it more selectively
-  luxeGold: '#c5a059',
+  
+  // Brand Colors (Updated for cleaner look)
+  inkPlum: '#222222', // Was #5D3A5E - Darkened for high contrast/cleaner look
+  luxeGold: '#c5a059', // Was #C9A665
+  
+  // Legacy Brand Colors (Kept for compatibility)
+  lumiereIvory: '#F8F5F2',
+  charcoal: '#4F4F4F',
+  porcelain: '#FFFFFF',
+  softRose: '#F0B5C0',
+  lavender: '#D1B3E0',
+  softPink: '#F5C0D8',
+  ice: '#EFF5F7',
+  lineGray: '#E3E3E3',
+  lovelabBg: '#FDF7FA',
+  
+  // Brand Gradient
+  gradientDeep: '#8957AF',
+  gradientMedium: '#C987C7',
+  gradientLight: '#E09BC0',
+  gradientPink: '#EDA5B8',
+  
+  // Custom
+  lovelabDark: '#4A2545',
+  lovelabMuted: '#8A6A7D',
+  lovelabAccent: '#C4A084',
+  lovelabPink: '#D486C3',
+  lovelabBorder: '#DCC5D5',
 }
 
+// ═══ TYPOGRAPHY ═══
+export const fonts = {
+  heading: "'Playfair Display', serif",
+  body: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  mono: '"JetBrains Mono", monospace',
+  label: "'Montserrat', sans-serif",
+}
+
+// ═══ RESPONSIVE HELPERS ═══
+export const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768
+export const isTablet = () => typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1024
+
+// ═══ BRAND GRADIENT ═══
+export const brandGradient = `linear-gradient(135deg, ${colors.gradientDeep} 0%, ${colors.gradientMedium} 33%, ${colors.gradientLight} 66%, ${colors.gradientPink} 100%)`
+
+// ═══ REUSABLE STYLES ═══
+
+// Updated Label
 export const lbl = {
   fontSize: 11,
   textTransform: 'uppercase',
@@ -24,7 +65,20 @@ export const lbl = {
   fontWeight: 600,
 }
 
-// Cleaner tag style - no borders by default, softer active state
+// Restored Input (used in ClientGate etc)
+export const inp = {
+  padding: '8px 11px',
+  borderRadius: 8,
+  border: `1px solid ${colors.lineGray}`,
+  fontSize: 13,
+  fontFamily: 'inherit',
+  outline: 'none',
+  background: colors.lumiereIvory,
+  color: colors.charcoal,
+  boxSizing: 'border-box',
+}
+
+// Updated Tag (Cleaner, no border)
 export const tag = (active) => ({
   display: 'inline-flex',
   alignItems: 'center',
@@ -38,10 +92,9 @@ export const tag = (active) => ({
   fontWeight: active ? 500 : 400,
   transition: 'all 0.15s ease',
   outline: 'none',
-  // Hover state would be handled in CSS, but inline we can't easily. 
-  // This clean flat look reduces "heaviness".
 })
 
+// Updated Qty Button
 export const qBtn = {
   width: 28,
   height: 28,
@@ -55,6 +108,7 @@ export const qBtn = {
   color: '#444',
 }
 
+// Updated Qty Input
 export const qInp = {
   width: 40,
   height: 28,
@@ -64,9 +118,10 @@ export const qInp = {
   outline: 'none',
   fontWeight: 600,
   color: '#222',
-  background: '#fff', // Ensure input background is white
+  background: '#fff',
 }
 
+// Updated Quick Qty
 export const qtyQuick = (active) => ({
   fontSize: 11,
   padding: '4px 8px',
@@ -76,3 +131,54 @@ export const qtyQuick = (active) => ({
   border: 'none',
   cursor: 'pointer',
 })
+
+// Restored Mode Pill
+export const modePill = (active) => ({
+  padding: '8px 18px',
+  borderRadius: 20,
+  border: 'none',
+  background: active ? colors.inkPlum : 'transparent',
+  color: active ? '#fff' : colors.charcoal,
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  transition: 'all .15s',
+  whiteSpace: 'nowrap',
+})
+
+// Restored Total Bar
+export const totalBar = {
+  background: '#fff',
+  borderTop: `1px solid ${colors.lineGray}`,
+  padding: '12px 18px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  flexShrink: 0,
+}
+
+export const totalBarAmount = {
+  fontSize: 22,
+  fontWeight: 800,
+  color: colors.inkPlum,
+}
+
+export const totalBarMeta = {
+  fontSize: 11,
+  color: '#999',
+}
+
+// Restored Preset Card
+export const presetCard = {
+  padding: '14px 18px',
+  borderRadius: 12,
+  border: `1px solid ${colors.lineGray}`,
+  background: '#fff',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  textAlign: 'left',
+  transition: 'all .12s',
+  flex: '1 1 140px',
+  minWidth: 140,
+}
