@@ -261,8 +261,33 @@ export default function ClientGate({ client, setClient, onComplete }) {
             )}
           </div>
           {viesResult && !viesResult.valid && viesResult.error && (
-            <div style={{ fontSize: 10, color: '#c44', marginTop: 4 }}>
-              {viesResult.error}
+            <div style={{ 
+              fontSize: 10, 
+              color: viesResult.error.includes('busy') || viesResult.error.includes('unavailable') ? '#856404' : '#c44', 
+              marginTop: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span>{viesResult.error}</span>
+              {(viesResult.error.includes('busy') || viesResult.error.includes('unavailable')) && !viesLoading && (
+                <button
+                  onClick={handleVerifyVat}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: 'none',
+                    background: colors.inkPlum,
+                    color: '#fff',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Retry
+                </button>
+              )}
             </div>
           )}
           {viesResult && viesResult.valid && viesResult.name && (

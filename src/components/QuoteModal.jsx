@@ -1,10 +1,24 @@
 import { fmt, today } from '../lib/utils'
 import { colors, fonts, isMobile } from '../lib/styles'
 
+// Check if client is Belgian (for 21% VAT)
+function isBelgian(client) {
+  if (!client) return false
+  const country = (client.country || '').toLowerCase().trim()
+  const vat = (client.vat || '').toUpperCase().trim()
+  return country === 'belgium' || country === 'belgique' || country === 'belgie' || country === 'belgië' || vat.startsWith('BE')
+}
+
 export default function QuoteModal({ quote, client, onClose }) {
   if (!quote) return null
   const q = quote
   const d = today()
+  
+  // Calculate Belgian VAT if applicable
+  const showBelgianVat = isBelgian(client)
+  const vatRate = 0.21
+  const vatAmount = showBelgianVat ? Math.round(q.total * vatRate * 100) / 100 : 0
+  const totalWithVat = showBelgianVat ? q.total + vatAmount : q.total
 
   return (
     <div
@@ -128,15 +142,39 @@ export default function QuoteModal({ quote, client, onClose }) {
               display: 'flex', 
               justifyContent: 'space-between', 
               padding: '8px 0 3px', 
-              fontSize: isMobile() ? 18 : 20, 
-              fontWeight: 800, 
+              fontSize: isMobile() ? 14 : 16, 
+              fontWeight: 600, 
               borderTop: `1px solid ${colors.lineGray}`, 
               marginTop: 4,
-              color: colors.inkPlum
+              color: colors.charcoal
             }}>
-              <span>Total</span><span>{fmt(q.total)}</span>
+              <span>Total excl. VAT</span><span>{fmt(q.total)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: colors.lovelabMuted }}>
+            {showBelgianVat && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: isMobile() ? 11 : 12, color: colors.charcoal }}>
+                <span>VAT 21%</span><span>{fmt(vatAmount)}</span>
+              </div>
+            )}
+            {showBelgianVat && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                padding: '6px 0 3px', 
+                fontSize: isMobile() ? 18 : 20, 
+                fontWeight: 800, 
+                borderTop: `1px solid ${colors.lineGray}`, 
+                marginTop: 4,
+                color: colors.inkPlum
+              }}>
+                <span>Total incl. VAT</span><span>{fmt(totalWithVat)}</span>
+              </div>
+            )}
+            {!showBelgianVat && (
+              <div style={{ fontSize: 10, color: colors.lovelabMuted, marginTop: 2 }}>
+                Prices excl. VAT (intra-EU / export)
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: colors.lovelabMuted, marginTop: showBelgianVat ? 4 : 0 }}>
               <span>{q.totalPieces} pcs</span><span>Retail {fmt(q.totalRetail)}</span>
             </div>
             {q.totalRetail > 0 && q.total > 0 && (
@@ -173,7 +211,7 @@ export default function QuoteModal({ quote, client, onClose }) {
           lineHeight: 1.7 
         }}>
           THE LOVE GROUP BV · Schupstraat 20, 2018 Antwerp · hello@love-lab.com · www.lovelab.be<br />
-          Delivery 4–6 weeks · 18KT gold on request · Prices excl. VAT
+          VAT: BE0627515170 · Delivery 4–6 weeks · 18KT gold on request{!showBelgianVat && ' · Prices excl. VAT'}
         </div>
 
         <button

@@ -61,7 +61,15 @@ export function parseVAT(vatString) {
 }
 
 /**
+ * Sleep helper for retry logic
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
  * Validate a VAT number against the EU VIES database.
+ * Includes retry logic with exponential backoff for rate-limited requests.
  * @param {string} vatString - Full VAT number with country prefix (e.g., "BE0123456789")
  * @returns {Promise<{ valid: boolean, name: string, address: string, countryCode: string, vatNumber: string, error?: string }>}
  */
@@ -79,52 +87,94 @@ export async function validateVAT(vatString) {
     }
   }
   
-  try {
-    const res = await fetch(`/api/vat?country=${parsed.countryCode}&number=${parsed.number}`)
-    
-    if (!res.ok) {
+  // Retry config: up to 3 attempts with exponential backoff
+  const maxRetries = 3
+  const baseDelay = 1000 // 1 second
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch(`/api/vat?country=${parsed.countryCode}&number=${parsed.number}`)
+      
+      if (!res.ok) {
+        return {
+          valid: false,
+          name: '',
+          address: '',
+          countryCode: parsed.countryCode,
+          vatNumber: parsed.number,
+          error: `VIES service error: ${res.status}`,
+        }
+      }
+      
+      const data = await res.json()
+      
+      // Handle VIES error responses
+      if (data.error || data.errorWrappers || data.userError) {
+        const errorCode = data.userError || data.error || data.errorWrappers?.[0]?.error || ''
+        
+        // If rate limited (MS_MAX_CONCURRENT_REQ), retry with backoff
+        if (errorCode === 'MS_MAX_CONCURRENT_REQ' && attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt) // 1s, 2s, 4s
+          console.log(`VIES rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
+          await sleep(delay)
+          continue
+        }
+        
+        // Map known error codes to user-friendly messages
+        const errorMessages = {
+          'MS_MAX_CONCURRENT_REQ': 'VIES is busy (France/Italy often overloaded). Try again in a moment.',
+          'MS_UNAVAILABLE': 'Tax authority temporarily unavailable. Try again later.',
+          'INVALID': 'VAT number format is invalid for this country.',
+          'SERVICE_UNAVAILABLE': 'VIES service is down. Try again later.',
+          'TIMEOUT': 'Request timed out. Try again.',
+        }
+        
+        return {
+          valid: false,
+          name: '',
+          address: '',
+          countryCode: parsed.countryCode,
+          vatNumber: parsed.number,
+          error: errorMessages[errorCode] || errorCode || 'VIES service error',
+        }
+      }
+      
+      return {
+        valid: data.isValid === true,
+        name: data.name || '',
+        address: data.address || '',
+        countryCode: parsed.countryCode,
+        vatNumber: data.vatNumber || parsed.number,
+        error: data.isValid === true ? undefined : 'VAT number not found in VIES database',
+      }
+    } catch (err) {
+      // On network error, retry if we have attempts left
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt)
+        console.log(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
+        await sleep(delay)
+        continue
+      }
+      
       return {
         valid: false,
         name: '',
         address: '',
         countryCode: parsed.countryCode,
         vatNumber: parsed.number,
-        error: `VIES service error: ${res.status}`,
+        error: 'Network error checking VAT',
       }
     }
-    
-    const data = await res.json()
-    
-    // Handle VIES error responses
-    if (data.error || data.errorWrappers) {
-      const errorMsg = data.error || data.errorWrappers?.[0]?.error || 'VIES service unavailable'
-      return {
-        valid: false,
-        name: '',
-        address: '',
-        countryCode: parsed.countryCode,
-        vatNumber: parsed.number,
-        error: errorMsg === 'MS_MAX_CONCURRENT_REQ' ? 'VIES is busy, try again' : errorMsg,
-      }
-    }
-    
-    return {
-      valid: data.isValid === true,
-      name: data.name || '',
-      address: data.address || '',
-      countryCode: parsed.countryCode,
-      vatNumber: data.vatNumber || parsed.number,
-      error: data.isValid === true ? undefined : 'VAT number not found in VIES database',
-    }
-  } catch (err) {
-    return {
-      valid: false,
-      name: '',
-      address: '',
-      countryCode: parsed.countryCode,
-      vatNumber: parsed.number,
-      error: 'Network error checking VAT',
-    }
+  }
+  
+  // Should not reach here, but just in case
+  return {
+    valid: false,
+    name: '',
+    address: '',
+    countryCode: parsed.countryCode,
+    vatNumber: parsed.number,
+    error: 'VIES validation failed after retries',
   }
 }
 
