@@ -1,17 +1,98 @@
+// ─── HOUSING OPTIONS ───
+export const HOUSING = {
+  standard: ['Yellow', 'White', 'Rose'],
+  goldMetal: ['White Gold', 'Yellow Gold', 'Rose Gold'],
+  multiThree: {
+    attached: ['WWW', 'YYY', 'PPP'],
+    notAttached: ['WWW', 'YYY', 'PPP', 'WYP'],
+  },
+  matchyBezel: [
+    { id: 'white-white', label: 'White + White' },
+    { id: 'yellow-yellow', label: 'Yellow + Yellow' },
+    { id: 'pink-pink', label: 'Pink + Pink' },
+    { id: 'white-yellow', label: 'White + Yellow' },
+    { id: 'white-pink', label: 'White + Pink' },
+    { id: 'yellow-pink', label: 'Yellow + Pink' },
+  ],
+  matchyProng: [
+    { id: 'white', label: 'White' },
+    { id: 'yellow', label: 'Yellow' },
+  ],
+  shapyShineBezel: ['Yellow', 'White', 'Rose'],
+  shapyShineProng: ['Yellow', 'White', 'Rose'],
+}
+
 // ─── COLLECTIONS ───
 export const COLLECTIONS = [
-  { id: 'CUTY', label: 'CUTY', carats: ['0.05', '0.10', '0.20', '0.30'], prices: [20, 30, 65, 90], retail: [75, 120, 315, 430], minC: 3, cord: 'nylon' },
-  { id: 'CUBIX', label: 'CUBIX', carats: ['0.05', '0.10', '0.20'], prices: [24, 34, 70], retail: [95, 145, 340], minC: 3, cord: 'nylon' },
-  { id: 'M3', label: 'MULTI THREE', carats: ['0.15', '0.30', '0.60', '0.90'], prices: [55, 85, 165, 240], retail: [260, 400, 800, 1150], minC: 2, cord: 'nylon' },
-  { id: 'M4', label: 'MULTI FOUR', carats: ['0.20', '0.40'], prices: [75, 100], retail: [360, 500], minC: 2, cord: 'nylon' },
-  { id: 'M5', label: 'MULTI FIVE', carats: ['0.25', '0.50'], prices: [85, 120], retail: [400, 580], minC: 2, cord: 'nylon' },
-  { id: 'MF', label: 'MATCHY FANCY', carats: ['0.60', '1.00'], prices: [180, 290], retail: [550, 885], minC: 2, cord: 'nylon' },
-  { id: 'SSF', label: 'SHAPY SHINE FANCY', carats: ['0.10', '0.30', '0.50'], prices: [50, 90, 145], retail: [180, 330, 450], minC: 2, cord: 'shine' },
+  { id: 'CUTY', label: 'CUTY', carats: ['0.05', '0.10', '0.20', '0.30'], prices: [20, 30, 65, 90], retail: [75, 120, 315, 430], minC: 3, cord: 'nylon', housing: 'standard' },
+  { id: 'CUBIX', label: 'CUBIX', carats: ['0.05', '0.10', '0.20'], prices: [24, 34, 70], retail: [95, 145, 340], minC: 3, cord: 'nylon', housing: 'goldMetal' },
+  { id: 'M3', label: 'MULTI THREE', carats: ['0.15', '0.30', '0.60', '0.90'], prices: [55, 85, 165, 240], retail: [260, 400, 800, 1150], minC: 2, cord: 'nylon', housing: 'multiThree' },
+  { id: 'M4', label: 'MULTI FOUR', carats: ['0.20', '0.40'], prices: [75, 100], retail: [360, 500], minC: 2, cord: 'nylon', housing: 'goldMetal' },
+  { id: 'M5', label: 'MULTI FIVE', carats: ['0.25', '0.50'], prices: [85, 120], retail: [400, 580], minC: 2, cord: 'nylon', housing: 'goldMetal' },
+  { id: 'MF', label: 'MATCHY FANCY', carats: ['0.60', '1.00'], prices: [180, 290], retail: [550, 885], minC: 2, cord: 'nylon', housing: 'matchy' },
+  { id: 'SSF', label: 'SHAPY SHINE FANCY', carats: ['0.10', '0.30', '0.50'], prices: [50, 90, 145], retail: [180, 330, 450], minC: 2, cord: 'shine', housing: 'shapyShine' },
   { id: 'SSPF', label: 'SHAPY SPARKLE FANCY', carats: ['0.70', '1.00'], prices: [225, 300], retail: [550, 850], minC: 2, cord: 'silk' },
   { id: 'SSRG', label: 'SHAPY SPARKLE RND G/H', carats: ['0.50', '0.70', '1.00'], prices: [115, 145, 205], retail: [290, 360, 500], minC: 2, cord: 'silk' },
   { id: 'SSRD', label: 'SHAPY SPARKLE RND D VVS', carats: ['0.50', '0.70', '1.00'], prices: [180, 200, 285], retail: [550, 650, 850], minC: 2, cord: 'silk' },
-  { id: 'HOLY', label: 'HOLY (D VVS)', carats: ['0.50', '0.70', '1.00'], prices: [260, 425, 550], retail: [650, 1000, 1325], minC: 2, cord: 'holy' },
+  { id: 'HOLY', label: 'HOLY (D VVS)', carats: ['0.50', '0.70', '1.00'], prices: [260, 425, 550], retail: [650, 1000, 1325], minC: 2, cord: 'holy', housing: 'standard' },
 ]
+
+// ─── LOCAL QUOTE CALCULATION ───
+export function calculateQuote(lines) {
+  const qLines = lines
+    .filter((l) => l.collectionId && l.colors.length > 0)
+    .map((l) => {
+      const col = COLLECTIONS.find((c) => c.id === l.collectionId)
+      if (!col) return null
+      const ci = l.caratIdx !== null && l.caratIdx !== undefined ? l.caratIdx : 0
+      const totalQty = l.colors.length * l.qty
+      return {
+        product: col.label,
+        carat: col.carats[ci],
+        housing: l.housing || null,
+        colors: l.colors,
+        qtyPerColor: l.qty,
+        totalQty,
+        unitB2B: col.prices[ci],
+        lineTotal: totalQty * col.prices[ci],
+        retailUnit: col.retail[ci],
+        retailTotal: totalQty * col.retail[ci],
+      }
+    })
+    .filter(Boolean)
+
+  const subtotal = qLines.reduce((s, l) => s + l.lineTotal, 0)
+  const totalPieces = qLines.reduce((s, l) => s + l.totalQty, 0)
+  const discountPercent = subtotal >= 1600 ? 10 : 0
+  const discountAmount = Math.round((subtotal * discountPercent) / 100)
+  const total = subtotal - discountAmount
+  const totalRetail = qLines.reduce((s, l) => s + l.retailTotal, 0)
+
+  const warnings = []
+  if (subtotal > 0 && subtotal < 1600 && totalPieces < 100) {
+    warnings.push('Below minimum order (€1,600 or 100 pcs)')
+  }
+  lines
+    .filter((l) => l.collectionId)
+    .forEach((l) => {
+      const col = COLLECTIONS.find((c) => c.id === l.collectionId)
+      if (col && l.qty < col.minC) {
+        warnings.push(`${col.label}: ${l.qty}/color (recommended min: ${col.minC})`)
+      }
+    })
+
+  return {
+    lines: qLines,
+    subtotal,
+    discountPercent,
+    discountAmount,
+    total,
+    totalPieces,
+    totalRetail,
+    minimumMet: subtotal >= 1600 || totalPieces >= 100,
+    warnings,
+  }
+}
 
 // ─── CORD COLORS ───
 export const CORD_COLORS = {

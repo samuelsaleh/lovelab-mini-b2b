@@ -1,3 +1,5 @@
+import { colors } from '../lib/styles'
+
 export default function LoadingDots() {
   return (
     <div style={{ display: 'flex', gap: 4, padding: '8px 0' }}>
@@ -8,7 +10,7 @@ export default function LoadingDots() {
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: '#ccc',
+            background: colors.inkPlum,
             animation: `dot 1s ${i * 0.15}s infinite ease-in-out`,
           }}
         />
