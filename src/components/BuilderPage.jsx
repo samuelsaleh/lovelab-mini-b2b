@@ -44,9 +44,41 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
 
   const addLine = () => setLines((prev) => [...prev, mkLine()])
 
+  // Validation: check if a line is complete
+  const isLineComplete = (line) => {
+    if (!line.collectionId || line.caratIdx === null || line.colors.length === 0) return false
+    const col = COLLECTIONS.find((c) => c.id === line.collectionId)
+    if (!col) return false
+    
+    // Check required fields
+    if (col.housing && !line.housing) return false
+    if (col.shapes && !line.shape) return false
+    if (col.sizes && !line.size) return false
+    
+    return true
+  }
+
+  // Get missing fields for a line
+  const getMissingFields = (line) => {
+    const missing = []
+    if (!line.collectionId) return ['collection']
+    if (line.caratIdx === null) return ['carat']
+    
+    const col = COLLECTIONS.find((c) => c.id === line.collectionId)
+    if (!col) return []
+    
+    if (col.housing && !line.housing) missing.push('housing')
+    if (col.shapes && !line.shape) missing.push('shape')
+    if (col.sizes && !line.size) missing.push('size')
+    if (line.colors.length === 0) missing.push('colors')
+    
+    return missing
+  }
+
   // Live quote calculation
   const quote = calculateQuote(lines)
-  const hasContent = lines.some((l) => l.collectionId && l.colors.length > 0)
+  const hasContent = lines.some(isLineComplete)
+  const incompleteLines = lines.filter((l) => l.collectionId && !isLineComplete(l))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -105,6 +137,19 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote }) {
                 {quote.warnings.map((w, i) => (
                   <div key={i} style={{ fontSize: 10, color: '#c0392b' }}>⚠ {w}</div>
                 ))}
+              </div>
+            )}
+            {incompleteLines.length > 0 && (
+              <div style={{ marginTop: 2 }}>
+                {incompleteLines.map((l, i) => {
+                  const col = COLLECTIONS.find((c) => c.id === l.collectionId)
+                  const missing = getMissingFields(l)
+                  return (
+                    <div key={i} style={{ fontSize: 10, color: '#e67e22' }}>
+                      ⚠ Line {lines.findIndex((ln) => ln.uid === l.uid) + 1} ({col?.label}): missing {missing.join(', ')}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

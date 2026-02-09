@@ -9,9 +9,9 @@ export const colors = {
   primary: '#000000',
   accent: '#0070f3',
   
-  // Brand Colors (Updated for cleaner look)
-  inkPlum: '#222222', // Was #5D3A5E - Darkened for high contrast/cleaner look
-  luxeGold: '#c5a059', // Was #C9A665
+  // Brand Colors
+  inkPlum: '#5D3A5E', // Original brand plum
+  luxeGold: '#c5a059',
   
   // Legacy Brand Colors (Kept for compatibility)
   lumiereIvory: '#F8F5F2',
@@ -117,7 +117,7 @@ export const qInp = {
   fontSize: 13,
   outline: 'none',
   fontWeight: 600,
-  color: '#222',
+  color: colors.inkPlum,
   background: '#fff',
 }
 
@@ -126,7 +126,7 @@ export const qtyQuick = (active) => ({
   fontSize: 11,
   padding: '4px 8px',
   borderRadius: 4,
-  background: active ? '#222' : '#f0f0f0',
+  background: active ? colors.inkPlum : '#f0f0f0',
   color: active ? '#fff' : '#666',
   border: 'none',
   cursor: 'pointer',

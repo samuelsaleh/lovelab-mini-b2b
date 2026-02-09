@@ -68,6 +68,11 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   const selectedCarat = col && line.caratIdx !== null ? col.carats[line.caratIdx] : null
   const shapyShineBezelOnly = col?.housing === 'shapyShine' && selectedCarat === '0.10'
 
+  // Completion gates for progressive disclosure
+  const housingDone = !hasHousing || !!line.housing
+  const shapeDone = !hasShapes || !!line.shape
+  const sizeDone = !hasSizes || !!line.size
+
   // Auto-open next section when a selection is made (if it wasn't already open)
   // We use a small helper to update line AND move to next section
   const updateAndNext = (patch, nextSection) => {
@@ -345,7 +350,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
           )}
 
           {/* 4. Shape (Conditional) */}
-          {col && line.caratIdx !== null && hasShapes && (
+          {col && line.caratIdx !== null && housingDone && hasShapes && (
             <AccordionSection 
               label="Shape" 
               value={line.shape}
@@ -364,7 +369,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
           )}
 
           {/* 5. Size (Conditional) */}
-          {col && line.caratIdx !== null && hasSizes && (
+          {col && line.caratIdx !== null && housingDone && shapeDone && hasSizes && (
              <AccordionSection 
               label="Size" 
               value={line.size}
@@ -383,7 +388,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
           )}
 
           {/* 6. Colors & Qty - Final Step */}
-          {col && line.caratIdx !== null && (
+          {col && line.caratIdx !== null && housingDone && shapeDone && sizeDone && (
              <AccordionSection 
               label="Colors & Quantity" 
               value={line.colors.length > 0 ? `${line.colors.length} selected` : null}
