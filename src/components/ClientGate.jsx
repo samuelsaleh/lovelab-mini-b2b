@@ -85,7 +85,8 @@ export default function ClientGate({ client, setClient, onComplete }) {
         startVatValidation(vatForValidation)
       }
     } catch (err) {
-      setError('Lookup failed. Please try again or enter details manually.')
+      console.error('Company lookup error:', err)
+      setError(`Lookup failed: ${err.message || 'Unknown error'}. Please try again or enter details manually.`)
       setLoading(false)
     }
   }, [client.company, client.country, client.vat, canLookup, setClient, startVatValidation])
