@@ -63,6 +63,17 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
     })
   }
 
+  // Duplicate a color config (copy all settings, new id, insert right after)
+  const duplicateConfig = (cfgId) => {
+    const original = line.colorConfigs.find(c => c.id === cfgId)
+    if (!original) return
+    const copy = { ...original, id: Date.now() + Math.random() }
+    const idx = line.colorConfigs.findIndex(c => c.id === cfgId)
+    const updated = [...line.colorConfigs]
+    updated.splice(idx + 1, 0, copy)
+    set({ colorConfigs: updated })
+  }
+
   // Toggle same-for-all & update shared settings
   const handleSameForAllToggle = () => {
     const next = !sameForAll
@@ -414,7 +425,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     {hasSizes && <th style={thStyle}>Size</th>}
                     <th style={thStyle}>Qty</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
-                    <th style={{ ...thStyle, width: 30 }}></th>
+                    <th style={{ ...thStyle, width: 54 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -426,14 +437,22 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
 
                     return (
                       <tr key={cfg.id} style={{ borderBottom: '1px solid #f5f5f5' }}>
-                        {/* Color */}
+                        {/* Color (editable dropdown) */}
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{
                               width: 14, height: 14, borderRadius: '50%', background: colorDef.h,
                               border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0,
                             }} />
-                            <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{cfg.colorName}</span>
+                            <select
+                              value={cfg.colorName}
+                              onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })}
+                              style={{ ...selectStyle, fontWeight: 500, minWidth: 90 }}
+                            >
+                              {palette.map(c => (
+                                <option key={c.n} value={c.n}>{c.n}</option>
+                              ))}
+                            </select>
                           </div>
                         </td>
 
@@ -541,17 +560,30 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                           {rowTotal > 0 ? fmt(rowTotal) : '-'}
                         </td>
 
-                        {/* Remove */}
+                        {/* Duplicate + Remove */}
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
-                          <button
-                            onClick={() => removeConfig(cfg.id)}
-                            style={{
-                              background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
-                              fontSize: 14, padding: '2px 4px', transition: 'color .15s',
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                          >x</button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                            <button
+                              onClick={() => duplicateConfig(cfg.id)}
+                              title="Duplicate row"
+                              style={{
+                                background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
+                                fontSize: 12, padding: '2px 4px', transition: 'color .15s',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                            >+</button>
+                            <button
+                              onClick={() => removeConfig(cfg.id)}
+                              title="Remove row"
+                              style={{
+                                background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
+                                fontSize: 14, padding: '2px 4px', transition: 'color .15s',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                            >x</button>
+                          </div>
                         </td>
                       </tr>
                     )
