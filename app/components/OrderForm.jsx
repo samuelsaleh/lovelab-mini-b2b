@@ -9,16 +9,16 @@ import SaveDocumentModal from './SaveDocumentModal'
 const ROWS_PER_PAGE = 10
 
 const COLUMNS = [
-  { key: 'no', label: 'No.', width: 30 },
-  { key: 'quantity', label: 'Quantity', width: 52 },
-  { key: 'collection', label: 'Collection', width: 100 },
-  { key: 'carat', label: 'Carat (ct)', width: 58 },
-  { key: 'shape', label: 'Shape', width: 64 },
-  { key: 'bpColor', label: 'B / P / Color', width: 76 },
-  { key: 'size', label: 'Size', width: 44 },
-  { key: 'colorCord', label: 'Color Cord', width: 90 },
-  { key: 'unitPrice', label: 'Unit Price (€)', width: 74 },
-  { key: 'total', label: 'Total (€)', width: 74 },
+  { key: 'no', label: 'No.', width: 34 },
+  { key: 'quantity', label: 'Quantity', width: 58 },
+  { key: 'collection', label: 'Collection', width: 130 },
+  { key: 'carat', label: 'Carat (ct)', width: 64 },
+  { key: 'shape', label: 'Shape', width: 80 },
+  { key: 'bpColor', label: 'B / P / Color', width: 90 },
+  { key: 'size', label: 'Size', width: 50 },
+  { key: 'colorCord', label: 'Color Cord', width: 120 },
+  { key: 'unitPrice', label: 'Unit Price (€)', width: 90 },
+  { key: 'total', label: 'Total (€)', width: 90 },
 ]
 
 const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'bpColor', 'size', 'colorCord', 'unitPrice']
@@ -90,31 +90,96 @@ function prefillRows(quote) {
   return rows
 }
 
-// ─── Cell input ───
-function CellInput({ value, onChange, width, align, bold, color: clr }) {
+// ─── Printable input (renders as plain text div when printing to prevent clipping) ───
+function PrintableInput({ value, onChange, style, placeholder, isPrinting, type, ...rest }) {
+  if (isPrinting) {
+    return (
+      <div style={{
+        ...style,
+        border: 'none',
+        outline: 'none',
+        overflow: 'visible',
+        whiteSpace: 'nowrap',
+        minHeight: 16,
+      }}>
+        {value || ''}
+      </div>
+    )
+  }
+  return (
+    <input
+      type={type || 'text'}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      style={style}
+      {...rest}
+    />
+  )
+}
+
+// ─── Printable textarea ───
+function PrintableTextarea({ value, onChange, style, isPrinting, ...rest }) {
+  if (isPrinting) {
+    return (
+      <div style={{
+        ...style,
+        border: 'none',
+        overflow: 'visible',
+        whiteSpace: 'pre-wrap',
+        minHeight: 20,
+      }}>
+        {value || ''}
+      </div>
+    )
+  }
+  return (
+    <textarea value={value} onChange={onChange} style={style} {...rest} />
+  )
+}
+
+// ─── Cell input (renders as plain text when printing to avoid clipping) ───
+function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting }) {
+  const baseStyle = {
+    width: '100%',
+    fontFamily: fonts.body,
+    fontSize: 11,
+    padding: '4px 4px',
+    textAlign: align || 'left',
+    fontWeight: bold ? 700 : 400,
+    color: clr || colors.charcoal,
+    boxSizing: 'border-box',
+  }
+
+  if (isPrinting) {
+    return (
+      <div style={{
+        ...baseStyle,
+        overflow: 'visible',
+        whiteSpace: 'nowrap',
+        minHeight: 18,
+      }}>
+        {value || ''}
+      </div>
+    )
+  }
+
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        width: '100%',
+        ...baseStyle,
         border: 'none',
         outline: 'none',
         background: 'transparent',
-        fontFamily: fonts.body,
-        fontSize: 11,
-        padding: '4px 4px',
-        textAlign: align || 'left',
-        fontWeight: bold ? 700 : 400,
-        color: clr || colors.charcoal,
-        boxSizing: 'border-box',
       }}
     />
   )
 }
 
 // ─── Side Calculator ───
-function Calculator({ subtotal, onFinalTotalChange }) {
+function Calculator({ subtotal, onApplyToForm }) {
   const [discountPct, setDiscountPct] = useState('')
   const [discountFlat, setDiscountFlat] = useState('')
   const [deliveryCost, setDeliveryCost] = useState('')
@@ -218,7 +283,21 @@ function Calculator({ subtotal, onFinalTotalChange }) {
       </div>
 
       <button
-        onClick={() => onFinalTotalChange(calc.final)}
+        onClick={() => {
+          // Build a discount display string from calculator inputs
+          let discountStr = ''
+          const pct = Number(discountPct) || 0
+          const flat = Number(discountFlat) || 0
+          if (pct > 0 && flat > 0) {
+            // Both: show total discount as flat amount
+            discountStr = `€${(calc.pctOff + flat).toFixed(0)}`
+          } else if (pct > 0) {
+            discountStr = `${pct}%`
+          } else if (flat > 0) {
+            discountStr = `€${flat}`
+          }
+          onApplyToForm({ finalTotal: calc.final, discountDisplay: discountStr })
+        }}
         style={{
           width: '100%', marginTop: 10, padding: 10, borderRadius: 8, border: 'none',
           background: colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700,
@@ -237,6 +316,7 @@ function Calculator({ subtotal, onFinalTotalChange }) {
 export default function OrderForm({ quote, client, onClose, currentUser }) {
   const printRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
 
   // Client info state (editable)
   const [companyName, setCompanyName] = useState(client?.company || '')
@@ -347,7 +427,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
     setFinalTotalOverride(null)
   }, [])
 
-  // Split rows into pages
+  // Split rows into pages (for interactive editing - includes empty rows)
   const pages = useMemo(() => {
     const p = []
     for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
@@ -356,12 +436,43 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
     return p
   }, [rows])
 
-  const handlePrint = () => {
+  // Split rows into pages for printing (only filled rows)
+  const printPages = useMemo(() => {
+    const filledRows = rows.filter(r => isRowFilled(r))
+    if (filledRows.length === 0) return [[emptyRow(1)]] // at least one row
+    const p = []
+    for (let i = 0; i < filledRows.length; i += ROWS_PER_PAGE) {
+      p.push(filledRows.slice(i, i + ROWS_PER_PAGE))
+    }
+    return p
+  }, [rows])
+
+  // Choose which pages to display based on print mode
+  const displayPages = isPrinting ? printPages : pages
+
+  const handlePrint = async () => {
+    setIsPrinting(true)
+    // Wait for React to re-render with print layout
+    await new Promise(r => setTimeout(r, 150))
     window.print()
+    setIsPrinting(false)
   }
 
-  const handleFinalTotalFromCalc = useCallback((val) => {
+  const handleBeforePrint = useCallback(() => {
+    setIsPrinting(true)
+    // Return a promise that resolves after re-render
+    return new Promise(r => setTimeout(r, 150))
+  }, [])
+
+  const handleAfterPrint = useCallback(() => {
+    setIsPrinting(false)
+  }, [])
+
+  const handleApplyFromCalc = useCallback(({ finalTotal: val, discountDisplay: disc }) => {
     setFinalTotalOverride(val)
+    if (disc) {
+      setDiscountDisplay(disc)
+    }
   }, [])
 
   // ─── Header field style ───
@@ -416,6 +527,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
         clientCompany={companyName}
         totalAmount={afterDiscount || finalTotal}
         eventName={eventName}
+        onBeforePrint={handleBeforePrint}
+        onAfterPrint={handleAfterPrint}
         metadata={{
           rowCount: rows.filter(r => isRowFilled(r)).length,
           hasPrepayment,
@@ -550,9 +663,9 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
         {/* Pages */}
         <div id="order-form-print" ref={printRef} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {pages.map((pageRows, pageIdx) => (
+          {displayPages.map((pageRows, pageIdx) => (
             <div key={pageIdx} className="order-form-page" style={{
-              width: 760,
+              width: 1020,
               background: '#fff',
               borderRadius: 4,
               boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
@@ -566,21 +679,21 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   <img src="/logo.png" alt="LoveLab" style={{ height: 50, width: 'auto', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
-                    <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} />
+                    <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Contact Name :</div>
-                    <input value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} />
+                    <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Address :</div>
-                    <input value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} />
-                    <input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} />
-                    <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} />
+                    <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
+                    <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+                    <PrintableInput value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
                   </div>
                 </div>
                 {/* Right header fields */}
-                <div style={{ minWidth: 200, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ minWidth: 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
-                      <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={hFieldInput} />
+                      <PrintableInput value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                     </div>
                     {vatValid != null && (
                       <span style={{
@@ -595,19 +708,19 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   </div>
                   <div>
                     <div style={hFieldLabel}>E-mail :</div>
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} style={hFieldInput} />
+                    <PrintableInput value={email} onChange={(e) => setEmail(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Phone :</div>
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} />
+                    <PrintableInput value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Event / Fair :</div>
-                    <input value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="e.g. Munich 2026" style={hFieldInput} />
+                    <PrintableInput value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="e.g. Munich 2026" style={hFieldInput} isPrinting={isPrinting} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Order by (LoveLab) :</div>
-                    <input value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} style={hFieldInput} />
+                    <PrintableInput value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                   </div>
                 </div>
               </div>
@@ -616,10 +729,11 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Date :</span>
-                  <input
+                  <PrintableInput
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     style={{ ...hFieldInput, width: 120, borderBottom: `1px solid ${colors.lineGray}` }}
+                    isPrinting={isPrinting}
                   />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -645,7 +759,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                 </div>
                 {pageIdx > 0 && (
                   <span style={{ fontSize: 9, color: colors.lovelabMuted, marginLeft: 'auto' }}>
-                    Page {pageIdx + 1} of {pages.length}
+                    Page {pageIdx + 1} of {displayPages.length}
                   </span>
                 )}
               </div>
@@ -656,19 +770,22 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
                   ))}
-                  <col className="order-form-dup-col" style={{ width: 72 }} />
+                  {!isPrinting && <col className="order-form-dup-col" style={{ width: 72 }} />}
                 </colgroup>
                 <thead>
                   <tr>
                     {COLUMNS.map((col) => (
                       <th key={col.key} style={thStyle}>{col.label}</th>
                     ))}
-                    <th className="order-form-dup-col" style={{ ...thStyle, borderBottom: 'none' }} />
+                    {!isPrinting && <th className="order-form-dup-col" style={{ ...thStyle, borderBottom: 'none' }} />}
                   </tr>
                 </thead>
                 <tbody>
                   {pageRows.map((row, rowIdx) => {
-                    const globalIdx = pageIdx * ROWS_PER_PAGE + rowIdx
+                    // When printing, find the real index in the full rows array
+                    const globalIdx = isPrinting
+                      ? rows.findIndex(r => r === row)
+                      : pageIdx * ROWS_PER_PAGE + rowIdx
                     return (
                       <tr key={globalIdx}>
                         {COLUMNS.map((col) => (
@@ -683,9 +800,11 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                               align={['quantity', 'unitPrice', 'total', 'no', 'carat'].includes(col.key) ? 'center' : 'left'}
                               bold={col.key === 'total'}
                               color={col.key === 'total' ? colors.inkPlum : colors.charcoal}
+                              isPrinting={isPrinting}
                             />
                           </td>
                         ))}
+                        {!isPrinting && (
                         <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: 72, verticalAlign: 'middle' }}>
                           {isRowFilled(row) && (
                             <div style={{ display: 'flex', gap: 2, marginLeft: 3 }}>
@@ -737,21 +856,22 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                             </div>
                           )}
                         </td>
+                        )}
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
 
-              {/* ─── Remarks + Final Total (last page only) ─── */}
-              {pageIdx === pages.length - 1 && (
+              {/* ─── Remarks + Final Total (first page when printing, last page when editing) ─── */}
+              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                   borderTop: `2px solid ${colors.inkPlum}`, marginTop: 0, paddingTop: 8,
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>Remarks</div>
-                    <textarea
+                    <PrintableTextarea
                       value={remarks}
                       onChange={(e) => setRemarks(e.target.value)}
                       style={{
@@ -760,6 +880,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                         outline: 'none', resize: 'vertical', color: colors.charcoal, background: 'transparent',
                         boxSizing: 'border-box',
                       }}
+                      isPrinting={isPrinting}
                     />
                   </div>
                   <div style={{ textAlign: 'right', minWidth: 200 }}>
@@ -767,7 +888,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                     <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
                       {afterDiscount != null ? 'Total Before Discount (€)' : 'Final Total (€)'}
                     </div>
-                    <input
+                    <PrintableInput
                       value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
                       onChange={(e) => setFinalTotalOverride(Number(e.target.value) || 0)}
                       style={{
@@ -780,12 +901,14 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                         fontFamily: fonts.body, background: 'transparent', width: 150,
                         textDecoration: afterDiscount != null ? 'line-through' : 'none',
                       }}
+                      isPrinting={isPrinting}
                     />
 
-                    {/* Discount input */}
+                    {/* Discount input (hidden in PDF when no discount applied) */}
+                    {(!isPrinting || afterDiscount != null) && (
                     <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                       <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal }}>Discount:</span>
-                      <input
+                      <PrintableInput
                         value={discountDisplay}
                         onChange={(e) => setDiscountDisplay(e.target.value)}
                         placeholder="e.g. 10% or €500"
@@ -795,8 +918,10 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                           fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
                           background: 'transparent', boxSizing: 'border-box', textAlign: 'right',
                         }}
+                        isPrinting={isPrinting}
                       />
                     </div>
+                    )}
 
                     {/* After Discount total */}
                     {afterDiscount != null && (
@@ -817,8 +942,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                 </div>
               )}
 
-              {/* ─── Prepayment / Discount / Gift (last page only) ─── */}
-              {pageIdx === pages.length - 1 && (
+              {/* ─── Prepayment / Discount / Gift (first page when printing, last page when editing) ─── */}
+              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
                 <div style={{
                   display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start',
                   marginTop: 12, padding: '10px 0',
@@ -834,7 +959,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                     />
                     <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, whiteSpace: 'nowrap' }}>Prepayment made</span>
                     {hasPrepayment && (
-                      <input
+                      <PrintableInput
                         value={prepaymentAmount}
                         onChange={(e) => setPrepaymentAmount(e.target.value)}
                         placeholder="€ amount"
@@ -844,14 +969,15 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                           fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
                           background: 'transparent', boxSizing: 'border-box',
                         }}
+                        isPrinting={isPrinting}
                       />
                     )}
                   </div>
                 </div>
               )}
 
-              {/* ─── Footer (last page only) ─── */}
-              {pageIdx === pages.length - 1 && (
+              {/* ─── Footer (first page when printing, last page when editing) ─── */}
+              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
                 <div style={{ marginTop: 16 }}>
                   {/* Legal text */}
                   <div style={{ fontSize: 8, color: colors.lovelabMuted, lineHeight: 1.6, marginBottom: 16 }}>
@@ -889,11 +1015,12 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
           ))}
 
           {/* Add page button (hidden in print) */}
+          {!isPrinting && (
           <button
             className="order-form-add-page"
             onClick={addPage}
             style={{
-              width: 760, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
+              width: 1020, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
               background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600,
               color: '#888', fontFamily: fonts.body, marginBottom: 40, transition: 'all .12s',
             }}
@@ -902,10 +1029,11 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
           >
             + Add another page (10 rows)
           </button>
+          )}
         </div>
 
         {/* Side Calculator */}
-        <Calculator subtotal={subtotal} onFinalTotalChange={handleFinalTotalFromCalc} />
+        <Calculator subtotal={subtotal} onApplyToForm={handleApplyFromCalc} />
       </div>
     </div>
   )

@@ -14,6 +14,8 @@ export default function SaveDocumentModal({
   clientCompany,
   totalAmount,
   eventName: defaultEventName = '',
+  onBeforePrint,
+  onAfterPrint,
   metadata = {},
 }) {
   const [events, setEvents] = useState([]);
@@ -103,6 +105,11 @@ export default function SaveDocumentModal({
     setError(null);
 
     try {
+      // Switch to print layout (hide empty rows, show summary on page 1)
+      if (onBeforePrint) {
+        await onBeforePrint();
+      }
+
       // Generate PDF
       console.log('Generating PDF...');
       const filename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
@@ -111,33 +118,60 @@ export default function SaveDocumentModal({
       try {
         pdfBlob = await generatePDF(elementRef.current, filename, {
           orientation: 'landscape',
-          scale: 2,
         });
         console.log('PDF generated, size:', pdfBlob.size);
       } catch (pdfError) {
         console.error('PDF generation error:', pdfError);
         throw new Error('Failed to generate PDF: ' + pdfError.message);
+      } finally {
+        // Restore interactive layout
+        if (onAfterPrint) {
+          onAfterPrint();
+        }
       }
 
-      // Upload to Supabase Storage via server-side API
+      // Upload to Supabase Storage via server-side API (with retry)
       console.log('Uploading to Supabase...');
       const folder = selectedEventId && selectedEventId.trim() !== '' ? selectedEventId : 'no-event';
       const filePath = `${folder}/${filename}.pdf`;
       
-      const formData = new FormData();
-      formData.append('file', pdfBlob, `${filename}.pdf`);
-      formData.append('filePath', filePath);
+      const maxRetries = 3;
+      let uploadResult = null;
+      let uploadRes = null;
       
-      const uploadRes = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const formData = new FormData();
+          formData.append('file', pdfBlob, `${filename}.pdf`);
+          formData.append('filePath', filePath);
+          
+          uploadRes = await fetch('/api/documents/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          uploadResult = await uploadRes.json();
+          console.log(`Upload attempt ${attempt} result:`, uploadResult);
+          
+          if (uploadRes.ok && !uploadResult.error) {
+            break; // Success
+          }
+          
+          if (attempt < maxRetries) {
+            console.log(`Upload attempt ${attempt} failed, retrying in 1s...`);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        } catch (fetchErr) {
+          console.log(`Upload attempt ${attempt} network error:`, fetchErr.message);
+          if (attempt === maxRetries) {
+            throw new Error('Upload failed after ' + maxRetries + ' attempts: ' + fetchErr.message);
+          }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
       
-      const uploadResult = await uploadRes.json();
-      console.log('Upload result:', uploadResult);
-      
-      if (!uploadRes.ok || uploadResult.error) {
-        throw new Error('Upload failed: ' + (uploadResult.error || 'Unknown error'));
+      if (!uploadRes?.ok || uploadResult?.error) {
+        throw new Error('Upload failed: ' + (uploadResult?.error || 'Unknown error'));
       }
 
       // Save document metadata
