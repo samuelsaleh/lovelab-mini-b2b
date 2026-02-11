@@ -6,6 +6,7 @@ import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
+import { useI18n } from '@/lib/i18n'
 
 // ─── Exported helpers (used by App.jsx) ───
 export function mkColorConfig(colorName, minC = 3) {
@@ -48,9 +49,64 @@ const btnGhost = {
   cursor: 'pointer', fontFamily: 'inherit', transition: 'color .15s',
 }
 
+// ─── Quick-fill Presets ───
+const PRESETS = [
+  { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
+  { collectionId: 'CUBIX', housing: 'White Gold', size: 'S/M', caratIndices: [0, 1] },
+]
+
+// ─── Collapsible warnings: shows a compact summary when there are many ───
+function WarningsSummary({ warnings }) {
+  const [expanded, setExpanded] = useState(false)
+  const { t } = useI18n()
+  const count = warnings.length
+  const COLLAPSE_THRESHOLD = 3
+
+  if (count <= COLLAPSE_THRESHOLD) {
+    // Few warnings -- show them inline
+    return (
+      <div style={{ marginBottom: 4 }}>
+        {warnings.map((w, i) => (
+          <div key={i} style={{ fontSize: 11, color: '#c0392b', marginBottom: 2 }}>! {w}</div>
+        ))}
+      </div>
+    )
+  }
+
+  // Many warnings -- show collapsed summary with expand toggle
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+          background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6,
+          padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#c0392b', flex: 1, textAlign: 'left' }}>
+          {t('builder.colorsBelowMinQty').replace('{count}', count)}
+        </span>
+        <span style={{ fontSize: 10, color: '#c0392b', transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          ▾
+        </span>
+      </button>
+      {expanded && (
+        <div style={{ maxHeight: 80, overflowY: 'auto', marginTop: 4, paddingLeft: 4 }}>
+          {warnings.map((w, i) => (
+            <div key={i} style={{ fontSize: 10, color: '#c0392b', marginBottom: 2 }}>! {w}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations }) {
   const mobile = useIsMobile()
+  const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
   
   // Step: 'select' (collection grid) or 'configure' (config view)
   const [step, setStep] = useState(() => {
@@ -124,6 +180,44 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       return next.length > 0 ? next : [mkLine()]
     })
   }, [setLines])
+
+  // Apply a quick-fill preset
+  const applySuggestion = useCallback((preset) => {
+    const col = COLLECTIONS.find(c => c.id === preset.collectionId)
+    if (!col) return
+    const palette = CORD_COLORS[col.cord] || []
+
+    // Build colorConfigs: for each color, one entry per carat index
+    const configs = []
+    palette.forEach(color => {
+      preset.caratIndices.forEach(caratIdx => {
+        configs.push({
+          ...mkColorConfig(color.n, col.minC),
+          caratIdx,
+          housing: preset.housing,
+          size: preset.size,
+        })
+      })
+    })
+
+    // Find or create line for this collection
+    setLines(prev => {
+      const existing = prev.find(l => l.collectionId === preset.collectionId)
+      if (existing) {
+        return prev.map(l => l.uid === existing.uid ? { ...l, colorConfigs: configs } : l)
+      }
+      const newLine = { uid: Date.now() + Math.random(), collectionId: preset.collectionId, colorConfigs: configs, expanded: true }
+      const cleaned = prev.filter(l => l.collectionId !== null)
+      return [...cleaned, newLine]
+    })
+
+    // Ensure collection is in selectedCollections
+    setSelectedCollections(prev =>
+      prev.includes(preset.collectionId) ? prev : [...prev, preset.collectionId]
+    )
+    setShowSuggestions(false)
+    setStep('configure')
+  }, [setLines, setSelectedCollections])
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -381,9 +475,66 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       Add colors and set options for each collection
                     </p>
                   </div>
-                  <button onClick={goToSelect} style={btnGhost}>
-                    ← Edit Collections
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setShowSuggestions(v => !v)}
+                        style={{
+                          ...btnSecondary,
+                          padding: '8px 14px', fontSize: 12,
+                          background: showSuggestions ? '#fdf7fa' : '#fff',
+                        }}
+                      >
+                        ★ {t('builder.suggestions')}
+                      </button>
+                      {showSuggestions && (
+                        <div style={{
+                          position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                          width: mobile ? 260 : 320, background: '#fff', borderRadius: 12,
+                          border: '1px solid #e8e8e8', boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+                          zIndex: 100, padding: 12,
+                        }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
+                            {t('builder.quickFillPresets')}
+                          </div>
+                          {PRESETS.map(preset => {
+                            const col = COLLECTIONS.find(c => c.id === preset.collectionId)
+                            if (!col) return null
+                            const colorCount = (CORD_COLORS[col.cord] || []).length
+                            const caratLabels = preset.caratIndices.map(i => col.carats[i]).join(' + ')
+                            return (
+                              <button
+                                key={preset.collectionId}
+                                onClick={() => applySuggestion(preset)}
+                                style={{
+                                  display: 'block', width: '100%', textAlign: 'left',
+                                  padding: '10px 12px', marginBottom: 6, borderRadius: 8,
+                                  border: '1px solid #eee', background: '#fafaf8',
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                  transition: 'all .12s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.background = '#fdf7fa' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#eee'; e.currentTarget.style.background = '#fafaf8' }}
+                              >
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 3 }}>
+                                  {col.label}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
+                                  {t('builder.suggestionDesc').replace('{count}', colorCount).replace('{carats}', caratLabels)}
+                                </div>
+                                <div style={{ fontSize: 10, color: '#aaa' }}>
+                                  {t('builder.whiteHousingSize').replace('{housing}', preset.housing).replace('{size}', preset.size)}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={goToSelect} style={btnGhost}>
+                      ← Edit Collections
+                    </button>
+                  </div>
                 </div>
 
                 {/* Collection config panels */}
@@ -523,7 +674,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
 
         {/* Totals */}
-        <div style={{ borderTop: '1px solid #eaeaea', padding: '12px 16px' }}>
+        <div style={{ borderTop: '1px solid #eaeaea', padding: '12px 16px', maxHeight: '45vh', overflowY: 'auto' }}>
           {quote.discountPercent > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
               <span style={{ color: '#27ae60', fontWeight: 600 }}>Discount ({quote.discountPercent}%)</span>
@@ -540,10 +691,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             </div>
           )}
 
-          {/* Warnings */}
-          {quote.warnings.map((w, i) => (
-            <div key={i} style={{ fontSize: 11, color: '#c0392b', marginBottom: 4 }}>! {w}</div>
-          ))}
+          {/* Warnings -- collapsed when more than 3 */}
+          {quote.warnings.length > 0 && (
+            <WarningsSummary warnings={quote.warnings} />
+          )}
 
           {hasBudget && hasSpending && (
             <div style={{
