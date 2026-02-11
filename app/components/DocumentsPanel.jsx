@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
+import ConfirmDialog from './ConfirmDialog'
 
 export default function DocumentsPanel() {
   const mobile = useIsMobile()
+  const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
   const [events, setEvents] = useState([])
   const [documents, setDocuments] = useState([])
@@ -15,6 +18,8 @@ export default function DocumentsPanel() {
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [newEventName, setNewEventName] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(null) // doc to delete
+  const [errorMsg, setErrorMsg] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -32,7 +37,6 @@ export default function DocumentsPanel() {
       if (eventsData.events) setEvents(eventsData.events)
       if (docsData.documents) setDocuments(docsData.documents)
     } catch (err) {
-      console.error('Error fetching data:', err)
     }
     setLoading(false)
   }
@@ -52,7 +56,6 @@ export default function DocumentsPanel() {
         setShowNewEvent(false)
       }
     } catch (err) {
-      console.error('Error creating event:', err)
     }
   }
 
@@ -72,8 +75,7 @@ export default function DocumentsPanel() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } catch (err) {
-      console.error('Download error:', err)
-      alert('Failed to download document: ' + err.message)
+      setErrorMsg(t('docs.downloadFailed') + ': ' + err.message)
     }
   }
 
@@ -84,21 +86,25 @@ export default function DocumentsPanel() {
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to get preview URL')
       window.open(data.signedUrl, '_blank')
     } catch (err) {
-      console.error('Preview error:', err)
-      alert('Failed to preview document: ' + err.message)
+      setErrorMsg(err.message)
     }
   }
 
-  const deleteDocument = async (doc) => {
-    if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return
+  const requestDelete = (doc) => {
+    setConfirmDelete(doc)
+  }
+
+  const executeDelete = async () => {
+    if (!confirmDelete) return
+    const doc = confirmDelete
+    setConfirmDelete(null)
     try {
       const res = await fetch(`/api/documents/${doc.id}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete')
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
-      console.error('Delete error:', err)
-      alert('Failed to delete document: ' + err.message)
+      setErrorMsg(t('docs.deleteFailed') + ': ' + err.message)
     }
   }
 
@@ -362,8 +368,8 @@ export default function DocumentsPanel() {
                     }}
                   >Download</button>
                   <button
-                    onClick={() => deleteDocument(doc)}
-                    title="Delete"
+                    onClick={() => requestDelete(doc)}
+                    title={t('docs.delete')}
                     style={{
                       padding: mobile ? '10px 12px' : '7px 10px', borderRadius: 6, border: '1px solid #fecaca',
                       background: '#fef2f2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
@@ -376,6 +382,30 @@ export default function DocumentsPanel() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title={t('docs.delete')}
+        message={confirmDelete ? t('docs.confirmDelete', { name: confirmDelete.file_name }) : ''}
+        confirmLabel={t('docs.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+        onConfirm={executeDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Error Dialog */}
+      <ConfirmDialog
+        isOpen={!!errorMsg}
+        title={t('common.error')}
+        message={errorMsg || ''}
+        confirmLabel="OK"
+        cancelLabel=""
+        variant="info"
+        onConfirm={() => setErrorMsg(null)}
+        onCancel={() => setErrorMsg(null)}
+      />
     </div>
   )
 }

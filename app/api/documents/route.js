@@ -24,20 +24,22 @@ export async function GET(request) {
       query = query.eq('event_id', eventId);
     }
 
-    if (search) {
-      query = query.or(`client_name.ilike.%${search}%,client_company.ilike.%${search}%`);
+    if (search && search.trim()) {
+      // Sanitize search input: escape PostgREST special characters
+      const sanitized = search.trim().replace(/[,.()"'\\%_]/g, '');
+      if (sanitized) {
+        query = query.or(`client_name.ilike.%${sanitized}%,client_company.ilike.%${sanitized}%`);
+      }
     }
 
     const { data: documents, error } = await query;
 
     if (error) {
-      console.error('Error fetching documents:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ documents });
   } catch (error) {
-    console.error('Documents GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -87,13 +89,11 @@ export async function POST(request) {
       .single();
 
     if (error) {
-      console.error('Error creating document:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ document });
   } catch (error) {
-    console.error('Documents POST error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

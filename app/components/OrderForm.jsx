@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
@@ -318,8 +318,44 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 export default function OrderForm({ quote, client, onClose, currentUser }) {
   const mobile = useIsMobile()
   const printRef = useRef(null)
+  const scrollAreaRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
+
+  // Scroll to top when form opens (fixes iOS not showing header)
+  useEffect(() => {
+    const scrollToTop = () => {
+      if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTop = 0
+      }
+    }
+    // Immediate attempt
+    scrollToTop()
+    // After next paint (iOS needs this to account for layout)
+    requestAnimationFrame(() => {
+      scrollToTop()
+      // One more after the frame paints (belt-and-suspenders for iOS Safari)
+      requestAnimationFrame(scrollToTop)
+    })
+    // Final fallback after a short delay for slow iOS renders
+    const timer = setTimeout(scrollToTop, 100)
+
+    // Prevent body from scrolling behind the overlay on iOS
+    const scrollY = window.scrollY
+    document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    document.body.style.top = `-${scrollY}px`
+
+    return () => {
+      clearTimeout(timer)
+      document.body.style.overflow = ''
+      document.body.style.position = ''
+      document.body.style.width = ''
+      document.body.style.top = ''
+      window.scrollTo(0, scrollY)
+    }
+  }, [])
 
   // Client info state (editable)
   const [companyName, setCompanyName] = useState(client?.company || '')
@@ -520,13 +556,11 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
   return (
     <div id="order-form-print-wrapper" style={{
-      position: mobile ? 'absolute' : 'fixed',
-      inset: 0,
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
       zIndex: 300,
       background: '#f0eeec',
       display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-      ...(mobile ? { height: '100dvh', minHeight: '100vh' } : {}),
     }}>
       <SaveDocumentModal
         isOpen={showSaveModal}
@@ -686,7 +720,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
       </div>
 
       {/* Main content: form pages + calculator */}
-      <div id="order-form-scroll-area" style={{ 
+      <div id="order-form-scroll-area" ref={scrollAreaRef} style={{ 
         flex: 1, 
         overflow: 'auto', 
         WebkitOverflowScrolling: 'touch',
@@ -701,22 +735,25 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
         {/* Pages */}
         <div id="order-form-print" ref={printRef} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {displayPages.map((pageRows, pageIdx) => (
+          {displayPages.map((pageRows, pageIdx) => {
+            // When printing, use desktop layout even on mobile (PDF is captured at 1020px)
+            const compact = mobile && !isPrinting
+            return (
             <div key={pageIdx} className="order-form-page" style={{
               width: '100%',
               maxWidth: 1020,
               background: '#fff',
               borderRadius: 4,
-              boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-              padding: mobile ? '16px 12px 14px' : '24px 28px 18px',
+              boxShadow: isPrinting ? 'none' : '0 1px 6px rgba(0,0,0,0.08)',
+              padding: compact ? '16px 12px 14px' : '24px 28px 18px',
               boxSizing: 'border-box',
-              overflowX: mobile ? 'auto' : 'visible',
+              overflowX: compact ? 'auto' : 'visible',
             }}>
               {/* ─── Page Header ─── */}
-              <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 12, gap: mobile ? 12 : 16 }}>
+              <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 12, gap: compact ? 12 : 16 }}>
                 {/* Logo + left header fields */}
-                <div style={{ display: 'flex', gap: mobile ? 12 : 16, alignItems: 'flex-start', flex: 1 }}>
-                  <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 40 : 50, width: 'auto', flexShrink: 0 }} />
+                <div style={{ display: 'flex', gap: compact ? 12 : 16, alignItems: 'flex-start', flex: 1 }}>
+                  <img src="/logo.png" alt="LoveLab" style={{ height: compact ? 40 : 50, width: 'auto', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
                     <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
@@ -729,7 +766,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   </div>
                 </div>
                 {/* Right header fields */}
-                <div style={{ minWidth: mobile ? 0 : 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ minWidth: compact ? 0 : 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
@@ -806,7 +843,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
               {/* ─── Order Table ─── */}
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', minWidth: mobile ? 900 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+              <table style={{ width: '100%', minWidth: compact ? 900 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <colgroup>
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
@@ -1054,7 +1091,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                 </div>
               )}
             </div>
-          ))}
+          )})}
 
           {/* Add page button (hidden in print) */}
           {!isPrinting && (

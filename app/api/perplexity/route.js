@@ -1,11 +1,50 @@
+import { createClient } from '@/lib/supabase/server'
+import { rateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
+
+// Allowed models whitelist
+const ALLOWED_MODELS = [
+  'sonar',
+  'sonar-pro',
+  'sonar-reasoning',
+  'sonar-reasoning-pro',
+]
+
+const MAX_TOKENS_LIMIT = 2048
 
 export async function POST(request) {
   try {
+    // Rate limit: 10 requests per minute per IP
+    const rl = rateLimit(request, { maxRequests: 10, windowMs: 60_000, prefix: 'perplexity' })
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
+      )
+    }
+
+    // Authentication check
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
-    
-    console.log('[Perplexity] Request model:', body.model)
-    
+
+    // Validate model
+    if (body.model && !ALLOWED_MODELS.includes(body.model)) {
+      return NextResponse.json(
+        { error: `Model not allowed. Allowed: ${ALLOWED_MODELS.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Cap max_tokens
+    if (body.max_tokens && body.max_tokens > MAX_TOKENS_LIMIT) {
+      body.max_tokens = MAX_TOKENS_LIMIT
+    }
+
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -17,22 +56,14 @@ export async function POST(request) {
     
     const data = await response.json()
     
-    // Log the full response for debugging
-    const content = data.choices?.[0]?.message?.content || ''
-    const citations = data.citations || []
-    console.log('[Perplexity] Status:', response.status, '| Model:', body.model)
-    console.log('[Perplexity] Content:', content.substring(0, 800))
-    console.log('[Perplexity] Citations:', citations.length > 0 ? citations.join(', ') : 'NONE')
-    
     if (!response.ok || data.error) {
-      console.error('[Perplexity] Error:', JSON.stringify(data).substring(0, 500))
+      console.error('[Perplexity] Error status:', response.status)
     }
     
     return NextResponse.json(data, { status: response.status })
   } catch (err) {
-    console.error('[Perplexity] Fetch error:', err.message)
     return NextResponse.json(
-      { error: err.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

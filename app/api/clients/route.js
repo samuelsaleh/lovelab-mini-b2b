@@ -20,19 +20,21 @@ export async function GET(request) {
       .order('updated_at', { ascending: false });
 
     if (search && search.trim()) {
-      query = query.or(`company.ilike.%${search.trim()}%,name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`);
+      // Sanitize search input: escape PostgREST special characters (commas, dots, parentheses)
+      const sanitized = search.trim().replace(/[,.()"'\\%_]/g, '');
+      if (sanitized) {
+        query = query.or(`company.ilike.%${sanitized}%,name.ilike.%${sanitized}%,email.ilike.%${sanitized}%`);
+      }
     }
 
     const { data: clients, error } = await query.limit(50);
 
     if (error) {
-      console.error('Error fetching clients:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ clients });
   } catch (error) {
-    console.error('Clients GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -76,7 +78,6 @@ export async function POST(request) {
         .single();
 
       if (error) {
-        console.error('Error updating client:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
@@ -103,14 +104,12 @@ export async function POST(request) {
         .single();
 
       if (error) {
-        console.error('Error creating client:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
       return NextResponse.json({ client });
     }
   } catch (error) {
-    console.error('Clients POST error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -65,7 +65,6 @@ export default function SaveDocumentModal({
         }
       }
     } catch (err) {
-      console.error('Error fetching events:', err);
     }
     setLoading(false);
   };
@@ -111,7 +110,6 @@ export default function SaveDocumentModal({
       }
 
       // Generate PDF
-      console.log('Generating PDF...');
       const filename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
       
       let pdfBlob;
@@ -119,9 +117,7 @@ export default function SaveDocumentModal({
         pdfBlob = await generatePDF(elementRef.current, filename, {
           orientation: 'landscape',
         });
-        console.log('PDF generated, size:', pdfBlob.size);
       } catch (pdfError) {
-        console.error('PDF generation error:', pdfError);
         throw new Error('Failed to generate PDF: ' + pdfError.message);
       } finally {
         // Restore interactive layout
@@ -131,7 +127,6 @@ export default function SaveDocumentModal({
       }
 
       // Upload to Supabase Storage via server-side API (with retry)
-      console.log('Uploading to Supabase...');
       const folder = selectedEventId && selectedEventId.trim() !== '' ? selectedEventId : 'no-event';
       const filePath = `${folder}/${filename}.pdf`;
       
@@ -151,18 +146,15 @@ export default function SaveDocumentModal({
           });
           
           uploadResult = await uploadRes.json();
-          console.log(`Upload attempt ${attempt} result:`, uploadResult);
           
           if (uploadRes.ok && !uploadResult.error) {
             break; // Success
           }
           
           if (attempt < maxRetries) {
-            console.log(`Upload attempt ${attempt} failed, retrying in 1s...`);
             await new Promise(r => setTimeout(r, 1000));
           }
         } catch (fetchErr) {
-          console.log(`Upload attempt ${attempt} network error:`, fetchErr.message);
           if (attempt === maxRetries) {
             throw new Error('Upload failed after ' + maxRetries + ' attempts: ' + fetchErr.message);
           }
@@ -201,7 +193,6 @@ export default function SaveDocumentModal({
         onClose();
       }, 1500);
     } catch (err) {
-      console.error('Save error:', err);
       setError(err.message || 'Failed to save document');
     }
     setSaving(false);
@@ -210,7 +201,12 @@ export default function SaveDocumentModal({
   if (!isOpen) return null;
 
   return (
-    <div style={{
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={documentType === 'order' ? 'Save order' : 'Save quote'}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !saving) onClose() }}
+      style={{
       position: 'fixed',
       inset: 0,
       zIndex: 400,

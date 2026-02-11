@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import { colors, fonts, inp, lbl } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { useI18n } from '@/lib/i18n'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '@/lib/vat'
 import { lookupCompany } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
@@ -14,6 +15,7 @@ import UserMenu from './UserMenu'
  * User can search for saved clients or enter new ones.
  */
 export default function ClientGate({ client, setClient, onComplete }) {
+  const { t } = useI18n()
   const [loading, setLoading] = useState(false)
   const [viesLoading, setViesLoading] = useState(false)
   const [error, setError] = useState('')
@@ -46,7 +48,6 @@ export default function ClientGate({ client, setClient, onComplete }) {
       const data = await res.json()
       if (data.clients) setSavedClients(data.clients)
     } catch (err) {
-      console.error('Error fetching clients:', err)
     }
     setClientsLoading(false)
   }
@@ -108,7 +109,6 @@ export default function ClientGate({ client, setClient, onComplete }) {
         setClient(prev => ({ ...prev, savedClientId: data.client.id }))
       }
     } catch (err) {
-      console.error('Error saving client:', err)
     }
   }
 
@@ -154,7 +154,6 @@ export default function ClientGate({ client, setClient, onComplete }) {
       const vatForValidation = vatToValidate || foundVat
       if (vatForValidation) startVatValidation(vatForValidation)
     } catch (err) {
-      console.error('Company lookup error:', err)
       setError(`Lookup failed: ${err.message || 'Unknown error'}. Please try again or enter details manually.`)
       setLoading(false)
     }
@@ -220,10 +219,10 @@ export default function ClientGate({ client, setClient, onComplete }) {
       <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 80 : 100, width: 'auto', marginBottom: 12 }} />
 
       <div style={{ fontSize: mobile ? 20 : 24, fontFamily: fonts.heading, color: colors.inkPlum, marginBottom: 4, fontWeight: 600, textAlign: 'center' }}>
-        B2B Quote Assistant
+        {t('client.title')}
       </div>
       <div style={{ fontSize: 11, color: colors.lovelabMuted, marginBottom: 24, textAlign: 'center' }}>
-        Select a saved client or enter new details
+        {t('client.subtitle')}
       </div>
 
       {/* Form Card */}
@@ -233,14 +232,14 @@ export default function ClientGate({ client, setClient, onComplete }) {
       }}>
         {/* ─── Saved Client Picker ─── */}
         <div style={{ marginBottom: 18 }}>
-          <div style={lbl}>Search Saved Clients</div>
+          <div style={lbl}>{t('client.searchSaved')}</div>
           <div style={{ position: 'relative' }}>
             <input
               value={clientSearch}
               onChange={(e) => handleClientSearch(e.target.value)}
               onFocus={() => { setShowSavedClients(true); if (!clientSearch) fetchClients() }}
               onBlur={() => setTimeout(() => setShowSavedClients(false), 150)}
-              placeholder="Search by company name..."
+              placeholder={t('client.searchPlaceholder')}
               style={{ ...inp, width: '100%' }}
             />
             {showSavedClients && (savedClients.length > 0 || clientsLoading) && (
@@ -251,9 +250,9 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 boxShadow: '0 10px 30px rgba(0,0,0,0.08)', padding: 4,
               }}>
                 {clientsLoading ? (
-                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>Searching...</div>
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>{t('client.searching')}</div>
                 ) : savedClients.length === 0 ? (
-                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>No saved clients found</div>
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>{t('client.noSaved')}</div>
                 ) : (
                   savedClients.map(sc => (
                     <button
@@ -286,17 +285,17 @@ export default function ClientGate({ client, setClient, onComplete }) {
           display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18,
         }}>
           <div style={{ flex: 1, height: 1, background: '#e3e3e3' }} />
-          <span style={{ fontSize: 11, color: '#aaa', fontWeight: 500 }}>or enter new client</span>
+          <span style={{ fontSize: 11, color: '#aaa', fontWeight: 500 }}>{t('client.orNew')}</span>
           <div style={{ flex: 1, height: 1, background: '#e3e3e3' }} />
         </div>
 
         {/* Contact Name */}
         <div style={{ marginBottom: 14 }}>
-          <div style={lbl}>Contact Name</div>
+          <div style={lbl}>{t('client.contactName')}</div>
           <input
             value={client.name}
             onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
-            placeholder="Name"
+            placeholder={t('client.namePlaceholder')}
             style={{ ...inp, width: '100%' }}
           />
         </div>
@@ -304,21 +303,21 @@ export default function ClientGate({ client, setClient, onComplete }) {
         {/* Phone & Email */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
-            <div style={lbl}>Phone</div>
+            <div style={lbl}>{t('client.phone')}</div>
             <input
               value={client.phone}
               onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))}
-              placeholder="Phone number"
+              placeholder={t('client.phonePlaceholder')}
               type="tel"
               style={{ ...inp, width: '100%' }}
             />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={lbl}>Email</div>
+            <div style={lbl}>{t('client.email')}</div>
             <input
               value={client.email}
               onChange={(e) => setClient((c) => ({ ...c, email: e.target.value }))}
-              placeholder="Email address"
+              placeholder={t('client.emailPlaceholder')}
               type="email"
               style={{ ...inp, width: '100%' }}
             />
@@ -327,7 +326,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
         {/* Company Name */}
         <div style={{ marginBottom: 14 }}>
-          <div style={lbl}>Company Name *</div>
+          <div style={lbl}>{t('client.companyName')}</div>
           <input
             value={client.company}
             onChange={(e) => {
@@ -335,17 +334,24 @@ export default function ClientGate({ client, setClient, onComplete }) {
               setViesResult(null)
               setPerplexityDone(false)
             }}
-            placeholder="Company name"
+            aria-required="true"
+            aria-label={t('client.companyName')}
+            placeholder={t('client.companyPlaceholder')}
             style={{ ...inp, width: '100%' }}
           />
         </div>
 
         {/* Country */}
         <div style={{ marginBottom: 14 }}>
-          <div style={lbl}>Country *</div>
+          <div style={lbl}>{t('client.country')}</div>
           <div style={{ position: 'relative' }}>
             <input
               value={client.country}
+              aria-required="true"
+              aria-label={t('client.country')}
+              aria-expanded={countryOpen}
+              role="combobox"
+              aria-autocomplete="list"
               onFocus={() => { setCountryOpen(true); setCountryHi(0); requestAnimationFrame(() => scrollCountryIntoView(0)) }}
               onBlur={() => { setTimeout(() => setCountryOpen(false), 120) }}
               onChange={(e) => {
@@ -374,7 +380,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
                   if (pick) selectCountry(pick)
                 }
               }}
-              placeholder="Select country"
+              placeholder={t('client.selectCountry')}
               style={{ ...inp, width: '100%' }}
             />
             {countryOpen && (
@@ -389,7 +395,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 onMouseDown={(e) => { e.preventDefault() }}
               >
                 {filteredCountries.length === 0 ? (
-                  <div style={{ padding: '8px 10px', fontSize: 12, color: '#999' }}>No matches.</div>
+                  <div style={{ padding: '8px 10px', fontSize: 12, color: '#999' }}>{t('client.noMatches')}</div>
                 ) : (
                   filteredCountries.map((name, idx) => (
                     <button
@@ -414,7 +420,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
         {/* VAT Number */}
         <div style={{ marginBottom: 18 }}>
-          <div style={lbl}>VAT Number (optional)</div>
+          <div style={lbl}>{t('client.vatNumber')}</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               value={client.vat}
@@ -422,7 +428,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 setClient((c) => ({ ...c, vat: e.target.value, vatValid: null }))
                 setViesResult(null)
               }}
-              placeholder="VAT number"
+              placeholder={t('client.vatPlaceholder')}
               style={{ ...inp, flex: 1 }}
             />
             {viesLoading && <div style={{ width: 28, display: 'flex', justifyContent: 'center' }}><LoadingDots /></div>}
@@ -438,14 +444,14 @@ export default function ClientGate({ client, setClient, onComplete }) {
               </div>
             )}
             {perplexityDone && !viesLoading && !viesResult && client.vat.trim().length >= 4 && (
-              <button onClick={handleVerifyVat} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Verify</button>
+              <button onClick={handleVerifyVat} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.verify')}</button>
             )}
           </div>
           {viesResult && !viesResult.valid && viesResult.error && (
             <div style={{ fontSize: 10, color: viesResult.error.includes('busy') || viesResult.error.includes('unavailable') ? '#856404' : '#c44', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>{viesResult.error}</span>
               {(viesResult.error.includes('busy') || viesResult.error.includes('unavailable')) && !viesLoading && (
-                <button onClick={handleVerifyVat} style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Retry</button>
+                <button onClick={handleVerifyVat} style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
               )}
             </div>
           )}
@@ -467,7 +473,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}
         >
-          {loading ? (<><LoadingDots /> Looking up...</>) : 'Look Up Company'}
+          {loading ? (<><LoadingDots /> {t('client.lookingUp')}</>) : t('client.lookUp')}
         </button>
 
         {error && <div style={{ fontSize: 11, color: '#c44', marginBottom: 10, textAlign: 'center' }}>{error}</div>}
@@ -475,11 +481,11 @@ export default function ClientGate({ client, setClient, onComplete }) {
         {/* Results section */}
         {perplexityDone && (
           <div style={{ background: colors.ice, borderRadius: 10, padding: 14, marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Company Details</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('client.companyDetails')}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-              <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder="Address" style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} />
-              <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder="City" style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} />
-              <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder="ZIP" style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} />
+              <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} />
+              <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} />
+              <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} />
             </div>
           </div>
         )}
@@ -496,7 +502,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             fontFamily: 'inherit',
           }}
         >
-          Start Quoting
+          {t('client.startQuoting')}
         </button>
 
         {/* Skip link */}
@@ -505,7 +511,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             onClick={handleSkip}
             style={{ background: 'none', border: 'none', color: colors.lovelabMuted, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}
           >
-            Skip for now
+            {t('client.skip')}
           </button>
         </div>
       </div>

@@ -24,13 +24,11 @@ export async function GET(request) {
       .createSignedUrl(filePath, 60 * 5);
 
     if (error) {
-      console.error('Signed URL error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ signedUrl: data.signedUrl });
   } catch (error) {
-    console.error('Preview error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

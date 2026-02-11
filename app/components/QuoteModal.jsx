@@ -27,6 +27,9 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Quote preview"
       style={{ 
         position: 'fixed', 
         inset: 0, 
@@ -38,6 +41,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
         padding: mobile ? 0 : 16 
       }}
       onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
     >
       <div
         style={{ 

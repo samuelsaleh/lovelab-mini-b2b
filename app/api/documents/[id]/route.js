@@ -25,7 +25,6 @@ export async function DELETE(request, { params }) {
       .single();
 
     if (fetchError) {
-      console.error('Fetch document error:', fetchError);
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
@@ -36,7 +35,6 @@ export async function DELETE(request, { params }) {
         .remove([doc.file_path]);
       
       if (storageError) {
-        console.error('Storage delete error:', storageError);
         // Continue anyway - file might already be deleted
       }
     }
@@ -48,13 +46,11 @@ export async function DELETE(request, { params }) {
       .eq('id', id);
 
     if (deleteError) {
-      console.error('Database delete error:', deleteError);
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Delete error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ import { COLLECTIONS, CORD_COLORS, calculateQuote } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
+import { useI18n } from '@/lib/i18n'
 import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
@@ -29,6 +30,7 @@ const AI_CHIPS = [
 
 export default function App() {
   const { profile } = useAuth()
+  const { t } = useI18n()
   
   // Active tab: 'builder' | 'ai' | 'orderform' | 'documents'
   const [activeTab, setActiveTab] = useState('builder')
@@ -233,7 +235,7 @@ export default function App() {
       }
       setAiMsgs((prev) => [...prev, assistantMsg])
     } catch {
-      setAiMsgs((prev) => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.', quote: null }])
+      setAiMsgs((prev) => [...prev, { role: 'assistant', content: t('ai.error'), quote: null }])
     }
     setDescLoading(false)
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
@@ -350,14 +352,14 @@ export default function App() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12,
             }}>
               <span style={{ fontWeight: 600 }}>
-                {client.vatValidating ? 'Checking VAT...' : client.vatValid === false ? 'VAT invalid -- VAT will be applied unless corrected.' : 'VAT not verified. You can retry.'}
+                {client.vatValidating ? t('vat.checking') : client.vatValid === false ? t('vat.invalid') : t('vat.notVerified')}
                 <span style={{ fontWeight: 400, marginLeft: 8 }}>{client.vat}</span>
               </span>
               <div style={{ display: 'flex', gap: 6 }}>
                 {!client.vatValidating && (
-                  <button onClick={retryVatValidation} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Retry</button>
+                  <button onClick={retryVatValidation} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
                 )}
-                <button onClick={() => setClientReady(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Edit VAT</button>
+                <button onClick={() => setClientReady(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('vat.editVat')}</button>
               </div>
             </div>
           </div>
@@ -365,7 +367,7 @@ export default function App() {
       )}
 
       {/* ─── Main Content ─── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <main role="main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {activeTab === 'builder' && (
           <BuilderPage
             lines={lines}
@@ -394,19 +396,19 @@ export default function App() {
                     onClick={handleSuggestFillOrder}
                     disabled={descLoading}
                     style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: colors.luxeGold, color: '#fff', fontSize: 11, fontWeight: 700, cursor: descLoading ? 'default' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: descLoading ? 0.6 : 1 }}
-                  >Get suggestions</button>
+                  >{t('ai.getSuggestions')}</button>
                 </div>
               </div>
             )}
 
             {/* Chat messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+            <div aria-live="polite" aria-label="Chat messages" style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
               <div style={{ maxWidth: 700, margin: '0 auto' }}>
                 {aiMsgs.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: colors.inkPlum, marginBottom: 6 }}>AI Order Advisor</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: colors.inkPlum, marginBottom: 6 }}>{t('ai.title')}</div>
                     <div style={{ fontSize: 13, color: '#999', lineHeight: 1.6, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
-                      Describe your client's needs in plain language. I'll build the optimal quote, suggest collections, and help you reach the minimum order.
+                      {t('ai.description')}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                       {AI_CHIPS.map((chip, i) => (
@@ -447,10 +449,10 @@ export default function App() {
                             <MiniQuote q={m.quote} onView={() => { setCurQuote(m.quote); setShowQuote(true) }} />
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                               <button onClick={handleSuggestFillOrder} disabled={descLoading} style={{ width: '100%', padding: 8, borderRadius: 8, border: `1px solid ${colors.luxeGold}`, background: '#fff', fontSize: 11, fontWeight: 600, cursor: descLoading ? 'default' : 'pointer', color: colors.luxeGold, fontFamily: 'inherit', opacity: descLoading ? 0.6 : 1 }}>
-                                Suggest how to fill order
+                                {t('ai.suggestFill')}
                               </button>
                               <button onClick={() => setActiveTab('builder')} style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fafafa', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#555', fontFamily: 'inherit' }}>
-                                Switch to Builder to edit manually
+                                {t('ai.switchBuilder')}
                               </button>
                             </div>
                           </div>
@@ -476,7 +478,7 @@ export default function App() {
                 {aiFiltersOpen && (
                   <div style={{ padding: '12px 20px 6px', borderBottom: '1px solid #f0f0f0' }}>
                     <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Budget</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.budget')}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 13, color: '#999' }}>€</span>
                         <input type="number" value={aiBudget} onChange={(e) => setAiBudget(e.target.value)} placeholder="e.g. 2000" style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: '#222', maxWidth: 140 }} />
@@ -484,7 +486,7 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Collections</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.collections')}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                         {COLLECTIONS.map((col) => {
                           const active = aiCollections.includes(col.id)
@@ -498,7 +500,7 @@ export default function App() {
                     </div>
                     {aiAvailableColors.length > 0 && (
                       <div style={{ marginBottom: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Colors {aiColors.length > 0 && <span style={{ color: colors.inkPlum }}>({aiColors.length})</span>}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.colors')} {aiColors.length > 0 && <span style={{ color: colors.inkPlum }}>({aiColors.length})</span>}</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {aiAvailableColors.map((c) => {
                             const active = aiColors.includes(c.n)
@@ -518,6 +520,8 @@ export default function App() {
                   <button
                     onClick={() => setAiFiltersOpen((v) => !v)}
                     title="Quick filters"
+                    aria-label={t('ai.filters')}
+                    aria-expanded={aiFiltersOpen}
                     style={{
                       width: 38, height: 38, borderRadius: 10, border: '1px solid #e0e0e0', flexShrink: 0,
                       background: aiFiltersOpen || aiBudget || aiCollections.length > 0 ? `${colors.inkPlum}15` : '#f7f7f5',
@@ -531,13 +535,15 @@ export default function App() {
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend() } }}
-                      placeholder={aiBudget || aiCollections.length ? 'Ask about your selections...' : "Describe your client's needs..."}
+                      placeholder={aiBudget || aiCollections.length ? t('ai.placeholderFiltered') : t('ai.placeholder')}
+                      aria-label="Chat message input"
                       disabled={descLoading}
                       style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, fontFamily: 'inherit', padding: '10px 10px', color: '#222', background: 'transparent', lineHeight: 1.4 }}
                     />
                     <button
                       onClick={() => handleAiSend()}
                       disabled={!chatInput.trim() || descLoading}
+                      aria-label="Send message"
                       style={{
                         width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
                         background: chatInput.trim() && !descLoading ? colors.inkPlum : '#e5e5e5',
@@ -549,7 +555,7 @@ export default function App() {
                 </div>
                 {!aiFiltersOpen && (aiBudget || aiCollections.length > 0 || aiColors.length > 0) && (
                   <div style={{ padding: '0 20px 8px', display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                    <span style={{ fontSize: 9, color: '#aaa', marginRight: 2 }}>Context:</span>
+                    <span style={{ fontSize: 9, color: '#aaa', marginRight: 2 }}>{t('ai.context')}</span>
                     {aiBudget && <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>€{aiBudget}</span>}
                     {aiCollections.map((id) => { const col = COLLECTIONS.find((c) => c.id === id); return col ? <span key={id} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{col.label}</span> : null })}
                     {aiColors.length > 0 && <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{aiColors.length} color{aiColors.length !== 1 ? 's' : ''}</span>}
@@ -563,7 +569,7 @@ export default function App() {
         {activeTab === 'documents' && (
           <DocumentsPanel />
         )}
-      </div>
+      </main>
     </div>
   )
 }

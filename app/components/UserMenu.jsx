@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { colors } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
+import { useI18n } from '@/lib/i18n';
 
 export default function UserMenu() {
   const router = useRouter();
   const mobile = useIsMobile();
   const { user, profile, loading, signOut } = useAuth();
+  const { lang, setLang, languages } = useI18n();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -160,6 +162,36 @@ export default function UserMenu() {
             </svg>
             Documents (full page)
           </button>
+
+          {/* Language Switcher */}
+          <div style={{
+            padding: '8px 16px',
+            borderBottom: '1px solid #eee',
+            display: 'flex',
+            gap: 4,
+            alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 11, color: '#888', marginRight: 4 }}>Lang:</span>
+            {languages.map(l => (
+              <button
+                key={l.code}
+                onClick={() => setLang(l.code)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: lang === l.code ? `1.5px solid ${colors.inkPlum}` : '1px solid #e0e0e0',
+                  background: lang === l.code ? `${colors.inkPlum}12` : '#fafafa',
+                  color: lang === l.code ? colors.inkPlum : '#666',
+                  fontSize: 11,
+                  fontWeight: lang === l.code ? 700 : 400,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {l.code.toUpperCase()}
+              </button>
+            ))}
+          </div>
           
           {user ? (
             <button

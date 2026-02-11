@@ -1,10 +1,28 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+// Validate the redirect path to prevent open redirects
+function getSafeRedirectPath(next) {
+  if (!next) return '/';
+  // Must start with / and not contain // (protocol-relative) or other schemes
+  if (!/^\/[^/]/.test(next) && next !== '/') return '/';
+  // Block any URL with a protocol scheme
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(next)) return '/';
+  return next;
+}
+
+// Validate forwarded host against known allowed hosts
+function getSafeHost(forwardedHost) {
+  if (!forwardedHost) return null;
+  const allowedHosts = (process.env.ALLOWED_HOSTS || '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+  if (allowedHosts.length === 0) return null; // No allowlist configured, don't trust forwarded host
+  return allowedHosts.includes(forwardedHost.toLowerCase()) ? forwardedHost : null;
+}
+
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/';
+  const next = getSafeRedirectPath(searchParams.get('next'));
 
   if (code) {
     const supabase = await createClient();
@@ -26,13 +44,18 @@ export async function GET(request) {
       // User is allowed - ensure they have a profile
       await ensureProfile(supabase, data.user);
       
-      const forwardedHost = request.headers.get('x-forwarded-host');
       const isLocalEnv = process.env.NODE_ENV === 'development';
       
       if (isLocalEnv) {
         return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
+      }
+      
+      // In production, validate x-forwarded-host against allowlist
+      const forwardedHost = request.headers.get('x-forwarded-host');
+      const safeHost = getSafeHost(forwardedHost);
+      
+      if (safeHost) {
+        return NextResponse.redirect(`https://${safeHost}${next}`);
       } else {
         return NextResponse.redirect(`${origin}${next}`);
       }

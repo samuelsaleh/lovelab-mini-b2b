@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = ['application/pdf'];
+
 export async function POST(request) {
   try {
     const supabase = await createClient();
@@ -18,24 +21,42 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Missing file or filePath' }, { status: 400 });
     }
 
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: 'Only PDF files are allowed' }, { status: 400 });
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'File size exceeds 10 MB limit' }, { status: 400 });
+    }
+
+    // Sanitize filePath: prevent path traversal and ensure it stays within user's scope
+    const safePath = String(filePath)
+      .replace(/\.\./g, '')           // Remove path traversal
+      .replace(/^\/+/, '')            // Remove leading slashes
+      .replace(/[^a-zA-Z0-9\-_./]/g, '_'); // Only safe characters
+
+    if (!safePath || safePath.includes('..')) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    }
+
     // Convert file to buffer
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const { data, error } = await supabase.storage
       .from('documents')
-      .upload(filePath, buffer, {
+      .upload(safePath, buffer, {
         contentType: 'application/pdf',
-        upsert: true,
+        upsert: false, // Don't allow overwriting existing files
       });
 
     if (error) {
-      console.error('Storage upload error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ data, filePath });
+    return NextResponse.json({ data, filePath: safePath });
   } catch (error) {
-    console.error('Upload route error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

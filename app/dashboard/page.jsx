@@ -38,7 +38,6 @@ export default function DashboardPage() {
         setDocuments(docsData.documents);
       }
     } catch (err) {
-      console.error('Error fetching data:', err);
     }
     setLoading(false);
   };
@@ -58,7 +57,6 @@ export default function DashboardPage() {
         setShowNewEvent(false);
       }
     } catch (err) {
-      console.error('Error creating event:', err);
     }
   };
 
@@ -84,7 +82,6 @@ export default function DashboardPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download error:', err);
       alert('Failed to download document: ' + err.message);
     }
   };
@@ -101,7 +98,6 @@ export default function DashboardPage() {
       
       window.open(data.signedUrl, '_blank');
     } catch (err) {
-      console.error('Preview error:', err);
       alert('Failed to preview document: ' + err.message);
     }
   };
@@ -123,7 +119,6 @@ export default function DashboardPage() {
       // Update local state
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (err) {
-      console.error('Delete error:', err);
       alert('Failed to delete document: ' + err.message);
     }
   };
