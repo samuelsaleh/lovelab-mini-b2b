@@ -4,24 +4,38 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { colors } from '@/lib/styles';
+import { useIsMobile } from '@/lib/useIsMobile';
 
 export default function UserMenu() {
   const router = useRouter();
+  const mobile = useIsMobile();
   const { user, profile, loading, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // Close menu when clicking outside
+  // Close menu when tapping/clicking outside
+  // Use 'click' instead of 'mousedown' so that button onClick handlers
+  // inside the menu fire before the menu is removed from the DOM.
+  // This fixes sign-out on iOS where mousedown fires before click.
   useEffect(() => {
+    if (!open) return;
+
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    // Use a short delay so the opening click doesn't immediately close it
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside, true);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleClickOutside, true);
+    };
+  }, [open]);
 
   const displayName = user
     ? (profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -41,12 +55,14 @@ export default function UserMenu() {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '4px 8px',
+          padding: mobile ? '8px 10px' : '4px 8px',
           borderRadius: 8,
           border: 'none',
           background: open ? '#f0f0f0' : 'transparent',
           cursor: 'pointer',
           fontFamily: 'inherit',
+          minHeight: mobile ? 44 : 'auto',
+          minWidth: mobile ? 44 : 'auto',
         }}
       >
         {avatarUrl ? (
@@ -54,8 +70,8 @@ export default function UserMenu() {
             src={avatarUrl}
             alt={displayName}
             style={{
-              width: 28,
-              height: 28,
+              width: mobile ? 34 : 28,
+              height: mobile ? 34 : 28,
               borderRadius: '50%',
               objectFit: 'cover',
             }}
@@ -63,15 +79,15 @@ export default function UserMenu() {
         ) : (
           <div
             style={{
-              width: 28,
-              height: 28,
+              width: mobile ? 34 : 28,
+              height: mobile ? 34 : 28,
               borderRadius: '50%',
               background: colors.inkPlum,
               color: '#fff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 11,
+              fontSize: mobile ? 12 : 11,
               fontWeight: 600,
             }}
           >
@@ -121,7 +137,7 @@ export default function UserMenu() {
             onClick={() => { setOpen(false); router.push('/dashboard'); }}
             style={{
               width: '100%',
-              padding: '12px 16px',
+              padding: mobile ? '14px 16px' : '12px 16px',
               border: 'none',
               background: 'transparent',
               textAlign: 'left',
@@ -133,6 +149,7 @@ export default function UserMenu() {
               alignItems: 'center',
               gap: 8,
               borderBottom: '1px solid #eee',
+              minHeight: mobile ? 48 : 'auto',
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -146,12 +163,12 @@ export default function UserMenu() {
           
           {user ? (
             <button
-              onClick={signOut}
+              onClick={() => { setOpen(false); signOut(); }}
               style={{
                 width: '100%',
-                padding: '12px 16px',
+                padding: mobile ? '14px 16px' : '12px 16px',
                 border: 'none',
-                background: 'transparent',
+                background: mobile ? '#fef2f2' : 'transparent',
                 textAlign: 'left',
                 fontSize: 13,
                 color: '#dc2626',
@@ -160,9 +177,10 @@ export default function UserMenu() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
+                minHeight: mobile ? 48 : 'auto',
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              onMouseLeave={(e) => e.currentTarget.style.background = mobile ? '#fef2f2' : 'transparent'}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -176,7 +194,7 @@ export default function UserMenu() {
               onClick={() => { setOpen(false); router.push('/login'); }}
               style={{
                 width: '100%',
-                padding: '12px 16px',
+                padding: mobile ? '14px 16px' : '12px 16px',
                 border: 'none',
                 background: 'transparent',
                 textAlign: 'left',
@@ -187,6 +205,7 @@ export default function UserMenu() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
+                minHeight: mobile ? 48 : 'auto',
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
