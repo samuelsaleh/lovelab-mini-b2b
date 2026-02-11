@@ -82,8 +82,9 @@ function prefillRows(quote) {
     })
   }
 
-  // Pad to fill complete pages (minimum ROWS_PER_PAGE)
-  const totalNeeded = Math.max(ROWS_PER_PAGE, Math.ceil(rows.length / ROWS_PER_PAGE) * ROWS_PER_PAGE)
+  // Add a small buffer of empty rows for convenience (not full page padding)
+  const buffer = 3
+  const totalNeeded = rows.length + buffer
   while (rows.length < totalNeeded) {
     rows.push(emptyRow(rows.length + 1))
   }
@@ -512,7 +513,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
   }
 
   return (
-    <div style={{
+    <div id="order-form-print-wrapper" style={{
       position: 'fixed', inset: 0, zIndex: 300,
       background: '#f0eeec',
       display: 'flex', flexDirection: 'column',
@@ -542,6 +543,22 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
       {/* Print-only styles */}
       <style>{`
         @media print {
+          /* Make the fixed parent container flow for print */
+          #order-form-print-wrapper {
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            display: block !important;
+          }
+          
+          /* Make the scroll area flow for print */
+          #order-form-scroll-area {
+            overflow: visible !important;
+            height: auto !important;
+            display: block !important;
+            padding: 0 !important;
+          }
+          
           /* Hide everything first */
           html, body {
             margin: 0 !important;
@@ -659,7 +676,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
       </div>
 
       {/* Main content: form pages + calculator */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
+      <div id="order-form-scroll-area" style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
 
         {/* Pages */}
         <div id="order-form-print" ref={printRef} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
