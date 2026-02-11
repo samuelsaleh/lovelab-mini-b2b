@@ -4,6 +4,7 @@ import { useCallback, useState, useRef, useMemo } from 'react'
 import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
+import { useIsMobile } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 
 // ─── Exported helpers (used by App.jsx) ───
@@ -48,6 +49,9 @@ const btnGhost = {
 }
 
 export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations }) {
+  const mobile = useIsMobile()
+  const [showSidebar, setShowSidebar] = useState(false)
+  
   // Step: 'select' (collection grid) or 'configure' (config view)
   const [step, setStep] = useState(() => {
     // If lines already have collections selected, go to configure
@@ -122,7 +126,34 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   }, [setLines])
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      {/* Mobile Summary Toggle Button */}
+      {mobile && (
+        <button
+          onClick={() => setShowSidebar(!showSidebar)}
+          style={{
+            position: 'fixed', bottom: 16, right: 16, zIndex: 150,
+            padding: '12px 20px', borderRadius: 25, border: 'none',
+            background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(93,58,94,0.3)',
+            display: 'flex', alignItems: 'center', gap: 8, minHeight: 48,
+          }}
+        >
+          <span>{fmt(quote.total)}</span>
+          <span style={{ fontSize: 10, opacity: 0.8 }}>{quote.totalPieces} pcs</span>
+        </button>
+      )}
+      
+      {/* Mobile Sidebar Overlay */}
+      {mobile && showSidebar && (
+        <div 
+          onClick={() => setShowSidebar(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
+          }}
+        />
+      )}
+      
       {/* Main content area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* ─── Budget Bar ─── */}
@@ -424,10 +455,38 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
       {/* ═══ Order Summary Sidebar ═══ */}
       <div style={{
-        width: 280, flexShrink: 0, background: '#fff',
-        borderLeft: '1px solid #eaeaea', display: 'flex', flexDirection: 'column',
+        width: mobile ? '85%' : 280,
+        maxWidth: mobile ? 320 : 280,
+        flexShrink: 0,
+        background: '#fff',
+        borderLeft: '1px solid #eaeaea',
+        display: mobile && !showSidebar ? 'none' : 'flex',
+        flexDirection: 'column',
         overflow: 'hidden',
+        // Mobile slide-in styles
+        ...(mobile ? {
+          position: 'fixed',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 210,
+          transform: showSidebar ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.3s ease',
+          boxShadow: '-4px 0 20px rgba(0,0,0,0.1)',
+        } : {}),
       }}>
+        {/* Mobile close button */}
+        {mobile && (
+          <button
+            onClick={() => setShowSidebar(false)}
+            style={{
+              position: 'absolute', top: 12, right: 12, zIndex: 1,
+              width: 32, height: 32, borderRadius: '50%', border: 'none',
+              background: '#f0f0f0', color: '#666', fontSize: 16,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >×</button>
+        )}
         <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eaeaea' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>Order Summary</div>
           <div style={{ fontSize: 11, color: '#999' }}>

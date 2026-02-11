@@ -1,6 +1,7 @@
 'use client'
 
-import { colors, fonts, isMobile } from '@/lib/styles'
+import { colors, fonts } from '@/lib/styles'
+import { useIsMobile } from '@/lib/useIsMobile'
 import UserMenu from './UserMenu'
 
 const NAV_TABS = [
@@ -11,7 +12,7 @@ const NAV_TABS = [
 ]
 
 export default function TopNav({ activeTab, onTabChange, client, onEditClient, onNewClient }) {
-  const mobile = isMobile()
+  const mobile = useIsMobile()
 
   return (
     <div style={{
@@ -34,21 +35,31 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
           {/* Compact client badge */}
           {client && client.company && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: '#f8f8f8', borderRadius: 8, padding: '5px 12px',
+              display: 'flex', alignItems: 'center', gap: mobile ? 6 : 8,
+              background: '#f8f8f8', borderRadius: 8, padding: mobile ? '6px 10px' : '5px 12px',
+              flexWrap: mobile ? 'wrap' : 'nowrap',
+              maxWidth: mobile ? 200 : 'none',
             }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>{client.company}</span>
-              {client.country && <span style={{ fontSize: 11, color: '#999' }}>{client.country}</span>}
+              <span style={{ fontSize: mobile ? 11 : 12, fontWeight: 600, color: colors.inkPlum }}>{client.company}</span>
+              {client.country && !mobile && <span style={{ fontSize: 11, color: '#999' }}>{client.country}</span>}
               {client.vatValid === true && (
                 <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: '#d4edda', color: '#155724', fontWeight: 600 }}>VAT OK</span>
               )}
               <button
                 onClick={onEditClient}
-                style={{ background: 'none', border: 'none', color: '#999', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px' }}
+                style={{ 
+                  background: 'none', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', 
+                  fontFamily: 'inherit', padding: mobile ? '8px 10px' : '6px 8px',
+                  minHeight: mobile ? 32 : 'auto', minWidth: mobile ? 44 : 'auto',
+                }}
               >Edit</button>
               <button
                 onClick={onNewClient}
-                style={{ background: 'none', border: 'none', color: '#999', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', padding: '2px 4px' }}
+                style={{ 
+                  background: 'none', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', 
+                  fontFamily: 'inherit', padding: mobile ? '8px 10px' : '6px 8px',
+                  minHeight: mobile ? 32 : 'auto', minWidth: mobile ? 44 : 'auto',
+                }}
               >New</button>
             </div>
           )}
@@ -70,17 +81,18 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
               style={{
-                padding: mobile ? '10px 14px' : '12px 20px',
+                padding: mobile ? '14px 16px' : '12px 20px',
                 border: 'none',
                 borderBottom: isActive ? `2.5px solid ${colors.inkPlum}` : '2.5px solid transparent',
                 background: 'transparent',
                 color: isActive ? colors.inkPlum : '#888',
-                fontSize: 13,
+                fontSize: mobile ? 12 : 13,
                 fontWeight: isActive ? 700 : 500,
                 cursor: 'pointer',
                 fontFamily: fonts.body,
                 whiteSpace: 'nowrap',
                 transition: 'all .15s',
+                minHeight: mobile ? 48 : 'auto',
               }}
               onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = '#555' }}
               onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = '#888' }}

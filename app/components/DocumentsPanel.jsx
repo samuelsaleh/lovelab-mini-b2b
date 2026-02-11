@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 
 export default function DocumentsPanel() {
+  const mobile = useIsMobile()
+  const [showSidebar, setShowSidebar] = useState(false)
   const [events, setEvents] = useState([])
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -117,13 +120,66 @@ export default function DocumentsPanel() {
   const noEventDocs = documents.filter(d => !d.event_id).length
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      {/* Mobile Filter Toggle */}
+      {mobile && (
+        <button
+          onClick={() => setShowSidebar(!showSidebar)}
+          style={{
+            position: 'fixed', bottom: 16, left: 16, zIndex: 150,
+            padding: '12px 20px', borderRadius: 25, border: 'none',
+            background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(93,58,94,0.3)',
+            display: 'flex', alignItems: 'center', gap: 8, minHeight: 48,
+          }}
+        >
+          <span>☰ Events</span>
+          <span style={{ fontSize: 10, opacity: 0.8 }}>{events.length}</span>
+        </button>
+      )}
+      
+      {/* Mobile Sidebar Overlay */}
+      {mobile && showSidebar && (
+        <div 
+          onClick={() => setShowSidebar(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200,
+          }}
+        />
+      )}
+      
       {/* Sidebar - Events */}
       <div style={{
-        width: 240, flexShrink: 0, background: '#fff',
-        borderRight: '1px solid #eaeaea', padding: 16,
+        width: mobile ? '85%' : 240,
+        maxWidth: mobile ? 300 : 240,
+        flexShrink: 0,
+        background: '#fff',
+        borderRight: '1px solid #eaeaea',
+        padding: 16,
         overflowY: 'auto',
+        // Mobile slide-in styles
+        ...(mobile ? {
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 210,
+          display: showSidebar ? 'block' : 'none',
+          boxShadow: '4px 0 20px rgba(0,0,0,0.1)',
+        } : {}),
       }}>
+        {/* Mobile close button */}
+        {mobile && (
+          <button
+            onClick={() => setShowSidebar(false)}
+            style={{
+              position: 'absolute', top: 12, right: 12, zIndex: 1,
+              width: 32, height: 32, borderRadius: '50%', border: 'none',
+              background: '#f0f0f0', color: '#666', fontSize: 16,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >×</button>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 style={{ fontSize: 14, fontWeight: 700, color: '#333', margin: 0 }}>Events / Fairs</h2>
           <button
@@ -224,7 +280,7 @@ export default function DocumentsPanel() {
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? 12 : 20 }}>
         {/* Search */}
         <div style={{ marginBottom: 16, maxWidth: 600 }}>
           <input
@@ -286,29 +342,32 @@ export default function DocumentsPanel() {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: mobile ? 'wrap' : 'nowrap' }}>
                   <button
                     onClick={() => previewDocument(doc)}
                     title="Preview"
                     style={{
-                      padding: '7px 12px', borderRadius: 6, border: '1px solid #e3e3e3',
+                      padding: mobile ? '10px 14px' : '7px 12px', borderRadius: 6, border: '1px solid #e3e3e3',
                       background: '#fff', color: '#555', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
+                      minHeight: mobile ? 44 : 'auto',
                     }}
                   >View</button>
                   <button
                     onClick={() => downloadDocument(doc)}
                     title="Download"
                     style={{
-                      padding: '7px 12px', borderRadius: 6, border: 'none',
+                      padding: mobile ? '10px 14px' : '7px 12px', borderRadius: 6, border: 'none',
                       background: colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                      minHeight: mobile ? 44 : 'auto',
                     }}
                   >Download</button>
                   <button
                     onClick={() => deleteDocument(doc)}
                     title="Delete"
                     style={{
-                      padding: '7px 10px', borderRadius: 6, border: '1px solid #fecaca',
+                      padding: mobile ? '10px 12px' : '7px 10px', borderRadius: 6, border: '1px solid #fecaca',
                       background: '#fef2f2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
+                      minHeight: mobile ? 44 : 'auto',
                     }}
                   >Delete</button>
                 </div>

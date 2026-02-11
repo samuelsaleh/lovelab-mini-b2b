@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { colors, fonts, inp, lbl, isMobile } from '@/lib/styles'
+import { colors, fonts, inp, lbl } from '@/lib/styles'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '@/lib/vat'
 import { lookupCompany } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
@@ -173,7 +174,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
     onComplete()
   }, [onComplete, client])
 
-  const mobile = isMobile()
+  const mobile = useIsMobile()
 
   const filteredCountries = useMemo(() => {
     const q = (client.country || '').trim().toLowerCase()

@@ -6,6 +6,12 @@ export const metadata = {
   description: 'B2B Quote Assistant for LoveLab Antwerp - Munich 2026',
 }
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+}
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -180,7 +181,7 @@ function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting
 }
 
 // ─── Side Calculator ───
-function Calculator({ subtotal, onApplyToForm }) {
+function Calculator({ subtotal, onApplyToForm, mobile }) {
   const [discountPct, setDiscountPct] = useState('')
   const [discountFlat, setDiscountFlat] = useState('')
   const [deliveryCost, setDeliveryCost] = useState('')
@@ -223,15 +224,15 @@ function Calculator({ subtotal, onApplyToForm }) {
 
   return (
     <div className="order-form-calculator" style={{
-      width: 240,
+      width: mobile ? '100%' : 240,
       flexShrink: 0,
       background: '#fff',
       borderRadius: 12,
       border: `1px solid ${colors.lineGray}`,
       padding: 16,
       height: 'fit-content',
-      position: 'sticky',
-      top: 16,
+      position: mobile ? 'relative' : 'sticky',
+      top: mobile ? 0 : 16,
     }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 12 }}>
         Calculator
@@ -315,6 +316,7 @@ function Calculator({ subtotal, onApplyToForm }) {
 
 // ═══ MAIN ORDER FORM ═══
 export default function OrderForm({ quote, client, onClose, currentUser }) {
+  const mobile = useIsMobile()
   const printRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
@@ -634,66 +636,78 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
       {/* Toolbar (hidden in print) */}
       <div className="order-form-toolbar" style={{
         background: '#fff', borderBottom: `1px solid ${colors.lineGray}`,
-        padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+        padding: mobile ? '10px 12px' : '10px 20px', display: 'flex', alignItems: 'center', gap: mobile ? 8 : 12, flexShrink: 0,
+        flexWrap: mobile ? 'wrap' : 'nowrap',
       }}>
         <button
           onClick={onClose}
           style={{
-            padding: '6px 16px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
+            padding: mobile ? '8px 12px' : '6px 16px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
             background: '#fff', color: colors.charcoal, fontSize: 12, fontWeight: 600,
-            cursor: 'pointer', fontFamily: fonts.body,
+            cursor: 'pointer', fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
           }}
         >
           &larr; Back
         </button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
           Order Form
         </div>
         <button
           onClick={() => setShowSaveModal(true)}
           style={{
-            padding: '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
-            background: '#fff', color: colors.inkPlum, fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s',
+            padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
+            background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
           onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
         >
-          Save Order
+          Save
         </button>
         <button
           onClick={handlePrint}
           style={{
-            padding: '8px 24px', borderRadius: 8, border: 'none',
-            background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: fonts.body, transition: 'opacity .15s',
+            padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
+            background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: fonts.body, transition: 'opacity .15s', minHeight: mobile ? 44 : 'auto',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
         >
-          Print Order Form
+          Print
         </button>
       </div>
 
       {/* Main content: form pages + calculator */}
-      <div id="order-form-scroll-area" style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
+      <div id="order-form-scroll-area" style={{ 
+        flex: 1, 
+        overflow: 'auto', 
+        padding: mobile ? 12 : 20, 
+        display: 'flex', 
+        flexDirection: mobile ? 'column' : 'row',
+        gap: mobile ? 16 : 20, 
+        justifyContent: 'center', 
+        alignItems: mobile ? 'stretch' : 'flex-start' 
+      }}>
 
         {/* Pages */}
         <div id="order-form-print" ref={printRef} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {displayPages.map((pageRows, pageIdx) => (
             <div key={pageIdx} className="order-form-page" style={{
-              width: 1020,
+              width: '100%',
+              maxWidth: 1020,
               background: '#fff',
               borderRadius: 4,
               boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-              padding: '24px 28px 18px',
+              padding: mobile ? '16px 12px 14px' : '24px 28px 18px',
               boxSizing: 'border-box',
+              overflowX: mobile ? 'auto' : 'visible',
             }}>
               {/* ─── Page Header ─── */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 12, gap: mobile ? 12 : 16 }}>
                 {/* Logo + left header fields */}
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flex: 1 }}>
-                  <img src="/logo.png" alt="LoveLab" style={{ height: 50, width: 'auto', flexShrink: 0 }} />
+                <div style={{ display: 'flex', gap: mobile ? 12 : 16, alignItems: 'flex-start', flex: 1 }}>
+                  <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 40 : 50, width: 'auto', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
                     <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
@@ -706,7 +720,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   </div>
                 </div>
                 {/* Right header fields */}
-                <div style={{ minWidth: 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ minWidth: mobile ? 0 : 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
@@ -782,7 +796,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
               </div>
 
               {/* ─── Order Table ─── */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', minWidth: mobile ? 900 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <colgroup>
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
@@ -822,16 +837,16 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                           </td>
                         ))}
                         {!isPrinting && (
-                        <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: 72, verticalAlign: 'middle' }}>
+                        <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: mobile ? 120 : 72, verticalAlign: 'middle' }}>
                           {isRowFilled(row) && (
-                            <div style={{ display: 'flex', gap: 2, marginLeft: 3 }}>
+                            <div style={{ display: 'flex', gap: mobile ? 4 : 2, marginLeft: 3 }}>
                               {/* Add empty row below */}
                               <button
                                 onClick={() => insertRowBelow(globalIdx)}
                                 title="Add empty row below"
                                 style={{
-                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
-                                  background: '#fff', color: '#999', fontSize: 13, lineHeight: '18px',
+                                  width: mobile ? 36 : 20, height: mobile ? 36 : 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: mobile ? 16 : 13, lineHeight: mobile ? '34px' : '18px',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   padding: 0, fontFamily: fonts.body, transition: 'all .15s',
                                 }}
@@ -845,8 +860,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                                 onClick={() => duplicateRow(globalIdx)}
                                 title="Duplicate row below"
                                 style={{
-                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
-                                  background: '#fff', color: '#999', fontSize: 12, lineHeight: '18px',
+                                  width: mobile ? 36 : 20, height: mobile ? 36 : 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: mobile ? 14 : 12, lineHeight: mobile ? '34px' : '18px',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   padding: 0, fontFamily: fonts.body, transition: 'all .15s',
                                 }}
@@ -860,8 +875,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                                 onClick={() => deleteRow(globalIdx)}
                                 title="Delete row"
                                 style={{
-                                  width: 20, height: 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
-                                  background: '#fff', color: '#999', fontSize: 12, lineHeight: '18px',
+                                  width: mobile ? 36 : 20, height: mobile ? 36 : 20, borderRadius: '50%', border: `1px solid ${colors.lineGray}`,
+                                  background: '#fff', color: '#999', fontSize: mobile ? 14 : 12, lineHeight: mobile ? '34px' : '18px',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   padding: 0, fontFamily: fonts.body, transition: 'all .15s',
                                 }}
@@ -879,6 +894,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                   })}
                 </tbody>
               </table>
+              </div>
 
               {/* ─── Remarks + Final Total (first page when printing, last page when editing) ─── */}
               {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
@@ -1037,9 +1053,10 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
             className="order-form-add-page"
             onClick={addPage}
             style={{
-              width: 1020, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
+              width: '100%', maxWidth: 1020, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
               background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600,
               color: '#888', fontFamily: fonts.body, marginBottom: 40, transition: 'all .12s',
+              minHeight: mobile ? 48 : 'auto',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.lineGray; e.currentTarget.style.color = '#888' }}
@@ -1050,7 +1067,7 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
         </div>
 
         {/* Side Calculator */}
-        <Calculator subtotal={subtotal} onApplyToForm={handleApplyFromCalc} />
+        <Calculator subtotal={subtotal} onApplyToForm={handleApplyFromCalc} mobile={mobile} />
       </div>
     </div>
   )

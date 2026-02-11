@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useIsMobile } from '@/lib/useIsMobile';
 
 export default function LoginPage() {
   return (
@@ -13,6 +14,7 @@ export default function LoginPage() {
 }
 
 function LoginContent() {
+  const mobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const searchParams = useSearchParams();
@@ -46,14 +48,27 @@ function LoginContent() {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
+    <div style={{
+      ...styles.container,
+      padding: mobile ? '16px' : '20px',
+    }}>
+      <div style={{
+        ...styles.card,
+        padding: mobile ? '28px 20px' : '48px',
+      }}>
         <img 
           src="/logo.png" 
           alt="LoveLab" 
-          style={styles.logo}
+          style={{
+            ...styles.logo,
+            width: mobile ? '100px' : '120px',
+            marginBottom: mobile ? '20px' : '24px',
+          }}
         />
-        <h1 style={styles.title}>LoveLab B2B</h1>
+        <h1 style={{
+          ...styles.title,
+          fontSize: mobile ? '24px' : '28px',
+        }}>LoveLab B2B</h1>
         <p style={styles.subtitle}>Quote building tool for the sales team</p>
         <p style={styles.subtitleFr}>Outil de création de devis pour l'équipe de vente</p>
         
@@ -70,6 +85,8 @@ function LoginContent() {
             ...styles.googleButton,
             opacity: loading ? 0.7 : 1,
             cursor: loading ? 'not-allowed' : 'pointer',
+            padding: mobile ? '16px 20px' : '14px 24px',
+            minHeight: mobile ? 52 : 'auto',
           }}
         >
           <svg style={styles.googleIcon} viewBox="0 0 24 24">
