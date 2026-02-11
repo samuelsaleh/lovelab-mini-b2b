@@ -1,9 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'docs' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -47,6 +51,9 @@ export async function GET(request) {
 // POST - Save document metadata (after uploading PDF to storage)
 export async function POST(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'docs-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -71,6 +78,20 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    if (!['quote', 'order'].includes(document_type)) {
+      return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
+    }
+
+    // Sanitize file_path to prevent path traversal
+    const safePath = String(file_path)
+      .replace(/\.\./g, '')
+      .replace(/^\/+/, '')
+      .replace(/[^a-zA-Z0-9\-_./]/g, '_');
+
+    if (!safePath || safePath.length < 3) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    }
+
     const { data: document, error } = await supabase
       .from('documents')
       .insert({
@@ -78,7 +99,7 @@ export async function POST(request) {
         client_name,
         client_company: client_company || null,
         document_type,
-        file_path,
+        file_path: safePath,
         file_name,
         file_size: file_size || null,
         total_amount: total_amount || null,

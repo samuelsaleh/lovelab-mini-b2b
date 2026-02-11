@@ -125,7 +125,11 @@ export default function DashboardPage() {
 
   // Filter documents
   const filteredDocs = documents.filter(doc => {
-    const matchesEvent = selectedEventId === null || doc.event_id === selectedEventId;
+    const matchesEvent = selectedEventId === null
+      ? true
+      : selectedEventId === 'none'
+        ? !doc.event_id
+        : doc.event_id === selectedEventId;
     const matchesSearch = !search || 
       doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
       doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||

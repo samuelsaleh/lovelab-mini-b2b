@@ -1,9 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 // GET - List all clients (with optional search)
 export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'clients' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -42,6 +46,9 @@ export async function GET(request) {
 // POST - Create or update a client
 export async function POST(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'clients-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();

@@ -1,9 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 // GET - List all events
-export async function GET() {
+export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'events' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -29,6 +33,9 @@ export async function GET() {
 // POST - Create a new event
 export async function POST(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'events-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     
     const { data: { user } } = await supabase.auth.getUser();
