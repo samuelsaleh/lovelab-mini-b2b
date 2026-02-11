@@ -463,8 +463,12 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
   const handleBeforePrint = useCallback(() => {
     setIsPrinting(true)
-    // Return a promise that resolves after re-render
-    return new Promise(r => setTimeout(r, 150))
+    // Scroll the form container to top so html2canvas captures from the start
+    const scrollArea = document.getElementById('order-form-scroll-area')
+    if (scrollArea) scrollArea.scrollTop = 0
+    // Return a promise - wait longer on mobile for DOM to fully re-render
+    const waitMs = typeof window !== 'undefined' && window.innerWidth < 768 ? 500 : 200
+    return new Promise(r => setTimeout(r, waitMs))
   }, [])
 
   const handleAfterPrint = useCallback(() => {
@@ -516,10 +520,13 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
   return (
     <div id="order-form-print-wrapper" style={{
-      position: 'fixed', inset: 0, zIndex: 300,
+      position: mobile ? 'absolute' : 'fixed',
+      inset: 0,
+      zIndex: 300,
       background: '#f0eeec',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
+      ...(mobile ? { height: '100dvh', minHeight: '100vh' } : {}),
     }}>
       <SaveDocumentModal
         isOpen={showSaveModal}
@@ -682,6 +689,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
       <div id="order-form-scroll-area" style={{ 
         flex: 1, 
         overflow: 'auto', 
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
         padding: mobile ? 12 : 20, 
         display: 'flex', 
         flexDirection: mobile ? 'column' : 'row',

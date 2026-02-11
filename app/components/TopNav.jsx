@@ -31,17 +31,15 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
         <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 36 : 44, width: 'auto' }} />
 
         {/* Client badge + user menu */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Compact client badge */}
-          {client && client.company && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 8 : 12 }}>
+          {/* Desktop: compact inline badge */}
+          {!mobile && client && client.company && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: mobile ? 6 : 8,
-              background: '#f8f8f8', borderRadius: 8, padding: mobile ? '6px 10px' : '5px 12px',
-              flexWrap: mobile ? 'wrap' : 'nowrap',
-              maxWidth: mobile ? 200 : 'none',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#f8f8f8', borderRadius: 8, padding: '5px 12px',
             }}>
-              <span style={{ fontSize: mobile ? 11 : 12, fontWeight: 600, color: colors.inkPlum }}>{client.company}</span>
-              {client.country && !mobile && <span style={{ fontSize: 11, color: '#999' }}>{client.country}</span>}
+              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>{client.company}</span>
+              {client.country && <span style={{ fontSize: 11, color: '#999' }}>{client.country}</span>}
               {client.vatValid === true && (
                 <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: '#d4edda', color: '#155724', fontWeight: 600 }}>VAT OK</span>
               )}
@@ -49,23 +47,70 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
                 onClick={onEditClient}
                 style={{ 
                   background: 'none', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', 
-                  fontFamily: 'inherit', padding: mobile ? '8px 10px' : '6px 8px',
-                  minHeight: mobile ? 32 : 'auto', minWidth: mobile ? 44 : 'auto',
+                  fontFamily: 'inherit', padding: '6px 8px',
                 }}
               >Edit</button>
               <button
                 onClick={onNewClient}
                 style={{ 
                   background: 'none', border: 'none', color: '#666', fontSize: 11, cursor: 'pointer', 
-                  fontFamily: 'inherit', padding: mobile ? '8px 10px' : '6px 8px',
-                  minHeight: mobile ? 32 : 'auto', minWidth: mobile ? 44 : 'auto',
+                  fontFamily: 'inherit', padding: '6px 8px',
                 }}
               >New</button>
             </div>
           )}
+          {/* Mobile: just show Edit Client button */}
+          {mobile && client && client.company && (
+            <button
+              onClick={onEditClient}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: '#f8f8f8', border: 'none', borderRadius: 8,
+                padding: '10px 14px', cursor: 'pointer', fontFamily: 'inherit',
+                minHeight: 44,
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
+              <span style={{ fontSize: 10, color: '#999' }}>✎</span>
+            </button>
+          )}
           <UserMenu />
         </div>
       </div>
+
+      {/* Mobile: client action bar below logo */}
+      {mobile && client && client.company && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 12px 8px',
+          borderBottom: '1px solid #f0f0f0',
+        }}>
+          <button
+            onClick={onEditClient}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '10px 12px', borderRadius: 8,
+              border: `1px solid ${colors.inkPlum}30`, background: '#fdf7fa',
+              color: colors.inkPlum, fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
+            }}
+          >
+            ✎ Edit Client
+          </button>
+          <button
+            onClick={onNewClient}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '10px 12px', borderRadius: 8,
+              border: `1px solid ${colors.lineGray}`, background: '#fff',
+              color: '#666', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
+            }}
+          >
+            + New Client
+          </button>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div style={{
