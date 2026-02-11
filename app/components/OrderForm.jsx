@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
@@ -93,6 +94,7 @@ function prefillRows(quote) {
 }
 
 // ─── Printable input (renders as plain text div when printing to prevent clipping) ───
+// Always renders a hidden text fallback that CSS shows in print as a safety net.
 function PrintableInput({ value, onChange, style, placeholder, isPrinting, type, ...rest }) {
   if (isPrinting) {
     return (
@@ -109,14 +111,29 @@ function PrintableInput({ value, onChange, style, placeholder, isPrinting, type,
     )
   }
   return (
-    <input
-      type={type || 'text'}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      style={style}
-      {...rest}
-    />
+    <span style={{ position: 'relative', display: 'block' }}>
+      <input
+        type={type || 'text'}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={style}
+        {...rest}
+      />
+      {/* Hidden text fallback shown by @media print CSS in case isPrinting fails */}
+      <span className="print-value-fallback" style={{
+        ...style,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        display: 'none',
+        border: 'none',
+        outline: 'none',
+        whiteSpace: 'nowrap',
+        overflow: 'visible',
+        pointerEvents: 'none',
+      }}>{value || ''}</span>
+    </span>
   )
 }
 
@@ -136,7 +153,20 @@ function PrintableTextarea({ value, onChange, style, isPrinting, ...rest }) {
     )
   }
   return (
-    <textarea value={value} onChange={onChange} style={style} {...rest} />
+    <span style={{ position: 'relative', display: 'block' }}>
+      <textarea value={value} onChange={onChange} style={style} {...rest} />
+      <span className="print-value-fallback" style={{
+        ...style,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        display: 'none',
+        border: 'none',
+        whiteSpace: 'pre-wrap',
+        overflow: 'visible',
+        pointerEvents: 'none',
+      }}>{value || ''}</span>
+    </span>
   )
 }
 
@@ -490,20 +520,24 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
   const displayPages = isPrinting ? printPages : pages
 
   const handlePrint = async () => {
-    setIsPrinting(true)
-    // Wait for React to re-render with print layout
-    await new Promise(r => setTimeout(r, 150))
+    // Use flushSync to guarantee React commits the isPrinting state
+    // synchronously before the browser captures the page for print
+    flushSync(() => setIsPrinting(true))
+    // Extra buffer for the browser to paint the updated DOM
+    await new Promise(r => setTimeout(r, 300))
     window.print()
     setIsPrinting(false)
   }
 
   const handleBeforePrint = useCallback(() => {
-    setIsPrinting(true)
+    // Use flushSync to guarantee React commits the isPrinting state
+    // synchronously before html2canvas captures the DOM
+    flushSync(() => setIsPrinting(true))
     // Scroll the form container to top so html2canvas captures from the start
     const scrollArea = document.getElementById('order-form-scroll-area')
     if (scrollArea) scrollArea.scrollTop = 0
     // Return a promise - wait longer on mobile for DOM to fully re-render
-    const waitMs = typeof window !== 'undefined' && window.innerWidth < 768 ? 500 : 200
+    const waitMs = typeof window !== 'undefined' && window.innerWidth < 768 ? 600 : 350
     return new Promise(r => setTimeout(r, waitMs))
   }, [])
 
@@ -665,6 +699,15 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
           /* Table should not break across pages */
           table {
             page-break-inside: avoid !important;
+          }
+          
+          /* Fallback: if isPrinting didn't fire, hide inputs and show text values */
+          #order-form-print input,
+          #order-form-print textarea {
+            color: transparent !important;
+          }
+          #order-form-print .print-value-fallback {
+            display: block !important;
           }
           
           @page {
