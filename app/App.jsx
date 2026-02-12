@@ -202,12 +202,9 @@ export default function App() {
     setDescLoading(true)
     const displayMsg = { role: 'user', content: rawMessage }
     const apiMsg = { role: 'user', content: message }
-    // Use functional updater to get latest aiMsgs and avoid stale closure
-    let apiMsgs
-    setAiMsgs((prev) => {
-      apiMsgs = [...prev, apiMsg]
-      return [...prev, displayMsg]
-    })
+    // Build API messages from current state (descLoading guard prevents concurrent calls)
+    const apiMsgs = [...aiMsgs, apiMsg]
+    setAiMsgs((prev) => [...prev, displayMsg])
     try {
       const parsed = await sendChat(apiMsgs)
       let expandedQuote = null
