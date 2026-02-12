@@ -104,10 +104,13 @@ export default function SaveDocumentModal({
     setError(null);
 
     try {
-      // Switch to print layout (hide empty rows, show summary on page 1)
+      // Switch to print layout (hide empty rows, show summary on last page)
       if (onBeforePrint) {
         await onBeforePrint();
       }
+
+      // Extra delay so the browser fully paints the updated DOM before capture
+      await new Promise(r => setTimeout(r, 500));
 
       // Generate PDF
       const filename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);

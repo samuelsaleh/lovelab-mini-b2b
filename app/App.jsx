@@ -50,6 +50,7 @@ export default function App() {
   // Order form state
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderFormQuote, setOrderFormQuote] = useState(null)
+  const [savedFormState, setSavedFormState] = useState(null)
 
   // Client info
   const [client, setClient] = useState({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
@@ -162,12 +163,23 @@ export default function App() {
   const handleFinalize = useCallback(() => {
     setShowQuote(false)
     setOrderFormQuote(curQuote)
+    setSavedFormState(null)
     setShowOrderForm(true)
   }, [curQuote])
 
   // ─── Open blank order form ───
   const handleBlankOrderForm = useCallback(() => {
     setOrderFormQuote(null)
+    setSavedFormState(null)
+    setShowOrderForm(true)
+  }, [])
+
+  // ─── Re-edit a saved document ───
+  const handleReEdit = useCallback((doc) => {
+    const formState = doc?.metadata?.formState
+    if (!formState) return
+    setOrderFormQuote(null)
+    setSavedFormState(formState)
     setShowOrderForm(true)
   }, [])
 
@@ -319,6 +331,22 @@ export default function App() {
     } catch { /* ignore */ }
   }, [lines, client, clientReady, curQuote, aiMsgs, activeTab, builderBudget, aiBudget, aiCollections, aiColors])
 
+  // ─── Pick up re-edit from sessionStorage (dashboard redirect) ───
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('lovelab-reedit')
+      if (raw) {
+        sessionStorage.removeItem('lovelab-reedit')
+        const formState = JSON.parse(raw)
+        if (formState && typeof formState === 'object') {
+          setSavedFormState(formState)
+          setOrderFormQuote(null)
+          setShowOrderForm(true)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   // ─── Client Gate ───
   if (!clientReady) {
     return (
@@ -329,7 +357,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => setShowOrderForm(false)} currentUser={profile} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null) }} currentUser={profile} savedFormState={savedFormState} />}
 
       {/* ─── Top Navigation ─── */}
       <TopNav
@@ -567,7 +595,7 @@ export default function App() {
         )}
 
         {activeTab === 'documents' && (
-          <DocumentsPanel />
+          <DocumentsPanel onReEdit={handleReEdit} />
         )}
       </main>
     </div>

@@ -345,7 +345,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState }) {
   const mobile = useIsMobile()
   const printRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -417,6 +417,38 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
 
   // Final total override from calculator
   const [finalTotalOverride, setFinalTotalOverride] = useState(null)
+
+  // Restore form state when re-editing a saved document
+  useEffect(() => {
+    if (!savedFormState) return
+    const s = savedFormState
+    if (s.companyName != null) setCompanyName(s.companyName)
+    if (s.contactName != null) setContactName(s.contactName)
+    if (s.addressLine1 != null) setAddressLine1(s.addressLine1)
+    if (s.addressLine2 != null) setAddressLine2(s.addressLine2)
+    if (s.country != null) setCountry(s.country)
+    if (s.vatNumber != null) setVatNumber(s.vatNumber)
+    if (s.email != null) setEmail(s.email)
+    if (s.phone != null) setPhone(s.phone)
+    if (s.date != null) setDate(s.date)
+    if (s.packaging != null) setPackaging(s.packaging)
+    if (s.remarks != null) setRemarks(s.remarks)
+    if (s.eventName != null) setEventName(s.eventName)
+    if (s.createdBy != null) setCreatedBy(s.createdBy)
+    if (s.hasPrepayment != null) setHasPrepayment(s.hasPrepayment)
+    if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
+    if (s.discountDisplay != null) setDiscountDisplay(s.discountDisplay)
+    if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
+    if (s.rows && s.rows.length > 0) {
+      // Pad rows to fill at least one page
+      const restored = [...s.rows]
+      while (restored.length < ROWS_PER_PAGE) {
+        restored.push(emptyRow(restored.length + 1))
+      }
+      setRows(restored)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run once on mount
 
   // Computed subtotal from table
   const subtotal = useMemo(() => {
@@ -608,6 +640,13 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
         metadata={{
+          formState: {
+            rows: rows.filter(r => isRowFilled(r)),
+            companyName, contactName, addressLine1, addressLine2, country,
+            vatNumber, email, phone, date, packaging, remarks,
+            eventName, createdBy, hasPrepayment, prepaymentAmount,
+            discountDisplay, finalTotalOverride,
+          },
           rowCount: rows.filter(r => isRowFilled(r)).length,
           hasPrepayment,
           prepaymentAmount,
@@ -985,8 +1024,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
               </table>
               </div>
 
-              {/* ─── Remarks + Final Total (first page when printing, last page when editing) ─── */}
-              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
+              {/* ─── Remarks + Final Total (always on last page) ─── */}
+              {pageIdx === displayPages.length - 1 && (
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                   borderTop: `2px solid ${colors.inkPlum}`, marginTop: 0, paddingTop: 8,
@@ -1064,8 +1103,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                 </div>
               )}
 
-              {/* ─── Prepayment / Discount / Gift (first page when printing, last page when editing) ─── */}
-              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
+              {/* ─── Prepayment / Discount / Gift (always on last page) ─── */}
+              {pageIdx === displayPages.length - 1 && (
                 <div style={{
                   display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start',
                   marginTop: 12, padding: '10px 0',
@@ -1098,8 +1137,8 @@ export default function OrderForm({ quote, client, onClose, currentUser }) {
                 </div>
               )}
 
-              {/* ─── Footer (first page when printing, last page when editing) ─── */}
-              {(isPrinting ? pageIdx === 0 : pageIdx === displayPages.length - 1) && (
+              {/* ─── Footer (always on last page) ─── */}
+              {pageIdx === displayPages.length - 1 && (
                 <div style={{ marginTop: 16 }}>
                   {/* Legal text */}
                   <div style={{ fontSize: 8, color: colors.lovelabMuted, lineHeight: 1.6, marginBottom: 16 }}>

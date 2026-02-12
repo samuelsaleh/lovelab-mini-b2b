@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
 import ConfirmDialog from './ConfirmDialog'
 
-export default function DocumentsPanel() {
+export default function DocumentsPanel({ onReEdit }) {
   const mobile = useIsMobile()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
@@ -349,6 +349,19 @@ export default function DocumentsPanel() {
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: mobile ? 'wrap' : 'nowrap' }}>
+                  {onReEdit && doc.metadata?.formState && (
+                    <button
+                      onClick={() => onReEdit(doc)}
+                      title={t('docs.reEdit')}
+                      style={{
+                        padding: mobile ? '10px 14px' : '7px 12px', borderRadius: 6,
+                        border: `1px solid ${colors.inkPlum}`,
+                        background: '#fdf7fa', color: colors.inkPlum, fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: fonts.body,
+                        minHeight: mobile ? 44 : 'auto',
+                      }}
+                    >{t('docs.reEdit')}</button>
+                  )}
                   <button
                     onClick={() => previewDocument(doc)}
                     title="Preview"

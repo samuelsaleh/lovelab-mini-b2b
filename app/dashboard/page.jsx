@@ -509,6 +509,28 @@ export default function DashboardPage() {
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {doc.metadata?.formState && (
+                      <button
+                        onClick={() => {
+                          sessionStorage.setItem('lovelab-reedit', JSON.stringify(doc.metadata.formState));
+                          router.push('/');
+                        }}
+                        title="Re-edit"
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: `1px solid ${colors.inkPlum}`,
+                          background: '#fdf7fa',
+                          color: colors.inkPlum,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontFamily: fonts.body,
+                        }}
+                      >
+                        Re-edit
+                      </button>
+                    )}
                     <button
                       onClick={() => previewDocument(doc)}
                       title="Preview"
