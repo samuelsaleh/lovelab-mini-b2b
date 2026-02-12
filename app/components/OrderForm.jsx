@@ -328,7 +328,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
           } else if (flat > 0) {
             discountStr = `€${flat}`
           }
-          onApplyToForm({ finalTotal: calc.final, discountDisplay: discountStr })
+          onApplyToForm({ finalTotal: calc.sub + calc.delivery + calc.custom, discountDisplay: discountStr })
         }}
         style={{
           width: '100%', marginTop: 10, padding: 10, borderRadius: 8, border: 'none',
@@ -410,7 +410,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Prepayment & discount state
   const [hasPrepayment, setHasPrepayment] = useState(false)
   const [prepaymentAmount, setPrepaymentAmount] = useState('')
-  const [discountDisplay, setDiscountDisplay] = useState('')      // e.g. "10%" or "€500"
+  const [discountDisplay, setDiscountDisplay] = useState(() => {
+    if (quote?.discountPercent > 0) return `${quote.discountPercent}%`
+    return ''
+  })      // e.g. "10%" or "€500"
 
   // Table rows state
   const [rows, setRows] = useState(() => prefillRows(quote))

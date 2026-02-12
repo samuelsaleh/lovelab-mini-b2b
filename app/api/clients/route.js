@@ -21,11 +21,12 @@ export async function GET(request) {
     let query = supabase
       .from('clients')
       .select('*')
+      .eq('created_by', user.id) // Ownership filter
       .order('updated_at', { ascending: false });
 
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters (commas, dots, parentheses)
-      const sanitized = search.trim().replace(/[,.()"'\\%_]/g, '');
+      const sanitized = search.trim().replace(/[,.()"'\\%_*]/g, '');
       if (sanitized) {
         query = query.or(`company.ilike.%${sanitized}%,name.ilike.%${sanitized}%,email.ilike.%${sanitized}%`);
       }
@@ -34,7 +35,8 @@ export async function GET(request) {
     const { data: clients, error } = await query.limit(50);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[Clients GET] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to load clients' }, { status: 500 });
     }
 
     return NextResponse.json({ clients });
@@ -64,7 +66,7 @@ export async function POST(request) {
     }
 
     if (id) {
-      // Update existing client
+      // Update existing client -- with ownership check
       const { data: client, error } = await supabase
         .from('clients')
         .update({
@@ -81,11 +83,13 @@ export async function POST(request) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
+        .eq('created_by', user.id) // Ownership check
         .select()
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error('[Clients POST update] Error:', error.message);
+        return NextResponse.json({ error: 'Failed to update client' }, { status: 500 });
       }
 
       return NextResponse.json({ client });
@@ -111,7 +115,8 @@ export async function POST(request) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error('[Clients POST insert] Error:', error.message);
+        return NextResponse.json({ error: 'Failed to create client' }, { status: 500 });
       }
 
       return NextResponse.json({ client });

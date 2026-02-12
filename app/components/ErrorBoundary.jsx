@@ -13,6 +13,15 @@ export default class ErrorBoundary extends Component {
     return { hasError: true, error }
   }
 
+  componentDidCatch(error, errorInfo) {
+    // Log to console (and to remote error tracking service if configured)
+    console.error('[ErrorBoundary] Uncaught error:', error, errorInfo)
+    // TODO: Send to Sentry/LogRocket/etc. when available:
+    // if (typeof window !== 'undefined' && window.Sentry) {
+    //   window.Sentry.captureException(error, { extra: errorInfo })
+    // }
+  }
+
   handleReset = () => {
     this.setState({ hasError: false, error: null })
   }

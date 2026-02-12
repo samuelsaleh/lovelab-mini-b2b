@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthProvider';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
 
@@ -16,6 +17,9 @@ export default function DashboardPage() {
   const [selectedEventId, setSelectedEventId] = useState(null); // null = all documents
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [newEventName, setNewEventName] = useState('');
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // doc to delete or null
+  const [actionLoading, setActionLoading] = useState(null); // doc id being acted on
 
   useEffect(() => {
     fetchData();
@@ -38,6 +42,7 @@ export default function DashboardPage() {
         setDocuments(docsData.documents);
       }
     } catch (err) {
+      setErrorMsg('Failed to load data. Please refresh.');
     }
     setLoading(false);
   };
@@ -57,10 +62,12 @@ export default function DashboardPage() {
         setShowNewEvent(false);
       }
     } catch (err) {
+      setErrorMsg('Failed to create event');
     }
   };
 
   const downloadDocument = async (doc) => {
+    setActionLoading(doc.id);
     try {
       // Get signed URL first, then download
       const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`);
@@ -82,11 +89,13 @@ export default function DashboardPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('Failed to download document: ' + err.message);
+      setErrorMsg('Failed to download document: ' + err.message);
     }
+    setActionLoading(null);
   };
 
   const previewDocument = async (doc) => {
+    setActionLoading(doc.id);
     try {
       // Use server-side API to generate signed URL (avoids client-side permission issues)
       const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`);
@@ -98,13 +107,19 @@ export default function DashboardPage() {
       
       window.open(data.signedUrl, '_blank');
     } catch (err) {
-      alert('Failed to preview document: ' + err.message);
+      setErrorMsg('Failed to preview document: ' + err.message);
     }
+    setActionLoading(null);
+  };
+
+  // Show confirm dialog before delete
+  const requestDeleteDocument = (doc) => {
+    setConfirmDelete(doc);
   };
 
   const deleteDocument = async (doc) => {
-    if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
-    
+    setConfirmDelete(null);
+    setActionLoading(doc.id);
     try {
       const res = await fetch(`/api/documents/${doc.id}`, {
         method: 'DELETE',
@@ -119,8 +134,9 @@ export default function DashboardPage() {
       // Update local state
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (err) {
-      alert('Failed to delete document: ' + err.message);
+      setErrorMsg('Failed to delete document: ' + err.message);
     }
+    setActionLoading(null);
   };
 
   // Filter documents
@@ -565,7 +581,7 @@ export default function DashboardPage() {
                       ↓ Download
                     </button>
                     <button
-                      onClick={() => deleteDocument(doc)}
+                      onClick={() => requestDeleteDocument(doc)}
                       title="Delete"
                       style={{
                         padding: '8px 10px',
@@ -587,6 +603,55 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Error toast */}
+      {errorMsg && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#dc2626',
+          color: '#fff',
+          padding: '12px 24px',
+          borderRadius: 10,
+          fontSize: 13,
+          fontWeight: 600,
+          zIndex: 500,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}>
+          {errorMsg}
+          <button
+            onClick={() => setErrorMsg(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#fff',
+              fontSize: 16,
+              cursor: 'pointer',
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title="Delete Document"
+        message={confirmDelete ? `Delete "${confirmDelete.file_name}"? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => confirmDelete && deleteDocument(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

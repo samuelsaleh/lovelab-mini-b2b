@@ -56,11 +56,24 @@ export async function GET(request) {
     
     const viesUrl = `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/${encodeURIComponent(country)}/vat/${encodeURIComponent(number)}`
     
-    const response = await fetch(viesUrl)
-    const data = await response.json()
-    
-    return NextResponse.json(data, { status: response.status })
+    // Add timeout to prevent hanging on VIES API
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15_000) // 15s timeout
+
+    try {
+      const response = await fetch(viesUrl, { signal: controller.signal })
+      const data = await response.json()
+      return NextResponse.json(data, { status: response.status })
+    } finally {
+      clearTimeout(timeout)
+    }
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return NextResponse.json(
+        { error: 'VAT validation timed out. Please try again.' },
+        { status: 504 }
+      )
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

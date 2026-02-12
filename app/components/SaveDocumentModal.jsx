@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/styles';
 
@@ -26,8 +25,14 @@ export default function SaveDocumentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  
-  const supabase = createClient();
+  const closeTimerRef = useRef(null);
+
+  // Clean up timeout on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   // Fetch events on mount
   useEffect(() => {
@@ -65,6 +70,7 @@ export default function SaveDocumentModal({
         }
       }
     } catch (err) {
+      setError('Failed to load events');
     }
     setLoading(false);
   };
@@ -192,7 +198,7 @@ export default function SaveDocumentModal({
       }
 
       setSuccess(true);
-      setTimeout(() => {
+      closeTimerRef.current = setTimeout(() => {
         onClose();
       }, 1500);
     } catch (err) {

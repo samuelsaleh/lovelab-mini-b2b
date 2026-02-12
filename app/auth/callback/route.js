@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 // Validate the redirect path to prevent open redirects
@@ -8,6 +8,9 @@ function getSafeRedirectPath(next) {
   if (!/^\/[^/]/.test(next) && next !== '/') return '/';
   // Block any URL with a protocol scheme
   if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(next)) return '/';
+  // Block backslashes and encoded characters that could bypass validation
+  if (/[\\@]/.test(next)) return '/';
+  if (/%2f/i.test(next)) return '/';
   return next;
 }
 
@@ -29,8 +32,8 @@ export async function GET(request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (!error && data?.user) {
-      // Check if user email is in the allowed list
-      const allowedEmails = await getAllowedEmails(supabase);
+      // Check if user email is in the allowed list (using admin client to bypass RLS)
+      const allowedEmails = await getAllowedEmails();
       const userEmail = data.user.email?.toLowerCase();
       
       if (!allowedEmails.includes(userEmail)) {
@@ -66,15 +69,19 @@ export async function GET(request) {
   return NextResponse.redirect(`${origin}/login?error=auth_error`);
 }
 
-// Get list of allowed emails from Supabase or environment
-async function getAllowedEmails(supabase) {
-  // First try to get from database
-  const { data: allowedEmailsData } = await supabase
-    .from('allowed_emails')
-    .select('email');
-  
-  if (allowedEmailsData && allowedEmailsData.length > 0) {
-    return allowedEmailsData.map(row => row.email.toLowerCase());
+// Get list of allowed emails using admin client (bypasses RLS)
+async function getAllowedEmails() {
+  try {
+    const adminSupabase = createAdminClient();
+    const { data: allowedEmailsData } = await adminSupabase
+      .from('allowed_emails')
+      .select('email');
+    
+    if (allowedEmailsData && allowedEmailsData.length > 0) {
+      return allowedEmailsData.map(row => row.email.toLowerCase());
+    }
+  } catch (err) {
+    console.error('Failed to fetch allowed emails from DB:', err);
   }
   
   // Fallback to environment variable (comma-separated list)
@@ -84,18 +91,25 @@ async function getAllowedEmails(supabase) {
 
 // Create or update user profile
 async function ensureProfile(supabase, user) {
-  const { data: existingProfile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', user.id)
-    .single();
-  
-  if (!existingProfile) {
-    await supabase.from('profiles').insert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
-      avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-    });
+  try {
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+    
+    if (!existingProfile) {
+      const { error } = await supabase.from('profiles').insert({
+        id: user.id,
+        email: user.email,
+        full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+        avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+      });
+      if (error) {
+        console.error('Failed to create profile:', error.message);
+      }
+    }
+  } catch (err) {
+    console.error('ensureProfile error:', err);
   }
 }

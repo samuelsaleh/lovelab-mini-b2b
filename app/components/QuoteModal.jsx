@@ -16,6 +16,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
   const mobile = useIsMobile()
   
   if (!quote) return null
+  if (!client) return null // Guard against null client
   const q = quote
   const d = today()
   

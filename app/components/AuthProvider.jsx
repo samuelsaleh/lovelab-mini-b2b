@@ -17,22 +17,13 @@ export function AuthProvider({ children }) {
   const supabase = createClient();
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session -- always use getUser() for server-side verification
     const getInitialSession = async () => {
       try {
-        // Try getSession first
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          setUser(session.user);
-          await fetchProfile(session.user.id);
-        } else {
-          // Fallback: try getUser() which verifies with the server
-          const { data: { user: serverUser } } = await supabase.auth.getUser();
-          if (serverUser) {
-            setUser(serverUser);
-            await fetchProfile(serverUser.id);
-          }
+        const { data: { user: serverUser } } = await supabase.auth.getUser();
+        if (serverUser) {
+          setUser(serverUser);
+          await fetchProfile(serverUser.id);
         }
       } catch (err) {
         console.error('Auth init error:', err);
@@ -78,7 +69,11 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
     setUser(null);
     setProfile(null);
     window.location.href = '/login';

@@ -32,13 +32,26 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
+    // Verify the file path belongs to a document owned by this user
+    const { data: doc, error: docError } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('file_path', filePath)
+      .eq('created_by', user.id) // Ownership check
+      .single();
+
+    if (docError || !doc) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
     // Generate signed URL (5 minute expiry)
     const { data, error } = await supabase.storage
       .from('documents')
       .createSignedUrl(filePath, 60 * 5);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[Preview] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to generate preview URL' }, { status: 500 });
     }
 
     return NextResponse.json({ signedUrl: data.signedUrl });

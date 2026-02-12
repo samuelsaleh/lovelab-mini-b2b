@@ -9,7 +9,7 @@ import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 
 // ─── Exported helpers (used by App.jsx) ───
-export function mkColorConfig(colorName, minC = 3) {
+export function mkColorConfig(colorName, minC = 1) {
   return {
     id: Date.now() + Math.random(),
     colorName,

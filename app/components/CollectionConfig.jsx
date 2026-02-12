@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { CORD_COLORS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'

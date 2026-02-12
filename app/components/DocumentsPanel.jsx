@@ -37,6 +37,7 @@ export default function DocumentsPanel({ onReEdit }) {
       if (eventsData.events) setEvents(eventsData.events)
       if (docsData.documents) setDocuments(docsData.documents)
     } catch (err) {
+      setErrorMsg('Failed to load documents')
     }
     setLoading(false)
   }
@@ -56,6 +57,7 @@ export default function DocumentsPanel({ onReEdit }) {
         setShowNewEvent(false)
       }
     } catch (err) {
+      setErrorMsg('Failed to create event')
     }
   }
 

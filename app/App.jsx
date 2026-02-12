@@ -202,8 +202,12 @@ export default function App() {
     setDescLoading(true)
     const displayMsg = { role: 'user', content: rawMessage }
     const apiMsg = { role: 'user', content: message }
-    setAiMsgs((prev) => [...prev, displayMsg])
-    const apiMsgs = [...aiMsgs, apiMsg]
+    // Use functional updater to get latest aiMsgs and avoid stale closure
+    let apiMsgs
+    setAiMsgs((prev) => {
+      apiMsgs = [...prev, apiMsg]
+      return [...prev, displayMsg]
+    })
     try {
       const parsed = await sendChat(apiMsgs)
       let expandedQuote = null
@@ -316,19 +320,21 @@ export default function App() {
 
   useEffect(() => {
     try {
+      // Limit aiMsgs to last 50 messages to prevent localStorage overflow (5MB limit)
+      const trimmedAiMsgs = aiMsgs.length > 50 ? aiMsgs.slice(-50) : aiMsgs
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         lines,
         client: clientReady ? client : null,
         clientReady,
         curQuote,
-        aiMsgs,
+        aiMsgs: trimmedAiMsgs,
         activeTab,
         builderBudget,
         aiBudget,
         aiCollections,
         aiColors,
       }))
-    } catch { /* ignore */ }
+    } catch { /* localStorage full or unavailable -- ignore */ }
   }, [lines, client, clientReady, curQuote, aiMsgs, activeTab, builderBudget, aiBudget, aiCollections, aiColors])
 
   // ─── Pick up re-edit from sessionStorage (dashboard redirect) ───

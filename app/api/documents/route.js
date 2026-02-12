@@ -22,7 +22,9 @@ export async function GET(request) {
     let query = supabase
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
-      .order('created_at', { ascending: false });
+      .eq('created_by', user.id) // Ownership filter
+      .order('created_at', { ascending: false })
+      .limit(200); // Prevent unbounded queries
 
     if (eventId) {
       query = query.eq('event_id', eventId);
@@ -30,7 +32,7 @@ export async function GET(request) {
 
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters
-      const sanitized = search.trim().replace(/[,.()"'\\%_]/g, '');
+      const sanitized = search.trim().replace(/[,.()"'\\%_*]/g, '');
       if (sanitized) {
         query = query.or(`client_name.ilike.%${sanitized}%,client_company.ilike.%${sanitized}%`);
       }
@@ -39,7 +41,8 @@ export async function GET(request) {
     const { data: documents, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[Documents GET] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
     }
 
     return NextResponse.json({ documents });
@@ -92,6 +95,12 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
+    // Limit metadata size to prevent abuse (max 10KB)
+    const metadataStr = JSON.stringify(metadata || {});
+    if (metadataStr.length > 10240) {
+      return NextResponse.json({ error: 'Metadata too large' }, { status: 400 });
+    }
+
     const { data: document, error } = await supabase
       .from('documents')
       .insert({
@@ -110,7 +119,8 @@ export async function POST(request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[Documents POST] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
     }
 
     return NextResponse.json({ document });

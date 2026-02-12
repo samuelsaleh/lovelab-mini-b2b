@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 
 // Allowed models whitelist
 const ALLOWED_MODELS = [
+  'claude-sonnet-4-5',
   'claude-sonnet-4-20250514',
   'claude-haiku-4-20250414',
   'claude-3-5-sonnet-20241022',
@@ -12,6 +13,9 @@ const ALLOWED_MODELS = [
 ]
 
 const MAX_TOKENS_LIMIT = 4096
+
+// Only these fields are forwarded to the upstream API (allowlist)
+const ALLOWED_BODY_FIELDS = ['model', 'max_tokens', 'system', 'messages']
 
 export async function POST(request) {
   try {
@@ -33,33 +37,61 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    // Validate model
-    if (body.model && !ALLOWED_MODELS.includes(body.model)) {
+    // Validate model (required)
+    if (!body.model || !ALLOWED_MODELS.includes(body.model)) {
       return NextResponse.json(
         { error: `Model not allowed. Allowed: ${ALLOWED_MODELS.join(', ')}` },
         { status: 400 }
       )
     }
 
-    // Cap max_tokens
-    if (body.max_tokens && body.max_tokens > MAX_TOKENS_LIMIT) {
-      body.max_tokens = MAX_TOKENS_LIMIT
+    // Validate messages (required)
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      return NextResponse.json(
+        { error: 'Messages array is required' },
+        { status: 400 }
+      )
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    })
-    
-    const data = await response.json()
-    
-    return NextResponse.json(data, { status: response.status })
+    // Cap max_tokens
+    const maxTokens = typeof body.max_tokens === 'number'
+      ? Math.min(Math.max(1, body.max_tokens), MAX_TOKENS_LIMIT)
+      : 1024
+
+    // Build sanitized upstream body (allowlist pattern -- only known fields)
+    const upstreamBody = {
+      model: body.model,
+      max_tokens: maxTokens,
+      messages: body.messages,
+    }
+    if (body.system && typeof body.system === 'string') {
+      upstreamBody.system = body.system
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60_000) // 60s timeout
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(upstreamBody),
+        signal: controller.signal,
+      })
+
+      const data = await response.json()
+      return NextResponse.json(data, { status: response.status })
+    } finally {
+      clearTimeout(timeout)
+    }
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return NextResponse.json({ error: 'Request timed out' }, { status: 504 })
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
