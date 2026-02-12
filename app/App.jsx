@@ -250,8 +250,9 @@ export default function App() {
         options: Array.isArray(parsed.options) && parsed.options.length > 0 ? parsed.options : null,
       }
       setAiMsgs((prev) => [...prev, assistantMsg])
-    } catch {
-      setAiMsgs((prev) => [...prev, { role: 'assistant', content: t('ai.error'), quote: null }])
+    } catch (err) {
+      const errorDetail = err?.message || 'Unknown error'
+      setAiMsgs((prev) => [...prev, { role: 'assistant', content: `${t('ai.error')}\n\n(${errorDetail})`, quote: null }])
     }
     setDescLoading(false)
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)

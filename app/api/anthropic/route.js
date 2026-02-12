@@ -19,6 +19,12 @@ const ALLOWED_BODY_FIELDS = ['model', 'max_tokens', 'system', 'messages']
 
 export async function POST(request) {
   try {
+    // Validate API key is configured
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error('[Anthropic] ANTHROPIC_API_KEY is not configured')
+      return NextResponse.json({ error: 'AI service not configured. Please set ANTHROPIC_API_KEY.' }, { status: 500 })
+    }
+
     // Rate limit: 20 requests per minute per IP
     const rl = rateLimit(request, { maxRequests: 20, windowMs: 60_000, prefix: 'anthropic' })
     if (!rl.success) {
@@ -84,7 +90,15 @@ export async function POST(request) {
       })
 
       const data = await response.json()
-      return NextResponse.json(data, { status: response.status })
+
+      // Surface Anthropic errors clearly instead of forwarding opaque responses
+      if (!response.ok) {
+        const errMsg = data?.error?.message || data?.error?.type || JSON.stringify(data?.error) || `Anthropic API error (${response.status})`
+        console.error('[Anthropic] API error:', response.status, errMsg)
+        return NextResponse.json({ error: errMsg }, { status: response.status })
+      }
+
+      return NextResponse.json(data)
     } finally {
       clearTimeout(timeout)
     }

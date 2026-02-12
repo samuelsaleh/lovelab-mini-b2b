@@ -23,6 +23,12 @@ export async function POST(request) {
       )
     }
 
+    // Validate API key is configured
+    if (!process.env.PERPLEXITY_API_KEY) {
+      console.error('[Perplexity] PERPLEXITY_API_KEY is not configured')
+      return NextResponse.json({ error: 'Perplexity API not configured. Please set PERPLEXITY_API_KEY.' }, { status: 500 })
+    }
+
     // Authentication check
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -81,10 +87,12 @@ export async function POST(request) {
       const data = await response.json()
 
       if (!response.ok || data.error) {
-        console.error('[Perplexity] Error status:', response.status)
+        const errMsg = data?.error?.message || data?.error || `Perplexity API error (${response.status})`
+        console.error('[Perplexity] API error:', response.status, errMsg)
+        return NextResponse.json({ error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg) }, { status: response.status })
       }
 
-      return NextResponse.json(data, { status: response.status })
+      return NextResponse.json(data)
     } finally {
       clearTimeout(timeout)
     }
