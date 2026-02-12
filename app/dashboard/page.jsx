@@ -70,7 +70,7 @@ export default function DashboardPage() {
     setActionLoading(doc.id);
     try {
       // Get signed URL first, then download
-      const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`);
+      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`);
       const data = await res.json();
       
       if (!res.ok || data.error) {
@@ -98,7 +98,7 @@ export default function DashboardPage() {
     setActionLoading(doc.id);
     try {
       // Use server-side API to generate signed URL (avoids client-side permission issues)
-      const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`);
+      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`);
       const data = await res.json();
       
       if (!res.ok || data.error) {

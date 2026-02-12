@@ -63,7 +63,7 @@ export default function DocumentsPanel({ onReEdit }) {
 
   const downloadDocument = async (doc) => {
     try {
-      const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`)
+      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`)
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to get download URL')
       const pdfRes = await fetch(data.signedUrl)
@@ -83,7 +83,7 @@ export default function DocumentsPanel({ onReEdit }) {
 
   const previewDocument = async (doc) => {
     try {
-      const res = await fetch(`/api/documents/preview?path=${encodeURIComponent(doc.file_path)}`)
+      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`)
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to get preview URL')
       window.open(data.signedUrl, '_blank')

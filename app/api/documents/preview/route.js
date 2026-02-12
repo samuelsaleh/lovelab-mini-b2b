@@ -2,7 +2,10 @@ import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
-// GET - Generate a signed URL for document preview
+// UUID v4 format validation
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// GET - Generate a signed URL for document preview/download
 export async function GET(request) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'preview' });
@@ -16,45 +19,96 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const rawPath = searchParams.get('path');
+    const docId = searchParams.get('id');
 
-    if (!rawPath) {
-      return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
+    // Support both ?id= (new) and ?path= (legacy) lookups
+    let doc;
+    if (docId) {
+      // ID-based lookup (preferred)
+      if (!UUID_RE.test(docId)) {
+        return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
+      }
+
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, file_path')
+        .eq('id', docId)
+        .eq('created_by', user.id)
+        .single();
+
+      if (error || !data) {
+        return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      }
+      doc = data;
+    } else {
+      // Legacy path-based lookup (backwards compatibility)
+      const rawPath = searchParams.get('path');
+      if (!rawPath) {
+        return NextResponse.json({ error: 'Missing document ID or file path' }, { status: 400 });
+      }
+
+      const filePath = String(rawPath)
+        .replace(/\.\./g, '')
+        .replace(/^\/+/, '')
+        .replace(/[^a-zA-Z0-9\-_./]/g, '_');
+
+      if (!filePath || filePath.length < 3) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, file_path')
+        .eq('file_path', filePath)
+        .eq('created_by', user.id)
+        .single();
+
+      if (error || !data) {
+        return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      }
+      doc = data;
     }
 
-    // Sanitize file path to prevent path traversal
-    const filePath = String(rawPath)
-      .replace(/\.\./g, '')           // Remove path traversal
-      .replace(/^\/+/, '')            // Remove leading slashes
-      .replace(/[^a-zA-Z0-9\-_./]/g, '_'); // Allow only safe chars
+    // Try generating signed URL with the stored file_path
+    const storedPath = doc.file_path;
+    let signedUrl = null;
 
-    if (!filePath || filePath.length < 3) {
-      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
-    }
-
-    // Verify the file path belongs to a document owned by this user
-    const { data: doc, error: docError } = await supabase
+    const { data: urlData, error: urlError } = await supabase.storage
       .from('documents')
-      .select('id')
-      .eq('file_path', filePath)
-      .eq('created_by', user.id) // Ownership check
-      .single();
+      .createSignedUrl(storedPath, 60 * 5);
 
-    if (docError || !doc) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    if (!urlError && urlData?.signedUrl) {
+      signedUrl = urlData.signedUrl;
+    } else {
+      // Fallback: the file might be at user-scoped path (user-id/filename)
+      // This handles documents saved between the security fix and the path fix
+      const filename = storedPath.split('/').pop();
+      const userScopedPath = `${user.id}/${filename}`;
+
+      if (userScopedPath !== storedPath) {
+        const { data: fallbackData, error: fallbackError } = await supabase.storage
+          .from('documents')
+          .createSignedUrl(userScopedPath, 60 * 5);
+
+        if (!fallbackError && fallbackData?.signedUrl) {
+          signedUrl = fallbackData.signedUrl;
+
+          // Fix the stored path in the DB so future lookups work directly
+          await supabase
+            .from('documents')
+            .update({ file_path: userScopedPath })
+            .eq('id', doc.id)
+            .eq('created_by', user.id);
+        }
+      }
     }
 
-    // Generate signed URL (5 minute expiry)
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(filePath, 60 * 5);
-
-    if (error) {
-      console.error('[Preview] Error:', error.message);
+    if (!signedUrl) {
+      console.error('[Preview] Failed to generate signed URL for doc:', doc.id);
       return NextResponse.json({ error: 'Failed to generate preview URL' }, { status: 500 });
     }
 
-    return NextResponse.json({ signedUrl: data.signedUrl });
+    return NextResponse.json({ signedUrl });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
