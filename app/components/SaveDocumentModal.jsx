@@ -184,7 +184,7 @@ export default function SaveDocumentModal({
           client_name: clientName || 'Unknown',
           client_company: clientCompany || null,
           document_type: documentType,
-          file_path: filePath,
+          file_path: uploadResult.filePath,
           file_name: `${filename}.pdf`,
           file_size: pdfBlob.size,
           total_amount: totalAmount || null,
