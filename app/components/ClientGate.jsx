@@ -64,6 +64,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
   // Select a saved client
   const selectSavedClient = (savedClient) => {
+    const savedVatStatus = savedClient.vat_valid === true ? 'VALID' : savedClient.vat_valid === false ? 'INVALID' : null
     setClient({
       name: savedClient.name || '',
       phone: savedClient.phone || '',
@@ -75,6 +76,9 @@ export default function ClientGate({ client, setClient, onComplete }) {
       zip: savedClient.zip || '',
       vat: savedClient.vat || '',
       vatValid: savedClient.vat_valid,
+      vatStatus: savedVatStatus,
+      vatErrorCode: null,
+      vatMessageKey: null,
       vatValidating: false,
       savedClientId: savedClient.id,
     })
@@ -116,17 +120,24 @@ export default function ClientGate({ client, setClient, onComplete }) {
   const startVatValidation = useCallback((vatNumber) => {
     if (!vatNumber || vatNumber.length < 4) return
     setViesLoading(true)
-    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null }))
+    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null }))
     validateVAT(vatNumber)
       .then((viesRes) => {
         setViesResult(viesRes)
         setViesLoading(false)
-        setClient((prev) => ({ ...prev, vatValid: viesRes.valid, vatValidating: false }))
+        setClient((prev) => ({
+          ...prev,
+          vatValid: viesRes.valid,
+          vatStatus: viesRes.status || null,
+          vatErrorCode: viesRes.errorCode || null,
+          vatMessageKey: viesRes.messageKey || null,
+          vatValidating: false,
+        }))
       })
       .catch(() => {
-        setViesResult({ valid: false, error: 'Verification failed' })
+        setViesResult({ valid: null, status: 'UNVERIFIED', errorCode: 'NETWORK_ERROR', messageKey: 'vat.unverified.generic' })
         setViesLoading(false)
-        setClient((prev) => ({ ...prev, vatValid: false, vatValidating: false }))
+        setClient((prev) => ({ ...prev, vatValid: null, vatStatus: 'UNVERIFIED', vatErrorCode: 'NETWORK_ERROR', vatMessageKey: 'vat.unverified.generic', vatValidating: false }))
       })
   }, [setClient])
 
@@ -200,7 +211,18 @@ export default function ClientGate({ client, setClient, onComplete }) {
   }
 
   const selectCountry = (name) => {
-    setClient((c) => ({ ...c, country: name, address: '', city: '', zip: '', vat: '', vatValid: null }))
+    setClient((c) => ({
+      ...c,
+      country: name,
+      address: '',
+      city: '',
+      zip: '',
+      vat: '',
+      vatValid: null,
+      vatStatus: null,
+      vatErrorCode: null,
+      vatMessageKey: null,
+    }))
     setViesResult(null)
     setPerplexityDone(false)
     setCountryOpen(false)
@@ -425,7 +447,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             <input
               value={client.vat}
               onChange={(e) => {
-                setClient((c) => ({ ...c, vat: e.target.value, vatValid: null }))
+                setClient((c) => ({ ...c, vat: e.target.value, vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null }))
                 setViesResult(null)
               }}
               placeholder={t('client.vatPlaceholder')}
@@ -436,21 +458,40 @@ export default function ClientGate({ client, setClient, onComplete }) {
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: viesResult.valid === true ? '#d4edda' : viesResult.valid === null ? '#fff3cd' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#fff3cd' : '#f8d7da',
-                color: viesResult.valid === true ? '#155724' : viesResult.valid === null ? '#856404' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '#856404' : '#721c24',
+                background: (viesResult.status === 'VALID' || viesResult.valid === true)
+                  ? '#d4edda'
+                  : (viesResult.status === 'UNVERIFIED' || viesResult.valid === null)
+                    ? '#fff3cd'
+                    : '#f8d7da',
+                color: (viesResult.status === 'VALID' || viesResult.valid === true)
+                  ? '#155724'
+                  : (viesResult.status === 'UNVERIFIED' || viesResult.valid === null)
+                    ? '#856404'
+                    : '#721c24',
                 fontSize: 14, fontWeight: 700,
               }}>
-                {viesResult.valid === true ? '✓' : viesResult.valid === null ? '?' : viesResult.error?.includes('busy') || viesResult.error?.includes('unavailable') ? '!' : '✗'}
+                {(viesResult.status === 'VALID' || viesResult.valid === true)
+                  ? '✓'
+                  : (viesResult.status === 'UNVERIFIED' || viesResult.valid === null)
+                    ? '?'
+                    : '✗'}
               </div>
             )}
             {perplexityDone && !viesLoading && !viesResult && client.vat.trim().length >= 4 && (
               <button onClick={handleVerifyVat} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.verify')}</button>
             )}
           </div>
-          {viesResult && !viesResult.valid && viesResult.error && (
-            <div style={{ fontSize: 10, color: viesResult.error.includes('busy') || viesResult.error.includes('unavailable') ? '#856404' : '#c44', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>{viesResult.error}</span>
-              {(viesResult.error.includes('busy') || viesResult.error.includes('unavailable')) && !viesLoading && (
+          {viesResult && (viesResult.status === 'INVALID' || viesResult.status === 'UNVERIFIED' || viesResult.valid === false || viesResult.valid === null) && (
+            <div style={{
+              fontSize: 10,
+              color: (viesResult.status === 'UNVERIFIED' || viesResult.valid === null) ? '#856404' : '#c44',
+              marginTop: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span>{t(viesResult.messageKey || ((viesResult.status === 'INVALID' || viesResult.valid === false) ? 'vat.numberNotFound' : 'vat.unverified.generic'))}</span>
+              {(viesResult.status === 'UNVERIFIED' || viesResult.valid === null) && !viesLoading && (
                 <button onClick={handleVerifyVat} style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
               )}
             </div>

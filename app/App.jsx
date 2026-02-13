@@ -53,7 +53,22 @@ export default function App() {
   const [savedFormState, setSavedFormState] = useState(null)
 
   // Client info
-  const [client, setClient] = useState({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
+  const [client, setClient] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    company: '',
+    country: '',
+    address: '',
+    city: '',
+    zip: '',
+    vat: '',
+    vatValid: null,
+    vatStatus: null,       // 'VALID' | 'INVALID' | 'UNVERIFIED' | null
+    vatErrorCode: null,
+    vatMessageKey: null,
+    vatValidating: false,
+  })
   const [clientReady, setClientReady] = useState(false)
 
   // AI chat state
@@ -119,16 +134,26 @@ export default function App() {
 
   // ─── VAT banner ───
   const hasVat = Boolean(client.vat && client.vat.trim().length >= 4)
-  const showVatBanner = hasStarted && hasVat && (client.vatValidating || client.vatValid !== true)
+  const vatStatus = client.vatStatus || (client.vatValid === true ? 'VALID' : client.vatValid === false ? 'INVALID' : hasVat ? 'UNVERIFIED' : null)
+  const showVatBanner = hasStarted && hasVat && (client.vatValidating || vatStatus !== 'VALID')
 
   const retryVatValidation = useCallback(() => {
     const vat = client.vat?.trim()
     if (!vat || vat.length < 4) return
     if (client.vatValidating) return
-    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null }))
+    setClient((prev) => ({ ...prev, vatValidating: true, vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null }))
     validateVAT(vat)
-      .then((viesRes) => { setClient((prev) => ({ ...prev, vatValid: viesRes.valid, vatValidating: false })) })
-      .catch(() => { setClient((prev) => ({ ...prev, vatValid: null, vatValidating: false })) })
+      .then((viesRes) => {
+        setClient((prev) => ({
+          ...prev,
+          vatValid: viesRes.valid,
+          vatStatus: viesRes.status || null,
+          vatErrorCode: viesRes.errorCode || null,
+          vatMessageKey: viesRes.messageKey || null,
+          vatValidating: false,
+        }))
+      })
+      .catch(() => { setClient((prev) => ({ ...prev, vatValid: null, vatStatus: 'UNVERIFIED', vatErrorCode: 'NETWORK_ERROR', vatMessageKey: 'vat.unverified.generic', vatValidating: false })) })
   }, [client.vat, client.vatValidating, setClient])
 
   // ─── Generate quote from builder ───
@@ -378,13 +403,17 @@ export default function App() {
           <div style={{ maxWidth: 1400, margin: '0 auto' }}>
             <div style={{
               borderRadius: 8, padding: '8px 12px',
-              border: `1px solid ${client.vatValidating ? '#e0e0e0' : client.vatValid === false ? '#f5c6cb' : '#ffeeba'}`,
-              background: client.vatValidating ? '#f7f7f7' : client.vatValid === false ? '#f8d7da' : '#fff3cd',
-              color: client.vatValidating ? '#555' : client.vatValid === false ? '#721c24' : '#856404',
+              border: `1px solid ${client.vatValidating ? '#e0e0e0' : vatStatus === 'INVALID' ? '#f5c6cb' : '#ffeeba'}`,
+              background: client.vatValidating ? '#f7f7f7' : vatStatus === 'INVALID' ? '#f8d7da' : '#fff3cd',
+              color: client.vatValidating ? '#555' : vatStatus === 'INVALID' ? '#721c24' : '#856404',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12,
             }}>
               <span style={{ fontWeight: 600 }}>
-                {client.vatValidating ? t('vat.checking') : client.vatValid === false ? t('vat.invalid') : t('vat.notVerified')}
+                {client.vatValidating
+                  ? t('vat.checking')
+                  : vatStatus === 'INVALID'
+                    ? t('vat.invalid')
+                    : t(client.vatMessageKey || 'vat.notVerified')}
                 <span style={{ fontWeight: 400, marginLeft: 8 }}>{client.vat}</span>
               </span>
               <div style={{ display: 'flex', gap: 6 }}>
