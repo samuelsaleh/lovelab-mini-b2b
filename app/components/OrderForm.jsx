@@ -381,19 +381,8 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 
       <button
         onClick={() => {
-          // Build a discount display string from calculator inputs
-          let discountStr = ''
-          const pct = Number(discountPct) || 0
-          const flat = Number(discountFlat) || 0
-          if (pct > 0 && flat > 0) {
-            // Both: show total discount as flat amount
-            discountStr = `€${(calc.pctOff + flat).toFixed(0)}`
-          } else if (pct > 0) {
-            discountStr = `${pct}%`
-          } else if (flat > 0) {
-            discountStr = `€${flat}`
-          }
-          onApplyToForm({ finalTotal: calc.final, discountDisplay: discountStr })
+          // Apply only the computed final total. Discount is already included in calc.final.
+          onApplyToForm({ finalTotal: calc.final })
         }}
         style={{
           width: '100%', marginTop: 10, padding: 10, borderRadius: 8, border: 'none',
@@ -643,11 +632,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ finalTotal: val, discountDisplay: disc }) => {
+  const handleApplyFromCalc = useCallback(({ finalTotal: val }) => {
     setFinalTotalOverride(val)
-    if (disc) {
-      setDiscountDisplay(disc)
-    }
+    // Keep any manually entered discount in the form untouched.
   }, [])
 
   // ─── Header field style ───

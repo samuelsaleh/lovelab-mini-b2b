@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { CORD_COLORS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
@@ -8,6 +8,28 @@ import { mkColorConfig } from './BuilderPage'
 import { useI18n } from '@/lib/i18n'
 
 const QTY_PRESETS = [1, 3, 5, 10]
+
+function createConfigId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+}
+
+function ensureUniqueConfigIds(configs) {
+  const seen = new Set()
+  let changed = false
+  const next = configs.map((cfg) => {
+    let nextId = cfg?.id
+    if (nextId === undefined || nextId === null || seen.has(nextId)) {
+      nextId = createConfigId()
+      changed = true
+    }
+    seen.add(nextId)
+    return nextId === cfg?.id ? cfg : { ...cfg, id: nextId }
+  })
+  return changed ? next : null
+}
 
 export default function CollectionConfig({ line, col, onChange, onRemove }) {
   const { t } = useI18n()
@@ -20,6 +42,15 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
 
   const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
   const set = (patch) => onChange(line.uid, patch)
+
+  // Defensive guard: guarantee unique ids for React keys and row actions.
+  useEffect(() => {
+    const deduped = ensureUniqueConfigIds(line.colorConfigs || [])
+    if (deduped) {
+      set({ colorConfigs: deduped })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.colorConfigs])
 
   // Color counts
   const colorCounts = {}
@@ -69,7 +100,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
   const duplicateConfig = (cfgId) => {
     const original = line.colorConfigs.find(c => c.id === cfgId)
     if (!original) return
-    const copy = { ...original, id: Date.now() + Math.random() }
+    const copy = { ...original, id: createConfigId() }
     const idx = line.colorConfigs.findIndex(c => c.id === cfgId)
     const updated = [...line.colorConfigs]
     updated.splice(idx + 1, 0, copy)

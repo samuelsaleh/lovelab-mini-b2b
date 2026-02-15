@@ -8,6 +8,28 @@ import { mkColorConfig } from './BuilderPage'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
+function createConfigId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+}
+
+function ensureUniqueConfigIds(configs) {
+  const seen = new Set()
+  let changed = false
+  const next = configs.map((cfg) => {
+    let nextId = cfg?.id
+    if (nextId === undefined || nextId === null || seen.has(nextId)) {
+      nextId = createConfigId()
+      changed = true
+    }
+    seen.add(nextId)
+    return nextId === cfg?.id ? cfg : { ...cfg, id: nextId }
+  })
+  return changed ? next : null
+}
+
 // ─── Accordion Section (shared helper) ───
 const AccordionSection = ({ label, value, isOpen, onToggle, children, isCompleted }) => (
   <div style={{ borderBottom: '1px solid #f0f0f0' }}>
@@ -303,6 +325,15 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
 
   const set = (patch) => onChange(line.uid, patch)
 
+  // Defensive guard: keep colorConfig ids unique for stable React keys.
+  useEffect(() => {
+    const deduped = ensureUniqueConfigIds(line.colorConfigs || [])
+    if (deduped) {
+      set({ colorConfigs: deduped })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.colorConfigs])
+
   // Helper: update a shared setting and propagate to all existing configs
   const updateShared = (updates) => {
     const next = { ...sharedSettings, ...updates }
@@ -377,7 +408,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   const duplicateConfig = (cfgId) => {
     const original = line.colorConfigs.find((c) => c.id === cfgId)
     if (!original) return
-    const copy = { ...original, id: Date.now() + Math.random() }
+    const copy = { ...original, id: createConfigId() }
     // Insert right after the original
     const idx = line.colorConfigs.findIndex((c) => c.id === cfgId)
     const updated = [...line.colorConfigs]
