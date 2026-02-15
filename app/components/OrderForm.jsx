@@ -7,20 +7,21 @@ import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
 import SaveDocumentModal from './SaveDocumentModal'
+import { useI18n } from '@/lib/i18n'
 
 const ROWS_PER_PAGE = 10
 
 const COLUMNS = [
-  { key: 'no', label: 'No.', width: 34 },
-  { key: 'quantity', label: 'Quantity', width: 58 },
-  { key: 'collection', label: 'Collection', width: 130 },
-  { key: 'carat', label: 'Carat (ct)', width: 64 },
-  { key: 'shape', label: 'Shape', width: 80 },
-  { key: 'bpColor', label: 'B / P / Color', width: 90 },
-  { key: 'size', label: 'Size', width: 50 },
-  { key: 'colorCord', label: 'Color Cord', width: 120 },
-  { key: 'unitPrice', label: 'Unit Price (€)', width: 90 },
-  { key: 'total', label: 'Total (€)', width: 90 },
+  { key: 'no', labelKey: 'order.columns.no', width: 34 },
+  { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
+  { key: 'collection', labelKey: 'order.columns.collection', width: 130 },
+  { key: 'carat', labelKey: 'order.columns.carat', width: 64 },
+  { key: 'shape', labelKey: 'order.columns.shape', width: 80 },
+  { key: 'bpColor', labelKey: 'order.columns.bpColor', width: 90 },
+  { key: 'size', labelKey: 'order.columns.size', width: 50 },
+  { key: 'colorCord', labelKey: 'order.columns.colorCord', width: 120 },
+  { key: 'unitPrice', labelKey: 'order.columns.unitPrice', width: 90 },
+  { key: 'total', labelKey: 'order.columns.total', width: 90 },
 ]
 
 const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'bpColor', 'size', 'colorCord', 'unitPrice']
@@ -212,11 +213,14 @@ function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting
 
 // ─── Side Calculator ───
 function Calculator({ subtotal, onApplyToForm, mobile }) {
+  const { t } = useI18n()
   const [discountPct, setDiscountPct] = useState('')
   const [discountFlat, setDiscountFlat] = useState('')
   const [deliveryCost, setDeliveryCost] = useState('')
+  const [extraPercent, setExtraPercent] = useState('')
   const [customLabel, setCustomLabel] = useState('')
   const [customAmount, setCustomAmount] = useState('')
+  const [showTaxInfo, setShowTaxInfo] = useState(false)
 
   const calc = useMemo(() => {
     const sub = Number(subtotal) || 0
@@ -224,10 +228,15 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
     const flatOff = Number(discountFlat) || 0
     const delivery = Number(deliveryCost) || 0
     const custom = Number(customAmount) || 0
+    const extraPct = Math.max(0, Number(extraPercent) || 0)
     const totalDiscount = pctOff + flatOff
-    const final = sub - totalDiscount + delivery + custom
-    return { sub, pctOff, flatOff, totalDiscount, delivery, custom, final }
-  }, [subtotal, discountPct, discountFlat, deliveryCost, customAmount])
+    // Shipping/custom adjustments are applied after discount, then extra percentage is added last.
+    const baseAfterDiscount = sub - totalDiscount
+    const baseWithShipping = baseAfterDiscount + delivery + custom
+    const extraAmount = (baseWithShipping * extraPct) / 100
+    const final = baseWithShipping + extraAmount
+    return { sub, pctOff, flatOff, totalDiscount, delivery, custom, extraPct, baseAfterDiscount, baseWithShipping, extraAmount, final }
+  }, [subtotal, discountPct, discountFlat, deliveryCost, customAmount, extraPercent])
 
   const calcInput = {
     width: '100%',
@@ -264,53 +273,109 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
       position: mobile ? 'relative' : 'sticky',
       top: mobile ? 0 : 16,
     }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 12 }}>
-        Calculator
-      </div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 12 }}>{t('order.calculator')}</div>
+      <button
+        onClick={() => setShowTaxInfo((v) => !v)}
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          borderRadius: 8,
+          border: `1px solid ${colors.lineGray}`,
+          background: '#fafaf8',
+          color: colors.inkPlum,
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontFamily: fonts.body,
+          marginBottom: 8,
+        }}
+      >
+        {t('order.taxInfoButton')}
+      </button>
+      {showTaxInfo && (
+        <div style={{
+          border: `1px solid ${colors.lineGray}`,
+          borderRadius: 8,
+          background: '#fff',
+          padding: 10,
+          marginBottom: 8,
+          fontSize: 10,
+          color: colors.charcoal,
+          lineHeight: 1.5,
+        }}>
+          <div style={{ fontWeight: 700, color: colors.inkPlum, marginBottom: 6 }}>{t('order.taxInfoTitle')}</div>
+          <div style={{ marginBottom: 6, fontStyle: 'italic' }}>{t('order.taxInfoManualOnly')}</div>
+          <div style={{ fontWeight: 700 }}>{t('order.taxBelgiumTitle')}</div>
+          <ul style={{ margin: '4px 0 8px 16px', padding: 0 }}>
+            <li>{t('order.taxBelgiumBusiness')}</li>
+            <li>{t('order.taxBelgiumPrivate')}</li>
+          </ul>
+          <div style={{ fontWeight: 700 }}>{t('order.taxEuTitle')}</div>
+          <ul style={{ margin: '4px 0 8px 16px', padding: 0 }}>
+            <li>{t('order.taxEuViesOk')}</li>
+            <li>{t('order.taxEuViesNotOk')}</li>
+            <li>{t('order.taxEuOss')}</li>
+          </ul>
+          <div style={{ fontWeight: 700 }}>{t('order.taxOutsideEuTitle')}</div>
+          <ul style={{ margin: '4px 0 8px 16px', padding: 0 }}>
+            <li>{t('order.taxOutsideEuExport')}</li>
+            <li>{t('order.taxOutsideEuNoProof')}</li>
+          </ul>
+          <div>{t('order.taxShippingAfterDiscount')}</div>
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: colors.charcoal, display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-        <span>Subtotal</span>
+        <span>{t('quote.subtotal')}</span>
         <span style={{ fontWeight: 600 }}>{fmt(calc.sub)}</span>
       </div>
 
-      <div style={calcLabel}>Extra discount %</div>
+      <div style={calcLabel}>{t('order.extraDiscountPercent')}</div>
       <input type="number" min="0" max="100" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} placeholder="0" style={calcInput} />
       {calc.pctOff > 0 && (
         <div style={{ fontSize: 10, color: '#c0392b', textAlign: 'right', marginTop: 2 }}>-{fmt(calc.pctOff)}</div>
       )}
 
-      <div style={calcLabel}>Flat discount (€)</div>
+      <div style={calcLabel}>{t('order.flatDiscount')}</div>
       <input type="number" min="0" value={discountFlat} onChange={(e) => setDiscountFlat(e.target.value)} placeholder="0" style={calcInput} />
 
-      <div style={calcLabel}>Delivery cost (€)</div>
+      <div style={calcLabel}>{t('order.deliveryCost')}</div>
       <input type="number" min="0" value={deliveryCost} onChange={(e) => setDeliveryCost(e.target.value)} placeholder="0" style={calcInput} />
 
-      <div style={calcLabel}>Custom adjustment</div>
-      <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="Label (optional)" style={{ ...calcInput, marginBottom: 4 }} />
-      <input type="number" value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} placeholder="€ amount (+/-)" style={calcInput} />
+      <div style={calcLabel}>{t('order.extraPercentAdd')}</div>
+      <input type="number" min="0" value={extraPercent} onChange={(e) => setExtraPercent(e.target.value)} placeholder="0" style={calcInput} />
+
+      <div style={calcLabel}>{t('order.customAdjustment')}</div>
+      <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder={t('order.labelOptional')} style={{ ...calcInput, marginBottom: 4 }} />
+      <input type="number" value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} placeholder={t('order.amountPlusMinus')} style={calcInput} />
 
       {/* Summary */}
       <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${colors.lineGray}` }}>
         {calc.totalDiscount > 0 && (
           <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#c0392b' }}>
-            <span>Discount</span><span>-{fmt(calc.totalDiscount)}</span>
+            <span>{t('quote.discount')}</span><span>-{fmt(calc.totalDiscount)}</span>
           </div>
         )}
         {calc.delivery > 0 && (
           <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: colors.charcoal }}>
-            <span>Delivery</span><span>+{fmt(calc.delivery)}</span>
+            <span>{t('order.delivery')}</span><span>+{fmt(calc.delivery)}</span>
           </div>
         )}
         {calc.custom !== 0 && (
           <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: colors.charcoal }}>
-            <span>{customLabel || 'Adjustment'}</span><span>{calc.custom > 0 ? '+' : ''}{fmt(calc.custom)}</span>
+            <span>{customLabel || t('order.adjustment')}</span><span>{calc.custom > 0 ? '+' : ''}{fmt(calc.custom)}</span>
+          </div>
+        )}
+        {calc.extraAmount > 0 && (
+          <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: colors.charcoal }}>
+            <span>{t('order.extraPercentLine').replace('{percent}', String(calc.extraPct))}</span><span>+{fmt(calc.extraAmount)}</span>
           </div>
         )}
         <div style={{
           fontSize: 16, fontWeight: 800, display: 'flex', justifyContent: 'space-between',
           padding: '8px 0 4px', borderTop: `1px solid ${colors.lineGray}`, marginTop: 6, color: colors.inkPlum,
         }}>
-          <span>Final Total</span><span>{fmt(calc.final)}</span>
+          <span>{t('order.finalTotal')}</span><span>{fmt(calc.final)}</span>
         </div>
       </div>
 
@@ -328,7 +393,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
           } else if (flat > 0) {
             discountStr = `€${flat}`
           }
-          onApplyToForm({ finalTotal: calc.sub + calc.delivery + calc.custom, discountDisplay: discountStr })
+          onApplyToForm({ finalTotal: calc.final, discountDisplay: discountStr })
         }}
         style={{
           width: '100%', marginTop: 10, padding: 10, borderRadius: 8, border: 'none',
@@ -338,7 +403,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
         onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
         onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
       >
-        Apply to Form
+        {t('order.applyToForm')}
       </button>
     </div>
   )
@@ -346,6 +411,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 
 // ═══ MAIN ORDER FORM ═══
 export default function OrderForm({ quote, client, onClose, currentUser, savedFormState }) {
+  const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -410,10 +476,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Prepayment & discount state
   const [hasPrepayment, setHasPrepayment] = useState(false)
   const [prepaymentAmount, setPrepaymentAmount] = useState('')
-  const [discountDisplay, setDiscountDisplay] = useState(() => {
-    if (quote?.discountPercent > 0) return `${quote.discountPercent}%`
-    return ''
-  })      // e.g. "10%" or "€500"
+  const [discountDisplay, setDiscountDisplay] = useState('')
 
   // Table rows state
   const [rows, setRows] = useState(() => prefillRows(quote))
@@ -773,10 +836,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             cursor: 'pointer', fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
           }}
         >
-          &larr; Back
+          &larr; {t('common.back')}
         </button>
         <div style={{ flex: 1, textAlign: 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
-          Order Form
+          {t('nav.orderform')}
         </div>
         <button
           onClick={() => setShowSaveModal(true)}
@@ -788,7 +851,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
           onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
         >
-          Save
+          {t('order.save')}
         </button>
         <button
           onClick={handlePrint}
@@ -800,7 +863,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
         >
-          Print
+          {t('order.print')}
         </button>
       </div>
 
@@ -890,7 +953,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               {/* Date & Packaging */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Date :</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.date')} :</span>
                   <PrintableInput
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
@@ -938,7 +1001,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 <thead>
                   <tr>
                     {COLUMNS.map((col) => (
-                      <th key={col.key} style={thStyle}>{col.label}</th>
+                      <th key={col.key} style={thStyle}>{t(col.labelKey)}</th>
                     ))}
                     {!isPrinting && <th className="order-form-dup-col" style={{ ...thStyle, borderBottom: 'none' }} />}
                   </tr>
@@ -1034,7 +1097,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   borderTop: `2px solid ${colors.inkPlum}`, marginTop: 0, paddingTop: 8,
                 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>Remarks</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>{t('order.remarks')}</div>
                     <PrintableTextarea
                       value={remarks}
                       onChange={(e) => setRemarks(e.target.value)}
@@ -1050,7 +1113,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div style={{ textAlign: 'right', minWidth: 200 }}>
                     {/* Final Total (before discount) */}
                     <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
-                      {afterDiscount != null ? 'Total Before Discount (€)' : 'Final Total (€)'}
+                      {afterDiscount != null ? t('order.totalBeforeDiscount') : t('order.finalTotalEuro')}
                     </div>
                     <PrintableInput
                       value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
@@ -1071,11 +1134,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     {/* Discount input (hidden in PDF when no discount applied) */}
                     {(!isPrinting || afterDiscount != null) && (
                     <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal }}>Discount:</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal }}>{t('quote.discount')}:</span>
                       <PrintableInput
                         value={discountDisplay}
                         onChange={(e) => setDiscountDisplay(e.target.value)}
-                        placeholder="e.g. 10% or €500"
+                        placeholder={t('order.discountPlaceholder')}
                         style={{
                           width: 100, padding: '3px 6px', border: 'none',
                           borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
@@ -1091,7 +1154,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     {afterDiscount != null && (
                       <div style={{ marginTop: 8 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: '#27ae60', marginBottom: 4 }}>
-                          After Discount (€)
+                          {t('order.afterDiscount')}
                         </div>
                         <div style={{
                           fontSize: 20, fontWeight: 800, color: colors.inkPlum,
@@ -1145,8 +1208,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 <div style={{ marginTop: 16 }}>
                   {/* Legal text */}
                   <div style={{ fontSize: 8, color: colors.lovelabMuted, lineHeight: 1.6, marginBottom: 16 }}>
-                    Delivery costs will be added to the final invoice. VAT will be applied where required.<br />
-                    Payment terms: 50% upon order confirmation and 50% prior to delivery (within 14 working days).
+                    {t('order.legalDeliveryVat')}<br />
+                    {t('order.paymentTerms')}
                   </div>
 
                   {/* Signatures */}

@@ -11,7 +11,7 @@ export default function UserMenu() {
   const router = useRouter();
   const mobile = useIsMobile();
   const { user, profile, loading, signOut } = useAuth();
-  const { lang, setLang, languages } = useI18n();
+  const { lang, setLang, languages, t } = useI18n();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -160,7 +160,7 @@ export default function UserMenu() {
               <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" />
               <polyline points="14 2 14 8 20 8" />
             </svg>
-            Documents (full page)
+            {t('docs.allDocuments')}
           </button>
 
           {/* Language Switcher */}
@@ -171,7 +171,7 @@ export default function UserMenu() {
             gap: 4,
             alignItems: 'center',
           }}>
-            <span style={{ fontSize: 11, color: '#888', marginRight: 4 }}>Lang:</span>
+            <span style={{ fontSize: 11, color: '#888', marginRight: 4 }}>{t('nav.language')}:</span>
             {languages.map(l => (
               <button
                 key={l.code}
@@ -219,7 +219,7 @@ export default function UserMenu() {
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              Sign out / Déconnexion
+              {t('nav.signOut')}
             </button>
           ) : (
             <button
@@ -242,7 +242,7 @@ export default function UserMenu() {
               onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
-              Sign in / Connexion
+              {t('nav.signIn')}
             </button>
           )}
         </div>

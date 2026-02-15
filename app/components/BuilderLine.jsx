@@ -280,11 +280,6 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                 ))}
               </div>
             </div>
-            {cfg.qty < col.minC && (
-              <div style={{ fontSize: 10, color: '#e74c3c', marginTop: 4 }}>
-                ⚠ Minimum recommended: {col.minC}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -342,7 +337,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
 
   // Add color config
   const addColorConfig = (colorName) => {
-    const minC = col ? col.minC : 3
+    const minC = 1
     const newCfg = consistent
       ? { ...mkColorConfig(colorName, minC), ...sharedSettings }
       : mkColorConfig(colorName, minC)

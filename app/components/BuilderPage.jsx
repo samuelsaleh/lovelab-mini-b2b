@@ -85,7 +85,7 @@ function WarningsSummary({ warnings }) {
         }}
       >
         <span style={{ fontSize: 11, fontWeight: 600, color: '#c0392b', flex: 1, textAlign: 'left' }}>
-          {t('builder.colorsBelowMinQty').replace('{count}', count)}
+          {t('builder.warningsCount').replace('{count}', count)}
         </span>
         <span style={{ fontSize: 10, color: '#c0392b', transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
           ▾
@@ -192,7 +192,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     palette.forEach(color => {
       preset.caratIndices.forEach(caratIdx => {
         configs.push({
-          ...mkColorConfig(color.n, col.minC),
+          ...mkColorConfig(color.n, 1),
           caratIdx,
           housing: preset.housing,
           size: preset.size,
@@ -338,10 +338,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               <div>
                 <div style={{ marginBottom: 20 }}>
                   <h2 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: '0 0 4px', fontFamily: fonts.body }}>
-                    Select Collections
+                    {t('builder.selectCollections')}
                   </h2>
                   <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
-                    Choose which collections to include in this order. You'll configure colors and quantities next.
+                    {t('builder.selectCollectionsHelp')}
                   </p>
                 </div>
 
@@ -412,26 +412,23 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         {/* Details */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>Price</span>
+                            <span style={{ color: '#999' }}>{t('builder.price')}</span>
                             <span style={{ fontWeight: 600 }}>{priceRange}</span>
                           </div>
                           <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>Carats</span>
+                            <span style={{ color: '#999' }}>{t('builder.carats')}</span>
                             <span>{caratRange}</span>
                           </div>
                           <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>Cord</span>
+                            <span style={{ color: '#999' }}>{t('builder.cord')}</span>
                             <span>{cordType} ({colorCount} colors)</span>
                           </div>
                           {col.shapes && (
                             <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ color: '#999' }}>Shapes</span>
-                              <span>{col.shapes.length} options</span>
+                              <span style={{ color: '#999' }}>{t('builder.shapes')}</span>
+                              <span>{t('builder.optionsCount').replace('{count}', col.shapes.length)}</span>
                             </div>
                           )}
-                          <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
-                            Min {col.minC} pcs/color
-                          </div>
                         </div>
                       </button>
                     )
@@ -442,11 +439,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
                   <div style={{ fontSize: 13, color: '#888' }}>
                     {selectedCollections.length === 0 ? (
-                      'Select at least one collection to continue'
+                      t('builder.selectAtLeastOne')
                     ) : (
                       <span>
                         <strong style={{ color: colors.inkPlum }}>{selectedCollections.length}</strong>
-                        {' '}collection{selectedCollections.length !== 1 ? 's' : ''} selected
+                        {' '}{t('builder.collectionsSelected').replace('{count}', selectedCollections.length)}
                       </span>
                     )}
                   </div>
@@ -459,7 +456,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       cursor: selectedCollections.length === 0 ? 'default' : 'pointer',
                     }}
                   >
-                    Continue to Configure →
+                    {t('builder.continueConfig')} →
                   </button>
                 </div>
               </div>
@@ -469,10 +466,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <div>
                     <h2 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: '0 0 4px', fontFamily: fonts.body }}>
-                      Configure Order
+                      {t('builder.configureOrder')}
                     </h2>
                     <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
-                      Add colors and set options for each collection
+                      {t('builder.configureOrderHelp')}
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -532,7 +529,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       )}
                     </div>
                     <button onClick={goToSelect} style={btnGhost}>
-                      ← Edit Collections
+                      ← {t('builder.editCollections')}
                     </button>
                   </div>
                 </div>
@@ -565,7 +562,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d0d0d0'; e.currentTarget.style.color = '#888' }}
                 >
-                  + Add more collections
+                  + {t('builder.addMoreCollections')}
                 </button>
 
                 {/* AI Recommendations Panel */}
@@ -579,21 +576,21 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       padding: '10px 14px', borderBottom: `1px solid ${colors.inkPlum}15`,
                     }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum }}>AI Recommendations</div>
-                        <div style={{ fontSize: 10, color: '#999' }}>{fmt(remaining)} remaining budget</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum }}>{t('builder.aiRecommendations')}</div>
+                        <div style={{ fontSize: 10, color: '#999' }}>{t('builder.remainingBudget').replace('{amount}', fmt(remaining))}</div>
                       </div>
                       <button onClick={() => setShowRecommendations(false)} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 16, cursor: 'pointer' }}>x</button>
                     </div>
                     <div style={{ padding: '12px 14px' }}>
                       {budgetRecommendations.loading ? (
-                        <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 12, color: '#999' }}>Thinking...</div>
+                        <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 12, color: '#999' }}>{t('builder.thinking')}</div>
                       ) : (
                         <div style={{ fontSize: 12, color: '#444', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{budgetRecommendations.message}</div>
                       )}
                     </div>
                     {!budgetRecommendations.loading && (
                       <div style={{ padding: '8px 14px 10px', borderTop: '1px solid #f0e8ee', display: 'flex', justifyContent: 'flex-end' }}>
-                        <button onClick={onRequestRecommendations} style={{ ...btnSecondary, padding: '6px 14px', fontSize: 11 }}>Regenerate</button>
+                        <button onClick={onRequestRecommendations} style={{ ...btnSecondary, padding: '6px 14px', fontSize: 11 }}>{t('builder.regenerate')}</button>
                       </div>
                     )}
                   </div>
@@ -639,9 +636,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           >×</button>
         )}
         <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eaeaea' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>Order Summary</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>{t('builder.orderSummary')}</div>
           <div style={{ fontSize: 11, color: '#999' }}>
-            {quote.totalPieces > 0 ? `${quote.totalPieces} pieces` : 'No items yet'}
+            {quote.totalPieces > 0 ? t('builder.piecesCount').replace('{count}', quote.totalPieces) : t('builder.noItemsYet')}
           </div>
         </div>
 
@@ -660,7 +657,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               <div key={line.uid} style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{col.label}</div>
-                  <div style={{ fontSize: 11, color: '#999' }}>{line.colorConfigs.length} colors, {pieces} pcs</div>
+              <div style={{ fontSize: 11, color: '#999' }}>{t('builder.colorsPcs').replace('{colors}', line.colorConfigs.length).replace('{pieces}', pieces)}</div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#333' }}>{fmt(lineTotal)}</div>
               </div>
@@ -668,7 +665,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           })}
           {quote.totalPieces === 0 && (
             <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: '#ccc' }}>
-              Add colors to see totals
+              {t('builder.addColorsToSeeTotals')}
             </div>
           )}
         </div>
@@ -677,17 +674,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         <div style={{ borderTop: '1px solid #eaeaea', padding: '12px 16px', maxHeight: '45vh', overflowY: 'auto' }}>
           {quote.discountPercent > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
-              <span style={{ color: '#27ae60', fontWeight: 600 }}>Discount ({quote.discountPercent}%)</span>
+              <span style={{ color: '#27ae60', fontWeight: 600 }}>{t('quote.discount')} ({quote.discountPercent}%)</span>
               <span style={{ color: '#27ae60', fontWeight: 600 }}>-{fmt(quote.discountAmount)}</span>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-            <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>Total</span>
+            <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>{t('quote.total')}</span>
             <span style={{ fontSize: 22, fontWeight: 800, color: colors.inkPlum }}>{fmt(quote.total)}</span>
           </div>
           {quote.totalPieces > 0 && (
             <div style={{ fontSize: 11, color: '#999', textAlign: 'right', marginBottom: 8 }}>
-              Retail value: {fmt(quote.totalRetail)}
+              {t('builder.retailValue')}: {fmt(quote.totalRetail)}
             </div>
           )}
 
@@ -701,7 +698,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               fontSize: 11, padding: '6px 0', marginBottom: 8,
               color: overBudget ? '#c0392b' : '#27ae60', fontWeight: 600,
             }}>
-              {overBudget ? `Over budget by ${fmt(spent - budgetNum)}` : `${fmt(remaining)} remaining`}
+              {overBudget ? t('builder.overBudgetBy').replace('{amount}', fmt(spent - budgetNum)) : t('builder.remainingAmount').replace('{amount}', fmt(remaining))}
             </div>
           )}
 
@@ -716,7 +713,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               marginBottom: 6,
             }}
           >
-            Generate Quote
+            {t('builder.generateQuote')}
           </button>
 
           {/* Budget recommend */}
@@ -730,7 +727,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 opacity: budgetRecommendations?.loading ? 0.6 : 1,
               }}
             >
-              {budgetRecommendations?.loading ? 'Thinking...' : `Suggest for ${fmt(remaining)} left`}
+              {budgetRecommendations?.loading ? t('builder.thinking') : t('builder.suggestForLeft').replace('{amount}', fmt(remaining))}
             </button>
           )}
         </div>

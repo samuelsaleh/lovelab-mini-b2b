@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
 import { COLLECTIONS, CORD_COLORS, calculateQuote } from '@/lib/catalog'
-import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -25,7 +24,7 @@ const AI_CHIPS = [
   'I have a budget of €2000, suggest a starter order',
   'Show me CUTY + CUBIX options in 3 colors',
   'Build me a bestseller order for a boutique',
-  'What can I get for €800?',
+  'What can I get for €1200?',
 ]
 
 export default function App() {
@@ -248,14 +247,14 @@ export default function App() {
             const caratIdx = findCaratIdx(ql.product, ql.carat)
             const base = { caratIdx, housing: ql.housing ?? null, housingType: ql.housingType ?? null, multiAttached: ql.multiAttached ?? null, shape: ql.shape ?? null, size: ql.size ?? null }
             if (Array.isArray(ql.colors) && ql.colors.length > 0) {
-              const per = Number(ql.qtyPerColor) || Number(ql.qty) || (col ? col.minC : 1) || 1
+              const per = Number(ql.qtyPerColor) || Number(ql.qty) || 1
               for (const cName of ql.colors) {
                 colorConfigs.push({ ...mkColorConfig(cName, per), ...base, qty: per, colorName: cName })
               }
               continue
             }
             const colorName = ql.colorName || ql.color || 'Unknown'
-            const qty = Number(ql.qty) || Number(ql.totalQty) || (col ? col.minC : 1) || 1
+            const qty = Number(ql.qty) || Number(ql.totalQty) || 1
             colorConfigs.push({ ...mkColorConfig(colorName, qty), ...base, qty, colorName })
           }
           return { uid: Date.now() + Math.random(), collectionId: colId, colorConfigs, expanded: true }
@@ -287,10 +286,7 @@ export default function App() {
     const currentItems = (quote.lines || []).map((ln) =>
       `${ln.product} ${ln.carat}ct ${ln.colorName || ''}${ln.housing ? ` (${ln.housing})` : ''} ×${ln.qty}`
     ).join('; ')
-    const gap = 800 - (quote.subtotal || 0)
-    const msg = gap > 0
-      ? `My current order is: ${currentItems}. Total is €${quote.subtotal}. I need €${gap} more to reach the €800 minimum. Give me 2-3 suggestions to fill the gap. Don't change my existing order.`
-      : `My current order is: ${currentItems}. Total is €${quote.subtotal}. Suggest 2-3 additions to complement what I have. Don't change my existing order.`
+    const msg = `My current order is: ${currentItems}. Total is €${quote.subtotal}. Suggest 2-3 additions to complement what I have. Don't change my existing order.`
     handleAiSend(msg)
   }, [curQuote, descLoading, handleAiSend])
 
@@ -446,22 +442,6 @@ export default function App() {
         {activeTab === 'ai' && (
           /* ─── AI Advisor Chat Mode ─── */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {/* Persistent suggestion bar when below minimum */}
-            {curQuote && !curQuote.minimumMet && (
-              <div style={{ padding: '10px 20px', background: '#fff8f0', borderBottom: '1px solid #f0e0d0', flexShrink: 0 }}>
-                <div style={{ maxWidth: 700, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <div style={{ fontSize: 12, color: '#856404', fontWeight: 600 }}>
-                    Order at {fmt(curQuote.subtotal)} / min {fmt(800)} -- need {fmt(800 - curQuote.subtotal)} more
-                  </div>
-                  <button
-                    onClick={handleSuggestFillOrder}
-                    disabled={descLoading}
-                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: colors.luxeGold, color: '#fff', fontSize: 11, fontWeight: 700, cursor: descLoading ? 'default' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: descLoading ? 0.6 : 1 }}
-                  >{t('ai.getSuggestions')}</button>
-                </div>
-              </div>
-            )}
-
             {/* Chat messages */}
             <div aria-live="polite" aria-label="Chat messages" style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
               <div style={{ maxWidth: 700, margin: '0 auto' }}>

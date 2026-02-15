@@ -5,10 +5,12 @@ import { CORD_COLORS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
+import { useI18n } from '@/lib/i18n'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
 export default function CollectionConfig({ line, col, onChange, onRemove }) {
+  const { t } = useI18n()
   const [expanded, setExpanded] = useState(true)
   const [sameForAll, setSameForAll] = useState(false)
   const [sharedSettings, setSharedSettings] = useState({
@@ -44,8 +46,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
   // Add a color
   const addColor = (colorName) => {
     const newCfg = sameForAll
-      ? { ...mkColorConfig(colorName, col.minC), ...sharedSettings }
-      : mkColorConfig(colorName, col.minC)
+      ? { ...mkColorConfig(colorName, 1), ...sharedSettings }
+      : mkColorConfig(colorName, 1)
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
@@ -122,7 +124,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
           onChange={(e) => patchFn({ housing: e.target.value || null })}
           style={selectStyle}
         >
-          <option value="">Housing...</option>
+          <option value="">{t('collection.housingPlaceholder')}</option>
           {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
         </select>
       )
@@ -134,7 +136,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
           onChange={(e) => patchFn({ housing: e.target.value || null })}
           style={selectStyle}
         >
-          <option value="">Housing...</option>
+          <option value="">{t('collection.housingPlaceholder')}</option>
           {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
         </select>
       )
@@ -150,9 +152,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             }}
             style={{ ...selectStyle, minWidth: 80 }}
           >
-            <option value="">Type...</option>
-            <option value="attached">Attached</option>
-            <option value="notAttached">Not Attached</option>
+            <option value="">{t('collection.typePlaceholder')}</option>
+            <option value="attached">{t('collection.attached')}</option>
+            <option value="notAttached">{t('collection.notAttached')}</option>
           </select>
           {cfg.multiAttached !== null && (
             <select
@@ -160,7 +162,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               onChange={(e) => patchFn({ housing: e.target.value || null })}
               style={selectStyle}
             >
-              <option value="">Housing...</option>
+              <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map(h => (
                 <option key={h} value={h}>{h}</option>
               ))}
@@ -177,9 +179,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             onChange={(e) => patchFn({ housingType: e.target.value || null, housing: null })}
             style={{ ...selectStyle, minWidth: 70 }}
           >
-            <option value="">Type...</option>
-            <option value="bezel">Bezel</option>
-            <option value="prong">Prong</option>
+            <option value="">{t('collection.typePlaceholder')}</option>
+            <option value="bezel">{t('collection.bezel')}</option>
+            <option value="prong">{t('collection.prong')}</option>
           </select>
           {cfg.housingType && (
             <select
@@ -187,7 +189,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               onChange={(e) => patchFn({ housing: e.target.value || null })}
               style={selectStyle}
             >
-              <option value="">Housing...</option>
+              <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map(h => (
                 <option key={h.id || h} value={h.label || h}>{h.label || h}</option>
               ))}
@@ -204,7 +206,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             onChange={(e) => patchFn({ housing: e.target.value || null, housingType: 'bezel' })}
             style={selectStyle}
           >
-            <option value="">Housing...</option>
+            <option value="">{t('collection.housingPlaceholder')}</option>
             {HOUSING.shapyShineBezel.map(h => <option key={h} value={`Bezel ${h}`}>Bezel {h}</option>)}
           </select>
         )
@@ -216,9 +218,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             onChange={(e) => patchFn({ housingType: e.target.value || null, housing: null })}
             style={{ ...selectStyle, minWidth: 70 }}
           >
-            <option value="">Type...</option>
-            <option value="bezel">Bezel</option>
-            <option value="prong">Prong</option>
+            <option value="">{t('collection.typePlaceholder')}</option>
+            <option value="bezel">{t('collection.bezel')}</option>
+            <option value="prong">{t('collection.prong')}</option>
           </select>
           {cfg.housingType && (
             <select
@@ -226,7 +228,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               onChange={(e) => patchFn({ housing: e.target.value || null })}
               style={selectStyle}
             >
-              <option value="">Housing...</option>
+              <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map(h => (
                 <option key={h} value={cfg.housingType === 'bezel' ? `Bezel ${h}` : `Prong ${h}`}>
                   {h}
@@ -299,7 +301,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
           {/* ─── Color Palette ─── */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              Click colors to add
+              {t('collection.clickColorsToAdd')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {palette.map(c => {
@@ -341,7 +343,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               padding: '8px 12px', borderRadius: 8, background: '#f8f8f8',
               marginBottom: 12,
             }}>
-              <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>Same settings for all colors</span>
+              <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>{t('collection.sameSettingsForAllColors')}</span>
               <button
                 onClick={handleSameForAllToggle}
                 style={{
@@ -352,7 +354,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                   color: sameForAll ? '#fff' : '#999',
                 }}
               >
-                {sameForAll ? 'ON' : 'OFF'}
+                {sameForAll ? t('common.on') : t('common.off')}
               </button>
             </div>
           )}
@@ -363,7 +365,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               padding: '10px 12px', borderRadius: 8, border: `1px solid ${colors.inkPlum}20`,
               background: '#fdf7fa', marginBottom: 12,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, marginBottom: 8 }}>Shared Settings</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, marginBottom: 8 }}>{t('collection.sharedSettings')}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 {/* Carat */}
                 <select
@@ -374,7 +376,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                   }}
                   style={selectStyle}
                 >
-                  <option value="">Carat...</option>
+                  <option value="">{t('collection.caratPlaceholder')}</option>
                   {col.carats.map((ct, ci) => (
                     <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
                   ))}
@@ -392,7 +394,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     onChange={(e) => updateShared({ shape: e.target.value || null })}
                     style={selectStyle}
                   >
-                    <option value="">Shape...</option>
+                    <option value="">{t('collection.shapePlaceholder')}</option>
                     {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 )}
@@ -404,7 +406,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     onChange={(e) => updateShared({ size: e.target.value || null })}
                     style={selectStyle}
                   >
-                    <option value="">Size...</option>
+                    <option value="">{t('collection.sizePlaceholder')}</option>
                     {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 )}
@@ -418,13 +420,13 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #eee' }}>
-                    <th style={thStyle}>Color</th>
-                    <th style={thStyle}>Carat</th>
-                    {hasHousing && <th style={thStyle}>Housing</th>}
-                    {hasShapes && <th style={thStyle}>Shape</th>}
-                    {hasSizes && <th style={thStyle}>Size</th>}
-                    <th style={thStyle}>Qty</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
+                    <th style={thStyle}>{t('quote.color')}</th>
+                    <th style={thStyle}>{t('quote.carat')}</th>
+                    {hasHousing && <th style={thStyle}>{t('quote.housing')}</th>}
+                    {hasShapes && <th style={thStyle}>{t('quote.shape')}</th>}
+                    {hasSizes && <th style={thStyle}>{t('quote.size')}</th>}
+                    <th style={thStyle}>{t('quote.qty')}</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>{t('quote.total')}</th>
                     <th style={{ ...thStyle, width: 54 }}></th>
                   </tr>
                 </thead>
@@ -471,7 +473,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                               }}
                               style={selectStyle}
                             >
-                              <option value="">-</option>
+                              <option value="">{t('collection.selectPlaceholder')}</option>
                               {col.carats.map((ct, ci) => (
                                 <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
                               ))}
@@ -487,7 +489,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                             ) : cfg.caratIdx !== null ? (
                               renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))
                             ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>-</span>
+                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
                             )}
                           </td>
                         )}
@@ -503,11 +505,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                                 onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })}
                                 style={selectStyle}
                               >
-                                <option value="">-</option>
+                                <option value="">{t('collection.selectPlaceholder')}</option>
                                 {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>-</span>
+                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
                             )}
                           </td>
                         )}
@@ -523,11 +525,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                                 onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })}
                                 style={selectStyle}
                               >
-                                <option value="">-</option>
+                                <option value="">{t('collection.selectPlaceholder')}</option>
                                 {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>-</span>
+                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
                             )}
                           </td>
                         )}
@@ -550,9 +552,6 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                               style={qtyBtnStyle}
                             >+</button>
                           </div>
-                          {cfg.qty < col.minC && (
-                            <div style={{ fontSize: 9, color: '#e74c3c', marginTop: 2 }}>Min {col.minC}</div>
-                          )}
                         </td>
 
                         {/* Row total */}
@@ -595,7 +594,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
 
           {line.colorConfigs.length === 0 && (
             <div style={{ fontSize: 12, color: '#bbb', textAlign: 'center', padding: '16px 0', fontStyle: 'italic' }}>
-              Click colors above to start building
+              {t('collection.clickColorsAboveToStartBuilding')}
             </div>
           )}
 
@@ -606,7 +605,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               padding: '10px 0 0', borderTop: '1px solid #f0f0f0', marginTop: 10,
             }}>
               <span style={{ fontSize: 12, color: '#888' }}>
-                {completeCount}/{line.colorConfigs.length} complete · {totalQty} pcs
+                {t('collection.completeCount').replace('{complete}', completeCount).replace('{total}', line.colorConfigs.length).replace('{qty}', totalQty)}
               </span>
               <span style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>{fmt(lineTotal)}</span>
             </div>

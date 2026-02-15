@@ -3,6 +3,7 @@
 import { fmt, today } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { useI18n } from '@/lib/i18n'
 
 // Check if client is Belgian (for 21% VAT)
 function isBelgian(client) {
@@ -14,6 +15,7 @@ function isBelgian(client) {
 
 export default function QuoteModal({ quote, client, onClose, onFinalize }) {
   const mobile = useIsMobile()
+  const { t } = useI18n()
   
   if (!quote) return null
   if (!client) return null // Guard against null client
@@ -76,7 +78,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             fontWeight: 500,
             textTransform: 'uppercase'
           }}>
-            Antwerp · B2B Quotation
+            {t('quote.title')}
           </div>
           <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 8 }}>
             {[client.name, client.company].filter(Boolean).join('  ·  ')}
@@ -101,7 +103,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: mobile ? 11 : 12 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
-                {['Product', 'ct', 'Housing', 'Color', 'Shape', 'Size', 'Qty', 'Unit', 'Total'].map((h) => (
+                {[t('quote.product'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
                   <th key={h} style={{ 
                     padding: mobile ? '6px 3px' : '7px 4px', 
                     textAlign: 'left', 
@@ -142,11 +144,11 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
         }}>
           <div style={{ minWidth: mobile ? '100%' : 190 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: mobile ? 11 : 12, color: colors.charcoal }}>
-              <span>Subtotal</span><span style={{ fontWeight: 600 }}>{fmt(q.subtotal)}</span>
+              <span>{t('quote.subtotal')}</span><span style={{ fontWeight: 600 }}>{fmt(q.subtotal)}</span>
             </div>
             {q.discountAmount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: mobile ? 11 : 12, color: colors.luxeGold }}>
-                <span>Discount {q.discountPercent}%</span><span>−{fmt(q.discountAmount)}</span>
+                <span>{t('quote.discount')} {q.discountPercent}%</span><span>−{fmt(q.discountAmount)}</span>
               </div>
             )}
             <div style={{ 
@@ -159,7 +161,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
               marginTop: 4,
               color: colors.charcoal
             }}>
-              <span>Total excl. VAT</span><span>{fmt(q.total)}</span>
+              <span>{t('quote.totalExclVat')}</span><span>{fmt(q.total)}</span>
             </div>
             {showBelgianVat && (
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: mobile ? 11 : 12, color: colors.charcoal }}>
@@ -177,16 +179,16 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
                 marginTop: 4,
                 color: colors.inkPlum
               }}>
-                <span>Total incl. VAT</span><span>{fmt(totalWithVat)}</span>
+                <span>{t('quote.totalInclVat')}</span><span>{fmt(totalWithVat)}</span>
               </div>
             )}
             {!showBelgianVat && (
               <div style={{ fontSize: 10, color: colors.lovelabMuted, marginTop: 2 }}>
-                Prices excl. VAT (intra-EU / export)
+                {t('quote.pricesExclVat')}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: colors.lovelabMuted, marginTop: showBelgianVat ? 4 : 0 }}>
-              <span>{q.totalPieces} pcs</span><span>Retail {fmt(q.totalRetail)}</span>
+              <span>{t('quote.piecesCount').replace('{count}', q.totalPieces)}</span><span>{t('quote.retail')} {fmt(q.totalRetail)}</span>
             </div>
           </div>
         </div>
@@ -242,7 +244,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
           >
-            Finalize My Order
+            {t('quote.finalize')}
           </button>
         )}
 
@@ -266,7 +268,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
         >
-          Close
+          {t('quote.close')}
         </button>
       </div>
     </div>
