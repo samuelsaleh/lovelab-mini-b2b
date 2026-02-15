@@ -592,19 +592,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     return p
   }, [rows])
 
-  // Split rows into pages for printing (only filled rows)
-  const printPages = useMemo(() => {
-    const filledRows = rows.filter(r => isRowFilled(r))
-    if (filledRows.length === 0) return [[emptyRow(1)]] // at least one row
-    const p = []
-    for (let i = 0; i < filledRows.length; i += ROWS_PER_PAGE) {
-      p.push(filledRows.slice(i, i + ROWS_PER_PAGE))
-    }
-    return p
-  }, [rows])
-
-  // Choose which pages to display based on print mode
-  const displayPages = isPrinting ? printPages : pages
+  // Use the same pagination for screen and print so print keeps all pages.
+  const displayPages = pages
 
   const handlePrint = async () => {
     // Use flushSync to guarantee React commits the isPrinting state
@@ -746,9 +735,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           }
           
           #order-form-print {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: static !important;
             width: 100% !important;
             background: #fff !important;
             display: block !important;
