@@ -39,6 +39,15 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
     caratIdx: null, housing: null, housingType: null,
     multiAttached: null, shape: null, size: null,
   })
+  const [showDuplicatePanel, setShowDuplicatePanel] = useState(false)
+  const [duplicateSettings, setDuplicateSettings] = useState({
+    carat: { keepSame: true, value: null },
+    housing: { keepSame: true, value: null },
+    housingType: { keepSame: true, value: null },
+    size: { keepSame: true, value: null },
+    shape: { keepSame: true, value: null },
+    qty: { keepSame: true, value: 1 },
+  })
 
   const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
   const set = (patch) => onChange(line.uid, patch)
@@ -137,6 +146,31 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
         colorConfigs: line.colorConfigs.map(cfg => ({ ...cfg, ...updates })),
       })
     }
+  }
+
+  // Duplicate all colors with variations
+  const duplicateAllWithVariations = () => {
+    if (line.colorConfigs.length === 0) return
+    const newConfigs = line.colorConfigs.map(cfg => ({
+      ...cfg,
+      id: createConfigId(),
+      caratIdx: duplicateSettings.carat.keepSame ? cfg.caratIdx : duplicateSettings.carat.value,
+      housing: duplicateSettings.housing.keepSame ? cfg.housing : duplicateSettings.housing.value,
+      housingType: duplicateSettings.housingType.keepSame ? cfg.housingType : duplicateSettings.housingType.value,
+      size: duplicateSettings.size.keepSame ? cfg.size : duplicateSettings.size.value,
+      shape: duplicateSettings.shape.keepSame ? cfg.shape : duplicateSettings.shape.value,
+      qty: duplicateSettings.qty.keepSame ? cfg.qty : duplicateSettings.qty.value,
+    }))
+    set({ colorConfigs: [...line.colorConfigs, ...newConfigs] })
+    setShowDuplicatePanel(false)
+  }
+
+  // Update duplicate settings
+  const updateDuplicateSetting = (field, updates) => {
+    setDuplicateSettings(prev => ({
+      ...prev,
+      [field]: { ...prev[field], ...updates },
+    }))
   }
 
   // Housing options resolver
@@ -387,6 +421,254 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               >
                 {sameForAll ? t('common.on') : t('common.off')}
               </button>
+            </div>
+          )}
+
+          {/* ─── Duplicate with variations ─── */}
+          {line.colorConfigs.length > 0 && (
+            <div style={{
+              marginBottom: 12, borderRadius: 8, border: '1px solid #e8e8e8',
+              overflow: 'hidden',
+            }}>
+              <button
+                onClick={() => setShowDuplicatePanel(!showDuplicatePanel)}
+                style={{
+                  width: '100%', padding: '10px 12px', background: '#fafafa',
+                  border: 'none', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'space-between',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>
+                  {t('collection.duplicateWithVariations')}
+                </span>
+                <span style={{
+                  fontSize: 10, color: '#999',
+                  transform: showDuplicatePanel ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform .2s',
+                }}>▼</span>
+              </button>
+
+              {showDuplicatePanel && (
+                <div style={{ padding: '12px', background: '#fff', borderTop: '1px solid #eee' }}>
+                  {/* Carat setting */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
+                      {t('quote.carat')}
+                    </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name={`dup-carat-${line.uid}`}
+                        checked={duplicateSettings.carat.keepSame}
+                        onChange={() => updateDuplicateSetting('carat', { keepSame: true })}
+                        style={{ accentColor: colors.inkPlum }}
+                      />
+                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name={`dup-carat-${line.uid}`}
+                        checked={!duplicateSettings.carat.keepSame}
+                        onChange={() => updateDuplicateSetting('carat', { keepSame: false })}
+                        style={{ accentColor: colors.inkPlum }}
+                      />
+                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                    </label>
+                    {!duplicateSettings.carat.keepSame && (
+                      <select
+                        value={duplicateSettings.carat.value !== null ? duplicateSettings.carat.value : ''}
+                        onChange={(e) => updateDuplicateSetting('carat', { value: e.target.value === '' ? null : parseInt(e.target.value) })}
+                        style={selectStyle}
+                      >
+                        <option value="">{t('collection.caratPlaceholder')}</option>
+                        {col.carats.map((ct, ci) => (
+                          <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Housing setting */}
+                  {hasHousing && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
+                        {t('quote.housing')}
+                      </span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-housing-${line.uid}`}
+                          checked={duplicateSettings.housing.keepSame}
+                          onChange={() => updateDuplicateSetting('housing', { keepSame: true })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-housing-${line.uid}`}
+                          checked={!duplicateSettings.housing.keepSame}
+                          onChange={() => updateDuplicateSetting('housing', { keepSame: false })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                      </label>
+                      {!duplicateSettings.housing.keepSame && col.housing === 'standard' && (
+                        <select
+                          value={duplicateSettings.housing.value || ''}
+                          onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                          style={selectStyle}
+                        >
+                          <option value="">{t('collection.housingPlaceholder')}</option>
+                          {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      )}
+                      {!duplicateSettings.housing.keepSame && col.housing === 'goldMetal' && (
+                        <select
+                          value={duplicateSettings.housing.value || ''}
+                          onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                          style={selectStyle}
+                        >
+                          <option value="">{t('collection.housingPlaceholder')}</option>
+                          {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Size setting */}
+                  {hasSizes && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
+                        {t('quote.size')}
+                      </span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-size-${line.uid}`}
+                          checked={duplicateSettings.size.keepSame}
+                          onChange={() => updateDuplicateSetting('size', { keepSame: true })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-size-${line.uid}`}
+                          checked={!duplicateSettings.size.keepSame}
+                          onChange={() => updateDuplicateSetting('size', { keepSame: false })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                      </label>
+                      {!duplicateSettings.size.keepSame && (
+                        <select
+                          value={duplicateSettings.size.value || ''}
+                          onChange={(e) => updateDuplicateSetting('size', { value: e.target.value || null })}
+                          style={selectStyle}
+                        >
+                          <option value="">{t('collection.sizePlaceholder')}</option>
+                          {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Shape setting */}
+                  {hasShapes && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
+                        {t('quote.shape')}
+                      </span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-shape-${line.uid}`}
+                          checked={duplicateSettings.shape.keepSame}
+                          onChange={() => updateDuplicateSetting('shape', { keepSame: true })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`dup-shape-${line.uid}`}
+                          checked={!duplicateSettings.shape.keepSame}
+                          onChange={() => updateDuplicateSetting('shape', { keepSame: false })}
+                          style={{ accentColor: colors.inkPlum }}
+                        />
+                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                      </label>
+                      {!duplicateSettings.shape.keepSame && (
+                        <select
+                          value={duplicateSettings.shape.value || ''}
+                          onChange={(e) => updateDuplicateSetting('shape', { value: e.target.value || null })}
+                          style={selectStyle}
+                        >
+                          <option value="">{t('collection.shapePlaceholder')}</option>
+                          {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Qty setting */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
+                      {t('quote.qty')}
+                    </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name={`dup-qty-${line.uid}`}
+                        checked={duplicateSettings.qty.keepSame}
+                        onChange={() => updateDuplicateSetting('qty', { keepSame: true })}
+                        style={{ accentColor: colors.inkPlum }}
+                      />
+                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name={`dup-qty-${line.uid}`}
+                        checked={!duplicateSettings.qty.keepSame}
+                        onChange={() => updateDuplicateSetting('qty', { keepSame: false })}
+                        style={{ accentColor: colors.inkPlum }}
+                      />
+                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                    </label>
+                    {!duplicateSettings.qty.keepSame && (
+                      <input
+                        type="number"
+                        min="1"
+                        value={duplicateSettings.qty.value}
+                        onChange={(e) => updateDuplicateSetting('qty', { value: Math.max(1, parseInt(e.target.value) || 1) })}
+                        style={{ ...qtyInputStyle, width: 50 }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Duplicate button */}
+                  <button
+                    onClick={duplicateAllWithVariations}
+                    style={{
+                      width: '100%', padding: '10px 16px', borderRadius: 8,
+                      background: colors.inkPlum, color: '#fff', border: 'none',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'inherit', transition: 'opacity .15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                  >
+                    + {t('collection.duplicateColors').replace('{count}', line.colorConfigs.length)}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
