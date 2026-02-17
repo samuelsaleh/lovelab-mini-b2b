@@ -4,7 +4,7 @@ import { useCallback, useState, useRef, useMemo } from 'react'
 import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 
@@ -104,6 +104,7 @@ function WarningsSummary({ warnings }) {
 
 export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations }) {
   const mobile = useIsMobile()
+  const tablet = useIsTablet()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -348,7 +349,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 {/* Collection Grid */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${tablet ? '160px' : '200px'}, 1fr))`,
                   gap: 12,
                   marginBottom: 24,
                 }}>
@@ -603,8 +604,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
       {/* ═══ Order Summary Sidebar ═══ */}
       <div style={{
-        width: mobile ? '85%' : 280,
-        maxWidth: mobile ? 320 : 280,
+        width: mobile ? '85%' : tablet ? 240 : 280,
+        maxWidth: mobile ? 320 : tablet ? 240 : 280,
         flexShrink: 0,
         background: '#fff',
         borderLeft: '1px solid #eaeaea',

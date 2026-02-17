@@ -249,8 +249,8 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
       {/* Form Card */}
       <div style={{
-        background: colors.porcelain, borderRadius: 16, padding: mobile ? 20 : 28,
-        width: '100%', maxWidth: 420, boxShadow: '0 4px 20px rgba(93, 58, 94, 0.08)',
+        background: colors.porcelain, borderRadius: mobile ? 12 : 16, padding: mobile ? 16 : 28,
+        width: '100%', maxWidth: mobile ? '100%' : 420, boxShadow: '0 4px 20px rgba(93, 58, 94, 0.08)',
       }}>
         {/* ─── Saved Client Picker ─── */}
         <div style={{ marginBottom: 18 }}>
@@ -274,23 +274,26 @@ export default function ClientGate({ client, setClient, onComplete }) {
                 {clientsLoading ? (
                   <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>{t('client.searching')}</div>
                 ) : savedClients.length === 0 ? (
-                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>{t('client.noSaved')}</div>
+                  <div style={{ padding: mobile ? '14px 14px' : '10px 12px', fontSize: mobile ? 13 : 12, color: '#999', textAlign: 'center' }}>{t('client.noSaved')}</div>
                 ) : (
                   savedClients.map(sc => (
                     <button
                       key={sc.id}
                       onMouseDown={(e) => { e.preventDefault(); selectSavedClient(sc) }}
+                      onTouchStart={(e) => { e.currentTarget.style.background = '#f5f3f7' }}
+                      onTouchEnd={(e) => { e.currentTarget.style.background = 'transparent' }}
                       style={{
-                        width: '100%', textAlign: 'left', padding: '8px 12px',
+                        width: '100%', textAlign: 'left', padding: mobile ? '14px 14px' : '8px 12px',
                         borderRadius: 8, border: 'none', cursor: 'pointer',
-                        background: 'transparent', fontFamily: 'inherit', fontSize: 12,
-                        display: 'flex', flexDirection: 'column', gap: 2,
+                        background: 'transparent', fontFamily: 'inherit', fontSize: mobile ? 14 : 12,
+                        display: 'flex', flexDirection: 'column', gap: mobile ? 4 : 2,
+                        minHeight: mobile ? 56 : 'auto',
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f3f7' }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                     >
-                      <div style={{ fontWeight: 600, color: '#333' }}>{sc.company}</div>
-                      <div style={{ fontSize: 11, color: '#999', display: 'flex', gap: 8 }}>
+                      <div style={{ fontWeight: 600, color: '#333', fontSize: mobile ? 15 : 'inherit' }}>{sc.company}</div>
+                      <div style={{ fontSize: mobile ? 12 : 11, color: '#999', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {sc.name && <span>{sc.name}</span>}
                         {sc.country && <span>{sc.country}</span>}
                         {sc.vat && <span style={{ color: sc.vat_valid ? '#27ae60' : '#999' }}>VAT: {sc.vat}</span>}
@@ -323,7 +326,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
         </div>
 
         {/* Phone & Email */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 10, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
             <div style={lbl}>{t('client.phone')}</div>
             <input
@@ -478,7 +481,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
               </div>
             )}
             {perplexityDone && !viesLoading && !viesResult && client.vat.trim().length >= 4 && (
-              <button onClick={handleVerifyVat} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.verify')}</button>
+              <button onClick={handleVerifyVat} style={{ padding: mobile ? '10px 16px' : '6px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 44 : 'auto' }}>{t('client.verify')}</button>
             )}
           </div>
           {viesResult && (viesResult.status === 'INVALID' || viesResult.status === 'UNVERIFIED' || viesResult.valid === false || viesResult.valid === null) && (
@@ -492,7 +495,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             }}>
               <span>{t(viesResult.messageKey || ((viesResult.status === 'INVALID' || viesResult.valid === false) ? 'vat.numberNotFound' : 'vat.unverified.generic'))}</span>
               {(viesResult.status === 'UNVERIFIED' || viesResult.valid === null) && !viesLoading && (
-                <button onClick={handleVerifyVat} style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
+                <button onClick={handleVerifyVat} style={{ padding: mobile ? '8px 14px' : '2px 8px', borderRadius: 4, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: mobile ? 11 : 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 36 : 'auto' }}>{t('client.retry')}</button>
               )}
             </div>
           )}

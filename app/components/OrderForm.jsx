@@ -406,6 +406,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const scrollAreaRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
+  const [mobileCardView, setMobileCardView] = useState(true)
 
   // Scroll to top when form opens (fixes iOS not showing header)
   useEffect(() => {
@@ -812,6 +813,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         >
           &larr; {t('common.back')}
         </button>
+        {mobile && (
+          <button
+            onClick={() => setMobileCardView(!mobileCardView)}
+            style={{
+              padding: '8px 12px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
+              background: mobileCardView ? colors.ice : '#fff', color: colors.charcoal, fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', fontFamily: fonts.body, minHeight: 44,
+            }}
+          >
+            {mobileCardView ? t('order.tableView') : t('order.cardView')}
+          </button>
+        )}
         <div style={{ flex: 1, textAlign: 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
           {t('nav.orderform')}
         </div>
@@ -963,9 +976,85 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 )}
               </div>
 
-              {/* ─── Order Table ─── */}
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', minWidth: compact ? 900 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+              {/* ─── Order Table (Desktop) or Cards (Mobile) ─── */}
+              {mobile && mobileCardView && !isPrinting ? (
+                /* ─── Mobile Card Layout ─── */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {pageRows.map((row, rowIdx) => {
+                    const globalIdx = pageIdx * ROWS_PER_PAGE + rowIdx
+                    const filled = isRowFilled(row)
+                    return (
+                      <div key={globalIdx} style={{
+                        border: `1px solid ${filled ? colors.lineGray : '#f0f0f0'}`,
+                        borderRadius: 10,
+                        padding: 12,
+                        background: filled ? '#fff' : '#fafafa',
+                      }}>
+                        {/* Card header: row number + total */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#999' }}>#{row.no}</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: row.total ? colors.inkPlum : '#ccc' }}>
+                            {row.total || '—'}
+                          </span>
+                        </div>
+                        {/* Card fields */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {COLUMNS.filter(col => col.key !== 'no' && col.key !== 'total').map(col => (
+                            <div key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 10, fontWeight: 600, color: '#999', width: 70, textTransform: 'uppercase', flexShrink: 0 }}>
+                                {t(col.labelKey)}
+                              </span>
+                              <input
+                                value={row[col.key]}
+                                onChange={(e) => updateCell(globalIdx, col.key, e.target.value)}
+                                placeholder="—"
+                                style={{
+                                  flex: 1, border: '1px solid #e8e8e8', borderRadius: 6,
+                                  padding: '10px 12px', fontSize: 14, fontFamily: fonts.body,
+                                  outline: 'none', color: colors.charcoal, background: '#fff',
+                                  minHeight: 44,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {/* Card actions */}
+                        {filled && (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => insertRowBelow(globalIdx)}
+                              style={{
+                                padding: '8px 14px', borderRadius: 6, border: `1px solid ${colors.lineGray}`,
+                                background: '#fff', color: '#666', fontSize: 12, fontWeight: 600,
+                                cursor: 'pointer', fontFamily: fonts.body, minHeight: 40,
+                              }}
+                            >+ {t('order.addRow')}</button>
+                            <button
+                              onClick={() => duplicateRow(globalIdx)}
+                              style={{
+                                padding: '8px 14px', borderRadius: 6, border: `1px solid ${colors.lineGray}`,
+                                background: '#fff', color: '#666', fontSize: 12, fontWeight: 600,
+                                cursor: 'pointer', fontFamily: fonts.body, minHeight: 40,
+                              }}
+                            >{t('order.duplicate')}</button>
+                            <button
+                              onClick={() => deleteRow(globalIdx)}
+                              style={{
+                                padding: '8px 14px', borderRadius: 6, border: '1px solid #fecaca',
+                                background: '#fef2f2', color: '#c0392b', fontSize: 12, fontWeight: 600,
+                                cursor: 'pointer', fontFamily: fonts.body, minHeight: 40,
+                              }}
+                            >{t('order.delete')}</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                /* ─── Table Layout (Desktop or when toggled) ─── */
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', minWidth: compact ? 700 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <colgroup>
                   {COLUMNS.map((col) => (
                     <col key={col.key} style={{ width: col.width }} />
@@ -1063,6 +1152,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 </tbody>
               </table>
               </div>
+              )}
 
               {/* ─── Remarks + Final Total (always on last page) ─── */}
               {pageIdx === displayPages.length - 1 && (

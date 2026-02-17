@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/styles';
+import { useIsMobile } from '@/lib/useIsMobile';
 
 export default function SaveDocumentModal({
   isOpen,
@@ -207,6 +208,8 @@ export default function SaveDocumentModal({
     setSaving(false);
   };
 
+  const mobile = useIsMobile();
+
   if (!isOpen) return null;
 
   return (
@@ -220,16 +223,18 @@ export default function SaveDocumentModal({
       inset: 0,
       zIndex: 400,
       display: 'flex',
-      alignItems: 'center',
+      alignItems: mobile ? 'flex-end' : 'center',
       justifyContent: 'center',
       background: 'rgba(0,0,0,0.5)',
     }}>
       <div style={{
         background: '#fff',
-        borderRadius: 16,
-        padding: 24,
+        borderRadius: mobile ? '16px 16px 0 0' : 16,
+        padding: mobile ? 16 : 24,
         width: '100%',
-        maxWidth: 400,
+        maxWidth: mobile ? '100%' : 400,
+        maxHeight: mobile ? '90vh' : 'auto',
+        overflowY: 'auto',
         boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
       }}>
         <h2 style={{
@@ -408,12 +413,12 @@ export default function SaveDocumentModal({
             )}
 
             {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: mobile ? 'column-reverse' : 'row', gap: 10, justifyContent: 'flex-end' }}>
               <button
                 onClick={onClose}
                 disabled={saving}
                 style={{
-                  padding: '10px 20px',
+                  padding: mobile ? '12px 20px' : '10px 20px',
                   borderRadius: 8,
                   border: `1px solid ${colors.lineGray}`,
                   background: '#fff',
@@ -422,6 +427,8 @@ export default function SaveDocumentModal({
                   fontWeight: 600,
                   cursor: saving ? 'not-allowed' : 'pointer',
                   fontFamily: fonts.body,
+                  minHeight: mobile ? 48 : 'auto',
+                  width: mobile ? '100%' : 'auto',
                 }}
               >
                 Cancel
@@ -430,7 +437,7 @@ export default function SaveDocumentModal({
                 onClick={handleSave}
                 disabled={saving}
                 style={{
-                  padding: '10px 24px',
+                  padding: mobile ? '12px 24px' : '10px 24px',
                   borderRadius: 8,
                   border: 'none',
                   background: colors.inkPlum,
@@ -440,6 +447,8 @@ export default function SaveDocumentModal({
                   cursor: saving ? 'not-allowed' : 'pointer',
                   fontFamily: fonts.body,
                   opacity: saving ? 0.7 : 1,
+                  minHeight: mobile ? 48 : 'auto',
+                  width: mobile ? '100%' : 'auto',
                 }}
               >
                 {saving ? 'Saving...' : 'Save Document'}

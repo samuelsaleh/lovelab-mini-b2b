@@ -96,7 +96,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
                 minHeight: 44,
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
               <span style={{ fontSize: 10, color: '#999' }}>&#x25BE;</span>
             </button>
           )}
@@ -145,10 +145,14 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
         aria-label="Main navigation"
         style={{
           display: 'flex', alignItems: 'center', gap: 0,
-          padding: mobile ? '0 12px' : '0 20px',
+          padding: mobile ? '0 8px' : '0 20px',
           maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box',
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
         }}
+        className="topnav-tabbar"
       >
         {NAV_TABS.map(tab => {
           const isActive = activeTab === tab.id

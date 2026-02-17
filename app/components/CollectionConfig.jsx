@@ -6,6 +6,7 @@ import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
 import { useI18n } from '@/lib/i18n'
+import { useIsMobile } from '@/lib/useIsMobile'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
@@ -33,6 +34,7 @@ function ensureUniqueConfigIds(configs) {
 
 export default function CollectionConfig({ line, col, onChange, onRemove }) {
   const { t } = useI18n()
+  const mobile = useIsMobile()
   const [expanded, setExpanded] = useState(true)
   const [sameForAll, setSameForAll] = useState(false)
   const [sharedSettings, setSharedSettings] = useState({
@@ -350,7 +352,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(line.uid) }}
-            style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#ccc', padding: 4 }}
+            style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#ccc', padding: mobile ? 10 : 4, minWidth: mobile ? 44 : 'auto', minHeight: mobile ? 44 : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Remove collection"
           >x</button>
           <span style={{
@@ -368,16 +370,17 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               {t('collection.clickColorsToAdd')}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 8 : 6 }}>
               {palette.map(c => {
                 const count = colorCounts[c.n] || 0
+                const btnSize = mobile ? 38 : 30
                 return (
                   <div key={c.n} style={{ position: 'relative' }}>
                     <button
                       title={c.n}
                       onClick={() => addColor(c.n)}
                       style={{
-                        width: 30, height: 30, borderRadius: '50%', background: c.h, padding: 0,
+                        width: btnSize, height: btnSize, borderRadius: '50%', background: c.h, padding: 0,
                         border: count > 0 ? `2.5px solid ${colors.inkPlum}` : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
                         cursor: 'pointer', transition: 'transform .1s',
                         transform: count > 0 ? 'scale(1.08)' : 'scale(1)',
@@ -387,9 +390,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     {count > 0 && (
                       <span style={{
                         position: 'absolute', top: -3, right: -3,
-                        width: 14, height: 14, borderRadius: '50%',
+                        width: mobile ? 16 : 14, height: mobile ? 16 : 14, borderRadius: '50%',
                         background: colors.inkPlum, color: '#fff',
-                        fontSize: 8, fontWeight: 700,
+                        fontSize: mobile ? 9 : 8, fontWeight: 700,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {count}
@@ -451,207 +454,107 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
 
               {showDuplicatePanel && (
                 <div style={{ padding: '12px', background: '#fff', borderTop: '1px solid #eee' }}>
-                  {/* Carat setting */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
-                      {t('quote.carat')}
-                    </span>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name={`dup-carat-${line.uid}`}
-                        checked={duplicateSettings.carat.keepSame}
-                        onChange={() => updateDuplicateSetting('carat', { keepSame: true })}
-                        style={{ accentColor: colors.inkPlum }}
-                      />
-                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name={`dup-carat-${line.uid}`}
-                        checked={!duplicateSettings.carat.keepSame}
-                        onChange={() => updateDuplicateSetting('carat', { keepSame: false })}
-                        style={{ accentColor: colors.inkPlum }}
-                      />
-                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
-                    </label>
-                    {!duplicateSettings.carat.keepSame && (
-                      <select
-                        value={duplicateSettings.carat.value !== null ? duplicateSettings.carat.value : ''}
-                        onChange={(e) => updateDuplicateSetting('carat', { value: e.target.value === '' ? null : parseInt(e.target.value) })}
-                        style={selectStyle}
-                      >
-                        <option value="">{t('collection.caratPlaceholder')}</option>
-                        {col.carats.map((ct, ci) => (
-                          <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  {/* Housing setting */}
-                  {hasHousing && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
-                        {t('quote.housing')}
+                  {/* Duplicate option row helper */}
+                  {[
+                    { field: 'carat', label: t('quote.carat'), show: true },
+                    { field: 'housing', label: t('quote.housing'), show: hasHousing },
+                    { field: 'size', label: t('quote.size'), show: hasSizes },
+                    { field: 'shape', label: t('quote.shape'), show: hasShapes },
+                    { field: 'qty', label: t('quote.qty'), show: true },
+                  ].filter(r => r.show).map(({ field, label }) => (
+                    <div key={field} style={{
+                      display: 'flex', flexDirection: mobile ? 'column' : 'row',
+                      alignItems: mobile ? 'flex-start' : 'center',
+                      gap: mobile ? 6 : 12, marginBottom: mobile ? 14 : 10,
+                    }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: mobile ? 'auto' : 60, textTransform: 'uppercase' }}>
+                        {label}
                       </span>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-housing-${line.uid}`}
-                          checked={duplicateSettings.housing.keepSame}
-                          onChange={() => updateDuplicateSetting('housing', { keepSame: true })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-housing-${line.uid}`}
-                          checked={!duplicateSettings.housing.keepSame}
-                          onChange={() => updateDuplicateSetting('housing', { keepSame: false })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
-                      </label>
-                      {!duplicateSettings.housing.keepSame && col.housing === 'standard' && (
-                        <select
-                          value={duplicateSettings.housing.value || ''}
-                          onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
-                          style={selectStyle}
-                        >
-                          <option value="">{t('collection.housingPlaceholder')}</option>
-                          {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
-                        </select>
-                      )}
-                      {!duplicateSettings.housing.keepSame && col.housing === 'goldMetal' && (
-                        <select
-                          value={duplicateSettings.housing.value || ''}
-                          onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
-                          style={selectStyle}
-                        >
-                          <option value="">{t('collection.housingPlaceholder')}</option>
-                          {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
-                        </select>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 10 : 8, flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', minHeight: mobile ? 36 : 'auto' }}>
+                          <input
+                            type="radio"
+                            name={`dup-${field}-${line.uid}`}
+                            checked={duplicateSettings[field].keepSame}
+                            onChange={() => updateDuplicateSetting(field, { keepSame: true })}
+                            style={{ accentColor: colors.inkPlum, width: mobile ? 18 : 'auto', height: mobile ? 18 : 'auto' }}
+                          />
+                          <span style={{ fontSize: mobile ? 13 : 11, color: '#666' }}>{t('collection.keepSame')}</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', minHeight: mobile ? 36 : 'auto' }}>
+                          <input
+                            type="radio"
+                            name={`dup-${field}-${line.uid}`}
+                            checked={!duplicateSettings[field].keepSame}
+                            onChange={() => updateDuplicateSetting(field, { keepSame: false })}
+                            style={{ accentColor: colors.inkPlum, width: mobile ? 18 : 'auto', height: mobile ? 18 : 'auto' }}
+                          />
+                          <span style={{ fontSize: mobile ? 13 : 11, color: '#666' }}>{t('collection.changeTo')}</span>
+                        </label>
+                        {!duplicateSettings[field].keepSame && field === 'carat' && (
+                          <select
+                            value={duplicateSettings.carat.value !== null ? duplicateSettings.carat.value : ''}
+                            onChange={(e) => updateDuplicateSetting('carat', { value: e.target.value === '' ? null : parseInt(e.target.value) })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.caratPlaceholder')}</option>
+                            {col.carats.map((ct, ci) => (
+                              <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
+                            ))}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'housing' && col.housing === 'standard' && (
+                          <select
+                            value={duplicateSettings.housing.value || ''}
+                            onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.housingPlaceholder')}</option>
+                            {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'housing' && col.housing === 'goldMetal' && (
+                          <select
+                            value={duplicateSettings.housing.value || ''}
+                            onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.housingPlaceholder')}</option>
+                            {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'size' && (
+                          <select
+                            value={duplicateSettings.size.value || ''}
+                            onChange={(e) => updateDuplicateSetting('size', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.sizePlaceholder')}</option>
+                            {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'shape' && (
+                          <select
+                            value={duplicateSettings.shape.value || ''}
+                            onChange={(e) => updateDuplicateSetting('shape', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.shapePlaceholder')}</option>
+                            {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'qty' && (
+                          <input
+                            type="number"
+                            min="1"
+                            value={duplicateSettings.qty.value}
+                            onChange={(e) => updateDuplicateSetting('qty', { value: Math.max(1, parseInt(e.target.value) || 1) })}
+                            style={{ ...qtyInputStyle, width: 50, ...(mobile ? { height: 36 } : {}) }}
+                          />
+                        )}
+                      </div>
                     </div>
-                  )}
-
-                  {/* Size setting */}
-                  {hasSizes && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
-                        {t('quote.size')}
-                      </span>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-size-${line.uid}`}
-                          checked={duplicateSettings.size.keepSame}
-                          onChange={() => updateDuplicateSetting('size', { keepSame: true })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-size-${line.uid}`}
-                          checked={!duplicateSettings.size.keepSame}
-                          onChange={() => updateDuplicateSetting('size', { keepSame: false })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
-                      </label>
-                      {!duplicateSettings.size.keepSame && (
-                        <select
-                          value={duplicateSettings.size.value || ''}
-                          onChange={(e) => updateDuplicateSetting('size', { value: e.target.value || null })}
-                          style={selectStyle}
-                        >
-                          <option value="">{t('collection.sizePlaceholder')}</option>
-                          {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Shape setting */}
-                  {hasShapes && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
-                        {t('quote.shape')}
-                      </span>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-shape-${line.uid}`}
-                          checked={duplicateSettings.shape.keepSame}
-                          onChange={() => updateDuplicateSetting('shape', { keepSame: true })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`dup-shape-${line.uid}`}
-                          checked={!duplicateSettings.shape.keepSame}
-                          onChange={() => updateDuplicateSetting('shape', { keepSame: false })}
-                          style={{ accentColor: colors.inkPlum }}
-                        />
-                        <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
-                      </label>
-                      {!duplicateSettings.shape.keepSame && (
-                        <select
-                          value={duplicateSettings.shape.value || ''}
-                          onChange={(e) => updateDuplicateSetting('shape', { value: e.target.value || null })}
-                          style={selectStyle}
-                        >
-                          <option value="">{t('collection.shapePlaceholder')}</option>
-                          {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Qty setting */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#666', width: 60, textTransform: 'uppercase' }}>
-                      {t('quote.qty')}
-                    </span>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name={`dup-qty-${line.uid}`}
-                        checked={duplicateSettings.qty.keepSame}
-                        onChange={() => updateDuplicateSetting('qty', { keepSame: true })}
-                        style={{ accentColor: colors.inkPlum }}
-                      />
-                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.keepSame')}</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name={`dup-qty-${line.uid}`}
-                        checked={!duplicateSettings.qty.keepSame}
-                        onChange={() => updateDuplicateSetting('qty', { keepSame: false })}
-                        style={{ accentColor: colors.inkPlum }}
-                      />
-                      <span style={{ fontSize: 11, color: '#666' }}>{t('collection.changeTo')}</span>
-                    </label>
-                    {!duplicateSettings.qty.keepSame && (
-                      <input
-                        type="number"
-                        min="1"
-                        value={duplicateSettings.qty.value}
-                        onChange={(e) => updateDuplicateSetting('qty', { value: Math.max(1, parseInt(e.target.value) || 1) })}
-                        style={{ ...qtyInputStyle, width: 50 }}
-                      />
-                    )}
-                  </div>
+                  ))}
 
                   {/* Duplicate button */}
                   <button
@@ -727,9 +630,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             </div>
           )}
 
-          {/* ─── Config Table ─── */}
-          {line.colorConfigs.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
+          {/* ─── Config Table (desktop) / Card list (mobile) ─── */}
+          {line.colorConfigs.length > 0 && !mobile && (
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #eee' }}>
@@ -748,153 +651,68 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                     const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
                     const rowTotal = price * cfg.qty
-                    const complete = isConfigComplete(cfg)
 
                     return (
                       <tr key={cfg.id} style={{ borderBottom: '1px solid #f5f5f5' }}>
-                        {/* Color (editable dropdown) */}
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{
-                              width: 14, height: 14, borderRadius: '50%', background: colorDef.h,
-                              border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0,
-                            }} />
-                            <select
-                              value={cfg.colorName}
-                              onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })}
-                              style={{ ...selectStyle, fontWeight: 500, minWidth: 90 }}
-                            >
-                              {palette.map(c => (
-                                <option key={c.n} value={c.n}>{c.n}</option>
-                              ))}
+                            <span style={{ width: 14, height: 14, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
+                            <select value={cfg.colorName} onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })} style={{ ...selectStyle, fontWeight: 500, minWidth: 90 }}>
+                              {palette.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
                             </select>
                           </div>
                         </td>
-
-                        {/* Carat */}
                         <td style={tdStyle}>
                           {sameForAll ? (
-                            <span style={{ color: '#888', fontSize: 11 }}>
-                              {sharedSettings.caratIdx !== null ? `${col.carats[sharedSettings.caratIdx]} ct` : '-'}
-                            </span>
+                            <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.caratIdx !== null ? `${col.carats[sharedSettings.caratIdx]} ct` : '-'}</span>
                           ) : (
-                            <select
-                              value={cfg.caratIdx !== null ? cfg.caratIdx : ''}
-                              onChange={(e) => {
-                                const val = e.target.value === '' ? null : parseInt(e.target.value)
-                                updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null })
-                              }}
-                              style={selectStyle}
-                            >
+                            <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={selectStyle}>
                               <option value="">{t('collection.selectPlaceholder')}</option>
-                              {col.carats.map((ct, ci) => (
-                                <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>
-                              ))}
+                              {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>)}
                             </select>
                           )}
                         </td>
-
-                        {/* Housing */}
                         {hasHousing && (
                           <td style={tdStyle}>
-                            {sameForAll ? (
-                              <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.housing || '-'}</span>
-                            ) : cfg.caratIdx !== null ? (
-                              renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))
-                            ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
-                            )}
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.housing || '-'}</span>
+                              : cfg.caratIdx !== null ? renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))
+                              : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                           </td>
                         )}
-
-                        {/* Shape */}
                         {hasShapes && (
                           <td style={tdStyle}>
-                            {sameForAll ? (
-                              <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.shape || '-'}</span>
-                            ) : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) ? (
-                              <select
-                                value={cfg.shape || ''}
-                                onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })}
-                                style={selectStyle}
-                              >
-                                <option value="">{t('collection.selectPlaceholder')}</option>
-                                {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
-                            )}
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.shape || '-'}</span>
+                              : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) ? (
+                                <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={selectStyle}>
+                                  <option value="">{t('collection.selectPlaceholder')}</option>
+                                  {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                           </td>
                         )}
-
-                        {/* Size */}
                         {hasSizes && (
                           <td style={tdStyle}>
-                            {sameForAll ? (
-                              <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.size || '-'}</span>
-                            ) : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
-                              <select
-                                value={cfg.size || ''}
-                                onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })}
-                                style={selectStyle}
-                              >
-                                <option value="">{t('collection.selectPlaceholder')}</option>
-                                {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            ) : (
-                              <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>
-                            )}
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.size || '-'}</span>
+                              : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
+                                <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={selectStyle}>
+                                  <option value="">{t('collection.selectPlaceholder')}</option>
+                                  {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                           </td>
                         )}
-
-                        {/* Quantity */}
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <button
-                              onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })}
-                              style={qtyBtnStyle}
-                            >-</button>
-                            <input
-                              type="number"
-                              value={cfg.qty}
-                              onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
-                              style={qtyInputStyle}
-                            />
-                            <button
-                              onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })}
-                              style={qtyBtnStyle}
-                            >+</button>
+                            <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
+                            <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
+                            <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={qtyBtnStyle}>+</button>
                           </div>
                         </td>
-
-                        {/* Row total */}
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: rowTotal > 0 ? '#333' : '#ccc' }}>
-                          {rowTotal > 0 ? fmt(rowTotal) : '-'}
-                        </td>
-
-                        {/* Duplicate + Remove */}
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: rowTotal > 0 ? '#333' : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                            <button
-                              onClick={() => duplicateConfig(cfg.id)}
-                              title="Duplicate row"
-                              style={{
-                                background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
-                                fontSize: 12, padding: '2px 4px', transition: 'color .15s',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                            >+</button>
-                            <button
-                              onClick={() => removeConfig(cfg.id)}
-                              title="Remove row"
-                              style={{
-                                background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
-                                fontSize: 14, padding: '2px 4px', transition: 'color .15s',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                            >x</button>
+                            <button onClick={() => duplicateConfig(cfg.id)} title="Duplicate row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 12, padding: '2px 4px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>+</button>
+                            <button onClick={() => removeConfig(cfg.id)} title="Remove row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 14, padding: '2px 4px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>x</button>
                           </div>
                         </td>
                       </tr>
@@ -902,6 +720,89 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ─── Mobile Card Layout ─── */}
+          {line.colorConfigs.length > 0 && mobile && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {line.colorConfigs.map(cfg => {
+                const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
+                const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+                const rowTotal = price * cfg.qty
+
+                return (
+                  <div key={cfg.id} style={{
+                    border: '1px solid #eee', borderRadius: 10, padding: 12,
+                    background: '#fafafa',
+                  }}>
+                    {/* Card header: color + total + actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 20, height: 20, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
+                        <select value={cfg.colorName} onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })} style={{ ...selectStyle, ...mobileSelectOverride, fontWeight: 600 }}>
+                          {palette.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: rowTotal > 0 ? colors.inkPlum : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</span>
+                        <button onClick={() => duplicateConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fff', color: '#999', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        <button onClick={() => removeConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#e74c3c', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+                      </div>
+                    </div>
+
+                    {/* Card fields */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {/* Carat */}
+                      {!sameForAll && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.carat')}</span>
+                          <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                            <option value="">{t('collection.selectPlaceholder')}</option>
+                            {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {/* Housing */}
+                      {hasHousing && !sameForAll && cfg.caratIdx !== null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.housing')}</span>
+                          <div style={{ flex: 1 }}>{renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))}</div>
+                        </div>
+                      )}
+                      {/* Shape */}
+                      {hasShapes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.shape')}</span>
+                          <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                            <option value="">{t('collection.selectPlaceholder')}</option>
+                            {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {/* Size */}
+                      {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.size')}</span>
+                          <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                            <option value="">{t('collection.selectPlaceholder')}</option>
+                            {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {/* Qty */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.qty')}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
+                          <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 44, height: 36, fontSize: 14 }} />
+                          <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={mobileQtyBtnStyle}>+</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -956,4 +857,15 @@ const qtyInputStyle = {
   width: 36, height: 24, border: '1px solid #e0e0e0', borderRadius: 4,
   textAlign: 'center', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
   outline: 'none', color: colors.inkPlum,
+}
+
+const mobileSelectOverride = {
+  padding: '8px 10px', fontSize: 13, minHeight: 36,
+}
+
+const mobileQtyBtnStyle = {
+  width: 36, height: 36, borderRadius: 6, border: '1px solid #e0e0e0',
+  background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 600,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555',
+  fontFamily: 'inherit',
 }

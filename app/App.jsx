@@ -16,6 +16,7 @@ import ClientGate from './components/ClientGate'
 import TopNav from './components/TopNav'
 import DocumentsPanel from './components/DocumentsPanel'
 import { useAuth } from './components/AuthProvider'
+import { useIsMobile } from '@/lib/useIsMobile'
 
 const STORAGE_KEY = 'lovelab-b2b-state'
 
@@ -30,6 +31,7 @@ const AI_CHIPS = [
 export default function App() {
   const { profile } = useAuth()
   const { t } = useI18n()
+  const mobile = useIsMobile()
   
   // Active tab: 'builder' | 'ai' | 'orderform' | 'documents'
   const [activeTab, setActiveTab] = useState('builder')
@@ -443,23 +445,24 @@ export default function App() {
           /* ─── AI Advisor Chat Mode ─── */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {/* Chat messages */}
-            <div aria-live="polite" aria-label="Chat messages" style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+            <div aria-live="polite" aria-label="Chat messages" style={{ flex: 1, overflowY: 'auto', padding: mobile ? '14px 12px' : '18px 20px' }}>
               <div style={{ maxWidth: 700, margin: '0 auto' }}>
                 {aiMsgs.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: colors.inkPlum, marginBottom: 6 }}>{t('ai.title')}</div>
-                    <div style={{ fontSize: 13, color: '#999', lineHeight: 1.6, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
+                  <div style={{ textAlign: 'center', padding: mobile ? '30px 16px' : '40px 20px' }}>
+                    <div style={{ fontSize: mobile ? 16 : 18, fontWeight: 800, color: colors.inkPlum, marginBottom: 6 }}>{t('ai.title')}</div>
+                    <div style={{ fontSize: mobile ? 12 : 13, color: '#999', lineHeight: 1.6, marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
                       {t('ai.description')}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 8, justifyContent: 'center' }}>
                       {AI_CHIPS.map((chip, i) => (
                         <button
                           key={i}
                           onClick={() => { setChatInput(chip); setTimeout(() => chatInputRef.current?.focus(), 50) }}
                           style={{
-                            padding: '8px 14px', borderRadius: 20, border: '1px solid #e3e3e3',
-                            background: '#fff', color: '#555', fontSize: 12, cursor: 'pointer',
+                            padding: mobile ? '10px 14px' : '8px 14px', borderRadius: 20, border: '1px solid #e3e3e3',
+                            background: '#fff', color: '#555', fontSize: mobile ? 13 : 12, cursor: 'pointer',
                             fontFamily: 'inherit', transition: 'all .12s', lineHeight: 1.3,
+                            minHeight: mobile ? 44 : 'auto',
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
                           onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e3e3e3'; e.currentTarget.style.color = '#555' }}
@@ -474,11 +477,11 @@ export default function App() {
                   return (
                     <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
                       <div style={{
-                        maxWidth: '88%', padding: '10px 14px',
+                        maxWidth: mobile ? '92%' : '88%', padding: mobile ? '12px 14px' : '10px 14px',
                         borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                         background: m.role === 'user' ? colors.inkPlum : '#fff',
                         color: m.role === 'user' ? '#fff' : '#333',
-                        fontSize: 12, lineHeight: 1.5,
+                        fontSize: mobile ? 13 : 12, lineHeight: 1.5,
                         border: m.role === 'user' ? 'none' : '1px solid #eaeaea',
                       }}>
                         <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
@@ -489,10 +492,10 @@ export default function App() {
                           <div style={{ marginTop: 8 }}>
                             <MiniQuote q={m.quote} onView={() => { setCurQuote(m.quote); setShowQuote(true) }} />
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                              <button onClick={handleSuggestFillOrder} disabled={descLoading} style={{ width: '100%', padding: 8, borderRadius: 8, border: `1px solid ${colors.luxeGold}`, background: '#fff', fontSize: 11, fontWeight: 600, cursor: descLoading ? 'default' : 'pointer', color: colors.luxeGold, fontFamily: 'inherit', opacity: descLoading ? 0.6 : 1 }}>
+                              <button onClick={handleSuggestFillOrder} disabled={descLoading} style={{ width: '100%', padding: mobile ? 12 : 8, borderRadius: 8, border: `1px solid ${colors.luxeGold}`, background: '#fff', fontSize: mobile ? 12 : 11, fontWeight: 600, cursor: descLoading ? 'default' : 'pointer', color: colors.luxeGold, fontFamily: 'inherit', opacity: descLoading ? 0.6 : 1, minHeight: mobile ? 44 : 'auto' }}>
                                 {t('ai.suggestFill')}
                               </button>
-                              <button onClick={() => setActiveTab('builder')} style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fafafa', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#555', fontFamily: 'inherit' }}>
+                              <button onClick={() => setActiveTab('builder')} style={{ width: '100%', padding: mobile ? 12 : 8, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fafafa', fontSize: mobile ? 12 : 11, fontWeight: 600, cursor: 'pointer', color: '#555', fontFamily: 'inherit', minHeight: mobile ? 44 : 'auto' }}>
                                 {t('ai.switchBuilder')}
                               </button>
                             </div>
@@ -504,7 +507,7 @@ export default function App() {
                 })}
                 {descLoading && (
                   <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
-                    <div style={{ padding: '12px 16px', borderRadius: '12px 12px 12px 4px', background: '#fff', border: '1px solid #eaeaea' }}>
+                    <div style={{ padding: mobile ? '14px 18px' : '12px 16px', borderRadius: '12px 12px 12px 4px', background: '#fff', border: '1px solid #eaeaea' }}>
                       <LoadingDots />
                     </div>
                   </div>
@@ -517,22 +520,22 @@ export default function App() {
             <div style={{ background: '#fff', borderTop: '1px solid #eaeaea', flexShrink: 0 }}>
               <div style={{ maxWidth: 700, margin: '0 auto' }}>
                 {aiFiltersOpen && (
-                  <div style={{ padding: '12px 20px 6px', borderBottom: '1px solid #f0f0f0' }}>
+                  <div style={{ padding: mobile ? '12px 12px 6px' : '12px 20px 6px', borderBottom: '1px solid #f0f0f0' }}>
                     <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.budget')}</div>
+                      <div style={{ fontSize: mobile ? 11 : 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.budget')}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 13, color: '#999' }}>€</span>
-                        <input type="number" value={aiBudget} onChange={(e) => setAiBudget(e.target.value)} placeholder="e.g. 2000" style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: '#222', maxWidth: 140 }} />
-                        {aiBudget && <button onClick={() => setAiBudget('')} style={{ background: 'none', border: 'none', color: '#bbb', cursor: 'pointer', fontSize: 14, padding: 2 }}>x</button>}
+                        <span style={{ fontSize: mobile ? 15 : 13, color: '#999' }}>€</span>
+                        <input type="number" value={aiBudget} onChange={(e) => setAiBudget(e.target.value)} placeholder="e.g. 2000" style={{ flex: 1, border: '1px solid #e0e0e0', borderRadius: 8, padding: mobile ? '10px 12px' : '7px 10px', fontSize: mobile ? 16 : 13, fontFamily: 'inherit', outline: 'none', color: '#222', maxWidth: mobile ? 160 : 140, minHeight: mobile ? 44 : 'auto' }} />
+                        {aiBudget && <button onClick={() => setAiBudget('')} style={{ background: 'none', border: 'none', color: '#bbb', cursor: 'pointer', fontSize: mobile ? 18 : 14, padding: mobile ? 8 : 2, minWidth: mobile ? 36 : 'auto', minHeight: mobile ? 36 : 'auto' }}>x</button>}
                       </div>
                     </div>
                     <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.collections')}</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      <div style={{ fontSize: mobile ? 11 : 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.collections')}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 5 }}>
                         {COLLECTIONS.map((col) => {
                           const active = aiCollections.includes(col.id)
                           return (
-                            <button key={col.id} onClick={() => toggleAiCollection(col.id)} style={{ padding: '5px 10px', borderRadius: 16, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #ddd', background: active ? `${colors.inkPlum}12` : '#fafafa', color: active ? colors.inkPlum : '#666', fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <button key={col.id} onClick={() => toggleAiCollection(col.id)} style={{ padding: mobile ? '8px 14px' : '5px 10px', borderRadius: 16, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #ddd', background: active ? `${colors.inkPlum}12` : '#fafafa', color: active ? colors.inkPlum : '#666', fontSize: mobile ? 12 : 11, fontWeight: active ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 36 : 'auto' }}>
                               {col.label}
                             </button>
                           )
@@ -541,14 +544,14 @@ export default function App() {
                     </div>
                     {aiAvailableColors.length > 0 && (
                       <div style={{ marginBottom: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.colors')} {aiColors.length > 0 && <span style={{ color: colors.inkPlum }}>({aiColors.length})</span>}</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        <div style={{ fontSize: mobile ? 11 : 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.colors')} {aiColors.length > 0 && <span style={{ color: colors.inkPlum }}>({aiColors.length})</span>}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 4 }}>
                           {aiAvailableColors.map((c) => {
                             const active = aiColors.includes(c.n)
                             return (
-                              <button key={c.n} onClick={() => toggleAiColor(c.n)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 12, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #e0e0e0', background: active ? `${colors.inkPlum}10` : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: c.h, border: '1px solid rgba(0,0,0,.1)', flexShrink: 0 }} />
-                                <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? colors.inkPlum : '#666' }}>{c.n}</span>
+                              <button key={c.n} onClick={() => toggleAiColor(c.n)} style={{ display: 'flex', alignItems: 'center', gap: mobile ? 6 : 4, padding: mobile ? '8px 12px' : '4px 8px', borderRadius: 12, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #e0e0e0', background: active ? `${colors.inkPlum}10` : '#fff', cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 36 : 'auto' }}>
+                                <span style={{ width: mobile ? 14 : 12, height: mobile ? 14 : 12, borderRadius: '50%', background: c.h, border: '1px solid rgba(0,0,0,.1)', flexShrink: 0 }} />
+                                <span style={{ fontSize: mobile ? 12 : 10, fontWeight: active ? 700 : 400, color: active ? colors.inkPlum : '#666' }}>{c.n}</span>
                               </button>
                             )
                           })}
@@ -557,20 +560,20 @@ export default function App() {
                     )}
                   </div>
                 )}
-                <div style={{ padding: '8px 20px 10px', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                <div style={{ padding: mobile ? '12px 12px 16px' : '8px 20px 10px', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
                   <button
                     onClick={() => setAiFiltersOpen((v) => !v)}
                     title="Quick filters"
                     aria-label={t('ai.filters')}
                     aria-expanded={aiFiltersOpen}
                     style={{
-                      width: 38, height: 38, borderRadius: 10, border: '1px solid #e0e0e0', flexShrink: 0,
+                      width: mobile ? 44 : 38, height: mobile ? 44 : 38, borderRadius: 10, border: '1px solid #e0e0e0', flexShrink: 0,
                       background: aiFiltersOpen || aiBudget || aiCollections.length > 0 ? `${colors.inkPlum}15` : '#f7f7f5',
                       color: aiFiltersOpen || aiBudget || aiCollections.length > 0 ? colors.inkPlum : '#999',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: mobile ? 18 : 16,
                     }}
                   >{aiFiltersOpen ? 'v' : '>'}</button>
-                  <div style={{ flex: 1, display: 'flex', gap: 6, background: '#f7f7f5', borderRadius: 12, border: '1px solid #e0e0e0', padding: 4, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1, display: 'flex', gap: 6, background: '#f7f7f5', borderRadius: 12, border: '1px solid #e0e0e0', padding: mobile ? 6 : 4, alignItems: 'flex-end' }}>
                     <input
                       ref={chatInputRef}
                       value={chatInput}
@@ -579,27 +582,27 @@ export default function App() {
                       placeholder={aiBudget || aiCollections.length ? t('ai.placeholderFiltered') : t('ai.placeholder')}
                       aria-label="Chat message input"
                       disabled={descLoading}
-                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, fontFamily: 'inherit', padding: '10px 10px', color: '#222', background: 'transparent', lineHeight: 1.4 }}
+                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: mobile ? 16 : 13, fontFamily: 'inherit', padding: mobile ? '12px 10px' : '10px 10px', color: '#222', background: 'transparent', lineHeight: 1.4 }}
                     />
                     <button
                       onClick={() => handleAiSend()}
                       disabled={!chatInput.trim() || descLoading}
                       aria-label="Send message"
                       style={{
-                        width: 38, height: 38, borderRadius: 10, border: 'none', flexShrink: 0,
+                        width: mobile ? 44 : 38, height: mobile ? 44 : 38, borderRadius: 10, border: 'none', flexShrink: 0,
                         background: chatInput.trim() && !descLoading ? colors.inkPlum : '#e5e5e5',
                         color: '#fff', cursor: chatInput.trim() && !descLoading ? 'pointer' : 'default',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: mobile ? 20 : 18,
                       }}
                     >^</button>
                   </div>
                 </div>
                 {!aiFiltersOpen && (aiBudget || aiCollections.length > 0 || aiColors.length > 0) && (
-                  <div style={{ padding: '0 20px 8px', display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                    <span style={{ fontSize: 9, color: '#aaa', marginRight: 2 }}>{t('ai.context')}</span>
-                    {aiBudget && <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>€{aiBudget}</span>}
-                    {aiCollections.map((id) => { const col = COLLECTIONS.find((c) => c.id === id); return col ? <span key={id} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{col.label}</span> : null })}
-                    {aiColors.length > 0 && <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{aiColors.length} color{aiColors.length !== 1 ? 's' : ''}</span>}
+                  <div style={{ padding: mobile ? '0 12px 10px' : '0 20px 8px', display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 4, alignItems: 'center' }}>
+                    <span style={{ fontSize: mobile ? 10 : 9, color: '#aaa', marginRight: 2 }}>{t('ai.context')}</span>
+                    {aiBudget && <span style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>€{aiBudget}</span>}
+                    {aiCollections.map((id) => { const col = COLLECTIONS.find((c) => c.id === id); return col ? <span key={id} style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{col.label}</span> : null })}
+                    {aiColors.length > 0 && <span style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{aiColors.length} color{aiColors.length !== 1 ? 's' : ''}</span>}
                   </div>
                 )}
               </div>

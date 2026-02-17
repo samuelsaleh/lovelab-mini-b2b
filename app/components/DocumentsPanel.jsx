@@ -290,15 +290,15 @@ export default function DocumentsPanel({ onReEdit }) {
       {/* Main content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? 12 : 20 }}>
         {/* Search */}
-        <div style={{ marginBottom: 16, maxWidth: 600 }}>
+        <div style={{ marginBottom: 16, maxWidth: mobile ? '100%' : 600 }}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by client name or company..."
             style={{
-              width: '100%', padding: '10px 16px', borderRadius: 10,
-              border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body,
+              width: '100%', padding: mobile ? '12px 16px' : '10px 16px', borderRadius: 10,
+              border: '1px solid #e3e3e3', fontSize: mobile ? 16 : 13, fontFamily: fonts.body,
               background: '#fff', outline: 'none', boxSizing: 'border-box',
             }}
           />
@@ -318,9 +318,13 @@ export default function DocumentsPanel({ onReEdit }) {
                 key={doc.id}
                 style={{
                   background: '#fff', borderRadius: 10, border: '1px solid #e8e8e8',
-                  padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16,
+                  padding: mobile ? '12px 12px' : '12px 16px',
+                  display: 'flex', flexDirection: mobile ? 'column' : 'row',
+                  alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 10 : 16,
                 }}
               >
+                {/* Top row: icon + info */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {/* Icon */}
                 <div style={{
                   width: 36, height: 36, borderRadius: 8,
@@ -349,8 +353,10 @@ export default function DocumentsPanel({ onReEdit }) {
                   </div>
                 </div>
 
+                </div>
+
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: mobile ? 'wrap' : 'nowrap' }}>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
                   {onReEdit && doc.metadata?.formState && (
                     <button
                       onClick={() => onReEdit(doc)}

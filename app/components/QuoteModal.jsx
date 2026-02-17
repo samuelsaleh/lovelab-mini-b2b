@@ -71,7 +71,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             style={{ height: mobile ? 40 : 50, width: 'auto', marginBottom: 8 }}
           />
           <div style={{ 
-            fontSize: 8, 
+            fontSize: mobile ? 10 : 8, 
             letterSpacing: '0.25em', 
             color: colors.luxeGold, 
             marginTop: 4,
@@ -99,19 +99,20 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
         </div>
 
         {/* Table */}
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: mobile ? 11 : 12 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
                 {[t('quote.product'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
                   <th key={h} style={{ 
-                    padding: mobile ? '6px 3px' : '7px 4px', 
+                    padding: mobile ? '8px 4px' : '7px 4px', 
                     textAlign: 'left', 
-                    fontSize: mobile ? 7 : 8, 
+                    fontSize: mobile ? 9 : 8, 
                     fontWeight: 700, 
                     letterSpacing: '0.08em', 
                     textTransform: 'uppercase',
-                    color: colors.inkPlum
+                    color: colors.inkPlum,
+                    whiteSpace: 'nowrap',
                   }}>{h}</th>
                 ))}
               </tr>
@@ -119,15 +120,15 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             <tbody>
               {(q.lines || []).map((ln, i) => (
                 <tr key={i} style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontWeight: 600, color: colors.charcoal }}>{ln.product}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', color: colors.charcoal }}>{ln.carat}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontSize: mobile ? 9 : 10, color: colors.charcoal }}>{ln.housing || '—'}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontSize: mobile ? 9 : 10, color: colors.charcoal }}>{ln.colorName || '—'}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontSize: mobile ? 9 : 10, color: colors.charcoal }}>{ln.shape || '—'}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontSize: mobile ? 9 : 10, color: colors.charcoal }}>{ln.size || '—'}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontWeight: 600, color: colors.charcoal }}>{ln.qty}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', color: colors.charcoal }}>{fmt(ln.unitB2B)}</td>
-                  <td style={{ padding: mobile ? '6px 3px' : '7px 4px', fontWeight: 700, color: colors.inkPlum }}>{fmt(ln.lineTotal)}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: mobile ? 10 : 12, whiteSpace: 'nowrap' }}>{ln.product}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{ln.carat}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.housing || '—'}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.colorName || '—'}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.shape || '—'}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.size || '—'}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{ln.qty}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{fmt(ln.unitB2B)}</td>
+                  <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 700, color: colors.inkPlum, fontSize: mobile ? 10 : 12 }}>{fmt(ln.lineTotal)}</td>
                 </tr>
               ))}
             </tbody>
