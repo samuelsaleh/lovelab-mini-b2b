@@ -153,16 +153,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
   // Duplicate all colors with variations
   const duplicateAllWithVariations = () => {
     if (line.colorConfigs.length === 0) return
-    const newConfigs = line.colorConfigs.map(cfg => ({
-      ...cfg,
-      id: createConfigId(),
-      caratIdx: duplicateSettings.carat.keepSame ? cfg.caratIdx : duplicateSettings.carat.value,
-      housing: duplicateSettings.housing.keepSame ? cfg.housing : duplicateSettings.housing.value,
-      housingType: duplicateSettings.housingType.keepSame ? cfg.housingType : duplicateSettings.housingType.value,
-      size: duplicateSettings.size.keepSame ? cfg.size : duplicateSettings.size.value,
-      shape: duplicateSettings.shape.keepSame ? cfg.shape : duplicateSettings.shape.value,
-      qty: duplicateSettings.qty.keepSame ? cfg.qty : duplicateSettings.qty.value,
-    }))
+    const newConfigs = line.colorConfigs.map(cfg => {
+      const qtyVal = duplicateSettings.qty.keepSame ? cfg.qty : duplicateSettings.qty.value
+      return {
+        ...cfg,
+        id: createConfigId(),
+        caratIdx: duplicateSettings.carat.keepSame ? cfg.caratIdx : duplicateSettings.carat.value,
+        housing: duplicateSettings.housing.keepSame ? cfg.housing : duplicateSettings.housing.value,
+        housingType: duplicateSettings.housingType.keepSame ? cfg.housingType : duplicateSettings.housingType.value,
+        size: duplicateSettings.size.keepSame ? cfg.size : duplicateSettings.size.value,
+        shape: duplicateSettings.shape.keepSame ? cfg.shape : duplicateSettings.shape.value,
+        qty: Math.max(1, typeof qtyVal === 'number' && !Number.isNaN(qtyVal) ? qtyVal : 1),
+      }
+    })
     set({ colorConfigs: [...line.colorConfigs, ...newConfigs] })
     setShowDuplicatePanel(false)
   }
@@ -664,7 +667,13 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                         </td>
                         <td style={tdStyle}>
                           {sameForAll ? (
-                            <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.caratIdx !== null ? `${col.carats[sharedSettings.caratIdx]} ct` : '-'}</span>
+                            <span style={{ color: '#888', fontSize: 11 }}>
+                              {(() => {
+                                const idx = cfg.caratIdx ?? sharedSettings.caratIdx
+                                if (idx == null || idx < 0 || idx >= (col.carats?.length ?? 0)) return '-'
+                                return `${col.carats[idx]} ct`
+                              })()}
+                            </span>
                           ) : (
                             <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={selectStyle}>
                               <option value="">{t('collection.selectPlaceholder')}</option>
@@ -674,14 +683,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                         </td>
                         {hasHousing && (
                           <td style={tdStyle}>
-                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.housing || '-'}</span>
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.housing ?? sharedSettings.housing) || '-'}</span>
                               : cfg.caratIdx !== null ? renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))
                               : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                           </td>
                         )}
                         {hasShapes && (
                           <td style={tdStyle}>
-                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.shape || '-'}</span>
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.shape ?? sharedSettings.shape) || '-'}</span>
                               : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) ? (
                                 <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={selectStyle}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
@@ -692,7 +701,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                         )}
                         {hasSizes && (
                           <td style={tdStyle}>
-                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{sharedSettings.size || '-'}</span>
+                            {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.size ?? sharedSettings.size) || '-'}</span>
                               : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
                                 <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={selectStyle}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
