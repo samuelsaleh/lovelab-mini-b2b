@@ -18,17 +18,27 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Get initial session -- always use getUser() for server-side verification
+    // Timeout so we don't hang forever if Supabase is slow/unreachable
+    const AUTH_TIMEOUT_MS = 10000;
     const getInitialSession = async () => {
       try {
-        const { data: { user: serverUser } } = await supabase.auth.getUser();
+        const result = await Promise.race([
+          supabase.auth.getUser(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Auth timeout')), AUTH_TIMEOUT_MS)
+          ),
+        ]);
+        const serverUser = result?.data?.user;
         if (serverUser) {
           setUser(serverUser);
           await fetchProfile(serverUser.id);
         }
       } catch (err) {
-        console.error('Auth init error:', err);
+        if (err?.message !== 'Auth timeout') {
+          console.error('Auth init error:', err);
+        }
       }
-      
+
       setLoading(false);
     };
 

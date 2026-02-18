@@ -373,12 +373,16 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               {t('collection.clickColorsToAdd')}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 8 : 6 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${mobile ? 8 : 10}, 1fr)`,
+              gap: mobile ? 8 : 6,
+            }}>
               {palette.map(c => {
                 const count = colorCounts[c.n] || 0
                 const btnSize = mobile ? 38 : 30
                 return (
-                  <div key={c.n} style={{ position: 'relative' }}>
+                  <div key={c.n} style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
                     <button
                       title={c.n}
                       onClick={() => addColor(c.n)}
