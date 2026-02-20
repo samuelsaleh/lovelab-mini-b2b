@@ -10,7 +10,7 @@ import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
 import OptionPicker from './components/OptionPicker'
-import BuilderPage, { mkLine, mkColorConfig } from './components/BuilderPage'
+import BuilderPage, { mkLine, mkColorConfig, uniqueId } from './components/BuilderPage'
 import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
 import TopNav from './components/TopNav'
@@ -259,7 +259,7 @@ export default function App() {
             const qty = Number(ql.qty) || Number(ql.totalQty) || 1
             colorConfigs.push({ ...mkColorConfig(colorName, qty), ...base, qty, colorName })
           }
-          return { uid: Date.now() + Math.random(), collectionId: colId, colorConfigs, expanded: true }
+          return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
         })
         setLines(newLines)
         expandedQuote = calculateQuote(newLines)

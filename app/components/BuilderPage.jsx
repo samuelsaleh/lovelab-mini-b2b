@@ -8,10 +8,18 @@ import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 
+let _uidCounter = 0
+export function uniqueId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${++_uidCounter}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 // ─── Exported helpers (used by App.jsx) ───
 export function mkColorConfig(colorName, minC = 1) {
   return {
-    id: Date.now() + Math.random(),
+    id: uniqueId(),
     colorName,
     caratIdx: null,
     housing: null,
@@ -25,7 +33,7 @@ export function mkColorConfig(colorName, minC = 1) {
 
 export function mkLine() {
   return {
-    uid: Date.now() + Math.random(),
+    uid: uniqueId(),
     collectionId: null,
     colorConfigs: [],
     expanded: true,
@@ -155,7 +163,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       // Add new lines for newly selected collections
       selectedCollections.forEach(colId => {
         if (!existingIds.includes(colId)) {
-          newLines.push({ uid: Date.now() + Math.random(), collectionId: colId, colorConfigs: [], expanded: true })
+          newLines.push({ uid: uniqueId(), collectionId: colId, colorConfigs: [], expanded: true })
         }
       })
       return newLines.length > 0 ? newLines : [mkLine()]
@@ -207,7 +215,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       if (existing) {
         return prev.map(l => l.uid === existing.uid ? { ...l, colorConfigs: configs } : l)
       }
-      const newLine = { uid: Date.now() + Math.random(), collectionId: preset.collectionId, colorConfigs: configs, expanded: true }
+      const newLine = { uid: uniqueId(), collectionId: preset.collectionId, colorConfigs: configs, expanded: true }
       const cleaned = prev.filter(l => l.collectionId !== null)
       return [...cleaned, newLine]
     })
