@@ -10,6 +10,21 @@ import { useIsMobile } from '@/lib/useIsMobile'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
+// CSS for duplicate highlight animation
+const duplicateHighlightStyles = `
+@keyframes duplicateHighlight {
+  0% {
+    background-color: #f8bbd9;
+  }
+  30% {
+    background-color: #fce4ec;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+`
+
 function createConfigId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -32,7 +47,7 @@ function ensureUniqueConfigIds(configs) {
   return changed ? next : null
 }
 
-export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect }) {
+export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect, recentlyDuplicated = new Set() }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
   const [expanded, setExpanded] = useState(true)
@@ -81,7 +96,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const completeCount = line.colorConfigs.filter(c => isConfigComplete(c)).length
   const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
   const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
-    const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+    const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
+    const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
     return sum + (cfg.qty * price)
   }, 0)
 
@@ -323,11 +339,13 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   }
 
   return (
-    <div style={{
-      border: '1px solid #e8e8e8', borderRadius: 12, marginBottom: 12,
-      overflow: 'hidden', background: '#fff',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
-    }}>
+    <>
+      <style>{duplicateHighlightStyles}</style>
+      <div style={{
+        border: '1px solid #e8e8e8', borderRadius: 12, marginBottom: 12,
+        overflow: 'hidden', background: '#fff',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+      }}>
       {/* ─── Header ─── */}
       <div
         style={{
@@ -692,12 +710,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 <tbody>
                   {line.colorConfigs.map(cfg => {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
-                    const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+                    const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
+                    const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
                     const rowTotal = price * cfg.qty
                     const isSelected = selectedConfigs.has(cfg.id)
+                    const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
 
                     return (
-                      <tr key={cfg.id} style={{ borderBottom: '1px solid #f5f5f5', background: isSelected ? '#f3f0f5' : 'transparent', transition: 'background .15s' }}>
+                      <tr key={cfg.id} style={{ 
+                        borderBottom: '1px solid #f5f5f5', 
+                        background: isRecentlyDuplicated ? '#fce4ec' : isSelected ? '#f3f0f5' : 'transparent', 
+                        transition: 'background 0.5s ease-out',
+                        animation: isRecentlyDuplicated ? 'duplicateHighlight 15s ease-out forwards' : 'none',
+                      }}>
                         {onToggleConfigSelect && (
                           <td style={{ ...tdStyle, width: 32 }}>
                             <button
@@ -794,16 +819,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {line.colorConfigs.map(cfg => {
                 const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
-                const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+                const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
+                const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
                 const rowTotal = price * cfg.qty
                 const isSelected = selectedConfigs.has(cfg.id)
+                const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
 
                 return (
                   <div key={cfg.id} style={{
-                    border: isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #eee', 
+                    border: isRecentlyDuplicated ? '2px solid #f48fb1' : isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #eee', 
                     borderRadius: 10, padding: 12,
-                    background: isSelected ? '#f3f0f5' : '#fafafa',
-                    transition: 'all .15s',
+                    background: isRecentlyDuplicated ? '#fce4ec' : isSelected ? '#f3f0f5' : '#fafafa',
+                    transition: 'all 0.5s ease-out',
+                    animation: isRecentlyDuplicated ? 'duplicateHighlight 15s ease-out forwards' : 'none',
                   }}>
                     {/* Card header: checkbox + color + total + actions */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -909,7 +937,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 

@@ -7,6 +7,8 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
+import { sendBuilderChat } from '@/lib/api'
+import LoadingDots from './LoadingDots'
 
 let _uidCounter = 0
 export function uniqueId() {
@@ -131,6 +133,23 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   
   // Selection state for multi-select feature
   const [selectedConfigs, setSelectedConfigs] = useState(new Set())
+  const [showDuplicateVariations, setShowDuplicateVariations] = useState(false)
+  const [bulkDuplicateSettings, setBulkDuplicateSettings] = useState({
+    carat: { enabled: false, value: null },
+    housing: { enabled: false, value: null },
+    size: { enabled: false, value: null },
+    qty: { enabled: false, value: 1 },
+  })
+  // Track recently duplicated configs for highlight effect
+  const [recentlyDuplicated, setRecentlyDuplicated] = useState(new Set())
+
+  // AI Advisor chat state
+  const [showAiChat, setShowAiChat] = useState(false)
+  const [aiMessages, setAiMessages] = useState([])
+  const [aiInput, setAiInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const aiChatEndRef = useRef(null)
+  const aiInputRef = useRef(null)
 
   // Live quote
   const quote = useMemo(() => calculateQuote(lines), [lines])
@@ -236,20 +255,94 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     setSelectedConfigs(new Set())
   }, [])
 
-  // Duplicate all selected configs
-  const duplicateSelected = useCallback(() => {
+  // Duplicate all selected configs (with optional variations)
+  const duplicateSelected = useCallback((withVariations = false) => {
     if (selectedConfigs.size === 0) return
+    const newIds = new Set()
     setLines(prev => prev.map(line => {
       const selectedInLine = line.colorConfigs.filter(c => selectedConfigs.has(c.id))
       if (selectedInLine.length === 0) return line
-      const copies = selectedInLine.map(cfg => ({ ...cfg, id: uniqueId() }))
+      const copies = selectedInLine.map(cfg => {
+        const newId = uniqueId()
+        newIds.add(newId)
+        const copy = { ...cfg, id: newId }
+        if (withVariations) {
+          if (bulkDuplicateSettings.carat.enabled && bulkDuplicateSettings.carat.value !== null) {
+            copy.caratIdx = bulkDuplicateSettings.carat.value
+          }
+          if (bulkDuplicateSettings.housing.enabled && bulkDuplicateSettings.housing.value) {
+            copy.housing = bulkDuplicateSettings.housing.value
+          }
+          if (bulkDuplicateSettings.size.enabled && bulkDuplicateSettings.size.value) {
+            copy.size = bulkDuplicateSettings.size.value
+          }
+          if (bulkDuplicateSettings.qty.enabled) {
+            copy.qty = Math.max(1, bulkDuplicateSettings.qty.value || 1)
+          }
+        }
+        return copy
+      })
       return { ...line, colorConfigs: [...line.colorConfigs, ...copies] }
     }))
+    // Highlight newly duplicated rows
+    setRecentlyDuplicated(newIds)
+    setTimeout(() => setRecentlyDuplicated(new Set()), 15000) // Clear after 15 seconds
+    
     clearSelection()
-  }, [selectedConfigs, setLines, clearSelection])
+    setShowDuplicateVariations(false)
+    setBulkDuplicateSettings({
+      carat: { enabled: false, value: null },
+      housing: { enabled: false, value: null },
+      size: { enabled: false, value: null },
+      qty: { enabled: false, value: 1 },
+    })
+  }, [selectedConfigs, setLines, clearSelection, bulkDuplicateSettings])
 
   // Get count of selected configs
   const selectedCount = selectedConfigs.size
+
+  // Build order context string for AI
+  const buildOrderContext = useCallback(() => {
+    if (!lines.some(l => l.collectionId && l.colorConfigs.length > 0)) {
+      return 'No items configured yet.'
+    }
+    const parts = []
+    lines.forEach(line => {
+      if (!line.collectionId || line.colorConfigs.length === 0) return
+      const col = COLLECTIONS.find(c => c.id === line.collectionId)
+      if (!col) return
+      const colorSummary = line.colorConfigs.map(cfg => {
+        const carat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : '?'
+        return `${cfg.colorName} (${carat}ct, ${cfg.housing || 'no housing'}, ${cfg.size || 'no size'}, qty:${cfg.qty})`
+      }).join(', ')
+      parts.push(`${col.label}: ${colorSummary}`)
+    })
+    parts.push(`Total: ${fmt(quote.total)} (${quote.totalPieces} pcs)`)
+    if (budgetNum > 0) {
+      parts.push(`Budget: €${budgetNum}, Remaining: €${Math.max(0, budgetNum - quote.total)}`)
+    }
+    return parts.join('\n')
+  }, [lines, quote, budgetNum])
+
+  // Send AI chat message
+  const handleAiSend = useCallback(async () => {
+    const msg = aiInput.trim()
+    if (!msg || aiLoading) return
+    setAiInput('')
+    setAiLoading(true)
+    const userMsg = { role: 'user', content: msg }
+    const apiMsgs = [...aiMessages, userMsg]
+    setAiMessages(prev => [...prev, userMsg])
+    try {
+      const orderContext = buildOrderContext()
+      const parsed = await sendBuilderChat(apiMsgs, orderContext)
+      setAiMessages(prev => [...prev, { role: 'assistant', content: parsed.message }])
+    } catch (err) {
+      setAiMessages(prev => [...prev, { role: 'assistant', content: t('builder.aiError') + (err?.message ? ` (${err.message})` : '') }])
+    }
+    setAiLoading(false)
+    setTimeout(() => aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+  }, [aiInput, aiLoading, aiMessages, buildOrderContext, t])
 
   // Apply a quick-fill preset
   const applySuggestion = useCallback((preset) => {
@@ -618,6 +711,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       selectedConfigs={selectedConfigs}
                       onToggleConfigSelect={toggleConfigSelection}
                       onToggleLineSelect={toggleLineSelection}
+                      recentlyDuplicated={recentlyDuplicated}
                     />
                   )
                 })}
@@ -643,48 +737,220 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   <div style={{
                     position: 'sticky', bottom: 0, left: 0, right: 0,
                     background: '#fff', borderRadius: 12, marginBottom: 12,
-                    padding: '12px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
+                    boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
                     border: `1px solid ${colors.inkPlum}30`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    gap: 12, zIndex: 50,
+                    zIndex: 50, overflow: 'hidden',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        background: colors.inkPlum, color: '#fff',
-                        fontSize: 11, fontWeight: 700,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    {/* Main bar */}
+                    <div style={{
+                      padding: '12px 16px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 12,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          width: 24, height: 24, borderRadius: '50%',
+                          background: colors.inkPlum, color: '#fff',
+                          fontSize: 11, fontWeight: 700,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {selectedCount}
+                        </span>
+                        <span style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>
+                          {t('builder.itemsSelected').replace('{count}', selectedCount)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={clearSelection}
+                          style={{
+                            padding: '8px 16px', borderRadius: 8,
+                            border: '1px solid #e0e0e0', background: '#fff',
+                            color: '#666', fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          {t('common.clear')}
+                        </button>
+                        <button
+                          onClick={() => duplicateSelected(false)}
+                          style={{
+                            padding: '8px 16px', borderRadius: 8,
+                            border: `1px solid ${colors.inkPlum}`, background: '#fff',
+                            color: colors.inkPlum, fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          {t('builder.duplicateSelected')}
+                        </button>
+                        <button
+                          onClick={() => setShowDuplicateVariations(!showDuplicateVariations)}
+                          style={{
+                            padding: '8px 16px', borderRadius: 8,
+                            border: 'none', background: showDuplicateVariations ? `${colors.inkPlum}15` : colors.inkPlum,
+                            color: showDuplicateVariations ? colors.inkPlum : '#fff', fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          {t('builder.duplicateWithChanges')} {showDuplicateVariations ? '▲' : '▼'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Variations panel */}
+                    {showDuplicateVariations && (
+                      <div style={{
+                        padding: '12px 16px', borderTop: '1px solid #eee',
+                        background: '#fafafa',
                       }}>
-                        {selectedCount}
-                      </span>
-                      <span style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>
-                        {t('builder.itemsSelected').replace('{count}', selectedCount)}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={clearSelection}
-                        style={{
-                          padding: '8px 16px', borderRadius: 8,
-                          border: '1px solid #e0e0e0', background: '#fff',
-                          color: '#666', fontSize: 12, fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                        }}
-                      >
-                        {t('common.clear')}
-                      </button>
-                      <button
-                        onClick={duplicateSelected}
-                        style={{
-                          padding: '8px 16px', borderRadius: 8,
-                          border: 'none', background: colors.inkPlum,
-                          color: '#fff', fontSize: 12, fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                        }}
-                      >
-                        {t('builder.duplicateSelected')}
-                      </button>
-                    </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 10 }}>
+                          {t('builder.changeBeforeDuplicate')}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                          {/* Carat */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={bulkDuplicateSettings.carat.enabled}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, carat: { ...prev.carat, enabled: e.target.checked }
+                                }))}
+                                style={{ accentColor: colors.inkPlum }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.carat')}</span>
+                            </label>
+                            {bulkDuplicateSettings.carat.enabled && (
+                              <select
+                                value={bulkDuplicateSettings.carat.value ?? ''}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, carat: { ...prev.carat, value: e.target.value === '' ? null : parseInt(e.target.value) }
+                                }))}
+                                style={{
+                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
+                                  fontSize: 11, fontFamily: 'inherit',
+                                }}
+                              >
+                                <option value="">--</option>
+                                <option value="0">0.05 ct</option>
+                                <option value="1">0.10 ct</option>
+                                <option value="2">0.20 ct</option>
+                                <option value="3">0.30 ct</option>
+                              </select>
+                            )}
+                          </div>
+
+                          {/* Housing */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={bulkDuplicateSettings.housing.enabled}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, housing: { ...prev.housing, enabled: e.target.checked }
+                                }))}
+                                style={{ accentColor: colors.inkPlum }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.housing')}</span>
+                            </label>
+                            {bulkDuplicateSettings.housing.enabled && (
+                              <select
+                                value={bulkDuplicateSettings.housing.value ?? ''}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, housing: { ...prev.housing, value: e.target.value || null }
+                                }))}
+                                style={{
+                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
+                                  fontSize: 11, fontFamily: 'inherit',
+                                }}
+                              >
+                                <option value="">--</option>
+                                <option value="White">White</option>
+                                <option value="Yellow">Yellow</option>
+                                <option value="Rose">Rose</option>
+                              </select>
+                            )}
+                          </div>
+
+                          {/* Size */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={bulkDuplicateSettings.size.enabled}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, size: { ...prev.size, enabled: e.target.checked }
+                                }))}
+                                style={{ accentColor: colors.inkPlum }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.size')}</span>
+                            </label>
+                            {bulkDuplicateSettings.size.enabled && (
+                              <select
+                                value={bulkDuplicateSettings.size.value ?? ''}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, size: { ...prev.size, value: e.target.value || null }
+                                }))}
+                                style={{
+                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
+                                  fontSize: 11, fontFamily: 'inherit',
+                                }}
+                              >
+                                <option value="">--</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="S/M">S/M</option>
+                                <option value="M/L">M/L</option>
+                                <option value="L">L</option>
+                              </select>
+                            )}
+                          </div>
+
+                          {/* Qty */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={bulkDuplicateSettings.qty.enabled}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, qty: { ...prev.qty, enabled: e.target.checked }
+                                }))}
+                                style={{ accentColor: colors.inkPlum }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.qty')}</span>
+                            </label>
+                            {bulkDuplicateSettings.qty.enabled && (
+                              <input
+                                type="number"
+                                min="1"
+                                value={bulkDuplicateSettings.qty.value}
+                                onChange={(e) => setBulkDuplicateSettings(prev => ({
+                                  ...prev, qty: { ...prev.qty, value: Math.max(1, parseInt(e.target.value) || 1) }
+                                }))}
+                                style={{
+                                  width: 50, padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
+                                  fontSize: 11, fontFamily: 'inherit', textAlign: 'center',
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => duplicateSelected(true)}
+                          disabled={!bulkDuplicateSettings.carat.enabled && !bulkDuplicateSettings.housing.enabled && !bulkDuplicateSettings.size.enabled && !bulkDuplicateSettings.qty.enabled}
+                          style={{
+                            width: '100%', padding: '10px 16px', borderRadius: 8,
+                            border: 'none', background: colors.inkPlum,
+                            color: '#fff', fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                            opacity: (!bulkDuplicateSettings.carat.enabled && !bulkDuplicateSettings.housing.enabled && !bulkDuplicateSettings.size.enabled && !bulkDuplicateSettings.qty.enabled) ? 0.5 : 1,
+                          }}
+                        >
+                          {t('builder.duplicateWithChangesAction').replace('{count}', selectedCount)}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -855,6 +1121,181 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           )}
         </div>
       </div>
+
+      {/* ═══ AI Advisor Floating Button ═══ */}
+      {step === 'configure' && !showAiChat && (
+        <button
+          onClick={() => { setShowAiChat(true); setTimeout(() => aiInputRef.current?.focus(), 100) }}
+          style={{
+            position: 'fixed',
+            bottom: mobile ? 80 : 24,
+            right: mobile ? 16 : 24,
+            width: mobile ? 56 : 52,
+            height: mobile ? 56 : 52,
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
+            border: 'none',
+            boxShadow: '0 4px 20px rgba(124, 58, 237, 0.35)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 200,
+            transition: 'transform 0.2s, box-shadow 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(124, 58, 237, 0.45)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(124, 58, 237, 0.35)' }}
+          title={t('builder.aiAdvisor')}
+        >
+          <span style={{ fontSize: mobile ? 24 : 22, color: '#fff' }}>✨</span>
+        </button>
+      )}
+
+      {/* ═══ AI Advisor Chat Panel ═══ */}
+      {showAiChat && (
+        <div style={{
+          position: 'fixed',
+          bottom: mobile ? 0 : 24,
+          right: mobile ? 0 : 24,
+          width: mobile ? '100%' : 380,
+          maxHeight: mobile ? '85vh' : 500,
+          background: '#fff',
+          borderRadius: mobile ? '20px 20px 0 0' : 16,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 250,
+          overflow: 'hidden',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '14px 16px',
+            background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 20 }}>✨</span>
+              <div>
+                <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{t('builder.aiAdvisor')}</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10 }}>{t('builder.aiAdvisorDesc')}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAiChat(false)}
+              style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.2)', border: 'none',
+                color: '#fff', fontSize: 18, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >×</button>
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 200 }}>
+            {aiMessages.length === 0 && !aiLoading && (
+              <div style={{ textAlign: 'center', padding: '30px 20px', color: '#999' }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>💬</div>
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  {t('builder.aiAdvisorDesc')}
+                </div>
+                <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                  {['What colors go well together?', 'Which carat is most popular?', 'How can I optimize my budget?'].map((chip, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setAiInput(chip); setTimeout(() => aiInputRef.current?.focus(), 50) }}
+                      style={{
+                        padding: '8px 12px', borderRadius: 16,
+                        border: '1px solid #e0e0e0', background: '#fafafa',
+                        color: '#555', fontSize: 11, cursor: 'pointer',
+                        fontFamily: 'inherit', transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e0e0e0'; e.currentTarget.style.color = '#555' }}
+                    >{chip}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiMessages.map((m, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: 10,
+              }}>
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '10px 14px',
+                  borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                  background: m.role === 'user' ? colors.inkPlum : '#f5f5f5',
+                  color: m.role === 'user' ? '#fff' : '#333',
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+
+            {aiLoading && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '14px 14px 14px 4px',
+                  background: '#f5f5f5',
+                }}>
+                  <LoadingDots />
+                </div>
+              </div>
+            )}
+
+            <div ref={aiChatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div style={{
+            padding: '12px 16px',
+            borderTop: '1px solid #eee',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'flex-end',
+          }}>
+            <input
+              ref={aiInputRef}
+              value={aiInput}
+              onChange={(e) => setAiInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend() } }}
+              placeholder={t('builder.aiPlaceholder')}
+              disabled={aiLoading}
+              style={{
+                flex: 1,
+                padding: '12px 14px',
+                borderRadius: 12,
+                border: '1px solid #e0e0e0',
+                fontSize: 14,
+                fontFamily: 'inherit',
+                outline: 'none',
+                color: '#222',
+              }}
+            />
+            <button
+              onClick={handleAiSend}
+              disabled={!aiInput.trim() || aiLoading}
+              style={{
+                width: 44, height: 44, borderRadius: 12, border: 'none',
+                background: aiInput.trim() && !aiLoading ? colors.inkPlum : '#e0e0e0',
+                color: '#fff', cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, fontWeight: 600, transition: 'background 0.15s',
+              }}
+            >↑</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
