@@ -391,8 +391,12 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 
       <button
         onClick={() => {
-          // Apply only the computed final total. Discount is already included in calc.final.
-          onApplyToForm({ finalTotal: calc.final })
+          // Pass subtotal, total discount, and final so the form can show before/after
+          onApplyToForm({
+            subtotal: calc.sub,
+            totalDiscount: calc.totalDiscount,
+            finalTotal: calc.final,
+          })
         }}
         style={{
           width: '100%', marginTop: 10, padding: 10, borderRadius: 8, border: 'none',
@@ -721,9 +725,29 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ finalTotal: val }) => {
-    setFinalTotalOverride(val)
-    // Keep any manually entered discount in the form untouched.
+  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, finalTotal: val }) => {
+    // When calculator applies:
+    // - If there's a discount, set discountDisplay so before/after shows
+    // - Use the row subtotal as "before" (don't override it)
+    // - The "after" will be computed from subtotal - discountDisplay
+    
+    if (totalDiscount > 0) {
+      // There's a discount — populate discount field to trigger before/after display
+      // Round to avoid floating point issues
+      const discountRounded = Math.round(totalDiscount * 100) / 100
+      setDiscountDisplay(`€${discountRounded}`)
+      // Don't set finalTotalOverride — let the raw subtotal be "before"
+      setFinalTotalOverride(null)
+    } else if (val !== calcSubtotal) {
+      // No discount but there are additions (delivery, custom, etc.)
+      // In this case, directly set the final as the override
+      setFinalTotalOverride(val)
+      setDiscountDisplay('')
+    } else {
+      // No changes at all
+      setFinalTotalOverride(null)
+      setDiscountDisplay('')
+    }
   }, [])
 
   // ─── Header field style ───
