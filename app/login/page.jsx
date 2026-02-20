@@ -32,17 +32,30 @@ function LoginContent() {
     setLoading(true);
     setError(null);
     
-    const supabase = createClient();
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`,
-      },
-    });
+    try {
+      const supabase = createClient();
+      
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`;
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      });
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        setError('No redirect URL returned. Check Supabase Google OAuth configuration.');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError(err?.message || 'Unexpected error during sign in. Please try again.');
       setLoading(false);
     }
   };
