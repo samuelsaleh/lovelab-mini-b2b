@@ -128,6 +128,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   })
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
+  
+  // Selection state for multi-select feature
+  const [selectedConfigs, setSelectedConfigs] = useState(new Set())
 
   // Live quote
   const quote = useMemo(() => calculateQuote(lines), [lines])
@@ -188,7 +191,65 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       const next = prev.filter(l => l.uid !== uid)
       return next.length > 0 ? next : [mkLine()]
     })
-  }, [setLines])
+    // Clear any selected configs from this line
+    setSelectedConfigs(prev => {
+      const lineToRemove = lines.find(l => l.uid === uid)
+      if (!lineToRemove) return prev
+      const configIds = new Set(lineToRemove.colorConfigs.map(c => c.id))
+      const next = new Set([...prev].filter(id => !configIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [setLines, lines])
+
+  // Toggle selection of a single config
+  const toggleConfigSelection = useCallback((configId) => {
+    setSelectedConfigs(prev => {
+      const next = new Set(prev)
+      if (next.has(configId)) {
+        next.delete(configId)
+      } else {
+        next.add(configId)
+      }
+      return next
+    })
+  }, [])
+
+  // Select/deselect all configs in a line
+  const toggleLineSelection = useCallback((lineUid) => {
+    const line = lines.find(l => l.uid === lineUid)
+    if (!line) return
+    const configIds = line.colorConfigs.map(c => c.id)
+    setSelectedConfigs(prev => {
+      const allSelected = configIds.every(id => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) {
+        configIds.forEach(id => next.delete(id))
+      } else {
+        configIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }, [lines])
+
+  // Clear all selections
+  const clearSelection = useCallback(() => {
+    setSelectedConfigs(new Set())
+  }, [])
+
+  // Duplicate all selected configs
+  const duplicateSelected = useCallback(() => {
+    if (selectedConfigs.size === 0) return
+    setLines(prev => prev.map(line => {
+      const selectedInLine = line.colorConfigs.filter(c => selectedConfigs.has(c.id))
+      if (selectedInLine.length === 0) return line
+      const copies = selectedInLine.map(cfg => ({ ...cfg, id: uniqueId() }))
+      return { ...line, colorConfigs: [...line.colorConfigs, ...copies] }
+    }))
+    clearSelection()
+  }, [selectedConfigs, setLines, clearSelection])
+
+  // Get count of selected configs
+  const selectedCount = selectedConfigs.size
 
   // Apply a quick-fill preset
   const applySuggestion = useCallback((preset) => {
@@ -554,6 +615,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       col={col}
                       onChange={updateLine}
                       onRemove={removeLine}
+                      selectedConfigs={selectedConfigs}
+                      onToggleConfigSelect={toggleConfigSelection}
+                      onToggleLineSelect={toggleLineSelection}
                     />
                   )
                 })}
@@ -573,6 +637,56 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 >
                   + {t('builder.addMoreCollections')}
                 </button>
+
+                {/* Floating Selection Action Bar */}
+                {selectedCount > 0 && (
+                  <div style={{
+                    position: 'sticky', bottom: 0, left: 0, right: 0,
+                    background: '#fff', borderRadius: 12, marginBottom: 12,
+                    padding: '12px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
+                    border: `1px solid ${colors.inkPlum}30`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 12, zIndex: 50,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 24, height: 24, borderRadius: '50%',
+                        background: colors.inkPlum, color: '#fff',
+                        fontSize: 11, fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {selectedCount}
+                      </span>
+                      <span style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>
+                        {t('builder.itemsSelected').replace('{count}', selectedCount)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={clearSelection}
+                        style={{
+                          padding: '8px 16px', borderRadius: 8,
+                          border: '1px solid #e0e0e0', background: '#fff',
+                          color: '#666', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        {t('common.clear')}
+                      </button>
+                      <button
+                        onClick={duplicateSelected}
+                        style={{
+                          padding: '8px 16px', borderRadius: 8,
+                          border: 'none', background: colors.inkPlum,
+                          color: '#fff', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        {t('builder.duplicateSelected')}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* AI Recommendations Panel */}
                 {showRecommendations && budgetRecommendations && (

@@ -32,7 +32,7 @@ function ensureUniqueConfigIds(configs) {
   return changed ? next : null
 }
 
-export default function CollectionConfig({ line, col, onChange, onRemove }) {
+export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
   const [expanded, setExpanded] = useState(true)
@@ -84,6 +84,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
     const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
     return sum + (cfg.qty * price)
   }, 0)
+
+  // Selection helpers
+  const selectedInThisLine = line.colorConfigs.filter(c => selectedConfigs.has(c.id))
+  const selectedCount = selectedInThisLine.length
+  const allSelected = line.colorConfigs.length > 0 && selectedCount === line.colorConfigs.length
+  const someSelected = selectedCount > 0 && selectedCount < line.colorConfigs.length
 
   // Add a color
   const addColor = (colorName) => {
@@ -150,10 +156,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
     }
   }
 
-  // Duplicate all colors with variations
+  // Duplicate colors with variations (selection-aware)
   const duplicateAllWithVariations = () => {
     if (line.colorConfigs.length === 0) return
-    const newConfigs = line.colorConfigs.map(cfg => {
+    // If some configs are selected in this line, only duplicate those; otherwise duplicate all
+    const configsToDuplicate = selectedCount > 0 ? selectedInThisLine : line.colorConfigs
+    if (configsToDuplicate.length === 0) return
+    
+    const newConfigs = configsToDuplicate.map(cfg => {
       const qtyVal = duplicateSettings.qty.keepSame ? cfg.qty : duplicateSettings.qty.value
       return {
         ...cfg,
@@ -320,9 +330,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
     }}>
       {/* ─── Header ─── */}
       <div
-        onClick={() => setExpanded(!expanded)}
         style={{
-          padding: '12px 16px', cursor: 'pointer', display: 'flex',
+          padding: '12px 16px', display: 'flex',
           justifyContent: 'space-between', alignItems: 'center',
           background: expanded ? '#fafafa' : '#fff',
           borderBottom: expanded ? '1px solid #eee' : 'none',
@@ -330,10 +339,29 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            fontSize: 14, fontWeight: 700,
-            color: line.colorConfigs.length > 0 ? colors.inkPlum : '#333',
-          }}>
+          {/* Line selection checkbox */}
+          {line.colorConfigs.length > 0 && onToggleLineSelect && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleLineSelect(line.uid) }}
+              style={{
+                width: 20, height: 20, borderRadius: 4,
+                border: allSelected || someSelected ? `2px solid ${colors.inkPlum}` : '2px solid #ccc',
+                background: allSelected ? colors.inkPlum : '#fff',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all .15s',
+              }}
+              title={t('builder.selectAll')}
+            >
+              {allSelected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+              {someSelected && <span style={{ color: colors.inkPlum, fontSize: 14, fontWeight: 700, lineHeight: 1 }}>−</span>}
+            </button>
+          )}
+          <span 
+            onClick={() => setExpanded(!expanded)}
+            style={{
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              color: line.colorConfigs.length > 0 ? colors.inkPlum : '#333',
+            }}>
             {col.label}
           </span>
           <span style={{ fontSize: 12, color: '#999' }}>
@@ -358,11 +386,15 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
             style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#ccc', padding: mobile ? 10 : 4, minWidth: mobile ? 44 : 'auto', minHeight: mobile ? 44 : 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Remove collection"
           >x</button>
-          <span style={{
-            fontSize: 10, color: '#ccc',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform .2s', display: 'inline-block',
-          }}>▼</span>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+              fontSize: 10, color: '#ccc',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform .2s', display: 'inline-block',
+            }}
+          >▼</button>
         </div>
       </div>
 
@@ -575,7 +607,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
                   >
-                    + {t('collection.duplicateColors').replace('{count}', line.colorConfigs.length)}
+                    + {selectedCount > 0 
+                      ? t('builder.duplicateSelectedColors').replace('{count}', selectedCount)
+                      : t('collection.duplicateColors').replace('{count}', line.colorConfigs.length)
+                    }
                   </button>
                 </div>
               )}
@@ -643,6 +678,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #eee' }}>
+                    {onToggleConfigSelect && <th style={{ ...thStyle, width: 32 }}></th>}
                     <th style={thStyle}>{t('quote.color')}</th>
                     <th style={thStyle}>{t('quote.carat')}</th>
                     {hasHousing && <th style={thStyle}>{t('quote.housing')}</th>}
@@ -658,9 +694,26 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                     const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
                     const rowTotal = price * cfg.qty
+                    const isSelected = selectedConfigs.has(cfg.id)
 
                     return (
-                      <tr key={cfg.id} style={{ borderBottom: '1px solid #f5f5f5' }}>
+                      <tr key={cfg.id} style={{ borderBottom: '1px solid #f5f5f5', background: isSelected ? '#f3f0f5' : 'transparent', transition: 'background .15s' }}>
+                        {onToggleConfigSelect && (
+                          <td style={{ ...tdStyle, width: 32 }}>
+                            <button
+                              onClick={() => onToggleConfigSelect(cfg.id)}
+                              style={{
+                                width: 18, height: 18, borderRadius: 4,
+                                border: isSelected ? `2px solid ${colors.inkPlum}` : '2px solid #ccc',
+                                background: isSelected ? colors.inkPlum : '#fff',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all .15s',
+                              }}
+                            >
+                              {isSelected && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                            </button>
+                          </td>
+                        )}
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 14, height: 14, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
@@ -743,15 +796,32 @@ export default function CollectionConfig({ line, col, onChange, onRemove }) {
                 const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                 const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
                 const rowTotal = price * cfg.qty
+                const isSelected = selectedConfigs.has(cfg.id)
 
                 return (
                   <div key={cfg.id} style={{
-                    border: '1px solid #eee', borderRadius: 10, padding: 12,
-                    background: '#fafafa',
+                    border: isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #eee', 
+                    borderRadius: 10, padding: 12,
+                    background: isSelected ? '#f3f0f5' : '#fafafa',
+                    transition: 'all .15s',
                   }}>
-                    {/* Card header: color + total + actions */}
+                    {/* Card header: checkbox + color + total + actions */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {onToggleConfigSelect && (
+                          <button
+                            onClick={() => onToggleConfigSelect(cfg.id)}
+                            style={{
+                              width: 22, height: 22, borderRadius: 4,
+                              border: isSelected ? `2px solid ${colors.inkPlum}` : '2px solid #ccc',
+                              background: isSelected ? colors.inkPlum : '#fff',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0, transition: 'all .15s',
+                            }}
+                          >
+                            {isSelected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+                          </button>
+                        )}
                         <span style={{ width: 20, height: 20, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
                         <select value={cfg.colorName} onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })} style={{ ...selectStyle, ...mobileSelectOverride, fontWeight: 600 }}>
                           {palette.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
