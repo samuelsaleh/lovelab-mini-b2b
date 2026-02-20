@@ -6,10 +6,12 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
+import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
 
 const ROWS_PER_PAGE = 10
+const PRINT_ROWS_PER_PAGE = 14
 
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
@@ -601,13 +603,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     return p
   }, [rows])
 
-  // For printing, only include filled rows
+  // For printing/saving, pack more rows per page to reduce page count and PDF size
   const printPages = useMemo(() => {
     const filledRows = rows.filter(isRowFilled)
     if (filledRows.length === 0) return [[]] // at least one empty page
     const p = []
-    for (let i = 0; i < filledRows.length; i += ROWS_PER_PAGE) {
-      p.push(filledRows.slice(i, i + ROWS_PER_PAGE))
+    for (let i = 0; i < filledRows.length; i += PRINT_ROWS_PER_PAGE) {
+      p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
     }
     return p
   }, [rows])
@@ -615,12 +617,92 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Use printPages when printing (filters empty rows), otherwise use pages
   const displayPages = isPrinting ? printPages : pages
 
+  const pdfFilename = useCallback(() => {
+    return formatDocumentFilename(companyName || contactName || 'Order', 'order', new Date().toISOString().split('T')[0])
+  }, [companyName, contactName])
+
+  const handleDownload = async () => {
+    flushSync(() => setIsPrinting(true))
+    await new Promise(r => setTimeout(r, 500))
+    try {
+      if (!printRef.current) return
+      await downloadPDF(printRef.current, pdfFilename(), { orientation: 'landscape' })
+    } catch (err) {
+      console.error('Download failed:', err)
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
   const handlePrint = () => {
     flushSync(() => setIsPrinting(true))
+
     setTimeout(() => {
-      window.print()
-      setIsPrinting(false)
-    }, 350)
+      const content = printRef.current
+      if (!content) { setIsPrinting(false); return }
+
+      const printWindow = window.open('', '_blank')
+
+      // iPad/iOS Safari may block window.open — fall back to download
+      if (!printWindow) {
+        setIsPrinting(false)
+        handleDownload()
+        return
+      }
+
+      try {
+        const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+          .map(node => node.outerHTML)
+          .join('')
+
+        printWindow.document.open()
+        printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>${pdfFilename()} - LoveLab</title>
+  ${styles}
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #order-form-print {
+      display: block !important;
+      width: 100% !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    .order-form-page {
+      margin: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      border-radius: 0 !important;
+      width: 100% !important;
+      max-width: none !important;
+      page-break-after: always;
+      break-after: page;
+      padding: 10mm !important;
+      box-sizing: border-box !important;
+      background: #fff !important;
+    }
+    .order-form-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .no-print, button { display: none !important; }
+  </style>
+</head>
+<body>
+  ${content.outerHTML}
+  <script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script>
+</body>
+</html>`)
+        printWindow.document.close()
+      } catch (err) {
+        console.error('Print failed:', err)
+        printWindow.close()
+      } finally {
+        setIsPrinting(false)
+      }
+    }, 500)
   }
 
   const handleBeforePrint = useCallback(() => {
@@ -682,11 +764,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   return (
     <div id="order-form-print-wrapper" style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
+      position: isPrinting ? 'static' : 'fixed',
+      top: 0, left: 0, right: 0, bottom: isPrinting ? 'auto' : 0,
       zIndex: 300,
-      background: '#f0eeec',
-      display: 'flex', flexDirection: 'column',
+      background: isPrinting ? '#fff' : '#f0eeec',
+      display: isPrinting ? 'block' : 'flex', flexDirection: 'column',
+      overflow: isPrinting ? 'visible' : undefined,
+      height: isPrinting ? 'auto' : undefined,
     }}>
       <SaveDocumentModal
         isOpen={showSaveModal}
@@ -719,34 +803,41 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       {/* Print-only styles */}
       <style>{`
         @media print {
-          /* Make the fixed parent container flow for print */
-          #order-form-print-wrapper {
-            position: static !important;
-            overflow: visible !important;
-            height: auto !important;
-            display: block !important;
-          }
-          
-          /* Make the scroll area flow for print */
-          #order-form-scroll-area {
-            overflow: visible !important;
-            height: auto !important;
-            display: block !important;
-            padding: 0 !important;
-          }
-          
-          /* Hide everything first */
+          /* Reset all containers to normal document flow */
           html, body {
             margin: 0 !important;
             padding: 0 !important;
             overflow: visible !important;
             height: auto !important;
+            width: auto !important;
           }
+          
           body * { 
             visibility: hidden !important; 
           }
           
-          /* Show only the print container and its contents */
+          #order-form-print-wrapper {
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            display: block !important;
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
+            flex: none !important;
+          }
+          
+          #order-form-scroll-area {
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            display: block !important;
+            padding: 0 !important;
+            flex: none !important;
+          }
+          
           #order-form-print, 
           #order-form-print * { 
             visibility: visible !important; 
@@ -758,6 +849,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             background: #fff !important;
             display: block !important;
             overflow: visible !important;
+            gap: 0 !important;
+            flex: none !important;
           }
           
           /* Hide non-printable elements */
@@ -769,11 +862,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             visibility: hidden !important;
           }
           
-          /* Page styling for print */
+          /* Each page = one printed page */
           .order-form-page {
             page-break-after: always !important;
-            page-break-inside: avoid !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
             break-inside: avoid !important;
             border: none !important;
             box-shadow: none !important;
@@ -781,11 +874,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             border-radius: 0 !important;
             width: 100% !important;
             max-width: none !important;
-            padding: 10mm !important;
+            padding: 8mm !important;
             box-sizing: border-box !important;
             background: #fff !important;
             display: block !important;
             overflow: visible !important;
+            flex: none !important;
           }
           
           .order-form-page:last-child {
@@ -793,12 +887,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             break-after: auto !important;
           }
           
-          /* Table should not break across pages */
           table {
             page-break-inside: avoid !important;
           }
           
-          /* Fallback: if isPrinting didn't fire, hide inputs and show text values */
           #order-form-print input,
           #order-form-print textarea {
             color: transparent !important;
@@ -809,7 +901,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           
           @page {
             size: A4 landscape;
-            margin: 8mm;
+            margin: 6mm;
           }
         }
       `}</style>
@@ -858,6 +950,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           {t('order.save')}
         </button>
         <button
+          onClick={handleDownload}
+          style={{
+            padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
+            background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+        >
+          {t('order.download') || 'Download PDF'}
+        </button>
+        <button
           onClick={handlePrint}
           style={{
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
@@ -873,20 +977,21 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
       {/* Main content: form pages + calculator */}
       <div id="order-form-scroll-area" ref={scrollAreaRef} style={{ 
-        flex: 1, 
-        overflow: 'auto', 
+        flex: isPrinting ? 'none' : 1, 
+        overflow: isPrinting ? 'visible' : 'auto', 
         WebkitOverflowScrolling: 'touch',
         overscrollBehavior: 'contain',
-        padding: mobile ? 12 : 20, 
-        display: 'flex', 
+        padding: isPrinting ? 0 : (mobile ? 12 : 20), 
+        display: isPrinting ? 'block' : 'flex', 
         flexDirection: mobile ? 'column' : 'row',
-        gap: mobile ? 16 : 20, 
-        justifyContent: 'center', 
+        gap: isPrinting ? 0 : (mobile ? 16 : 20), 
+        justifyContent: 'center',
+        height: isPrinting ? 'auto' : undefined, 
         alignItems: mobile ? 'stretch' : 'flex-start' 
       }}>
 
         {/* Pages */}
-        <div id="order-form-print" ref={printRef} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div id="order-form-print" ref={printRef} style={{ display: isPrinting ? 'block' : 'flex', flexDirection: 'column', gap: isPrinting ? 0 : 24 }}>
           {displayPages.map((pageRows, pageIdx) => {
             // When printing, use desktop layout even on mobile (PDF is captured at 1020px)
             const compact = mobile && !isPrinting
@@ -902,6 +1007,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               overflowX: compact ? 'auto' : 'visible',
             }}>
               {/* ─── Page Header ─── */}
+              {(pageIdx === 0 || !isPrinting) ? (
               <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', marginBottom: 12, gap: compact ? 12 : 16 }}>
                 {/* Logo + left header fields */}
                 <div style={{ display: 'flex', gap: compact ? 12 : 16, alignItems: 'flex-start', flex: 1 }}>
@@ -953,9 +1059,24 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   </div>
                 </div>
               </div>
+              ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <img src="/logo.png" alt="LoveLab" style={{ height: 30, width: 'auto' }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: colors.charcoal, fontFamily: fonts.body }}>
+                    {companyName || 'Order'}
+                  </span>
+                </div>
+                <span style={{ fontSize: 10, color: colors.lovelabMuted, fontFamily: fonts.body }}>
+                  Page {pageIdx + 1} of {displayPages.length}
+                </span>
+              </div>
+              )}
 
               {/* Date & Packaging */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+                {(pageIdx === 0 || !isPrinting) && (
+                <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.date')} :</span>
                   <PrintableInput
@@ -986,7 +1107,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     }}
                   >Pink</button>
                 </div>
-                {pageIdx > 0 && (
+                </>
+                )}
+                {pageIdx > 0 && !isPrinting && (
                   <span style={{ fontSize: 9, color: colors.lovelabMuted, marginLeft: 'auto' }}>
                     Page {pageIdx + 1} of {displayPages.length}
                   </span>

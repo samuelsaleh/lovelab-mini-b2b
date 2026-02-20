@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 const ALLOWED_TYPES = ['application/pdf'];
 
 // PDF magic bytes: %PDF
@@ -36,7 +36,7 @@ export async function POST(request) {
 
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'File size exceeds 10 MB limit' }, { status: 400 });
+      return NextResponse.json({ error: 'File size exceeds 25 MB limit' }, { status: 400 });
     }
 
     // Convert file to buffer
@@ -47,34 +47,43 @@ export async function POST(request) {
       return NextResponse.json({ error: 'File content is not a valid PDF' }, { status: 400 });
     }
 
-    // Sanitize filePath but scope it to the user's directory
-    const sanitizedName = String(filePath)
-      .replace(/\.\./g, '')           // Remove path traversal
-      .replace(/^\/+/, '')            // Remove leading slashes
-      .replace(/[^a-zA-Z0-9\-_./]/g, '_') // Only safe characters
-      .split('/').pop();              // Take only the filename portion
+    // Sanitize path while preserving folder structure
+    const rawPath = String(filePath)
+      .replace(/\.\./g, '')
+      .replace(/^\/+/, '')
+      .replace(/[^a-zA-Z0-9\-_./]/g, '_');
 
-    if (!sanitizedName || sanitizedName.length < 3) {
+    const segments = rawPath.split('/').filter(Boolean);
+    if (!segments.length) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
+    // Keep only safe folder names; enforce .pdf extension on filename
+    const safeSegments = segments.map((seg) => seg.replace(/[^a-zA-Z0-9\-_\.]/g, '_'));
+    const last = safeSegments[safeSegments.length - 1];
+    if (!last.toLowerCase().endsWith('.pdf')) {
+      safeSegments[safeSegments.length - 1] = `${last}.pdf`;
+    }
+    const sanitizedPath = safeSegments.join('/');
+
     // Scope upload path to user ID (prevents cross-user file access)
-    const safePath = `${user.id}/${sanitizedName}`;
+    const safePath = `${user.id}/${sanitizedPath}`;
 
     const { data, error } = await supabase.storage
       .from('documents')
       .upload(safePath, buffer, {
         contentType: 'application/pdf',
-        upsert: false, // Don't allow overwriting existing files
+        upsert: true, // Avoid hard failure on same-path retries
       });
 
     if (error) {
       console.error('[Upload] Error:', error.message);
-      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+      return NextResponse.json({ error: `Upload failed: ${error.message}` }, { status: 500 });
     }
 
     return NextResponse.json({ data, filePath: safePath });
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

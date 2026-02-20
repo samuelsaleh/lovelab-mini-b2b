@@ -51,8 +51,14 @@ export default function SaveDocumentModal({
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/events');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('/api/events', { signal: controller.signal });
+      clearTimeout(timeout);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to load events');
+      }
       if (data.events) {
         setEvents(data.events);
         // Try to auto-select matching event by name
@@ -71,7 +77,7 @@ export default function SaveDocumentModal({
         }
       }
     } catch (err) {
-      setError('Failed to load events');
+      setError(err?.message || 'Failed to load events');
     }
     setLoading(false);
   };
@@ -119,14 +125,35 @@ export default function SaveDocumentModal({
       // Extra delay so the browser fully paints the updated DOM before capture
       await new Promise(r => setTimeout(r, 500));
 
-      // Generate PDF
-      const filename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
+      // Generate PDF (auto-adjust quality if file is too large for upload)
+      const baseFilename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const filename = `${baseFilename}_${uniqueSuffix}`;
       
       let pdfBlob;
       try {
-        pdfBlob = await generatePDF(elementRef.current, filename, {
-          orientation: 'landscape',
-        });
+        const MAX_UPLOAD_BYTES = 24 * 1024 * 1024; // Keep under 25MB request cap
+        const profiles = [
+          { scale: 1.6, quality: 0.92 }, // best quality
+          { scale: 1.35, quality: 0.86 }, // balanced
+          { scale: 1.15, quality: 0.8 }, // aggressive fallback
+        ];
+
+        for (let i = 0; i < profiles.length; i++) {
+          const cfg = profiles[i];
+          pdfBlob = await generatePDF(elementRef.current, filename, {
+            orientation: 'landscape',
+            scale: cfg.scale,
+            quality: cfg.quality,
+          });
+
+          if (pdfBlob.size <= MAX_UPLOAD_BYTES) break;
+        }
+
+        if (!pdfBlob || pdfBlob.size > MAX_UPLOAD_BYTES) {
+          const mb = pdfBlob ? (pdfBlob.size / (1024 * 1024)).toFixed(1) : 'unknown';
+          throw new Error(`PDF too large to upload (${mb} MB). Please reduce rows or split into multiple orders.`);
+        }
       } catch (pdfError) {
         throw new Error('Failed to generate PDF: ' + pdfError.message);
       } finally {
