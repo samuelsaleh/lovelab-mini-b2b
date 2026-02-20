@@ -19,6 +19,7 @@ export default function DocumentsPanel({ onReEdit }) {
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [newEventName, setNewEventName] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(null) // doc to delete
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(null) // event to delete
   const [errorMsg, setErrorMsg] = useState(null)
 
   useEffect(() => {
@@ -107,6 +108,23 @@ export default function DocumentsPanel({ onReEdit }) {
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
       setErrorMsg(t('docs.deleteFailed') + ': ' + err.message)
+    }
+  }
+
+  const executeDeleteEvent = async () => {
+    if (!confirmDeleteEvent) return
+    const event = confirmDeleteEvent
+    setConfirmDeleteEvent(null)
+    try {
+      const res = await fetch(`/api/events/${event.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete')
+      setEvents(prev => prev.filter(e => e.id !== event.id))
+      // Move documents from this event to "No event"
+      setDocuments(prev => prev.map(d => d.event_id === event.id ? { ...d, event_id: null } : d))
+      if (selectedEventId === event.id) setSelectedEventId(null)
+    } catch (err) {
+      setErrorMsg('Failed to delete event: ' + err.message)
     }
   }
 
@@ -251,21 +269,41 @@ export default function DocumentsPanel({ onReEdit }) {
         </button>
 
         {events.map(event => (
-          <button
+          <div
             key={event.id}
-            onClick={() => setSelectedEventId(event.id)}
             style={{
-              width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
+              display: 'flex', alignItems: 'center', marginBottom: 4, borderRadius: 8,
               background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
-              color: selectedEventId === event.id ? colors.inkPlum : '#555',
-              fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
-              cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-              marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}
           >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
-            <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
-          </button>
+            <button
+              onClick={() => setSelectedEventId(event.id)}
+              style={{
+                flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none',
+                background: 'transparent',
+                color: selectedEventId === event.id ? colors.inkPlum : '#555',
+                fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
+                cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                minWidth: 0,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
+              <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
+              title="Delete event"
+              style={{
+                width: 24, height: 24, borderRadius: 6, border: 'none',
+                background: 'transparent', color: '#ccc', fontSize: 13,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, marginRight: 4, transition: 'color .15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+            >×</button>
+          </div>
         ))}
 
         {noEventDocs > 0 && (
@@ -414,6 +452,18 @@ export default function DocumentsPanel({ onReEdit }) {
         variant="danger"
         onConfirm={executeDelete}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Confirm Delete Event Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDeleteEvent}
+        title="Delete Event"
+        message={confirmDeleteEvent ? `Delete "${confirmDeleteEvent.name}"? Documents in this folder will be moved to "No event".` : ''}
+        confirmLabel={t('docs.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+        onConfirm={executeDeleteEvent}
+        onCancel={() => setConfirmDeleteEvent(null)}
       />
 
       {/* Error Dialog */}
