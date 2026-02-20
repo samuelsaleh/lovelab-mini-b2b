@@ -503,7 +503,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
             <div style={{ fontSize: 10, color: '#155724', marginTop: 4 }}>VIES: {viesResult.name}</div>
           )}
           <a
-            href="https://europa.eu/youreurope/business/taxation/vat/check-vat-number-vies/index_en.htm"
+            href="https://ec.europa.eu/taxation_customs/vies/#/vat-validation"
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: 10, color: '#666', textDecoration: 'underline', marginTop: 6, display: 'inline-block' }}

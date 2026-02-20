@@ -295,7 +295,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
         {t('order.taxInfoButton')}
       </button>
       <a
-        href="https://europa.eu/youreurope/business/taxation/vat/check-vat-number-vies/index_en.htm"
+        href="https://ec.europa.eu/taxation_customs/vies/#/vat-validation"
         target="_blank"
         rel="noopener noreferrer"
         style={{ fontSize: 10, color: '#666', textDecoration: 'underline', display: 'block', marginBottom: 8 }}
