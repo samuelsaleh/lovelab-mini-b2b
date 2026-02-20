@@ -21,7 +21,6 @@ export async function GET(request) {
     const { data: events, error } = await supabase
       .from('events')
       .select('*, documents(count)')
-      .eq('created_by', user.id) // Ownership filter
       .order('created_at', { ascending: false });
 
     if (error) {

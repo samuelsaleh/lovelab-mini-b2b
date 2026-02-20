@@ -22,7 +22,6 @@ export async function GET(request) {
     let query = supabase
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
-      .eq('created_by', user.id) // Ownership filter
       .order('created_at', { ascending: false })
       .limit(200); // Prevent unbounded queries
 
