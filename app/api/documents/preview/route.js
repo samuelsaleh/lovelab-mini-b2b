@@ -31,9 +31,8 @@ export async function GET(request) {
 
       const { data, error } = await supabase
         .from('documents')
-        .select('id, file_path')
+        .select('id, file_path, created_by')
         .eq('id', docId)
-        .eq('created_by', user.id)
         .single();
 
       if (error || !data) {
@@ -58,9 +57,8 @@ export async function GET(request) {
 
       const { data, error } = await supabase
         .from('documents')
-        .select('id, file_path')
+        .select('id, file_path, created_by')
         .eq('file_path', filePath)
-        .eq('created_by', user.id)
         .single();
 
       if (error || !data) {
@@ -80,15 +78,15 @@ export async function GET(request) {
     if (!urlError && urlData?.signedUrl) {
       signedUrl = urlData.signedUrl;
     } else {
-      // Fallback: the file might be at user-scoped path (user-id/filename)
+      // Fallback: the file might be at owner-scoped path (owner-id/filename)
       // This handles documents saved between the security fix and the path fix
       const filename = storedPath.split('/').pop();
-      const userScopedPath = `${user.id}/${filename}`;
+      const ownerScopedPath = `${doc.created_by}/${filename}`;
 
-      if (userScopedPath !== storedPath) {
+      if (ownerScopedPath !== storedPath) {
         const { data: fallbackData, error: fallbackError } = await supabase.storage
           .from('documents')
-          .createSignedUrl(userScopedPath, 60 * 5);
+          .createSignedUrl(ownerScopedPath, 60 * 5);
 
         if (!fallbackError && fallbackData?.signedUrl) {
           signedUrl = fallbackData.signedUrl;
@@ -96,9 +94,8 @@ export async function GET(request) {
           // Fix the stored path in the DB so future lookups work directly
           await supabase
             .from('documents')
-            .update({ file_path: userScopedPath })
-            .eq('id', doc.id)
-            .eq('created_by', user.id);
+            .update({ file_path: ownerScopedPath })
+            .eq('id', doc.id);
         }
       }
     }

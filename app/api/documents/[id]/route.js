@@ -25,27 +25,30 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
     }
 
-    // First, get the document with ownership check
+    // First, get the document
     const { data: doc, error: fetchError } = await supabase
       .from('documents')
       .select('file_path, created_by')
       .eq('id', id)
-      .eq('created_by', user.id) // Ownership check
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Delete from storage
+    // Delete from storage (try both the stored path and owner-scoped path)
     if (doc.file_path) {
       const { error: storageError } = await supabase.storage
         .from('documents')
         .remove([doc.file_path]);
       
       if (storageError) {
-        console.error('[Documents DELETE] Storage error:', storageError.message);
-        // Continue anyway - file might already be deleted
+        // Try owner-scoped path as fallback
+        const filename = doc.file_path.split('/').pop();
+        const ownerScopedPath = `${doc.created_by}/${filename}`;
+        if (ownerScopedPath !== doc.file_path) {
+          await supabase.storage.from('documents').remove([ownerScopedPath]);
+        }
       }
     }
 
@@ -53,8 +56,7 @@ export async function DELETE(request, { params }) {
     const { error: deleteError } = await supabase
       .from('documents')
       .delete()
-      .eq('id', id)
-      .eq('created_by', user.id); // Ownership check
+      .eq('id', id);
 
     if (deleteError) {
       console.error('[Documents DELETE] Error:', deleteError.message);
