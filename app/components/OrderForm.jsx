@@ -615,14 +615,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Use printPages when printing (filters empty rows), otherwise use pages
   const displayPages = isPrinting ? printPages : pages
 
-  const handlePrint = async () => {
-    // Use flushSync to guarantee React commits the isPrinting state
-    // synchronously before the browser captures the page for print
+  const handlePrint = () => {
     flushSync(() => setIsPrinting(true))
-    // Extra buffer for the browser to paint the updated DOM
-    await new Promise(r => setTimeout(r, 300))
-    window.print()
-    setIsPrinting(false)
+    setTimeout(() => {
+      window.print()
+      setIsPrinting(false)
+    }, 350)
   }
 
   const handleBeforePrint = useCallback(() => {

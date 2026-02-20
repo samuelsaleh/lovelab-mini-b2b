@@ -95,9 +95,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
 
-    // Limit metadata size to prevent abuse (max 10KB)
+    // Limit metadata size to prevent abuse (max 100KB)
     const metadataStr = JSON.stringify(metadata || {});
-    if (metadataStr.length > 10240) {
+    if (metadataStr.length > 102400) {
       return NextResponse.json({ error: 'Metadata too large' }, { status: 400 });
     }
 
