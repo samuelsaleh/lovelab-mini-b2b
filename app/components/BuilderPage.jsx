@@ -1163,6 +1163,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         </button>
                       </div>
                     )}
+
                   </div>
                 )}
 
