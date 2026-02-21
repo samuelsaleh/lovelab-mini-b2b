@@ -470,7 +470,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [email, setEmail] = useState(client?.email || '')
   const [phone, setPhone] = useState(client?.phone || '')
   const [date, setDate] = useState(today())
-  const [packaging, setPackaging] = useState(['Black'])  // Array: can include 'Black', 'Pink', 'NPK'
+  const [packaging, setPackaging] = useState('Black')  // Single value: 'Black', 'Pink', or 'Mix'
   const [remarks, setRemarks] = useState('')
   
   // New fields
@@ -507,8 +507,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.phone != null) setPhone(s.phone)
     if (s.date != null) setDate(s.date)
     if (s.packaging != null) {
-      // Handle both old string format and new array format
-      setPackaging(Array.isArray(s.packaging) ? s.packaging : [s.packaging])
+      // Handle old array format by converting to single value
+      if (Array.isArray(s.packaging)) {
+        setPackaging(s.packaging.length > 1 ? 'Mix' : (s.packaging[0] || 'Black'))
+      } else {
+        setPackaging(s.packaging)
+      }
     }
     if (s.remarks != null) setRemarks(s.remarks)
     if (s.eventName != null) setEventName(s.eventName)
@@ -1133,22 +1137,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Packaging :</span>
-                  {['Black', 'NPK', 'Pink'].map(opt => {
-                    const isSelected = packaging.includes(opt)
-                    const togglePackaging = () => {
-                      setPackaging(prev => {
-                        if (prev.includes(opt)) {
-                          const next = prev.filter(p => p !== opt)
-                          return next.length > 0 ? next : [opt]
-                        }
-                        return [...prev, opt]
-                      })
-                    }
+                  {['Black', 'Pink', 'Mix'].map(opt => {
+                    const isSelected = packaging === opt
                     const bgColor = opt === 'Black' ? '#222' : opt === 'Pink' ? colors.softPink : '#6b7280'
                     return (
                       <button
                         key={opt}
-                        onClick={togglePackaging}
+                        onClick={() => setPackaging(opt)}
                         style={{
                           padding: '4px 10px', borderRadius: 4,
                           border: isSelected ? 'none' : '1px solid #ccc',
@@ -1159,11 +1154,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                       >{opt}</button>
                     )
                   })}
-                  {packaging.length > 1 && (
-                    <span style={{ fontSize: 9, color: colors.lovelabMuted, fontStyle: 'italic' }}>
-                      ({packaging.join(' + ')})
-                    </span>
-                  )}
                 </div>
                 {/* Vitrine Section */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

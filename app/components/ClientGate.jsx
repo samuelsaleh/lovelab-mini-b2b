@@ -21,6 +21,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
   const [error, setError] = useState('')
   const [viesResult, setViesResult] = useState(null)
   const [perplexityDone, setPerplexityDone] = useState(false)
+  const [lookupIncorrect, setLookupIncorrect] = useState(false)
   const [countryOpen, setCountryOpen] = useState(false)
   const [countryHi, setCountryHi] = useState(0)
   const countryListRef = useRef(null)
@@ -148,6 +149,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
     setError('')
     setViesResult(null)
     setPerplexityDone(false)
+    setLookupIncorrect(false)
     const hasVat = client.vat.trim().length >= 4
     const vatToValidate = hasVat ? client.vat.trim() : null
     try {
@@ -532,13 +534,37 @@ export default function ClientGate({ client, setClient, onComplete }) {
 
         {/* Results section */}
         {perplexityDone && (
-          <div style={{ background: colors.ice, borderRadius: 10, padding: 14, marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('client.companyDetails')}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-              <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} />
-              <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} />
-              <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} />
+          <div style={{ background: lookupIncorrect ? '#fef2f2' : colors.ice, borderRadius: 10, padding: 14, marginBottom: 14, border: lookupIncorrect ? '1px solid #fecaca' : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('client.companyDetails')}</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={lookupIncorrect}
+                  onChange={(e) => {
+                    setLookupIncorrect(e.target.checked)
+                    if (e.target.checked) {
+                      setClient((c) => ({ ...c, address: '', city: '', zip: '', vat: '' }))
+                      setViesResult(null)
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 10, color: lookupIncorrect ? '#dc2626' : '#666' }}>{t('client.incorrect') || 'Incorrect'}</span>
+              </label>
             </div>
+            {!lookupIncorrect && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} />
+                <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} />
+                <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} />
+              </div>
+            )}
+            {lookupIncorrect && (
+              <div style={{ fontSize: 11, color: '#dc2626', fontStyle: 'italic' }}>
+                {t('client.incorrectHint') || 'Data cleared. You can enter details manually in the order form.'}
+              </div>
+            )}
           </div>
         )}
 
