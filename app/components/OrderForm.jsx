@@ -1210,6 +1210,19 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     Page {pageIdx + 1} of {displayPages.length}
                   </span>
                 )}
+                {/* Show packaging on continuation pages during printing */}
+                {pageIdx > 0 && isPrinting && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
+                      <strong>Packaging:</strong> {packaging}
+                    </span>
+                    {hasVitrine && (
+                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
+                        <strong>Vitrine:</strong> {vitrineQty}x €{vitrinePrice}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* ─── Order Table (Desktop) or Cards (Mobile) ─── */}
