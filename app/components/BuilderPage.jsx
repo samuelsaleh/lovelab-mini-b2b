@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useState, useRef, useMemo } from 'react'
+import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
 import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
+import { sendBuilderChat } from '@/lib/api'
 
 let _uidCounter = 0
 export function uniqueId() {
@@ -140,6 +141,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   })
   // Track recently duplicated configs for highlight effect
   const [recentlyDuplicated, setRecentlyDuplicated] = useState(new Set())
+
+  // AI Builder Chat state
+  const [showAiChat, setShowAiChat] = useState(false)
+  const [aiMessages, setAiMessages] = useState([])
+  const [aiInput, setAiInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [pendingActions, setPendingActions] = useState(null) // Actions awaiting confirmation
+  const aiChatEndRef = useRef(null)
+  const aiInputRef = useRef(null)
 
   // Live quote
   const quote = useMemo(() => calculateQuote(lines), [lines])
@@ -290,6 +300,224 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Get count of selected configs
   const selectedCount = selectedConfigs.size
+
+  // Build order context string for AI
+  const buildOrderContext = useCallback(() => {
+    if (lines.length === 0 || !lines.some(l => l.collectionId)) {
+      return 'The order is empty. No collections or items have been added yet.'
+    }
+
+    const parts = []
+    lines.forEach(line => {
+      if (!line.collectionId) return
+      const col = COLLECTIONS.find(c => c.id === line.collectionId)
+      if (!col) return
+      
+      parts.push(`\nCollection: ${col.label}`)
+      if (line.colorConfigs.length === 0) {
+        parts.push('  (no colors added yet)')
+      } else {
+        line.colorConfigs.forEach((cfg, idx) => {
+          const caratLabel = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] + 'ct' : 'no carat'
+          const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+          parts.push(`  ${idx + 1}. ${cfg.colorName} | ${caratLabel} | ${cfg.housing || 'no housing'} | ${cfg.size || 'no size'} | qty:${cfg.qty} | €${price * cfg.qty}`)
+        })
+      }
+    })
+
+    parts.push(`\nTotal: ${quote.totalPieces} pieces, ${fmt(quote.total)}`)
+    if (hasBudget) {
+      parts.push(`Budget: ${fmt(budgetNum)}, Remaining: ${fmt(remaining)}`)
+    }
+
+    return parts.join('\n')
+  }, [lines, quote, hasBudget, budgetNum, remaining])
+
+  // Execute AI actions
+  const executeAiActions = useCallback((actions) => {
+    const newIds = new Set()
+    
+    setLines(prev => {
+      let updated = [...prev]
+      
+      actions.forEach(action => {
+        if (action.type === 'add') {
+          // Find or create the line for this collection
+          const col = COLLECTIONS.find(c => 
+            c.id.toLowerCase() === (action.collection || '').toLowerCase() ||
+            c.label.toLowerCase() === (action.collection || '').toLowerCase()
+          )
+          if (!col) return
+
+          let line = updated.find(l => l.collectionId === col.id)
+          if (!line) {
+            line = { uid: uniqueId(), collectionId: col.id, colorConfigs: [], expanded: true }
+            updated.push(line)
+          }
+
+          // Map carat string to index
+          const caratStr = String(action.carat || '').replace('ct', '')
+          const caratIdx = col.carats.findIndex(c => String(c) === caratStr)
+
+          const newId = uniqueId()
+          newIds.add(newId)
+          const newConfig = {
+            id: newId,
+            colorName: action.color || 'White',
+            caratIdx: caratIdx >= 0 ? caratIdx : null,
+            housing: action.housing || null,
+            housingType: null,
+            multiAttached: null,
+            shape: null,
+            size: action.size || null,
+            qty: parseInt(action.qty) || 1,
+          }
+
+          updated = updated.map(l => 
+            l.uid === line.uid 
+              ? { ...l, colorConfigs: [...l.colorConfigs, newConfig] }
+              : l
+          )
+        }
+        
+        else if (action.type === 'delete' && action.filter) {
+          updated = updated.map(line => {
+            const col = COLLECTIONS.find(c => c.id === line.collectionId)
+            if (!col) return line
+
+            const matchesCollection = !action.filter.collection || 
+              col.id.toLowerCase() === action.filter.collection.toLowerCase() ||
+              col.label.toLowerCase() === action.filter.collection.toLowerCase()
+
+            if (!matchesCollection) return line
+
+            const filteredConfigs = line.colorConfigs.filter(cfg => {
+              const caratLabel = cfg.caratIdx !== null ? String(col.carats[cfg.caratIdx]) : ''
+              
+              if (action.filter.color && cfg.colorName.toLowerCase() !== action.filter.color.toLowerCase()) return true
+              if (action.filter.carat && caratLabel !== String(action.filter.carat).replace('ct', '')) return true
+              if (action.filter.housing && (cfg.housing || '').toLowerCase() !== action.filter.housing.toLowerCase()) return true
+              if (action.filter.size && (cfg.size || '').toLowerCase() !== action.filter.size.toLowerCase()) return true
+              
+              return false // matches filter, delete it
+            })
+
+            return { ...line, colorConfigs: filteredConfigs }
+          })
+        }
+        
+        else if (action.type === 'modify' && action.filter && action.changes) {
+          updated = updated.map(line => {
+            const col = COLLECTIONS.find(c => c.id === line.collectionId)
+            if (!col) return line
+
+            const matchesCollection = !action.filter.collection || 
+              col.id.toLowerCase() === action.filter.collection.toLowerCase() ||
+              col.label.toLowerCase() === action.filter.collection.toLowerCase()
+
+            if (!matchesCollection) return line
+
+            const modifiedConfigs = line.colorConfigs.map(cfg => {
+              const caratLabel = cfg.caratIdx !== null ? String(col.carats[cfg.caratIdx]) : ''
+              
+              // Check if this config matches the filter
+              let matches = true
+              if (action.filter.color && cfg.colorName.toLowerCase() !== action.filter.color.toLowerCase()) matches = false
+              if (action.filter.carat && caratLabel !== String(action.filter.carat).replace('ct', '')) matches = false
+              if (action.filter.housing && (cfg.housing || '').toLowerCase() !== action.filter.housing.toLowerCase()) matches = false
+              if (action.filter.size && (cfg.size || '').toLowerCase() !== action.filter.size.toLowerCase()) matches = false
+
+              if (!matches) return cfg
+
+              // Apply changes
+              const modified = { ...cfg }
+              if (action.changes.color) modified.colorName = action.changes.color
+              if (action.changes.carat) {
+                const newCaratIdx = col.carats.findIndex(c => String(c) === String(action.changes.carat).replace('ct', ''))
+                if (newCaratIdx >= 0) modified.caratIdx = newCaratIdx
+              }
+              if (action.changes.housing) modified.housing = action.changes.housing
+              if (action.changes.size) modified.size = action.changes.size
+              if (action.changes.qty) modified.qty = parseInt(action.changes.qty) || modified.qty
+
+              return modified
+            })
+
+            return { ...line, colorConfigs: modifiedConfigs }
+          })
+        }
+      })
+
+      // Ensure selected collections are tracked
+      const collectionIds = updated.filter(l => l.collectionId).map(l => l.collectionId)
+      setSelectedCollections(prev => {
+        const newSet = new Set([...prev, ...collectionIds])
+        return [...newSet]
+      })
+
+      return updated.length > 0 ? updated : [mkLine()]
+    })
+
+    // Highlight newly added rows
+    if (newIds.size > 0) {
+      setRecentlyDuplicated(newIds)
+      setTimeout(() => setRecentlyDuplicated(new Set()), 15000)
+    }
+
+    setPendingActions(null)
+    setAiMessages(prev => [...prev, { role: 'system', content: t('builder.aiActionsApplied') || 'Actions applied successfully!' }])
+  }, [setLines, setSelectedCollections, t])
+
+  // Handle AI chat send
+  const handleAiSend = useCallback(async () => {
+    if (!aiInput.trim() || aiLoading) return
+
+    const userMessage = aiInput.trim()
+    setAiInput('')
+    setAiMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setAiLoading(true)
+
+    try {
+      const orderContext = buildOrderContext()
+      const response = await sendBuilderChat(
+        [...aiMessages, { role: 'user', content: userMessage }],
+        orderContext
+      )
+
+      if (response.actions && response.actions.length > 0) {
+        // Show confirmation for actions
+        setPendingActions(response.actions)
+        setAiMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: response.message,
+          actions: response.actions
+        }])
+      } else {
+        setAiMessages(prev => [...prev, { role: 'assistant', content: response.message }])
+      }
+    } catch (err) {
+      setAiMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: t('builder.aiError') || 'Sorry, something went wrong. Please try again.'
+      }])
+    } finally {
+      setAiLoading(false)
+    }
+  }, [aiInput, aiLoading, aiMessages, buildOrderContext, t])
+
+  // Scroll AI chat to bottom on new messages
+  useEffect(() => {
+    if (aiChatEndRef.current) {
+      aiChatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [aiMessages])
+
+  // Focus AI input when chat opens
+  useEffect(() => {
+    if (showAiChat && aiInputRef.current) {
+      setTimeout(() => aiInputRef.current?.focus(), 100)
+    }
+  }, [showAiChat])
 
   // Apply a quick-fill preset
   const applySuggestion = useCallback((preset) => {
@@ -1068,6 +1296,284 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           )}
         </div>
       </div>
+
+      {/* ═══ AI Builder Chat ═══ */}
+      {step === 'configure' && (
+        <>
+          {/* Floating AI Button */}
+          {!showAiChat && (
+            <button
+              onClick={() => setShowAiChat(true)}
+              title={t('builder.aiAdvisor') || 'AI Advisor'}
+              style={{
+                position: 'fixed',
+                bottom: mobile ? 80 : 24,
+                right: 24,
+                width: 52,
+                height: 52,
+                borderRadius: '50%',
+                background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
+                border: 'none',
+                boxShadow: '0 4px 20px rgba(93,58,94,0.4)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 22,
+                zIndex: 100,
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.08)'
+                e.currentTarget.style.boxShadow = '0 6px 24px rgba(93,58,94,0.5)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)'
+                e.currentTarget.style.boxShadow = '0 4px 20px rgba(93,58,94,0.4)'
+              }}
+            >
+              ✨
+            </button>
+          )}
+
+          {/* AI Chat Panel */}
+          {showAiChat && (
+            <div style={{
+              position: 'fixed',
+              bottom: mobile ? 70 : 24,
+              right: 24,
+              width: mobile ? 'calc(100% - 48px)' : 380,
+              maxWidth: 420,
+              maxHeight: mobile ? 'calc(100vh - 140px)' : '70vh',
+              background: '#fff',
+              borderRadius: 16,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
+              border: `1px solid ${colors.lineGray}`,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              zIndex: 150,
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '12px 16px',
+                borderBottom: `1px solid ${colors.lineGray}`,
+                background: `linear-gradient(135deg, ${colors.inkPlum}08 0%, #7c3aed08 100%)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                    {t('builder.aiAdvisorDesc') || 'Ask questions or request changes to your order'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAiChat(false)}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    border: 'none', background: '#f0f0f0', color: '#666',
+                    fontSize: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >×</button>
+              </div>
+
+              {/* Messages */}
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                minHeight: 200,
+              }}>
+                {aiMessages.length === 0 && (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '30px 16px',
+                    color: '#999',
+                    fontSize: 12,
+                  }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+                    <div>{t('builder.aiWelcome') || 'Ask me anything about your order!'}</div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#bbb' }}>
+                      {t('builder.aiExamples') || 'Examples: "Add 5 CUTY White 0.10ct", "Delete all Black colors", "Change all 0.05ct to 0.10ct"'}
+                    </div>
+                  </div>
+                )}
+
+                {aiMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%',
+                    }}
+                  >
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      background: msg.role === 'user' 
+                        ? colors.inkPlum 
+                        : msg.role === 'system' 
+                          ? '#e8f5e9'
+                          : '#f5f5f5',
+                      color: msg.role === 'user' ? '#fff' : '#333',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                    </div>
+                    
+                    {/* Action badges */}
+                    {msg.actions && msg.actions.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {msg.actions.map((action, aIdx) => (
+                          <span
+                            key={aIdx}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: 12,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              background: action.type === 'add' ? '#e3f2fd' : 
+                                         action.type === 'delete' ? '#ffebee' : '#fff3e0',
+                              color: action.type === 'add' ? '#1565c0' :
+                                    action.type === 'delete' ? '#c62828' : '#ef6c00',
+                            }}
+                          >
+                            {action.type.toUpperCase()}: {action.collection || action.filter?.collection || '?'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {aiLoading && (
+                  <div style={{
+                    alignSelf: 'flex-start',
+                    padding: '10px 14px',
+                    borderRadius: '16px 16px 16px 4px',
+                    background: '#f5f5f5',
+                    fontSize: 13,
+                    color: '#999',
+                  }}>
+                    <span style={{ display: 'inline-block', animation: 'pulse 1.5s infinite' }}>
+                      {t('builder.aiThinking') || 'Thinking...'}
+                    </span>
+                  </div>
+                )}
+
+                <div ref={aiChatEndRef} />
+              </div>
+
+              {/* Pending Actions Confirmation */}
+              {pendingActions && pendingActions.length > 0 && (
+                <div style={{
+                  padding: 12,
+                  borderTop: `1px solid ${colors.lineGray}`,
+                  background: '#fffde7',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#f57c00', marginBottom: 8 }}>
+                    {t('builder.aiConfirmActions') || 'Confirm actions:'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                    {pendingActions.map((action, idx) => (
+                      <div key={idx} style={{
+                        padding: '6px 10px',
+                        background: '#fff',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        border: '1px solid #ffe082',
+                      }}>
+                        <strong>{action.type.toUpperCase()}</strong>
+                        {action.type === 'add' && `: ${action.qty || 1}x ${action.collection} ${action.color} ${action.carat || ''}`}
+                        {action.type === 'delete' && `: ${action.filter?.collection || 'items'} ${action.filter?.color || ''} ${action.filter?.carat || ''}`}
+                        {action.type === 'modify' && `: ${action.filter?.collection || 'items'} → ${Object.entries(action.changes || {}).map(([k, v]) => `${k}=${v}`).join(', ')}`}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => executeAiActions(pendingActions)}
+                      style={{
+                        flex: 1, padding: '10px 16px', borderRadius: 8,
+                        border: 'none', background: '#4caf50', color: '#fff',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      {t('builder.aiApply') || 'Apply Changes'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingActions(null)
+                        setAiMessages(prev => [...prev, { role: 'system', content: t('builder.aiCancelled') || 'Actions cancelled.' }])
+                      }}
+                      style={{
+                        padding: '10px 16px', borderRadius: 8,
+                        border: '1px solid #ddd', background: '#fff', color: '#666',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      {t('common.cancel') || 'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Input */}
+              <div style={{
+                padding: 12,
+                borderTop: `1px solid ${colors.lineGray}`,
+                display: 'flex',
+                gap: 8,
+              }}>
+                <input
+                  ref={aiInputRef}
+                  type="text"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend() } }}
+                  placeholder={t('builder.aiPlaceholder') || 'Ask or give a command...'}
+                  disabled={aiLoading}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: 20,
+                    border: '1px solid #e0e0e0',
+                    fontSize: 13,
+                    fontFamily: fonts.body,
+                    outline: 'none',
+                    background: aiLoading ? '#f5f5f5' : '#fff',
+                  }}
+                />
+                <button
+                  onClick={handleAiSend}
+                  disabled={aiLoading || !aiInput.trim()}
+                  style={{
+                    width: 40, height: 40, borderRadius: '50%',
+                    border: 'none',
+                    background: aiLoading || !aiInput.trim() ? '#e0e0e0' : colors.inkPlum,
+                    color: '#fff',
+                    fontSize: 16,
+                    cursor: aiLoading || !aiInput.trim() ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  ↑
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
     </div>
   )
