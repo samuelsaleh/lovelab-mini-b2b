@@ -470,7 +470,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [email, setEmail] = useState(client?.email || '')
   const [phone, setPhone] = useState(client?.phone || '')
   const [date, setDate] = useState(today())
-  const [packaging, setPackaging] = useState('Black')  // Black or Pink
+  const [packaging, setPackaging] = useState(['Black'])  // Array: can include 'Black', 'Pink', 'NPK'
   const [remarks, setRemarks] = useState('')
   
   // New fields
@@ -506,7 +506,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.email != null) setEmail(s.email)
     if (s.phone != null) setPhone(s.phone)
     if (s.date != null) setDate(s.date)
-    if (s.packaging != null) setPackaging(s.packaging)
+    if (s.packaging != null) {
+      // Handle both old string format and new array format
+      setPackaging(Array.isArray(s.packaging) ? s.packaging : [s.packaging])
+    }
     if (s.remarks != null) setRemarks(s.remarks)
     if (s.eventName != null) setEventName(s.eventName)
     if (s.createdBy != null) setCreatedBy(s.createdBy)
@@ -1128,26 +1131,39 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     isPrinting={isPrinting}
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Packaging :</span>
-                  <button
-                    onClick={() => setPackaging('Black')}
-                    style={{
-                      padding: '4px 10px', borderRadius: 4, border: 'none',
-                      background: packaging === 'Black' ? '#222' : '#f0f0f0',
-                      color: packaging === 'Black' ? '#fff' : '#666',
-                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
-                    }}
-                  >Black</button>
-                  <button
-                    onClick={() => setPackaging('Pink')}
-                    style={{
-                      padding: '4px 10px', borderRadius: 4, border: 'none',
-                      background: packaging === 'Pink' ? colors.softPink : '#f0f0f0',
-                      color: packaging === 'Pink' ? '#fff' : '#666',
-                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
-                    }}
-                  >Pink</button>
+                  {['Black', 'NPK', 'Pink'].map(opt => {
+                    const isSelected = packaging.includes(opt)
+                    const togglePackaging = () => {
+                      setPackaging(prev => {
+                        if (prev.includes(opt)) {
+                          const next = prev.filter(p => p !== opt)
+                          return next.length > 0 ? next : [opt]
+                        }
+                        return [...prev, opt]
+                      })
+                    }
+                    const bgColor = opt === 'Black' ? '#222' : opt === 'Pink' ? colors.softPink : '#6b7280'
+                    return (
+                      <button
+                        key={opt}
+                        onClick={togglePackaging}
+                        style={{
+                          padding: '4px 10px', borderRadius: 4,
+                          border: isSelected ? 'none' : '1px solid #ccc',
+                          background: isSelected ? bgColor : '#f0f0f0',
+                          color: isSelected ? '#fff' : '#666',
+                          fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                        }}
+                      >{opt}</button>
+                    )
+                  })}
+                  {packaging.length > 1 && (
+                    <span style={{ fontSize: 9, color: colors.lovelabMuted, fontStyle: 'italic' }}>
+                      ({packaging.join(' + ')})
+                    </span>
+                  )}
                 </div>
                 {/* Vitrine Section */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
