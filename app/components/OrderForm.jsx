@@ -12,6 +12,7 @@ import { useI18n } from '@/lib/i18n'
 
 const ROWS_PER_PAGE = 10
 const PRINT_ROWS_PER_PAGE = 14
+const PRINT_ROWS_LAST_PAGE = 9 // Fewer rows on last page to leave room for footer/signatures
 
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
@@ -632,12 +633,36 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   }, [rows])
 
   // For printing/saving, pack more rows per page to reduce page count and PDF size
+  // Last page gets fewer rows to leave room for footer/signatures section
   const printPages = useMemo(() => {
     const filledRows = rows.filter(isRowFilled)
     if (filledRows.length === 0) return [[]] // at least one empty page
+    
     const p = []
-    for (let i = 0; i < filledRows.length; i += PRINT_ROWS_PER_PAGE) {
-      p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
+    let i = 0
+    while (i < filledRows.length) {
+      const remaining = filledRows.length - i
+      // If remaining rows fit in a last-page allocation, make this the last page
+      if (remaining <= PRINT_ROWS_LAST_PAGE) {
+        p.push(filledRows.slice(i))
+        break
+      }
+      // Check if we need to start thinking about last page
+      // If after this page, remaining would fit in last page, use normal rows
+      const afterThisPage = remaining - PRINT_ROWS_PER_PAGE
+      if (afterThisPage > 0 && afterThisPage <= PRINT_ROWS_LAST_PAGE) {
+        // This is NOT the last page, use full rows
+        p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
+        i += PRINT_ROWS_PER_PAGE
+      } else if (afterThisPage <= 0) {
+        // This will be the last page
+        p.push(filledRows.slice(i))
+        break
+      } else {
+        // Normal page
+        p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
+        i += PRINT_ROWS_PER_PAGE
+      }
     }
     return p
   }, [rows])
@@ -1125,7 +1150,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
               {/* Date & Packaging */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
-                {(pageIdx === 0 || !isPrinting) && (
+                {/* Page 0: show date input and interactive packaging controls (or plain text when printing) */}
+                {pageIdx === 0 && (
                 <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.date')} :</span>
@@ -1136,92 +1162,101 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     isPrinting={isPrinting}
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Packaging :</span>
-                  {['Black', 'Pink', 'Mix'].map(opt => {
-                    const isSelected = packaging === opt
-                    const bgColor = opt === 'Black' ? '#222' : opt === 'Pink' ? colors.softPink : '#6b7280'
-                    return (
-                      <button
-                        key={opt}
-                        onClick={() => setPackaging(opt)}
-                        style={{
-                          padding: '4px 10px', borderRadius: 4,
-                          border: isSelected ? 'none' : '1px solid #ccc',
-                          background: isSelected ? bgColor : '#f0f0f0',
-                          color: isSelected ? '#fff' : '#666',
-                          fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
-                        }}
-                      >{opt}</button>
-                    )
-                  })}
-                </div>
-                {/* Vitrine Section */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={hasVitrine}
-                      onChange={(e) => setHasVitrine(e.target.checked)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.vitrine') || 'Vitrine'}</span>
-                  </label>
-                  {hasVitrine && (
-                    <>
-                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>€</span>
-                      <PrintableInput
-                        type="number"
-                        value={vitrinePrice}
-                        onChange={(e) => setVitrinePrice(Number(e.target.value) || 0)}
-                        style={{
-                          width: 60, padding: '2px 6px', borderRadius: 4,
-                          border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
-                          textAlign: 'right',
-                        }}
-                        isPrinting={isPrinting}
-                      />
-                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>x</span>
-                      {isPrinting ? (
-                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, minWidth: 16, textAlign: 'center' }}>
-                          {vitrineQty}
-                        </span>
-                      ) : (
-                        <select
-                          value={vitrineQty}
-                          onChange={(e) => setVitrineQty(Number(e.target.value))}
-                          style={{
-                            padding: '2px 4px', borderRadius: 4,
-                            border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
-                          }}
-                        >
-                          {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      )}
-                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabPurple }}>
-                        = €{(vitrinePrice * vitrineQty).toLocaleString()}
-                      </span>
-                    </>
-                  )}
-                </div>
-                </>
-                )}
-                {pageIdx > 0 && !isPrinting && (
-                  <span style={{ fontSize: 9, color: colors.lovelabMuted, marginLeft: 'auto' }}>
-                    Page {pageIdx + 1} of {displayPages.length}
-                  </span>
-                )}
-                {/* Show packaging on continuation pages during printing */}
-                {pageIdx > 0 && isPrinting && (
+                {isPrinting ? (
+                  /* Print mode: show plain text for packaging and vitrine */
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
                       <strong>Packaging:</strong> {packaging}
                     </span>
                     {hasVitrine && (
                       <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
-                        <strong>Vitrine:</strong> {vitrineQty}x €{vitrinePrice}
+                        <strong>Vitrine:</strong> {vitrineQty}x €{vitrinePrice} = €{(vitrinePrice * vitrineQty).toLocaleString()}
                       </span>
                     )}
+                  </div>
+                ) : (
+                  /* Interactive mode: buttons and inputs */
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>Packaging :</span>
+                      {['Black', 'Pink', 'Mix'].map(opt => {
+                        const isSelected = packaging === opt
+                        const bgColor = opt === 'Black' ? '#222' : opt === 'Pink' ? colors.softPink : '#6b7280'
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => setPackaging(opt)}
+                            style={{
+                              padding: '4px 10px', borderRadius: 4,
+                              border: isSelected ? 'none' : '1px solid #ccc',
+                              background: isSelected ? bgColor : '#f0f0f0',
+                              color: isSelected ? '#fff' : '#666',
+                              fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                            }}
+                          >{opt}</button>
+                        )
+                      })}
+                    </div>
+                    {/* Vitrine Section */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={hasVitrine}
+                          onChange={(e) => setHasVitrine(e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.vitrine') || 'Vitrine'}</span>
+                      </label>
+                      {hasVitrine && (
+                        <>
+                          <span style={{ fontSize: 10, color: colors.lovelabMuted }}>€</span>
+                          <PrintableInput
+                            type="number"
+                            value={vitrinePrice}
+                            onChange={(e) => setVitrinePrice(Number(e.target.value) || 0)}
+                            style={{
+                              width: 60, padding: '2px 6px', borderRadius: 4,
+                              border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                              textAlign: 'right',
+                            }}
+                            isPrinting={isPrinting}
+                          />
+                          <span style={{ fontSize: 10, color: colors.lovelabMuted }}>x</span>
+                          <select
+                            value={vitrineQty}
+                            onChange={(e) => setVitrineQty(Number(e.target.value))}
+                            style={{
+                              padding: '2px 4px', borderRadius: 4,
+                              border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                            }}
+                          >
+                            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabPurple }}>
+                            = €{(vitrinePrice * vitrineQty).toLocaleString()}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                </>
+                )}
+                {/* Pages 1+: always show plain text for packaging (no buttons in preview or print) */}
+                {pageIdx > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
+                      <strong>Packaging:</strong> {packaging}
+                    </span>
+                    {hasVitrine && (
+                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>
+                        <strong>Vitrine:</strong> {vitrineQty}x €{vitrinePrice} = €{(vitrinePrice * vitrineQty).toLocaleString()}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 9, color: colors.lovelabMuted, marginLeft: 'auto' }}>
+                      Page {pageIdx + 1} of {displayPages.length}
+                    </span>
                   </div>
                 )}
               </div>
