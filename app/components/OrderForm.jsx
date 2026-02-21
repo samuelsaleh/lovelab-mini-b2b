@@ -482,6 +482,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [prepaymentAmount, setPrepaymentAmount] = useState('')
   const [discountDisplay, setDiscountDisplay] = useState('')
 
+  // Vitrine state
+  const [hasVitrine, setHasVitrine] = useState(false)
+  const [vitrinePrice, setVitrinePrice] = useState(150)
+  const [vitrineQty, setVitrineQty] = useState(1)
+
   // Table rows state
   const [rows, setRows] = useState(() => prefillRows(quote))
 
@@ -509,6 +514,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
     if (s.discountDisplay != null) setDiscountDisplay(s.discountDisplay)
     if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
+    if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
+    if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
+    if (s.vitrineQty != null) setVitrineQty(s.vitrineQty)
     if (s.rows && s.rows.length > 0) {
       // Pad rows to fill at least one page
       const restored = [...s.rows]
@@ -541,6 +549,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (flat <= 0) return null
     return base - flat
   }, [finalTotal, discountDisplay])
+
+  // Vitrine total (added after discount)
+  const vitrineTotal = hasVitrine ? vitrinePrice * vitrineQty : 0
+
+  // Grand total = (after discount or subtotal) + vitrine
+  const grandTotal = useMemo(() => {
+    const baseAmount = afterDiscount != null ? afterDiscount : finalTotal
+    return baseAmount + vitrineTotal
+  }, [afterDiscount, finalTotal, vitrineTotal])
 
   // Row handlers
   const updateCell = useCallback((rowIdx, key, value) => {
@@ -803,7 +820,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         elementRef={printRef}
         clientName={contactName || client?.name}
         clientCompany={companyName}
-        totalAmount={afterDiscount || finalTotal}
+        totalAmount={grandTotal}
         eventName={eventName}
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
@@ -814,6 +831,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             vatNumber, email, phone, date, packaging, remarks,
             eventName, createdBy, hasPrepayment, prepaymentAmount,
             discountDisplay, finalTotalOverride,
+            hasVitrine, vitrinePrice, vitrineQty,
           },
           rowCount: rows.filter(r => isRowFilled(r)).length,
           hasPrepayment,
@@ -1131,6 +1149,46 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     }}
                   >Pink</button>
                 </div>
+                {/* Vitrine Section */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={hasVitrine}
+                      onChange={(e) => setHasVitrine(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.vitrine') || 'Vitrine'}</span>
+                  </label>
+                  {hasVitrine && (
+                    <>
+                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>€</span>
+                      <input
+                        type="number"
+                        value={vitrinePrice}
+                        onChange={(e) => setVitrinePrice(Number(e.target.value) || 0)}
+                        style={{
+                          width: 50, padding: '2px 4px', borderRadius: 4,
+                          border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                        }}
+                      />
+                      <span style={{ fontSize: 10, color: colors.lovelabMuted }}>x</span>
+                      <select
+                        value={vitrineQty}
+                        onChange={(e) => setVitrineQty(Number(e.target.value))}
+                        style={{
+                          padding: '2px 4px', borderRadius: 4,
+                          border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                        }}
+                      >
+                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabPurple }}>
+                        = €{(vitrinePrice * vitrineQty).toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                </div>
                 </>
                 )}
                 {pageIdx > 0 && !isPrinting && (
@@ -1385,11 +1443,41 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           {t('order.afterDiscount')}
                         </div>
                         <div style={{
+                          fontSize: hasVitrine ? 14 : 20,
+                          fontWeight: 800,
+                          color: hasVitrine ? colors.lovelabMuted : colors.inkPlum,
+                          borderBottom: hasVitrine ? 'none' : `2px solid ${colors.inkPlum}`,
+                          paddingBottom: 2,
+                        }}>
+                          {fmt(afterDiscount)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Vitrine line item (only if enabled) */}
+                    {hasVitrine && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, marginBottom: 2 }}>
+                          {t('order.vitrine') || 'Vitrine'} x{vitrineQty}
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: colors.charcoal }}>
+                          + {fmt(vitrineTotal)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Grand Total (only if vitrine is added or discount applied) */}
+                    {(hasVitrine || afterDiscount != null) && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
+                          {t('order.grandTotal') || 'Grand Total'}
+                        </div>
+                        <div style={{
                           fontSize: 20, fontWeight: 800, color: colors.inkPlum,
                           borderBottom: `2px solid ${colors.inkPlum}`,
                           paddingBottom: 2,
                         }}>
-                          {fmt(afterDiscount)}
+                          {fmt(grandTotal)}
                         </div>
                       </div>
                     )}
