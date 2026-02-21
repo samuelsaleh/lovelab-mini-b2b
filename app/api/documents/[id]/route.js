@@ -61,15 +61,17 @@ export async function PUT(request, { params }) {
         file_size: body.file_size,
         total_amount: body.total_amount,
         metadata: body.metadata,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', id)
       .select()
       .single();
 
     if (updateError) {
-      console.error('[Documents PUT] Error:', updateError.message);
-      return NextResponse.json({ error: 'Failed to update document' }, { status: 500 });
+      console.error('[Documents PUT] Error:', updateError.message, updateError.code, updateError.details);
+      if (updateError.code === '42501' || updateError.message?.includes('policy')) {
+        return NextResponse.json({ error: 'Permission denied - RLS policy blocks update. Run the SQL migration to fix.' }, { status: 403 });
+      }
+      return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
     return NextResponse.json({ document: doc });
