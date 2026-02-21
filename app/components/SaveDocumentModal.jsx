@@ -17,6 +17,7 @@ export default function SaveDocumentModal({
   onBeforePrint,
   onAfterPrint,
   metadata = {},
+  editingDocumentId = null, // ID of document being re-edited (for replacement)
 }) {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -203,9 +204,11 @@ export default function SaveDocumentModal({
         throw new Error('Upload failed: ' + (uploadResult?.error || 'Unknown error'));
       }
 
-      // Save document metadata
-      const res = await fetch('/api/documents', {
-        method: 'POST',
+      // Save document metadata (update if re-editing, create if new)
+      const isUpdate = !!editingDocumentId;
+      const apiUrl = isUpdate ? `/api/documents/${editingDocumentId}` : '/api/documents';
+      const res = await fetch(apiUrl, {
+        method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: selectedEventId || null,
@@ -271,7 +274,7 @@ export default function SaveDocumentModal({
           marginBottom: 16,
           fontFamily: fonts.body,
         }}>
-          Save {documentType === 'quote' ? 'Quote' : 'Order'}
+          {editingDocumentId ? 'Update' : 'Save'} {documentType === 'quote' ? 'Quote' : 'Order'}
         </h2>
 
         {success ? (
@@ -281,7 +284,7 @@ export default function SaveDocumentModal({
           }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: '#27ae60' }}>
-              Document saved successfully!
+              Document {editingDocumentId ? 'updated' : 'saved'} successfully!
             </div>
           </div>
         ) : (
@@ -478,7 +481,7 @@ export default function SaveDocumentModal({
                   width: mobile ? '100%' : 'auto',
                 }}
               >
-                {saving ? 'Saving...' : 'Save Document'}
+                {saving ? (editingDocumentId ? 'Updating...' : 'Saving...') : (editingDocumentId ? 'Update Document' : 'Save Document')}
               </button>
             </div>
           </>

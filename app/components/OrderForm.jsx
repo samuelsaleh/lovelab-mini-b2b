@@ -413,7 +413,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
@@ -831,6 +831,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         eventName={eventName}
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
+        editingDocumentId={editingDocumentId}
         metadata={{
           formState: {
             rows: rows.filter(r => isRowFilled(r)),

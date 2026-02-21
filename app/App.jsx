@@ -52,6 +52,7 @@ export default function App() {
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderFormQuote, setOrderFormQuote] = useState(null)
   const [savedFormState, setSavedFormState] = useState(null)
+  const [editingDocumentId, setEditingDocumentId] = useState(null) // ID of document being re-edited
 
   // Client info
   const [client, setClient] = useState({
@@ -197,6 +198,7 @@ export default function App() {
   const handleBlankOrderForm = useCallback(() => {
     setOrderFormQuote(null)
     setSavedFormState(null)
+    setEditingDocumentId(null) // Clear any editing state
     setShowOrderForm(true)
   }, [])
 
@@ -206,6 +208,7 @@ export default function App() {
     if (!formState) return
     setOrderFormQuote(null)
     setSavedFormState(formState)
+    setEditingDocumentId(doc.id) // Track which document we're editing
     setShowOrderForm(true)
   }, [])
 
@@ -384,7 +387,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null) }} currentUser={profile} savedFormState={savedFormState} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} />}
 
       {/* ─── Top Navigation ─── */}
       <TopNav
