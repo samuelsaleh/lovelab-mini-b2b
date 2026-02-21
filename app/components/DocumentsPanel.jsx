@@ -145,6 +145,37 @@ export default function DocumentsPanel({ onReEdit }) {
   const getEventDocCount = (eventId) => documents.filter(d => d.event_id === eventId).length
   const noEventDocs = documents.filter(d => !d.event_id).length
 
+  // Analytics calculations
+  const getEventTotal = (eventId) => {
+    return documents
+      .filter(d => d.event_id === eventId)
+      .reduce((sum, d) => sum + (d.total_amount || 0), 0)
+  }
+
+  const getSalesByDate = (eventId) => {
+    const eventDocs = eventId 
+      ? documents.filter(d => d.event_id === eventId)
+      : filteredDocs
+    const byDate = {}
+    eventDocs.forEach(doc => {
+      const dateKey = new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      if (!byDate[dateKey]) byDate[dateKey] = { count: 0, total: 0 }
+      byDate[dateKey].count++
+      byDate[dateKey].total += doc.total_amount || 0
+    })
+    return Object.entries(byDate).sort((a, b) => new Date(b[0]) - new Date(a[0]))
+  }
+
+  const currentEventName = selectedEventId 
+    ? events.find(e => e.id === selectedEventId)?.name 
+    : selectedEventId === 'none' 
+      ? 'No Event' 
+      : 'All Documents'
+  const currentEventTotal = selectedEventId && selectedEventId !== 'none'
+    ? getEventTotal(selectedEventId)
+    : filteredDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0)
+  const currentSalesByDate = getSalesByDate(selectedEventId && selectedEventId !== 'none' ? selectedEventId : null)
+
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Mobile Filter Toggle */}
@@ -341,6 +372,63 @@ export default function DocumentsPanel({ onReEdit }) {
             }}
           />
         </div>
+
+        {/* Analytics Summary */}
+        {!loading && filteredDocs.length > 0 && (
+          <div style={{
+            background: 'linear-gradient(135deg, #f8f5fa 0%, #f3f0f5 100%)',
+            borderRadius: 12,
+            border: `1px solid ${colors.lineGray}`,
+            padding: mobile ? 14 : 16,
+            marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 500, marginBottom: 2 }}>
+                  {currentEventName}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum }}>
+                  {fmt(currentEventTotal)}
+                </div>
+                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                  {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            </div>
+
+            {currentSalesByDate.length > 0 && (
+              <div style={{
+                borderTop: `1px solid ${colors.lineGray}`,
+                paddingTop: 10,
+                marginTop: 4,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {t('docs.salesByDate') || 'Sales by Date'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {currentSalesByDate.slice(0, 5).map(([date, data]) => (
+                    <div key={date} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '6px 10px', background: '#fff', borderRadius: 6,
+                      fontSize: 12,
+                    }}>
+                      <span style={{ color: '#555' }}>{date}</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ color: '#999', fontSize: 11 }}>{data.count} order{data.count !== 1 ? 's' : ''}</span>
+                        <span style={{ fontWeight: 600, color: colors.inkPlum }}>{fmt(data.total)}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {currentSalesByDate.length > 5 && (
+                    <div style={{ fontSize: 10, color: '#999', textAlign: 'center', paddingTop: 4 }}>
+                      +{currentSalesByDate.length - 5} more days
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>

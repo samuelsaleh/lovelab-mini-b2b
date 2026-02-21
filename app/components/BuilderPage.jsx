@@ -7,8 +7,6 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
-import { sendBuilderChat } from '@/lib/api'
-import LoadingDots from './LoadingDots'
 
 let _uidCounter = 0
 export function uniqueId() {
@@ -142,14 +140,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   })
   // Track recently duplicated configs for highlight effect
   const [recentlyDuplicated, setRecentlyDuplicated] = useState(new Set())
-
-  // AI Advisor chat state
-  const [showAiChat, setShowAiChat] = useState(false)
-  const [aiMessages, setAiMessages] = useState([])
-  const [aiInput, setAiInput] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const aiChatEndRef = useRef(null)
-  const aiInputRef = useRef(null)
 
   // Live quote
   const quote = useMemo(() => calculateQuote(lines), [lines])
@@ -300,49 +290,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Get count of selected configs
   const selectedCount = selectedConfigs.size
-
-  // Build order context string for AI
-  const buildOrderContext = useCallback(() => {
-    if (!lines.some(l => l.collectionId && l.colorConfigs.length > 0)) {
-      return 'No items configured yet.'
-    }
-    const parts = []
-    lines.forEach(line => {
-      if (!line.collectionId || line.colorConfigs.length === 0) return
-      const col = COLLECTIONS.find(c => c.id === line.collectionId)
-      if (!col) return
-      const colorSummary = line.colorConfigs.map(cfg => {
-        const carat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : '?'
-        return `${cfg.colorName} (${carat}ct, ${cfg.housing || 'no housing'}, ${cfg.size || 'no size'}, qty:${cfg.qty})`
-      }).join(', ')
-      parts.push(`${col.label}: ${colorSummary}`)
-    })
-    parts.push(`Total: ${fmt(quote.total)} (${quote.totalPieces} pcs)`)
-    if (budgetNum > 0) {
-      parts.push(`Budget: €${budgetNum}, Remaining: €${Math.max(0, budgetNum - quote.total)}`)
-    }
-    return parts.join('\n')
-  }, [lines, quote, budgetNum])
-
-  // Send AI chat message
-  const handleAiSend = useCallback(async () => {
-    const msg = aiInput.trim()
-    if (!msg || aiLoading) return
-    setAiInput('')
-    setAiLoading(true)
-    const userMsg = { role: 'user', content: msg }
-    const apiMsgs = [...aiMessages, userMsg]
-    setAiMessages(prev => [...prev, userMsg])
-    try {
-      const orderContext = buildOrderContext()
-      const parsed = await sendBuilderChat(apiMsgs, orderContext)
-      setAiMessages(prev => [...prev, { role: 'assistant', content: parsed.message }])
-    } catch (err) {
-      setAiMessages(prev => [...prev, { role: 'assistant', content: t('builder.aiError') + (err?.message ? ` (${err.message})` : '') }])
-    }
-    setAiLoading(false)
-    setTimeout(() => aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-  }, [aiInput, aiLoading, aiMessages, buildOrderContext, t])
 
   // Apply a quick-fill preset
   const applySuggestion = useCallback((preset) => {
@@ -1122,180 +1069,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
       </div>
 
-      {/* ═══ AI Advisor Floating Button ═══ */}
-      {step === 'configure' && !showAiChat && (
-        <button
-          onClick={() => { setShowAiChat(true); setTimeout(() => aiInputRef.current?.focus(), 100) }}
-          style={{
-            position: 'fixed',
-            bottom: mobile ? 80 : 24,
-            right: mobile ? 16 : 24,
-            width: mobile ? 56 : 52,
-            height: mobile ? 56 : 52,
-            borderRadius: '50%',
-            background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
-            border: 'none',
-            boxShadow: '0 4px 20px rgba(124, 58, 237, 0.35)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            transition: 'transform 0.2s, box-shadow 0.2s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(124, 58, 237, 0.45)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(124, 58, 237, 0.35)' }}
-          title={t('builder.aiAdvisor')}
-        >
-          <span style={{ fontSize: mobile ? 24 : 22, color: '#fff' }}>✨</span>
-        </button>
-      )}
-
-      {/* ═══ AI Advisor Chat Panel ═══ */}
-      {showAiChat && (
-        <div style={{
-          position: 'fixed',
-          bottom: mobile ? 0 : 24,
-          right: mobile ? 0 : 24,
-          width: mobile ? '100%' : 380,
-          maxHeight: mobile ? '85vh' : 500,
-          background: '#fff',
-          borderRadius: mobile ? '20px 20px 0 0' : 16,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 250,
-          overflow: 'hidden',
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: '14px 16px',
-            background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 20 }}>✨</span>
-              <div>
-                <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{t('builder.aiAdvisor')}</div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10 }}>{t('builder.aiAdvisorDesc')}</div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowAiChat(false)}
-              style={{
-                width: 32, height: 32, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.2)', border: 'none',
-                color: '#fff', fontSize: 18, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >×</button>
-          </div>
-
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 200 }}>
-            {aiMessages.length === 0 && !aiLoading && (
-              <div style={{ textAlign: 'center', padding: '30px 20px', color: '#999' }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>💬</div>
-                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  {t('builder.aiAdvisorDesc')}
-                </div>
-                <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
-                  {['What colors go well together?', 'Which carat is most popular?', 'How can I optimize my budget?'].map((chip, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { setAiInput(chip); setTimeout(() => aiInputRef.current?.focus(), 50) }}
-                      style={{
-                        padding: '8px 12px', borderRadius: 16,
-                        border: '1px solid #e0e0e0', background: '#fafafa',
-                        color: '#555', fontSize: 11, cursor: 'pointer',
-                        fontFamily: 'inherit', transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e0e0e0'; e.currentTarget.style.color = '#555' }}
-                    >{chip}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {aiMessages.map((m, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
-                marginBottom: 10,
-              }}>
-                <div style={{
-                  maxWidth: '85%',
-                  padding: '10px 14px',
-                  borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                  background: m.role === 'user' ? colors.inkPlum : '#f5f5f5',
-                  color: m.role === 'user' ? '#fff' : '#333',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                }}>
-                  {m.content}
-                </div>
-              </div>
-            ))}
-
-            {aiLoading && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
-                <div style={{
-                  padding: '12px 16px',
-                  borderRadius: '14px 14px 14px 4px',
-                  background: '#f5f5f5',
-                }}>
-                  <LoadingDots />
-                </div>
-              </div>
-            )}
-
-            <div ref={aiChatEndRef} />
-          </div>
-
-          {/* Input */}
-          <div style={{
-            padding: '12px 16px',
-            borderTop: '1px solid #eee',
-            display: 'flex',
-            gap: 8,
-            alignItems: 'flex-end',
-          }}>
-            <input
-              ref={aiInputRef}
-              value={aiInput}
-              onChange={(e) => setAiInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend() } }}
-              placeholder={t('builder.aiPlaceholder')}
-              disabled={aiLoading}
-              style={{
-                flex: 1,
-                padding: '12px 14px',
-                borderRadius: 12,
-                border: '1px solid #e0e0e0',
-                fontSize: 14,
-                fontFamily: 'inherit',
-                outline: 'none',
-                color: '#222',
-              }}
-            />
-            <button
-              onClick={handleAiSend}
-              disabled={!aiInput.trim() || aiLoading}
-              style={{
-                width: 44, height: 44, borderRadius: 12, border: 'none',
-                background: aiInput.trim() && !aiLoading ? colors.inkPlum : '#e0e0e0',
-                color: '#fff', cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontWeight: 600, transition: 'background 0.15s',
-              }}
-            >↑</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

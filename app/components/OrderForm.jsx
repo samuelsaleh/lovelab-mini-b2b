@@ -484,7 +484,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   // Vitrine state
   const [hasVitrine, setHasVitrine] = useState(false)
-  const [vitrinePrice, setVitrinePrice] = useState(150)
+  const [vitrinePrice, setVitrinePrice] = useState(250)
   const [vitrineQty, setVitrineQty] = useState(1)
 
   // Table rows state
@@ -1163,26 +1163,34 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   {hasVitrine && (
                     <>
                       <span style={{ fontSize: 10, color: colors.lovelabMuted }}>€</span>
-                      <input
+                      <PrintableInput
                         type="number"
                         value={vitrinePrice}
                         onChange={(e) => setVitrinePrice(Number(e.target.value) || 0)}
                         style={{
-                          width: 50, padding: '2px 4px', borderRadius: 4,
+                          width: 60, padding: '2px 6px', borderRadius: 4,
                           border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                          textAlign: 'right',
                         }}
+                        isPrinting={isPrinting}
                       />
                       <span style={{ fontSize: 10, color: colors.lovelabMuted }}>x</span>
-                      <select
-                        value={vitrineQty}
-                        onChange={(e) => setVitrineQty(Number(e.target.value))}
-                        style={{
-                          padding: '2px 4px', borderRadius: 4,
-                          border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
-                        }}
-                      >
-                        {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
+                      {isPrinting ? (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, minWidth: 16, textAlign: 'center' }}>
+                          {vitrineQty}
+                        </span>
+                      ) : (
+                        <select
+                          value={vitrineQty}
+                          onChange={(e) => setVitrineQty(Number(e.target.value))}
+                          style={{
+                            padding: '2px 4px', borderRadius: 4,
+                            border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                          }}
+                        >
+                          {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      )}
                       <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabPurple }}>
                         = €{(vitrinePrice * vitrineQty).toLocaleString()}
                       </span>
@@ -1552,6 +1560,20 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   }}>
                     LOVELAB - The Love Group BV - Schupstraat 20, 2018 Antwerpen, Belgium &nbsp;&nbsp; VAT:BE1017670055 &nbsp;&nbsp; hello@love-lab.com &nbsp;&nbsp; www.love-lab.com
                   </div>
+                </div>
+              )}
+
+              {/* ─── Page Number Footer (all pages during printing) ─── */}
+              {isPrinting && (
+                <div style={{
+                  marginTop: 12,
+                  paddingTop: 8,
+                  borderTop: pageIdx < displayPages.length - 1 ? `1px solid ${colors.lineGray}` : 'none',
+                  textAlign: 'center',
+                  fontSize: 8,
+                  color: colors.lovelabMuted,
+                }}>
+                  Page {pageIdx + 1} of {displayPages.length}
                 </div>
               )}
             </div>
