@@ -22,6 +22,7 @@ export default function ClientGate({ client, setClient, onComplete }) {
   const [viesResult, setViesResult] = useState(null)
   const [perplexityDone, setPerplexityDone] = useState(false)
   const [lookupIncorrect, setLookupIncorrect] = useState(false)
+  const [showManualAddress, setShowManualAddress] = useState(false)
   const [countryOpen, setCountryOpen] = useState(false)
   const [countryHi, setCountryHi] = useState(0)
   const countryListRef = useRef(null)
@@ -513,6 +514,45 @@ export default function ClientGate({ client, setClient, onComplete }) {
             {t('client.checkVatManually')}
           </a>
         </div>
+
+        {/* Manual Address Entry Toggle */}
+        {!perplexityDone && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              onClick={() => setShowManualAddress(!showManualAddress)}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: colors.inkPlum, fontSize: 11, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              {showManualAddress ? '▼' : '▶'} {t('client.enterAddressManually') || 'Enter address manually'}
+            </button>
+            {showManualAddress && (
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input 
+                  value={client.address} 
+                  onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} 
+                  placeholder={t('client.address')} 
+                  style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '8px 10px' }} 
+                />
+                <input 
+                  value={client.city} 
+                  onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} 
+                  placeholder={t('client.city')} 
+                  style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '8px 10px' }} 
+                />
+                <input 
+                  value={client.zip} 
+                  onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} 
+                  placeholder={t('client.zip')} 
+                  style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '8px 10px' }} 
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Lookup Button */}
         <button
