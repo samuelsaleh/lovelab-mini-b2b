@@ -1482,11 +1482,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   padding: 12,
                   borderTop: `1px solid ${colors.lineGray}`,
                   background: '#fffde7',
+                  maxHeight: '50vh',
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#f57c00', marginBottom: 8 }}>
-                    {t('builder.aiConfirmActions') || 'Confirm actions:'}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#f57c00', marginBottom: 8, flexShrink: 0 }}>
+                    {t('builder.aiConfirmActions') || 'Confirm actions:'} ({pendingActions.length})
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                  <div style={{ 
+                    display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10,
+                    overflowY: 'auto', maxHeight: '30vh', flexShrink: 1,
+                  }}>
                     {pendingActions.map((action, idx) => (
                       <div key={idx} style={{
                         padding: '6px 10px',
@@ -1494,6 +1500,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         borderRadius: 6,
                         fontSize: 11,
                         border: '1px solid #ffe082',
+                        flexShrink: 0,
                       }}>
                         <strong>{action.type.toUpperCase()}</strong>
                         {action.type === 'add' && `: ${action.qty || 1}x ${action.collection} ${action.color} ${action.carat || ''}`}
