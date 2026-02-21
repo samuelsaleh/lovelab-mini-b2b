@@ -811,6 +811,30 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {/* AI Advisor Button */}
+                    <button
+                      onClick={() => setShowAiChat(v => !v)}
+                      style={{
+                        padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                        borderRadius: 10,
+                        border: 'none',
+                        background: showAiChat 
+                          ? colors.inkPlum 
+                          : `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 2px 8px rgba(93,58,94,0.25)',
+                        transition: 'all .15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(93,58,94,0.35)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(93,58,94,0.25)' }}
+                    >
+                      ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
+                    </button>
                     <div style={{ position: 'relative' }}>
                       <button
                         onClick={() => setShowSuggestions(v => !v)}
@@ -1297,45 +1321,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
       </div>
 
-      {/* ═══ AI Builder Chat ═══ */}
+      {/* ═══ AI Builder Chat Panel ═══ */}
       {step === 'configure' && (
         <>
-          {/* Floating AI Button */}
-          {!showAiChat && (
-            <button
-              onClick={() => setShowAiChat(true)}
-              title={t('builder.aiAdvisor') || 'AI Advisor'}
-              style={{
-                position: 'fixed',
-                bottom: mobile ? 80 : 24,
-                right: 24,
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
-                background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
-                border: 'none',
-                boxShadow: '0 4px 20px rgba(93,58,94,0.4)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 22,
-                zIndex: 100,
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.08)'
-                e.currentTarget.style.boxShadow = '0 6px 24px rgba(93,58,94,0.5)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)'
-                e.currentTarget.style.boxShadow = '0 4px 20px rgba(93,58,94,0.4)'
-              }}
-            >
-              ✨
-            </button>
-          )}
-
           {/* AI Chat Panel */}
           {showAiChat && (
             <div style={{
