@@ -335,33 +335,25 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Execute AI actions
   const executeAiActions = useCallback((actions) => {
-    const newIds = new Set()
+    // Pre-generate IDs for new items so we can track them for highlighting
+    const newConfigsToAdd = []
+    const newCollectionIds = new Set()
     
-    setLines(prev => {
-      let updated = [...prev]
-      
-      actions.forEach(action => {
-        if (action.type === 'add') {
-          // Find or create the line for this collection
-          const col = COLLECTIONS.find(c => 
-            c.id.toLowerCase() === (action.collection || '').toLowerCase() ||
-            c.label.toLowerCase() === (action.collection || '').toLowerCase()
-          )
-          if (!col) return
+    actions.forEach(action => {
+      if (action.type === 'add') {
+        const col = COLLECTIONS.find(c => 
+          c.id.toLowerCase() === (action.collection || '').toLowerCase() ||
+          c.label.toLowerCase() === (action.collection || '').toLowerCase()
+        )
+        if (!col) return
 
-          let line = updated.find(l => l.collectionId === col.id)
-          if (!line) {
-            line = { uid: uniqueId(), collectionId: col.id, colorConfigs: [], expanded: true }
-            updated.push(line)
-          }
-
-          // Map carat string to index
-          const caratStr = String(action.carat || '').replace('ct', '')
-          const caratIdx = col.carats.findIndex(c => String(c) === caratStr)
-
-          const newId = uniqueId()
-          newIds.add(newId)
-          const newConfig = {
+        const caratStr = String(action.carat || '').replace('ct', '')
+        const caratIdx = col.carats.findIndex(c => String(c) === caratStr)
+        const newId = uniqueId()
+        
+        newConfigsToAdd.push({
+          collectionId: col.id,
+          config: {
             id: newId,
             colorName: action.color || 'White',
             caratIdx: caratIdx >= 0 ? caratIdx : null,
@@ -372,15 +364,33 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             size: action.size || null,
             qty: parseInt(action.qty) || 1,
           }
+        })
+        newCollectionIds.add(col.id)
+      }
+    })
 
-          updated = updated.map(l => 
-            l.uid === line.uid 
-              ? { ...l, colorConfigs: [...l.colorConfigs, newConfig] }
-              : l
-          )
+    const newIds = new Set(newConfigsToAdd.map(item => item.config.id))
+    
+    setLines(prev => {
+      let updated = [...prev]
+      
+      // Process ADD actions
+      newConfigsToAdd.forEach(({ collectionId, config }) => {
+        let line = updated.find(l => l.collectionId === collectionId)
+        if (!line) {
+          line = { uid: uniqueId(), collectionId, colorConfigs: [], expanded: true }
+          updated.push(line)
         }
-        
-        else if (action.type === 'delete' && action.filter) {
+        updated = updated.map(l => 
+          l.collectionId === collectionId 
+            ? { ...l, colorConfigs: [...l.colorConfigs, config] }
+            : l
+        )
+      })
+
+      // Process DELETE and MODIFY actions
+      actions.forEach(action => {
+        if (action.type === 'delete' && action.filter) {
           updated = updated.map(line => {
             const col = COLLECTIONS.find(c => c.id === line.collectionId)
             if (!col) return line
@@ -448,17 +458,20 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         }
       })
 
-      // Ensure selected collections are tracked
-      const collectionIds = updated.filter(l => l.collectionId).map(l => l.collectionId)
-      setSelectedCollections(prev => {
-        const newSet = new Set([...prev, ...collectionIds])
-        return [...newSet]
-      })
-
       return updated.length > 0 ? updated : [mkLine()]
     })
 
-    // Highlight newly added rows
+    // Update selected collections outside of setLines to avoid React warning
+    if (newCollectionIds.size > 0) {
+      setTimeout(() => {
+        setSelectedCollections(prev => {
+          const newSet = new Set([...prev, ...newCollectionIds])
+          return [...newSet]
+        })
+      }, 0)
+    }
+
+    // Highlight newly added rows (the NEW ones, not the old selected ones)
     if (newIds.size > 0) {
       setRecentlyDuplicated(newIds)
       setTimeout(() => setRecentlyDuplicated(new Set()), 15000)
