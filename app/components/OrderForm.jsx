@@ -488,6 +488,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [prepaymentAmount, setPrepaymentAmount] = useState('')
   const [discountDisplay, setDiscountDisplay] = useState('')
 
+  // Prepayment gate: null = not yet confirmed, true = confirmed
+  const [prepaymentConfirmed, setPrepaymentConfirmed] = useState(null)
+  const [showPrepaymentGate, setShowPrepaymentGate] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
+  // Local state inside the gate (before committing)
+  const [gateHasPrepayment, setGateHasPrepayment] = useState(false)
+  const [gatePrepaymentAmount, setGatePrepaymentAmount] = useState('')
+
   // Vitrine state
   const [hasVitrine, setHasVitrine] = useState(false)
   const [vitrinePrice, setVitrinePrice] = useState(250)
@@ -538,6 +546,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       }
       setRows(restored)
     }
+    setPrepaymentConfirmed(null) // require re-confirmation when re-editing
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Run once on mount
 
@@ -724,6 +733,19 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         const price = Number(key === 'unitPrice' ? value : next[rowIdx].unitPrice) || 0
         if (qty && price) {
           next[rowIdx].total = String(qty * price)
+        }
+      }
+      // Auto-lookup unitPrice from catalog when collection or carat changes
+      if (key === 'collection' || key === 'carat') {
+        const row = next[rowIdx]
+        const col = findCollection(row.collection)
+        if (col) {
+          const caratIdx = col.carats.findIndex(c => c === row.carat)
+          if (caratIdx !== -1) {
+            next[rowIdx].unitPrice = String(col.prices[caratIdx])
+            const qty = Number(row.quantity) || 0
+            if (qty) next[rowIdx].total = String(qty * col.prices[caratIdx])
+          }
         }
       }
       return next
@@ -945,6 +967,34 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     }
   }, [])
 
+  // ─── Prepayment gate logic ───
+  const runAction = useCallback((action) => {
+    if (action === 'save') setShowSaveModal(true)
+    else if (action === 'print') handlePrint()
+    else if (action === 'download') handleDownload()
+  }, [handlePrint, handleDownload])
+
+  const triggerWithPrepaymentCheck = useCallback((action) => {
+    if (prepaymentConfirmed === null) {
+      setGateHasPrepayment(hasPrepayment)
+      setGatePrepaymentAmount(prepaymentAmount)
+      setPendingAction(action)
+      setShowPrepaymentGate(true)
+    } else {
+      runAction(action)
+    }
+  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, runAction])
+
+  const confirmPrepaymentGate = useCallback(() => {
+    setHasPrepayment(gateHasPrepayment)
+    setPrepaymentAmount(gateHasPrepayment ? gatePrepaymentAmount : '')
+    setPrepaymentConfirmed(true)
+    setShowPrepaymentGate(false)
+    const action = pendingAction
+    setPendingAction(null)
+    runAction(action)
+  }, [gateHasPrepayment, gatePrepaymentAmount, pendingAction, runAction])
+
   // ─── Header field style ───
   const hFieldLabel = { fontSize: 9, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 1 }
   const hFieldInput = {
@@ -991,6 +1041,112 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       overflow: isPrinting ? 'visible' : undefined,
       height: isPrinting ? 'auto' : undefined,
     }}>
+      {/* ─── Prepayment Gate Modal ─── */}
+      {showPrepaymentGate && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 500,
+          background: 'rgba(0,0,0,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 20,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 14, padding: '28px 28px 24px',
+            maxWidth: 380, width: '100%',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, marginBottom: 6 }}>
+              Prepayment confirmation
+            </div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
+              Was a prepayment made for this order?
+            </div>
+
+            {/* No prepayment option */}
+            <div
+              onClick={() => setGateHasPrepayment(false)}
+              style={{
+                padding: '12px 16px', borderRadius: 8, marginBottom: 10,
+                border: `2px solid ${!gateHasPrepayment ? colors.inkPlum : '#e0e0e0'}`,
+                background: !gateHasPrepayment ? 'rgba(93,58,94,0.06)' : '#fafafa',
+                cursor: 'pointer', transition: 'all .15s',
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}
+            >
+              <div style={{
+                width: 16, height: 16, borderRadius: '50%',
+                border: `2px solid ${!gateHasPrepayment ? colors.inkPlum : '#ccc'}`,
+                background: !gateHasPrepayment ? colors.inkPlum : 'transparent',
+                flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: colors.charcoal }}>No prepayment</span>
+            </div>
+
+            {/* Yes prepayment option */}
+            <div
+              onClick={() => setGateHasPrepayment(true)}
+              style={{
+                padding: '12px 16px', borderRadius: 8, marginBottom: 20,
+                border: `2px solid ${gateHasPrepayment ? colors.inkPlum : '#e0e0e0'}`,
+                background: gateHasPrepayment ? 'rgba(93,58,94,0.06)' : '#fafafa',
+                cursor: 'pointer', transition: 'all .15s',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 16, height: 16, borderRadius: '50%',
+                  border: `2px solid ${gateHasPrepayment ? colors.inkPlum : '#ccc'}`,
+                  background: gateHasPrepayment ? colors.inkPlum : 'transparent',
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: colors.charcoal }}>Yes, prepayment made</span>
+              </div>
+              {gateHasPrepayment && (
+                <div style={{ marginTop: 10, paddingLeft: 26 }}>
+                  <input
+                    type="text"
+                    value={gatePrepaymentAmount}
+                    onChange={(e) => setGatePrepaymentAmount(e.target.value)}
+                    placeholder="€ amount"
+                    autoFocus
+                    style={{
+                      width: '100%', padding: '7px 10px', borderRadius: 6,
+                      border: `1px solid ${colors.inkPlum}`, outline: 'none',
+                      fontFamily: fonts.body, fontSize: 13, color: colors.charcoal,
+                      background: '#fff', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { setShowPrepaymentGate(false); setPendingAction(null) }}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 8,
+                  border: '1px solid #ddd', background: '#fff',
+                  color: '#888', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  fontFamily: fonts.body,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPrepaymentGate}
+                style={{
+                  flex: 2, padding: '10px 0', borderRadius: 8,
+                  border: 'none', background: colors.inkPlum,
+                  color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: fonts.body,
+                }}
+              >
+                Confirm &amp; Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <SaveDocumentModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
@@ -1241,7 +1397,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           {t('nav.orderform')}
         </div>
         <button
-          onClick={() => setShowSaveModal(true)}
+          onClick={() => triggerWithPrepaymentCheck('save')}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
@@ -1253,7 +1409,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           {t('order.save')}
         </button>
         <button
-          onClick={handleDownload}
+          onClick={() => triggerWithPrepaymentCheck('download')}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
@@ -1265,7 +1421,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           {t('order.download') || 'Download PDF'}
         </button>
         <button
-          onClick={handlePrint}
+          onClick={() => triggerWithPrepaymentCheck('print')}
           style={{
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
