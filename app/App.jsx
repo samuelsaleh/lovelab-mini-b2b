@@ -419,10 +419,13 @@ export default function App() {
       const raw = sessionStorage.getItem('lovelab-reedit')
       if (raw) {
         sessionStorage.removeItem('lovelab-reedit')
-        const formState = JSON.parse(raw)
-        if (formState && typeof formState === 'object') {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object') {
+          const formState = parsed.formState ?? parsed
+          const documentId = parsed.documentId ?? null
           setSavedFormState(formState)
           setOrderFormQuote(null)
+          if (documentId) setEditingDocumentId(documentId)
           setShowOrderForm(true)
         }
       }
