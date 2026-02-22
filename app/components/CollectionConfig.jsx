@@ -85,7 +85,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const [sameForAll, setSameForAll] = useState(false)
   const [sharedSettings, setSharedSettings] = useState({
     caratIdx: null, housing: null, housingType: null,
-    multiAttached: null, shape: null, size: null,
+    multiAttached: null, shape: null, size: null, qty: null,
   })
   const [showDuplicatePanel, setShowDuplicatePanel] = useState(false)
   const [duplicateSettings, setDuplicateSettings] = useState({
@@ -186,6 +186,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           multiAttached: cfg.multiAttached ?? sharedSettings.multiAttached,
           shape: cfg.shape ?? sharedSettings.shape,
           size: cfg.size ?? sharedSettings.size,
+          qty: sharedSettings.qty ?? cfg.qty,
         })),
       })
     }
@@ -203,6 +204,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           multiAttached: first.multiAttached,
           shape: first.shape,
           size: first.size,
+          qty: first.qty ?? 1,
         }
         setSharedSettings(s)
       }
@@ -830,6 +832,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 )}
+
+                {/* Qty */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <button onClick={() => updateShared({ qty: Math.max(1, (sharedSettings.qty ?? 1) - 1) })} style={qtyBtnStyle}>-</button>
+                  <input
+                    type="number"
+                    value={sharedSettings.qty ?? 1}
+                    onChange={(e) => updateShared({ qty: Math.max(1, parseInt(e.target.value) || 1) })}
+                    style={qtyInputStyle}
+                  />
+                  <button onClick={() => updateShared({ qty: (sharedSettings.qty ?? 1) + 1 })} style={qtyBtnStyle}>+</button>
+                </div>
               </div>
             </div>
           )}
