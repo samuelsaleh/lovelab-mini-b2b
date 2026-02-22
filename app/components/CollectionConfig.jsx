@@ -35,9 +35,22 @@ const duplicateHighlightStyles = `
   transition: opacity 0.12s;
   z-index: 20;
   user-select: none;
+  touch-action: none;
 }
 .fill-cell:hover .fill-handle-dot {
   opacity: 1;
+}
+@media (pointer: coarse) {
+  .fill-handle-dot {
+    opacity: 0.5;
+    width: 12px;
+    height: 12px;
+    bottom: -6px;
+    right: -6px;
+  }
+  .fill-cell:hover .fill-handle-dot {
+    opacity: 1;
+  }
 }
 `
 
@@ -214,7 +227,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const [dragFill, setDragFill] = useState(null)
   const dragFillRef = useRef(null)
 
-  // Excel-style drag fill: mousedown on handle dot, drag down, release to fill
+  // Excel-style drag fill: works on both mouse (desktop) and touch (iPad/tablet)
   const startDragFill = useCallback((e, sourceIdx, column, configs, selectedIds) => {
     e.preventDefault()
     e.stopPropagation()
@@ -223,19 +236,24 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     dragFillRef.current = state
     setDragFill({ ...state })
 
-    const onMouseMove = (ev) => {
-      const el = document.elementFromPoint(ev.clientX, ev.clientY)
-      if (!el) return
+    const getRowIdxFromPoint = (clientX, clientY) => {
+      const el = document.elementFromPoint(clientX, clientY)
+      if (!el) return null
       const row = el.closest('tr[data-row-idx]')
-      if (!row) return
+      if (!row) return null
       const rowIdx = parseInt(row.getAttribute('data-row-idx'))
-      if (isNaN(rowIdx) || rowIdx <= dragFillRef.current.sourceIdx) return
+      return isNaN(rowIdx) ? null : rowIdx
+    }
+
+    const applyMove = (clientX, clientY) => {
+      const rowIdx = getRowIdxFromPoint(clientX, clientY)
+      if (rowIdx === null || rowIdx <= dragFillRef.current.sourceIdx) return
       if (rowIdx === dragFillRef.current.targetIdx) return
       dragFillRef.current = { ...dragFillRef.current, targetIdx: rowIdx }
       setDragFill({ ...dragFillRef.current })
     }
 
-    const onMouseUp = () => {
+    const applyFill = () => {
       const { sourceIdx, column, targetIdx } = dragFillRef.current
       if (targetIdx > sourceIdx) {
         const source = configs[sourceIdx]
@@ -261,16 +279,39 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       }
       dragFillRef.current = null
       setDragFill(null)
+    }
+
+    // Mouse events (desktop)
+    const onMouseMove = (ev) => applyMove(ev.clientX, ev.clientY)
+    const onMouseUp = () => {
+      applyFill()
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
 
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'crosshair'
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
+    // Touch events (iPad / tablet)
+    const onTouchMove = (ev) => {
+      const touch = ev.touches[0]
+      if (touch) applyMove(touch.clientX, touch.clientY)
+    }
+    const onTouchEnd = () => {
+      applyFill()
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+    }
+
+    const isTouch = e.type === 'touchstart'
+    if (isTouch) {
+      document.addEventListener('touchmove', onTouchMove, { passive: false })
+      document.addEventListener('touchend', onTouchEnd)
+    } else {
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'crosshair'
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
+    }
   }, [set])
 
   // Duplicate colors with variations (selection-aware)
@@ -874,7 +915,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>)}
                             </select>
                           )}
-                          {canFillCarat && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} />}
+                          {canFillCarat && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} />}
                         </td>
                         {hasHousing && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
@@ -885,7 +926,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                 </div>
                               )
                               : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
-                            {canFillHousing && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} />}
+                            {canFillHousing && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         {hasShapes && (
@@ -897,7 +938,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                   {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
-                            {canFillShape && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} />}
+                            {canFillShape && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         {hasSizes && (
@@ -909,7 +950,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                   {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
-                            {canFillSize && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} />}
+                            {canFillSize && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
@@ -918,7 +959,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
                             <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={qtyBtnStyle}>+</button>
                           </div>
-                          {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
+                          {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: rowTotal > 0 ? '#333' : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
