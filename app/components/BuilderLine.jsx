@@ -205,11 +205,15 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                       </div>
                       {cfg.housingType && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                          {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
-                            <button key={h.id || h} onClick={() => patch({ housing: h.label || h })} style={tag(cfg.housing === (h.label || h))}>
-                              {h.label || h}
-                            </button>
-                          ))}
+                          {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => {
+                            const label = h.label || h
+                            const fullValue = cfg.housingType === 'bezel' ? `Bezel ${label}` : `Prong ${label}`
+                            return (
+                              <button key={h.id || h} onClick={() => patch({ housing: fullValue })} style={tag(cfg.housing === fullValue)}>
+                                {label}
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -634,11 +638,15 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                             </div>
                             {sharedSettings.housingType && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                                {(sharedSettings.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => (
-                                  <button key={h.id || h} onClick={() => updateShared({ housing: h.label || h })} style={tag(sharedSettings.housing === (h.label || h))}>
-                                    {h.label || h}
-                                  </button>
-                                ))}
+                                {(sharedSettings.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map((h) => {
+                                  const label = h.label || h
+                                  const fullValue = sharedSettings.housingType === 'bezel' ? `Bezel ${label}` : `Prong ${label}`
+                                  return (
+                                    <button key={h.id || h} onClick={() => updateShared({ housing: fullValue })} style={tag(sharedSettings.housing === fullValue)}>
+                                      {label}
+                                    </button>
+                                  )
+                                })}
                               </div>
                             )}
                           </div>

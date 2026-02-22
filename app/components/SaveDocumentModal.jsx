@@ -18,6 +18,7 @@ export default function SaveDocumentModal({
   onAfterPrint,
   metadata = {},
   editingDocumentId = null, // ID of document being re-edited (for replacement)
+  onSaveSuccess = null, // Callback when save completes successfully
 }) {
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -229,6 +230,7 @@ export default function SaveDocumentModal({
       }
 
       setSuccess(true);
+      if (onSaveSuccess) onSaveSuccess();
       closeTimerRef.current = setTimeout(() => {
         onClose();
       }, 1500);

@@ -212,6 +212,58 @@ export default function App() {
     setShowOrderForm(true)
   }, [])
 
+  // ─── Edit in Builder (from OrderForm) ───
+  const handleEditInBuilder = useCallback((formRows) => {
+    if (!formRows || formRows.length === 0) return
+    
+    // Convert OrderForm rows back to builder lines
+    // Group by collection
+    const byCollection = new Map()
+    for (const row of formRows) {
+      if (!row.collection || !row.quantity) continue
+      const col = COLLECTIONS.find(c => c.label === row.collection)
+      if (!col) continue
+      if (!byCollection.has(col.id)) byCollection.set(col.id, [])
+      byCollection.get(col.id).push(row)
+    }
+    
+    // Build lines array
+    const newLines = Array.from(byCollection.entries()).map(([colId, rows]) => {
+      const col = COLLECTIONS.find(c => c.id === colId)
+      const colorConfigs = rows.map(row => {
+        const caratIdx = col.carats.findIndex(c => c === row.carat)
+        // Extract housingType from housing value (e.g., "Bezel White + White" -> "bezel", "White + White")
+        let housing = row.bpColor || null
+        let housingType = null
+        if (housing && housing.startsWith('Bezel ')) {
+          housingType = 'bezel'
+          housing = housing.replace('Bezel ', '')
+        } else if (housing && housing.startsWith('Prong ')) {
+          housingType = 'prong'
+          housing = housing.replace('Prong ', '')
+        }
+        return {
+          id: uniqueId(),
+          colorName: row.colorCord || '',
+          qty: parseInt(row.quantity) || 1,
+          caratIdx: caratIdx >= 0 ? caratIdx : null,
+          housing,
+          housingType,
+          shape: row.shape || null,
+          size: row.size || null,
+          multiAttached: null,
+        }
+      })
+      return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
+    })
+    
+    if (newLines.length > 0) {
+      setLines(newLines)
+    }
+    setShowOrderForm(false)
+    setActiveTab('builder')
+  }, [])
+
   // ─── Tab change handler ───
   const handleTabChange = useCallback((tab) => {
     if (tab === 'orderform') {
@@ -387,7 +439,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} />}
 
       {/* ─── Top Navigation ─── */}
       <TopNav

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { CORD_COLORS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
@@ -10,20 +10,38 @@ import { useIsMobile } from '@/lib/useIsMobile'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
-// CSS for duplicate highlight animation
+// CSS for duplicate highlight animation and fill-down drag handle
 const duplicateHighlightStyles = `
 @keyframes duplicateHighlight {
-  0% {
-    background-color: #f8bbd9;
-  }
-  30% {
-    background-color: #fce4ec;
-  }
-  100% {
-    background-color: transparent;
-  }
+  0% { background-color: #f8bbd9; }
+  30% { background-color: #fce4ec; }
+  100% { background-color: transparent; }
+}
+@keyframes fillFlash {
+  0% { background-color: #c8e6c9; }
+  100% { background-color: transparent; }
+}
+.fill-cell { position: relative; }
+.fill-handle-dot {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  background: #5D3A5E;
+  border-radius: 1px;
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 20;
+  user-select: none;
+}
+.fill-cell:hover .fill-handle-dot {
+  opacity: 1;
 }
 `
+
+// FillHandle removed - fill functionality now via double-click on cells
 
 function createConfigId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -143,9 +161,26 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Toggle same-for-all & update shared settings
   const handleSameForAllToggle = () => {
     const next = !sameForAll
+    
+    if (!next && sameForAll && line.colorConfigs.length > 0) {
+      // Turning OFF: copy sharedSettings into each config so values persist
+      set({
+        colorConfigs: line.colorConfigs.map(cfg => ({
+          ...cfg,
+          caratIdx: cfg.caratIdx ?? sharedSettings.caratIdx,
+          housing: cfg.housing ?? sharedSettings.housing,
+          housingType: cfg.housingType ?? sharedSettings.housingType,
+          multiAttached: cfg.multiAttached ?? sharedSettings.multiAttached,
+          shape: cfg.shape ?? sharedSettings.shape,
+          size: cfg.size ?? sharedSettings.size,
+        })),
+      })
+    }
+    
     setSameForAll(next)
+    
     if (next && line.colorConfigs.length > 0) {
-      // Use first config's settings as shared base
+      // Turning ON: use first config's settings as shared base
       const first = line.colorConfigs.find(c => c.caratIdx !== null) || line.colorConfigs[0]
       if (first) {
         const s = {
@@ -171,6 +206,72 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       })
     }
   }
+
+  // State for tracking recently filled cells (for flash animation)
+  const [recentlyFilled, setRecentlyFilled] = useState(new Set())
+
+  // Drag-fill state: { sourceIdx, column, targetIdx } or null
+  const [dragFill, setDragFill] = useState(null)
+  const dragFillRef = useRef(null)
+
+  // Excel-style drag fill: mousedown on handle dot, drag down, release to fill
+  const startDragFill = useCallback((e, sourceIdx, column, configs, selectedIds) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const state = { sourceIdx, column, targetIdx: sourceIdx }
+    dragFillRef.current = state
+    setDragFill({ ...state })
+
+    const onMouseMove = (ev) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)
+      if (!el) return
+      const row = el.closest('tr[data-row-idx]')
+      if (!row) return
+      const rowIdx = parseInt(row.getAttribute('data-row-idx'))
+      if (isNaN(rowIdx) || rowIdx <= dragFillRef.current.sourceIdx) return
+      if (rowIdx === dragFillRef.current.targetIdx) return
+      dragFillRef.current = { ...dragFillRef.current, targetIdx: rowIdx }
+      setDragFill({ ...dragFillRef.current })
+    }
+
+    const onMouseUp = () => {
+      const { sourceIdx, column, targetIdx } = dragFillRef.current
+      if (targetIdx > sourceIdx) {
+        const source = configs[sourceIdx]
+        const hasSelection = selectedIds.size > 0
+        const updated = configs.map((cfg, idx) => {
+          if (idx <= sourceIdx || idx > targetIdx) return cfg
+          if (hasSelection && !selectedIds.has(cfg.id)) return cfg
+          switch (column) {
+            case 'carat': return { ...cfg, caratIdx: source.caratIdx }
+            case 'housing': return { ...cfg, housing: source.housing, housingType: source.housingType, multiAttached: source.multiAttached }
+            case 'shape': return { ...cfg, shape: source.shape }
+            case 'size': return { ...cfg, size: source.size }
+            case 'qty': return { ...cfg, qty: source.qty }
+            default: return cfg
+          }
+        })
+        set({ colorConfigs: updated })
+        const filledIds = configs.slice(sourceIdx + 1, targetIdx + 1)
+          .filter(c => !hasSelection || selectedIds.has(c.id))
+          .map(c => `${c.id}-${column}`)
+        setRecentlyFilled(new Set(filledIds))
+        setTimeout(() => setRecentlyFilled(new Set()), 800)
+      }
+      dragFillRef.current = null
+      setDragFill(null)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'crosshair'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [set])
 
   // Duplicate colors with variations (selection-aware)
   const duplicateAllWithVariations = () => {
@@ -286,9 +387,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               style={selectStyle}
             >
               <option value="">{t('collection.housingPlaceholder')}</option>
-              {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map(h => (
-                <option key={h.id || h} value={h.label || h}>{h.label || h}</option>
-              ))}
+              {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map(h => {
+                const label = h.label || h
+                const fullValue = cfg.housingType === 'bezel' ? `Bezel ${label}` : `Prong ${label}`
+                return <option key={h.id || h} value={fullValue}>{label}</option>
+              })}
             </select>
           )}
         </div>
@@ -462,7 +565,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           </div>
 
           {/* ─── Same for all toggle ─── */}
-          {line.colorConfigs.length > 1 && (
+          {line.colorConfigs.length >= 1 && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '8px 12px', borderRadius: 8, background: '#f8f8f8',
@@ -708,20 +811,29 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   </tr>
                 </thead>
                 <tbody>
-                  {line.colorConfigs.map(cfg => {
+                  {line.colorConfigs.map((cfg, cfgIdx) => {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
                     const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
                     const rowTotal = price * cfg.qty
                     const isSelected = selectedConfigs.has(cfg.id)
                     const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
+                    const hasRowsBelow = cfgIdx < line.colorConfigs.length - 1
+                    const canFillCarat = cfg.caratIdx !== null && hasRowsBelow && !sameForAll
+                    const canFillHousing = cfg.housing !== null && hasRowsBelow && !sameForAll
+                    const canFillShape = cfg.shape !== null && hasRowsBelow && !sameForAll
+                    const canFillSize = cfg.size !== null && hasRowsBelow && !sameForAll
+                    const canFillQty = hasRowsBelow && !sameForAll
+
+                    const isDragTarget = dragFill && cfgIdx > dragFill.sourceIdx && cfgIdx <= dragFill.targetIdx
 
                     return (
-                      <tr key={cfg.id} style={{ 
+                      <tr key={cfg.id} data-row-idx={cfgIdx} style={{ 
                         borderBottom: '1px solid #f5f5f5', 
-                        background: isRecentlyDuplicated ? '#fce4ec' : isSelected ? '#f3f0f5' : 'transparent', 
-                        transition: 'background 0.5s ease-out',
+                        background: isRecentlyDuplicated ? '#fce4ec' : isDragTarget ? 'rgba(93, 58, 94, 0.07)' : isSelected ? '#f3f0f5' : 'transparent', 
+                        transition: 'background 0.15s ease-out',
                         animation: isRecentlyDuplicated ? 'duplicateHighlight 15s ease-out forwards' : 'none',
+                        outline: isDragTarget ? '1px solid rgba(93,58,94,0.2)' : 'none',
                       }}>
                         {onToggleConfigSelect && (
                           <td style={{ ...tdStyle, width: 32 }}>
@@ -747,7 +859,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             </select>
                           </div>
                         </td>
-                        <td style={tdStyle}>
+                        <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                           {sameForAll ? (
                             <span style={{ color: '#888', fontSize: 11 }}>
                               {(() => {
@@ -757,47 +869,56 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               })()}
                             </span>
                           ) : (
-                            <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={selectStyle}>
+                            <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                               <option value="">{t('collection.selectPlaceholder')}</option>
                               {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>)}
                             </select>
                           )}
+                          {canFillCarat && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} />}
                         </td>
                         {hasHousing && (
-                          <td style={tdStyle}>
+                          <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.housing ?? sharedSettings.housing) || '-'}</span>
-                              : cfg.caratIdx !== null ? renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))
+                              : cfg.caratIdx !== null ? (
+                                <div style={{ background: recentlyFilled.has(`${cfg.id}-housing`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
+                                  {renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))}
+                                </div>
+                              )
                               : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
+                            {canFillHousing && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         {hasShapes && (
-                          <td style={tdStyle}>
+                          <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.shape ?? sharedSettings.shape) || '-'}</span>
                               : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) ? (
-                                <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={selectStyle}>
+                                <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
                                   {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
+                            {canFillShape && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         {hasSizes && (
-                          <td style={tdStyle}>
+                          <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.size ?? sharedSettings.size) || '-'}</span>
                               : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
-                                <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={selectStyle}>
+                                <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
                                   {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
+                            {canFillSize && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
-                        <td style={tdStyle}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
                             <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
                             <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
                             <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={qtyBtnStyle}>+</button>
                           </div>
+                          {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: rowTotal > 0 ? '#333' : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
@@ -817,13 +938,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           {/* ─── Mobile Card Layout ─── */}
           {line.colorConfigs.length > 0 && mobile && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {line.colorConfigs.map(cfg => {
+              {line.colorConfigs.map((cfg, cfgIdx) => {
                 const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                 const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
                 const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
                 const rowTotal = price * cfg.qty
                 const isSelected = selectedConfigs.has(cfg.id)
                 const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
+                const hasRowsBelow = cfgIdx < line.colorConfigs.length - 1
+                const canFillCarat = cfg.caratIdx !== null && hasRowsBelow && !sameForAll
+                const canFillHousing = cfg.housing !== null && hasRowsBelow && !sameForAll
+                const canFillShape = cfg.shape !== null && hasRowsBelow && !sameForAll
+                const canFillSize = cfg.size !== null && hasRowsBelow && !sameForAll
+                const canFillQty = hasRowsBelow && !sameForAll
 
                 return (
                   <div key={cfg.id} style={{
@@ -866,9 +993,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {/* Carat */}
                       {!sameForAll && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.carat')}</span>
-                          <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                          <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); updateConfig(cfg.id, { caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
                             {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{col.prices[ci]}</option>)}
                           </select>
@@ -876,16 +1003,16 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       )}
                       {/* Housing */}
                       {hasHousing && !sameForAll && cfg.caratIdx !== null && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.housing')}</span>
-                          <div style={{ flex: 1 }}>{renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))}</div>
+                          <div style={{ flex: 1, background: recentlyFilled.has(`${cfg.id}-housing`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>{renderHousingSelector(cfg, (updates) => updateConfig(cfg.id, updates))}</div>
                         </div>
                       )}
                       {/* Shape */}
                       {hasShapes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.shape')}</span>
-                          <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                          <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
                             {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -893,18 +1020,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       )}
                       {/* Size */}
                       {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.size')}</span>
-                          <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1 }}>
+                          <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
                             {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                       )}
                       {/* Qty */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                         <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.qty')}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
                           <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
                           <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 44, height: 36, fontSize: 14 }} />
                           <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={mobileQtyBtnStyle}>+</button>

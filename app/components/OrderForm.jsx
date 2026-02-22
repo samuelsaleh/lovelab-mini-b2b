@@ -414,7 +414,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
@@ -457,6 +457,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       window.scrollTo(0, scrollY)
     }
   }, [])
+
+  // Draft recovery state
+  const [pendingDraft, setPendingDraft] = useState(null)
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false)
+  const [draftChecked, setDraftChecked] = useState(false)
 
   // Client info state (editable)
   const [companyName, setCompanyName] = useState(client?.company || '')
@@ -535,6 +540,147 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Run once on mount
+
+  // Check for existing draft on mount (only if not re-editing a saved document)
+  useEffect(() => {
+    if (savedFormState || editingDocumentId || draftChecked) return
+    if (!client?.company) {
+      setDraftChecked(true)
+      return
+    }
+    
+    const checkDraft = async () => {
+      try {
+        const res = await fetch(`/api/drafts?company=${encodeURIComponent(client.company)}`)
+        const data = await res.json()
+        if (data.draft && data.draft.form_state) {
+          setPendingDraft(data.draft)
+          setShowDraftPrompt(true)
+        }
+      } catch (err) {
+        console.error('Failed to check for draft:', err)
+      }
+      setDraftChecked(true)
+    }
+    checkDraft()
+  }, [client?.company, savedFormState, editingDocumentId, draftChecked])
+
+  // Restore draft function
+  const restoreDraft = useCallback(() => {
+    if (!pendingDraft?.form_state) return
+    const s = pendingDraft.form_state
+    if (s.companyName != null) setCompanyName(s.companyName)
+    if (s.contactName != null) setContactName(s.contactName)
+    if (s.addressLine1 != null) setAddressLine1(s.addressLine1)
+    if (s.addressLine2 != null) setAddressLine2(s.addressLine2)
+    if (s.country != null) setCountry(s.country)
+    if (s.vatNumber != null) setVatNumber(s.vatNumber)
+    if (s.email != null) setEmail(s.email)
+    if (s.phone != null) setPhone(s.phone)
+    if (s.date != null) setDate(s.date)
+    if (s.packaging != null) {
+      if (Array.isArray(s.packaging)) {
+        setPackaging(s.packaging.length > 1 ? 'Mix' : (s.packaging[0] || 'Black'))
+      } else {
+        setPackaging(s.packaging)
+      }
+    }
+    if (s.remarks != null) setRemarks(s.remarks)
+    if (s.eventName != null) setEventName(s.eventName)
+    if (s.createdBy != null) setCreatedBy(s.createdBy)
+    if (s.hasPrepayment != null) setHasPrepayment(s.hasPrepayment)
+    if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
+    if (s.discountDisplay != null) setDiscountDisplay(s.discountDisplay)
+    if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
+    if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
+    if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
+    if (s.vitrineQty != null) setVitrineQty(s.vitrineQty)
+    if (s.rows && s.rows.length > 0) {
+      const restored = [...s.rows]
+      while (restored.length < ROWS_PER_PAGE) {
+        restored.push(emptyRow(restored.length + 1))
+      }
+      setRows(restored)
+    }
+    setShowDraftPrompt(false)
+    setPendingDraft(null)
+  }, [pendingDraft])
+
+  // Dismiss draft and start fresh
+  const dismissDraft = useCallback(async () => {
+    setShowDraftPrompt(false)
+    setPendingDraft(null)
+    // Delete the old draft so it doesn't show up again
+    if (client?.company) {
+      try {
+        await fetch(`/api/drafts?company=${encodeURIComponent(client.company)}`, {
+          method: 'DELETE',
+        })
+      } catch (err) {
+        console.error('Failed to delete draft:', err)
+      }
+    }
+  }, [client?.company])
+
+  // Auto-save draft every 2 minutes
+  const [lastSavedAt, setLastSavedAt] = useState(null)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  
+  useEffect(() => {
+    // Don't auto-save if company name is empty
+    if (!companyName) return
+    
+    const saveDraft = async () => {
+      setIsSavingDraft(true)
+      try {
+        const formState = {
+          rows: rows.filter(r => r.collection || r.quantity),
+          companyName, contactName, addressLine1, addressLine2, country,
+          vatNumber, email, phone, date, packaging, remarks,
+          eventName, createdBy, hasPrepayment, prepaymentAmount,
+          discountDisplay, finalTotalOverride,
+          hasVitrine, vitrinePrice, vitrineQty,
+        }
+        
+        await fetch('/api/drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company_name: companyName,
+            form_state: formState,
+          }),
+        })
+        setLastSavedAt(new Date())
+      } catch (err) {
+        console.error('Failed to auto-save draft:', err)
+      } finally {
+        setIsSavingDraft(false)
+      }
+    }
+    
+    // Save every 2 minutes
+    const interval = setInterval(saveDraft, 2 * 60 * 1000)
+    
+    // Also save on first render (after a short delay)
+    const initialSave = setTimeout(saveDraft, 5000)
+    
+    return () => {
+      clearInterval(interval)
+      clearTimeout(initialSave)
+    }
+  }, [companyName, contactName, addressLine1, addressLine2, country, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows])
+
+  // Delete draft when order is successfully saved
+  const deleteDraft = useCallback(async () => {
+    if (!companyName) return
+    try {
+      await fetch(`/api/drafts?company=${encodeURIComponent(companyName)}`, {
+        method: 'DELETE',
+      })
+    } catch (err) {
+      console.error('Failed to delete draft:', err)
+    }
+  }, [companyName])
 
   // Computed subtotal from table
   const subtotal = useMemo(() => {
@@ -857,6 +1003,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
         editingDocumentId={editingDocumentId}
+        onSaveSuccess={deleteDraft}
         metadata={{
           formState: {
             rows: rows.filter(r => isRowFilled(r)),
@@ -875,6 +1022,75 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
         }}
       />
+
+      {/* Draft Recovery Prompt */}
+      {showDraftPrompt && pendingDraft && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 500,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: 24,
+            maxWidth: 400,
+            width: '90%',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: colors.inkPlum }}>
+              {t('order.draftFound') || 'Draft Found'}
+            </h3>
+            <p style={{ margin: '0 0 8px', fontSize: 14, color: colors.charcoal }}>
+              {t('order.draftFoundDesc') || `You have an unsaved draft for "${client?.company || 'this company'}". Would you like to restore it?`}
+            </p>
+            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#888' }}>
+              {t('order.draftSavedAt') || 'Last saved:'} {new Date(pendingDraft.updated_at).toLocaleString()}
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={dismissDraft}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.lineGray}`,
+                  background: '#fff',
+                  color: colors.charcoal,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: fonts.body,
+                }}
+              >
+                {t('order.startFresh') || 'Start Fresh'}
+              </button>
+              <button
+                onClick={restoreDraft}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: colors.inkPlum,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: fonts.body,
+                }}
+              >
+                {t('order.restoreDraft') || 'Restore Draft'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Print-only styles */}
       <style>{`
         @media print {
@@ -997,6 +1213,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         >
           &larr; {t('common.back')}
         </button>
+        {onEditInBuilder && (
+          <button
+            onClick={() => onEditInBuilder(rows.filter(r => r.collection && r.quantity))}
+            style={{
+              padding: mobile ? '8px 12px' : '6px 16px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
+              background: colors.ice, color: colors.inkPlum, fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
+            }}
+          >
+            {t('order.editInBuilder') || 'Edit in Builder'}
+          </button>
+        )}
         {mobile && (
           <button
             onClick={() => setMobileCardView(!mobileCardView)}
