@@ -498,7 +498,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   // Vitrine state
   const [hasVitrine, setHasVitrine] = useState(false)
-  const [vitrinePrice, setVitrinePrice] = useState(250)
+  const [vitrinePrice, setVitrinePrice] = useState(150)
   const [vitrineQty, setVitrineQty] = useState(1)
 
   // Table rows state

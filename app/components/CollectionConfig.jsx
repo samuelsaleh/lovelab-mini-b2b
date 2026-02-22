@@ -204,7 +204,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           multiAttached: first.multiAttached,
           shape: first.shape,
           size: first.size,
-          qty: first.qty ?? 1,
+          qty: 1,
         }
         setSharedSettings(s)
       }
