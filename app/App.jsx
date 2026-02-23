@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
-import { COLLECTIONS, CORD_COLORS, calculateQuote } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -243,6 +243,15 @@ export default function App() {
           housingType = 'prong'
           housing = housing.replace('Prong ', '')
         }
+        // Infer multiAttached for MULTI THREE from housing value
+        let multiAttached = null
+        if (col.housing === 'multiThree' && housing) {
+          if (!HOUSING.multiThree.attached.includes(housing)) {
+            multiAttached = false
+          } else {
+            multiAttached = true
+          }
+        }
         return {
           id: uniqueId(),
           colorName: row.colorCord || '',
@@ -252,7 +261,7 @@ export default function App() {
           housingType,
           shape: row.shape || null,
           size: row.size || null,
-          multiAttached: null,
+          multiAttached,
         }
       })
       return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
@@ -368,7 +377,7 @@ export default function App() {
   }
 
   const handleNewClient = () => {
-    setClient({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false })
+    setClient({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false, vatStatus: null, vatErrorCode: null, vatMessageKey: null })
     setClientReady(false)
     handleReset()
   }

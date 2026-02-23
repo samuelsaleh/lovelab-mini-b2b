@@ -31,7 +31,7 @@ const duplicateHighlightStyles = `
   background: #5D3A5E;
   border-radius: 1px;
   cursor: crosshair;
-  opacity: 0;
+  opacity: 0.25;
   transition: opacity 0.12s;
   z-index: 20;
   user-select: none;

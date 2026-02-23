@@ -40,13 +40,15 @@ export default function SaveDocumentModal({
   // Fetch events on mount
   useEffect(() => {
     if (isOpen) {
-      fetchEvents();
+      setSelectedEventId('');
+      setShowNewEvent(false);
       setSuccess(false);
       setError(null);
       // Pre-fill new event name if provided
-      if (defaultEventName && !selectedEventId) {
+      if (defaultEventName) {
         setNewEventName(defaultEventName);
       }
+      fetchEvents();
     }
   }, [isOpen]);
 

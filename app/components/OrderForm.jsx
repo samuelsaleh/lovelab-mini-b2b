@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
@@ -78,6 +78,11 @@ function getHousingOptions(housingKey) {
       ...HOUSING.matchyBezel.map(h => `Bezel ${h.label || h}`),
       ...HOUSING.matchyProng.map(h => `Prong ${h.label || h}`),
     ]
+  }
+
+  // multiThree splits into attached/notAttached — use notAttached as the full superset
+  if (housingKey === 'multiThree') {
+    return HOUSING.multiThree.notAttached
   }
 
   const h = HOUSING[housingKey]
@@ -1863,11 +1868,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const isShapeCol = col.key === 'shape'
                           const isBpColorCol = col.key === 'bpColor'
                           const isSizeCol = col.key === 'size'
+                          const isColorCordCol = col.key === 'colorCord'
                           const rowCol = findCollection(row.collection)
-                          const knownCol = (isCaratCol || isShapeCol || isBpColorCol || isSizeCol) ? rowCol : null
+                          const knownCol = (isCaratCol || isShapeCol || isBpColorCol || isSizeCol || isColorCordCol) ? rowCol : null
                           const shapeOptions = isShapeCol && knownCol?.shapes ? knownCol.shapes.map(s => ({ value: s, label: s })) : null
                           const housingOpts = isBpColorCol && knownCol?.housing ? getHousingOptions(knownCol.housing).map(h => ({ value: h, label: h })) : null
                           const sizeOptions = isSizeCol && knownCol?.sizes ? knownCol.sizes.map(s => ({ value: s, label: s })) : null
+                          const cordOptions = isColorCordCol && knownCol?.cord ? (CORD_COLORS[knownCol.cord] || []).map(c => ({ value: c.n, label: c.n })) : null
                           return (
                             <td key={col.key} style={{
                               ...tdStyle,
@@ -1910,6 +1917,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   options={sizeOptions}
                                   isPrinting={isPrinting}
                                   align="center"
+                                />
+                              ) : isColorCordCol && cordOptions ? (
+                                <CellSelect
+                                  value={row.colorCord}
+                                  onChange={(val) => updateCell(globalIdx, 'colorCord', val)}
+                                  options={cordOptions}
+                                  isPrinting={isPrinting}
                                 />
                               ) : (
                                 <CellInput
