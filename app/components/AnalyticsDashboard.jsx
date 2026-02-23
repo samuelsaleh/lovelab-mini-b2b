@@ -192,9 +192,16 @@ export default function AnalyticsDashboard() {
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => {
+    const normalizeCountry = (raw) => {
+      if (!raw || !raw.trim()) return 'Unknown'
+      return raw.trim().replace(/\s+/g, ' ')
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ')
+    }
     const map = new Map()
     docs.forEach(d => {
-      const country = d.metadata?.formState?.country || 'Unknown'
+      const country = normalizeCountry(d.metadata?.formState?.country)
       if (!map.has(country)) map.set(country, { name: country, count: 0, revenue: 0 })
       const entry = map.get(country)
       entry.count++
@@ -234,9 +241,10 @@ export default function AnalyticsDashboard() {
   const clientData = useMemo(() => {
     const map = new Map()
     docs.forEach(d => {
-      const name = d.client_company || d.client_name || 'Unknown'
-      if (!map.has(name)) map.set(name, { name, revenue: 0, orders: 0 })
-      const entry = map.get(name)
+      const raw = (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' ')
+      const key = raw.toLowerCase()
+      if (!map.has(key)) map.set(key, { name: raw, revenue: 0, orders: 0 })
+      const entry = map.get(key)
       entry.revenue += d.total_amount || 0
       entry.orders++
     })
@@ -278,16 +286,18 @@ export default function AnalyticsDashboard() {
       const fs = d.metadata?.formState
       if (!fs) return
 
-      if (fs.packaging) {
-        packMap.set(fs.packaging, (packMap.get(fs.packaging) || 0) + 1)
+      if (fs.packaging && typeof fs.packaging === 'string') {
+        const pk = fs.packaging.trim()
+        if (pk) packMap.set(pk, (packMap.get(pk) || 0) + 1)
       }
 
       (fs.rows || []).forEach(r => {
         if (!isValidRow(r)) return
-        if (r.carat) caratMap.set(r.carat, (caratMap.get(r.carat) || 0) + (parseInt(r.quantity) || 0))
-        if (r.shape) shapeMap.set(r.shape, (shapeMap.get(r.shape) || 0) + (parseInt(r.quantity) || 0))
-        if (r.colorCord) cordMap.set(r.colorCord, (cordMap.get(r.colorCord) || 0) + (parseInt(r.quantity) || 0))
-        if (r.size) sizeMap.set(r.size, (sizeMap.get(r.size) || 0) + (parseInt(r.quantity) || 0))
+        const qty = parseInt(r.quantity) || 0
+        if (r.carat) { const k = r.carat.trim(); caratMap.set(k, (caratMap.get(k) || 0) + qty) }
+        if (r.shape) { const k = r.shape.trim(); shapeMap.set(k, (shapeMap.get(k) || 0) + qty) }
+        if (r.colorCord) { const k = r.colorCord.trim(); cordMap.set(k, (cordMap.get(k) || 0) + qty) }
+        if (r.size) { const k = r.size.trim(); sizeMap.set(k, (sizeMap.get(k) || 0) + qty) }
       })
     })
 
@@ -304,7 +314,11 @@ export default function AnalyticsDashboard() {
   // ─── Vitrine data per event ───────────────────────────────────────────
   const vitrineData = useMemo(() => {
     const rows = docs
-      .map(d => ({ company: d.client_company || d.client_name || 'Unknown', qty: resolveVitrineQty(d), total: d.total_amount || 0 }))
+      .map(d => ({
+        company: (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' '),
+        qty: resolveVitrineQty(d),
+        total: d.total_amount || 0,
+      }))
       .filter(r => r.qty !== null)
     const totalQty = rows.reduce((s, r) => s + r.qty, 0)
     return { rows, totalQty }
