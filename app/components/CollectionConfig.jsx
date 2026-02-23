@@ -733,6 +733,70 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                         )}
+                        {!duplicateSettings[field].keepSame && field === 'housing' && (col.housing === 'shapyShine' || col.housing === 'matchy') && (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <select
+                              value={duplicateSettings.housingType.value || ''}
+                              onChange={(e) => { updateDuplicateSetting('housingType', { value: e.target.value || null, keepSame: false }); updateDuplicateSetting('housing', { value: null }) }}
+                              style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}), minWidth: 70 }}
+                            >
+                              <option value="">{t('collection.typePlaceholder')}</option>
+                              <option value="bezel">{t('collection.bezel')}</option>
+                              <option value="prong">{t('collection.prong')}</option>
+                            </select>
+                            {duplicateSettings.housingType.value && col.housing === 'shapyShine' && (
+                              <select
+                                value={duplicateSettings.housing.value || ''}
+                                onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                                style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                              >
+                                <option value="">{t('collection.housingPlaceholder')}</option>
+                                {(duplicateSettings.housingType.value === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map(h => (
+                                  <option key={h} value={`${duplicateSettings.housingType.value === 'bezel' ? 'Bezel' : 'Prong'} ${h}`}>{h}</option>
+                                ))}
+                              </select>
+                            )}
+                            {duplicateSettings.housingType.value && col.housing === 'matchy' && (
+                              <select
+                                value={duplicateSettings.housing.value || ''}
+                                onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                                style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                              >
+                                <option value="">{t('collection.housingPlaceholder')}</option>
+                                {(duplicateSettings.housingType.value === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map(h => {
+                                  const label = h.label || h
+                                  const fullValue = duplicateSettings.housingType.value === 'bezel' ? `Bezel ${label}` : `Prong ${label}`
+                                  return <option key={h.id || h} value={fullValue}>{label}</option>
+                                })}
+                              </select>
+                            )}
+                          </div>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'housing' && col.housing === 'multiThree' && (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <select
+                              value={duplicateSettings.housingType.value || ''}
+                              onChange={(e) => { updateDuplicateSetting('housingType', { value: e.target.value || null, keepSame: false }); updateDuplicateSetting('housing', { value: null }) }}
+                              style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}), minWidth: 90 }}
+                            >
+                              <option value="">{t('collection.typePlaceholder')}</option>
+                              <option value="attached">{t('collection.attached')}</option>
+                              <option value="notAttached">{t('collection.notAttached')}</option>
+                            </select>
+                            {duplicateSettings.housingType.value && (
+                              <select
+                                value={duplicateSettings.housing.value || ''}
+                                onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                                style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                              >
+                                <option value="">{t('collection.housingPlaceholder')}</option>
+                                {(duplicateSettings.housingType.value === 'attached' ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
                         {!duplicateSettings[field].keepSame && field === 'size' && (
                           <select
                             value={duplicateSettings.size.value || ''}
