@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { CORD_COLORS, HOUSING } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -85,7 +85,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const [sameForAll, setSameForAll] = useState(false)
   const [sharedSettings, setSharedSettings] = useState({
     caratIdx: null, housing: null, housingType: null,
-    multiAttached: null, shape: null, size: null, qty: null,
+    multiAttached: null, shape: null, size: null, cordType: null, thickness: null, qty: null,
   })
   const [showDuplicatePanel, setShowDuplicatePanel] = useState(false)
   const [duplicateSettings, setDuplicateSettings] = useState({
@@ -97,7 +97,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     qty: { keepSame: true, value: 1 },
   })
 
-  const palette = CORD_COLORS[col.cord] || CORD_COLORS.nylon
+  const hasCordOptions = !!CORD_OPTIONS[col.cord]
+  const [selectedCordType, setSelectedCordType] = useState(
+    hasCordOptions ? CORD_OPTIONS[col.cord][0] : null
+  )
+  const [selectedSilkThickness, setSelectedSilkThickness] = useState(null)
+  const palette = hasCordOptions
+    ? (CORD_COLORS[selectedCordType] || CORD_COLORS.nylon)
+    : (CORD_COLORS[col.cord] || CORD_COLORS.nylon)
   const set = (patch) => onChange(line.uid, patch)
 
   // Defensive guard: guarantee unique ids for React keys and row actions.
@@ -121,6 +128,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (col.housing && !cfg.housing) return false
     if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
     if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
+    if (hasCordOptions && !cfg.cordType) return false
+    if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
     return true
   }
 
@@ -138,11 +147,28 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const allSelected = line.colorConfigs.length > 0 && selectedCount === line.colorConfigs.length
   const someSelected = selectedCount > 0 && selectedCount < line.colorConfigs.length
 
+  useEffect(() => {
+    if (hasCordOptions) {
+      const first = CORD_OPTIONS[col.cord][0]
+      setSelectedCordType(first)
+      setSelectedSilkThickness(first === 'silk' ? null : null)
+    } else {
+      setSelectedCordType(null)
+      setSelectedSilkThickness(null)
+    }
+  }, [hasCordOptions, col.cord])
+
   // Add a color
   const addColor = (colorName) => {
-    const newCfg = sameForAll
+    let newCfg = sameForAll
       ? { ...mkColorConfig(colorName, 1), ...sharedSettings }
       : mkColorConfig(colorName, 1)
+    if (hasCordOptions && selectedCordType) {
+      newCfg = { ...newCfg, cordType: selectedCordType }
+    }
+    if (col.cord === 'silk' || selectedCordType === 'silk') {
+      newCfg = { ...newCfg, thickness: selectedSilkThickness || null }
+    }
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
@@ -595,6 +621,62 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         <div style={{ padding: '14px 16px' }}>
           {/* ─── Color Palette ─── */}
           <div style={{ marginBottom: 14 }}>
+            {hasCordOptions && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  Cord Type
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: selectedCordType === 'silk' ? 8 : 0 }}>
+                  {CORD_OPTIONS[col.cord].map((ct) => (
+                    <button
+                      key={ct}
+                      onClick={() => setSelectedCordType(ct)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        border: selectedCordType === ct ? `1px solid ${colors.inkPlum}` : '1px solid #ddd',
+                        background: selectedCordType === ct ? '#f3edf6' : '#fff',
+                        color: selectedCordType === ct ? colors.inkPlum : '#666',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {ct === 'silk' ? 'Silk' : 'Braided'}
+                    </button>
+                  ))}
+                </div>
+                {selectedCordType === 'silk' && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                      Thickness
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {['Thin', 'Thick'].map((th) => (
+                        <button
+                          key={th}
+                          onClick={() => setSelectedSilkThickness(th)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            border: selectedSilkThickness === th ? `1px solid ${colors.inkPlum}` : '1px solid #ddd',
+                            background: selectedSilkThickness === th ? '#f3edf6' : '#fff',
+                            color: selectedSilkThickness === th ? colors.inkPlum : '#666',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {th}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               {t('collection.clickColorsToAdd')}
             </div>
@@ -611,12 +693,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     <button
                       title={c.n}
                       onClick={() => addColor(c.n)}
+                      disabled={(col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness}
                       style={{
                         width: btnSize, height: btnSize, borderRadius: '50%', background: c.h, padding: 0,
                         border: count > 0 ? `2.5px solid ${colors.inkPlum}` : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
-                        cursor: 'pointer', transition: 'transform .1s',
+                        cursor: ((col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness) ? 'not-allowed' : 'pointer', transition: 'transform .1s',
                         transform: count > 0 ? 'scale(1.08)' : 'scale(1)',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                        opacity: ((col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness) ? 0.45 : 1,
                       }}
                     />
                     {count > 0 && (
@@ -634,6 +718,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )
               })}
             </div>
+            {(col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness && (
+              <div style={{ marginTop: 8, fontSize: 11, color: '#a06f00' }}>
+                Select <strong>Thin</strong> or <strong>Thick</strong> before adding colors.
+              </div>
+            )}
           </div>
 
           {/* ─── Same for all toggle ─── */}

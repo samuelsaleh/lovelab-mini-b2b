@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef, useState } from 'react'
-import { COLLECTIONS, CORD_COLORS, HOUSING } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, HOUSING } from '@/lib/catalog'
 import { isLight } from '@/lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -83,7 +83,11 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
   const housingDone = !hasHousing || !!cfg.housing
   const shapeDone = !hasShapes || !!cfg.shape
   const sizeDone = !hasSizes || !!cfg.size
-  const isComplete = caratDone && housingDone && shapeDone && sizeDone
+  const hasCordOptions = CORD_OPTIONS[col.cord]
+  const cordTypeDone = !hasCordOptions || !!cfg.cordType
+  const isSilkCord = col.cord === 'silk' || cfg.cordType === 'silk'
+  const thicknessDone = !isSilkCord || !!cfg.thickness
+  const isComplete = caratDone && housingDone && shapeDone && sizeDone && cordTypeDone && thicknessDone
 
   // Color swatch
   const colorDef = palette.find((p) => p.n === cfg.colorName) || palette.find((p) => p.n?.toLowerCase?.() === cfg.colorName?.toLowerCase?.()) || { h: '#ccc' }
@@ -94,6 +98,8 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
   if (cfg.housing) summaryParts.push(cfg.housing)
   if (cfg.shape) summaryParts.push(cfg.shape)
   if (cfg.size) summaryParts.push(cfg.size)
+  if (cfg.cordType) summaryParts.push(cfg.cordType.charAt(0).toUpperCase() + cfg.cordType.slice(1))
+  if (cfg.thickness) summaryParts.push(cfg.thickness)
   summaryParts.push(`qty ${cfg.qty}`)
   const summary = summaryParts.join(' · ')
 
@@ -273,6 +279,38 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                   </div>
                 </div>
               )}
+
+              {/* Cord Type (for collections with multiple cord options like silkBraided) */}
+              {caratDone && housingDone && shapeDone && sizeDone && CORD_OPTIONS[col.cord] && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ ...lbl, marginBottom: 4 }}>Cord Type</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {CORD_OPTIONS[col.cord].map((ct) => (
+                      <button
+                        key={ct}
+                        onClick={() => patch({ cordType: ct, thickness: null })}
+                        style={tag(cfg.cordType === ct)}
+                      >
+                        {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Thickness (for silk cords only) */}
+              {caratDone && housingDone && shapeDone && sizeDone && (
+                (col.cord === 'silk' || cfg.cordType === 'silk') && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ ...lbl, marginBottom: 4 }}>Thickness</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {['Thin', 'Thick'].map((th) => (
+                        <button key={th} onClick={() => patch({ thickness: th })} style={tag(cfg.thickness === th)}>{th}</button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
             </>
           )}
 
@@ -313,10 +351,20 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
   )
 }
 
+// Helper to get palette based on cord type
+function getPalette(col, cordType) {
+  if (!col) return []
+  // For collections with multiple cord options, use the selected cordType
+  if (CORD_OPTIONS[col.cord] && cordType) {
+    return CORD_COLORS[cordType] || CORD_COLORS.nylon
+  }
+  // Default: use the collection's cord type directly
+  return CORD_COLORS[col.cord] || CORD_COLORS.nylon
+}
+
 // ─── Main BuilderLine ───
 export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate }) {
   const col = line.collectionId ? COLLECTIONS.find((c) => c.id === line.collectionId) : null
-  const palette = col ? CORD_COLORS[col.cord] || CORD_COLORS.nylon : []
 
   const [activeSection, setActiveSection] = useState('collection')
 
@@ -325,7 +373,26 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   const [sharedSettings, setSharedSettings] = useState({
     caratIdx: null, housing: null, housingType: null,
     multiAttached: null, shape: null, size: null,
+    cordType: null, thickness: null,
   })
+
+  // Selected cord type for color picker (for collections with multiple cord options)
+  const hasCordOptions = col && CORD_OPTIONS[col.cord]
+  const [selectedCordType, setSelectedCordType] = useState(
+    hasCordOptions ? CORD_OPTIONS[col.cord][0] : null
+  )
+
+  // Reset selected cord type when collection changes
+  useEffect(() => {
+    if (col && CORD_OPTIONS[col.cord]) {
+      setSelectedCordType(CORD_OPTIONS[col.cord][0])
+    } else {
+      setSelectedCordType(null)
+    }
+  }, [col])
+
+  // Palette for color picker (uses selectedCordType for silkBraided collections)
+  const palette = getPalette(col, selectedCordType)
 
   const set = (patch) => onChange(line.uid, patch)
 
@@ -358,6 +425,8 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
         if (col.housing && !cfg.housing) return false
         if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
         if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
+        if (CORD_OPTIONS[col.cord] && !cfg.cordType) return false
+        if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
         return true
       }).length
     : 0
@@ -373,9 +442,13 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
   // Add color config
   const addColorConfig = (colorName) => {
     const minC = 1
-    const newCfg = consistent
+    let newCfg = consistent
       ? { ...mkColorConfig(colorName, minC), ...sharedSettings }
       : mkColorConfig(colorName, minC)
+    // For collections with multiple cord options, set the cordType from selected
+    if (CORD_OPTIONS[col?.cord] && selectedCordType) {
+      newCfg = { ...newCfg, cordType: newCfg.cordType || selectedCordType }
+    }
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
@@ -698,11 +771,41 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
 
                   {/* Shared Size */}
                   {sharedSettings.caratIdx !== null && (!col.housing || !!sharedSettings.housing) && (!col.shapes || !col.shapes.length || !!sharedSettings.shape) && col.sizes && col.sizes.length > 0 && (
-                    <div style={{ marginBottom: 4 }}>
+                    <div style={{ marginBottom: 8 }}>
                       <div style={{ ...lbl, marginBottom: 4 }}>Size</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                         {col.sizes.map((s) => (
                           <button key={s} onClick={() => updateShared({ size: s })} style={tag(sharedSettings.size === s)}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shared Cord Type (for collections with multiple cord options) */}
+                  {sharedSettings.caratIdx !== null && (!col.housing || !!sharedSettings.housing) && (!col.shapes || !col.shapes.length || !!sharedSettings.shape) && (!col.sizes || !col.sizes.length || !!sharedSettings.size) && CORD_OPTIONS[col.cord] && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ ...lbl, marginBottom: 4 }}>Cord Type</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {CORD_OPTIONS[col.cord].map((ct) => (
+                          <button
+                            key={ct}
+                            onClick={() => updateShared({ cordType: ct, thickness: null })}
+                            style={tag(sharedSettings.cordType === ct)}
+                          >
+                            {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shared Thickness (for silk cords) */}
+                  {sharedSettings.caratIdx !== null && (!col.housing || !!sharedSettings.housing) && (!col.shapes || !col.shapes.length || !!sharedSettings.shape) && (!col.sizes || !col.sizes.length || !!sharedSettings.size) && (col.cord === 'silk' || sharedSettings.cordType === 'silk') && (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ ...lbl, marginBottom: 4 }}>Thickness</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {['Thin', 'Thick'].map((th) => (
+                          <button key={th} onClick={() => updateShared({ thickness: th })} style={tag(sharedSettings.thickness === th)}>{th}</button>
                         ))}
                       </div>
                     </div>
@@ -758,6 +861,24 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                       </div>
                     )
                   })}
+                </div>
+              )}
+
+              {/* Cord Type Selector (for collections with multiple cord options) */}
+              {CORD_OPTIONS[col.cord] && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ ...lbl, marginBottom: 4 }}>Cord Type</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {CORD_OPTIONS[col.cord].map((ct) => (
+                      <button
+                        key={ct}
+                        onClick={() => setSelectedCordType(ct)}
+                        style={tag(selectedCordType === ct)}
+                      >
+                        {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -828,7 +949,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                       key={cfg.id}
                       cfg={cfg}
                       col={col}
-                      palette={palette}
+                      palette={getPalette(col, cfg.cordType)}
                       onUpdate={updateConfig}
                       onRemove={removeConfig}
                       onDuplicate={duplicateConfig}

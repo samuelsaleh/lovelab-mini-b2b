@@ -28,6 +28,8 @@ export function mkColorConfig(colorName, minC = 1) {
     multiAttached: null,
     shape: null,
     size: null,
+    cordType: null,
+    thickness: null,
     qty: minC,
   }
 }

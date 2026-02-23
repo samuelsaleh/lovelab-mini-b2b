@@ -567,8 +567,64 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [vitrinePrice, setVitrinePrice] = useState(150)
   const [vitrineQty, setVitrineQty] = useState(1)
 
-  // Table rows state
-  const [rows, setRows] = useState(() => prefillRows(quote))
+  // Table rows state with undo/redo support
+  const [rows, setRowsInternal] = useState(() => prefillRows(quote))
+  const [rowsHistory, setRowsHistory] = useState([prefillRows(quote)])
+  const [historyIndex, setHistoryIndex] = useState(0)
+  const historyTimeoutRef = useRef(null)
+  
+  // Debounced history push - saves state after 500ms of no changes
+  const pushToHistory = useCallback((newRows) => {
+    if (historyTimeoutRef.current) {
+      clearTimeout(historyTimeoutRef.current)
+    }
+    historyTimeoutRef.current = setTimeout(() => {
+      setRowsHistory(prev => {
+        // Remove any "future" states if we're not at the end
+        const newHistory = prev.slice(0, historyIndex + 1)
+        // Don't add if same as current
+        const current = newHistory[newHistory.length - 1]
+        if (JSON.stringify(current) === JSON.stringify(newRows)) {
+          return newHistory
+        }
+        newHistory.push(JSON.parse(JSON.stringify(newRows)))
+        // Limit history to 30 states
+        if (newHistory.length > 30) newHistory.shift()
+        return newHistory
+      })
+      setHistoryIndex(prev => {
+        const newIdx = prev + 1
+        return Math.min(newIdx, 29)
+      })
+    }, 500)
+  }, [historyIndex])
+  
+  // Wrapper for setRows that also tracks history
+  const setRows = useCallback((updater) => {
+    setRowsInternal(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      pushToHistory(next)
+      return next
+    })
+  }, [pushToHistory])
+  
+  // Undo/Redo functions
+  const canUndo = historyIndex > 0
+  const canRedo = historyIndex < rowsHistory.length - 1
+  
+  const handleUndo = useCallback(() => {
+    if (!canUndo) return
+    const newIndex = historyIndex - 1
+    setHistoryIndex(newIndex)
+    setRowsInternal(JSON.parse(JSON.stringify(rowsHistory[newIndex])))
+  }, [canUndo, historyIndex, rowsHistory])
+  
+  const handleRedo = useCallback(() => {
+    if (!canRedo) return
+    const newIndex = historyIndex + 1
+    setHistoryIndex(newIndex)
+    setRowsInternal(JSON.parse(JSON.stringify(rowsHistory[newIndex])))
+  }, [canRedo, historyIndex, rowsHistory])
 
   // Final total override from calculator
   const [finalTotalOverride, setFinalTotalOverride] = useState(null)
@@ -611,7 +667,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       while (restored.length < ROWS_PER_PAGE) {
         restored.push(emptyRow(restored.length + 1))
       }
-      setRows(restored)
+      setRowsInternal(restored)
+      // Reset history with restored state
+      setRowsHistory([JSON.parse(JSON.stringify(restored))])
+      setHistoryIndex(0)
     }
     setPrepaymentConfirmed(null) // require re-confirmation when re-editing
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -677,7 +736,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       while (restored.length < ROWS_PER_PAGE) {
         restored.push(emptyRow(restored.length + 1))
       }
-      setRows(restored)
+      setRowsInternal(restored)
+      // Reset history with restored state
+      setRowsHistory([JSON.parse(JSON.stringify(restored))])
+      setHistoryIndex(0)
     }
     setShowDraftPrompt(false)
     setPendingDraft(null)
@@ -1485,6 +1547,45 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         >
           &larr; {t('common.back')}
         </button>
+        {/* Undo/Redo buttons */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            title={t('common.undo') || 'Undo'}
+            style={{
+              padding: mobile ? '8px 10px' : '6px 10px', borderRadius: 6,
+              border: `1px solid ${canUndo ? colors.lineGray : '#eee'}`,
+              background: canUndo ? '#fff' : '#f8f8f8',
+              color: canUndo ? colors.charcoal : '#ccc',
+              fontSize: 14, fontWeight: 600,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+              fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
+              opacity: canUndo ? 1 : 0.5,
+              transition: 'all .15s',
+            }}
+          >
+            ↩
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            title={t('common.redo') || 'Redo'}
+            style={{
+              padding: mobile ? '8px 10px' : '6px 10px', borderRadius: 6,
+              border: `1px solid ${canRedo ? colors.lineGray : '#eee'}`,
+              background: canRedo ? '#fff' : '#f8f8f8',
+              color: canRedo ? colors.charcoal : '#ccc',
+              fontSize: 14, fontWeight: 600,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+              fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
+              opacity: canRedo ? 1 : 0.5,
+              transition: 'all .15s',
+            }}
+          >
+            ↪
+          </button>
+        </div>
         {onEditInBuilder && (
           <button
             onClick={() => onEditInBuilder(rows.filter(r => r.collection && r.quantity))}

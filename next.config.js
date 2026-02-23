@@ -6,9 +6,6 @@ const nextConfig = {
   experimental: {
     proxyClientMaxBodySize: '25mb',
   },
-  turbopack: {
-    root: path.join(__dirname),
-  },
   async headers() {
     return [
       {
