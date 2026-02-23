@@ -1079,7 +1079,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                                 <option value="">--</option>
                                 <option value="White">White</option>
                                 <option value="Yellow">Yellow</option>
-                                <option value="Rose">Rose</option>
+                                <option value="Pink">Pink</option>
                               </select>
                             )}
                           </div>
