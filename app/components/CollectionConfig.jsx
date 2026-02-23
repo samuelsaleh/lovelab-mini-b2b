@@ -24,10 +24,10 @@ const duplicateHighlightStyles = `
 .fill-cell { position: relative; }
 .fill-handle-dot {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
-  width: 8px;
-  height: 8px;
+  bottom: 3px;
+  right: 3px;
+  width: 10px;
+  height: 10px;
   background: #5D3A5E;
   border-radius: 1px;
   cursor: crosshair;
@@ -43,10 +43,10 @@ const duplicateHighlightStyles = `
 @media (pointer: coarse) {
   .fill-handle-dot {
     opacity: 0.5;
-    width: 12px;
-    height: 12px;
-    bottom: -6px;
-    right: -6px;
+    width: 14px;
+    height: 14px;
+    bottom: 3px;
+    right: 3px;
   }
   .fill-cell:hover .fill-handle-dot {
     opacity: 1;
@@ -238,17 +238,23 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     dragFillRef.current = state
     setDragFill({ ...state })
 
-    const getRowIdxFromPoint = (clientX, clientY) => {
-      const el = document.elementFromPoint(clientX, clientY)
-      if (!el) return null
-      const row = el.closest('tr[data-row-idx]')
-      if (!row) return null
-      const rowIdx = parseInt(row.getAttribute('data-row-idx'))
-      return isNaN(rowIdx) ? null : rowIdx
+    // Snapshot row bounding rects at drag-start — more reliable than elementFromPoint
+    // which fails over native <select> dropdowns and outside scroll containers.
+    const rowRects = Array.from(
+      document.querySelectorAll('tr[data-row-idx]')
+    ).map(el => ({
+      idx: parseInt(el.getAttribute('data-row-idx')),
+      top: el.getBoundingClientRect().top,
+      bottom: el.getBoundingClientRect().bottom,
+    }))
+
+    const getRowIdxFromPoint = (clientY) => {
+      const match = rowRects.find(r => clientY >= r.top && clientY <= r.bottom)
+      return match ? match.idx : null
     }
 
     const applyMove = (clientX, clientY) => {
-      const rowIdx = getRowIdxFromPoint(clientX, clientY)
+      const rowIdx = getRowIdxFromPoint(clientY)
       if (rowIdx === null || rowIdx <= dragFillRef.current.sourceIdx) return
       if (rowIdx === dragFillRef.current.targetIdx) return
       dragFillRef.current = { ...dragFillRef.current, targetIdx: rowIdx }
@@ -295,6 +301,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
 
     // Touch events (iPad / tablet)
     const onTouchMove = (ev) => {
+      ev.preventDefault() // prevent iOS scroll from cancelling the drag
       const touch = ev.touches[0]
       if (touch) applyMove(touch.clientX, touch.clientY)
     }
