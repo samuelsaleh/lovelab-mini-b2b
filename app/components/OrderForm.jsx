@@ -254,9 +254,10 @@ function CellSelect({ value, onChange, options, isPrinting, align }) {
     boxSizing: 'border-box',
   }
   if (isPrinting) {
+    const opt = options.find(o => o.value === value)
     return (
       <div style={{ ...baseStyle, minHeight: 18, overflow: 'visible', whiteSpace: 'nowrap' }}>
-        {value || ''}
+        {opt ? opt.label : (value || '')}
       </div>
     )
   }

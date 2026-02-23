@@ -191,6 +191,7 @@ export default function App() {
     setShowQuote(false)
     setOrderFormQuote(curQuote)
     setSavedFormState(null)
+    setEditingDocumentId(null)
     setShowOrderForm(true)
   }, [curQuote])
 
