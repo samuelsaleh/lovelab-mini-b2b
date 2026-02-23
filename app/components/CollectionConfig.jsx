@@ -271,9 +271,31 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           if (hasSelection && !selectedIds.has(cfg.id)) return cfg
           switch (column) {
             case 'carat': return { ...cfg, caratIdx: source.caratIdx }
-            case 'housing': return { ...cfg, housing: source.housing, housingType: source.housingType, multiAttached: source.multiAttached }
-            case 'shape': return { ...cfg, shape: source.shape }
-            case 'size': return { ...cfg, size: source.size }
+            // Carry prerequisite fields so the filled value is immediately visible
+            case 'housing': return {
+              ...cfg,
+              caratIdx: cfg.caratIdx ?? source.caratIdx,
+              housing: source.housing,
+              housingType: source.housingType,
+              multiAttached: source.multiAttached,
+            }
+            case 'shape': return {
+              ...cfg,
+              caratIdx: cfg.caratIdx ?? source.caratIdx,
+              housing: cfg.housing ?? source.housing,
+              housingType: cfg.housingType ?? source.housingType,
+              multiAttached: cfg.multiAttached ?? source.multiAttached,
+              shape: source.shape,
+            }
+            case 'size': return {
+              ...cfg,
+              caratIdx: cfg.caratIdx ?? source.caratIdx,
+              housing: cfg.housing ?? source.housing,
+              housingType: cfg.housingType ?? source.housingType,
+              multiAttached: cfg.multiAttached ?? source.multiAttached,
+              shape: cfg.shape ?? source.shape,
+              size: source.size,
+            }
             case 'qty': return { ...cfg, qty: source.qty }
             default: return cfg
           }
