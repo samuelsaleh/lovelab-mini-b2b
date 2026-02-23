@@ -1,11 +1,13 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import UserMenu from './UserMenu'
 
 export default function TopNav({ activeTab, onTabChange, client, onEditClient, onNewClient }) {
+  const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
   const hasClient = client && client.company
@@ -15,6 +17,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
     { id: 'ai', label: t('nav.ai') },
     { id: 'orderform', label: t('nav.orderform') },
     { id: 'documents', label: t('nav.documents') },
+    { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
   ]
 
   return (
@@ -162,7 +165,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
               role="tab"
               aria-selected={isActive}
               aria-controls={`panel-${tab.id}`}
-              onClick={() => onTabChange(tab.id)}
+              onClick={() => tab.href ? router.push(tab.href) : onTabChange(tab.id)}
               style={{
                 padding: mobile ? '14px 16px' : '12px 20px',
                 border: 'none',

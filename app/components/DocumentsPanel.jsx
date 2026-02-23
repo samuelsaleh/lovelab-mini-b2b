@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
@@ -81,6 +82,7 @@ function VitrineSummaryCard({ docs, eventName }) {
 }
 
 export default function DocumentsPanel({ onReEdit }) {
+  const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
@@ -431,19 +433,28 @@ export default function DocumentsPanel({ onReEdit }) {
 
       {/* Main content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? 12 : 20 }}>
-        {/* Search */}
-        <div style={{ marginBottom: 16, maxWidth: mobile ? '100%' : 600 }}>
+        {/* Search + Analytics link */}
+        <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', maxWidth: mobile ? '100%' : 700 }}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by client name or company..."
             style={{
-              width: '100%', padding: mobile ? '12px 16px' : '10px 16px', borderRadius: 10,
+              flex: 1, padding: mobile ? '12px 16px' : '10px 16px', borderRadius: 10,
               border: '1px solid #e3e3e3', fontSize: mobile ? 16 : 13, fontFamily: fonts.body,
               background: '#fff', outline: 'none', boxSizing: 'border-box',
             }}
           />
+          <button
+            onClick={() => router.push('/analytics')}
+            style={{
+              padding: mobile ? '12px 16px' : '10px 18px', borderRadius: 10, border: 'none',
+              background: colors.inkPlum, color: '#fff', fontSize: mobile ? 13 : 12,
+              fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body,
+              whiteSpace: 'nowrap', flexShrink: 0, minHeight: mobile ? 44 : 'auto',
+            }}
+          >Analytics</button>
         </div>
 
         {/* Analytics Summary */}
