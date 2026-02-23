@@ -65,6 +65,21 @@ function findCollection(productName) {
 
 function getHousingOptions(housingKey) {
   if (!housingKey) return []
+
+  // These types store values with a "Bezel X" / "Prong X" prefix — match that format exactly
+  if (housingKey === 'shapyShine') {
+    return [
+      ...HOUSING.shapyShineBezel.map(h => `Bezel ${h}`),
+      ...HOUSING.shapyShineProng.map(h => `Prong ${h}`),
+    ]
+  }
+  if (housingKey === 'matchy') {
+    return [
+      ...HOUSING.matchyBezel.map(h => `Bezel ${h.label || h}`),
+      ...HOUSING.matchyProng.map(h => `Prong ${h.label || h}`),
+    ]
+  }
+
   const h = HOUSING[housingKey]
   if (!h) return []
   let labels = []
