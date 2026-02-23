@@ -175,9 +175,9 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                       ))}
                     </div>
                   )}
-                  {col.housing === 'goldMetal' && (
+                  {(col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {HOUSING.goldMetal.map((h) => (
+                      {HOUSING[col.housing].map((h) => (
                         <button key={h} onClick={() => patch({ housing: h })} style={tag(cfg.housing === h)}>{h}</button>
                       ))}
                     </div>
@@ -608,9 +608,9 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                             ))}
                           </div>
                         )}
-                        {col.housing === 'goldMetal' && (
+                        {(col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                            {HOUSING.goldMetal.map((h) => (
+                            {HOUSING[col.housing].map((h) => (
                               <button key={h} onClick={() => updateShared({ housing: h })} style={tag(sharedSettings.housing === h)}>{h}</button>
                             ))}
                           </div>

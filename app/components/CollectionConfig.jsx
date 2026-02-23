@@ -376,7 +376,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         </select>
       )
     }
-    if (col.housing === 'goldMetal') {
+    if (col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') {
       return (
         <select
           value={cfg.housing || ''}
@@ -384,7 +384,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           style={selectStyle}
         >
           <option value="">{t('collection.housingPlaceholder')}</option>
-          {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
+          {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
         </select>
       )
     }
@@ -723,14 +723,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                         )}
-                        {!duplicateSettings[field].keepSame && field === 'housing' && col.housing === 'goldMetal' && (
+                        {!duplicateSettings[field].keepSame && field === 'housing' && (col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') && (
                           <select
                             value={duplicateSettings.housing.value || ''}
                             onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
                             style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                           >
                             <option value="">{t('collection.housingPlaceholder')}</option>
-                            {HOUSING.goldMetal.map(h => <option key={h} value={h}>{h}</option>)}
+                            {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                         )}
                         {!duplicateSettings[field].keepSame && field === 'housing' && (col.housing === 'shapyShine' || col.housing === 'matchy') && (

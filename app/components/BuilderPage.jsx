@@ -61,7 +61,7 @@ const btnGhost = {
 // ─── Quick-fill Presets ───
 const PRESETS = [
   { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
-  { collectionId: 'CUBIX', housing: 'White Gold', size: 'S/M', caratIndices: [0, 1] },
+  { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
 ]
 
 // ─── Collapsible warnings: shows a compact summary when there are many ───
