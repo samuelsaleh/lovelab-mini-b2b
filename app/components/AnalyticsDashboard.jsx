@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts, brandGradient } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
+import { COLLECTIONS } from '@/lib/catalog'
+import AnalyticsChatPanel from './AnalyticsChatPanel'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, Legend,
@@ -137,6 +139,7 @@ export default function AnalyticsDashboard() {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedEventId, setSelectedEventId] = useState('')
+  const [showChat, setShowChat] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -202,13 +205,24 @@ export default function AnalyticsDashboard() {
 
   // ─── Top products (by quantity) ───────────────────────────────────────
   const productData = useMemo(() => {
+    const validLabels = new Set(COLLECTIONS.map(c => c.label))
+    const normalize = (name) => {
+      if (!name) return null
+      const upper = name.trim().toUpperCase()
+      for (const c of COLLECTIONS) {
+        if (c.label.toUpperCase() === upper || c.id.toUpperCase() === upper) return c.label
+      }
+      if (validLabels.has(name.trim())) return name.trim()
+      return null
+    }
     const map = new Map()
     docs.forEach(d => {
       const rows = d.metadata?.formState?.rows || []
       rows.forEach(r => {
-        if (!r.collection) return
-        if (!map.has(r.collection)) map.set(r.collection, { name: r.collection, qty: 0, revenue: 0 })
-        const entry = map.get(r.collection)
+        const label = normalize(r.collection)
+        if (!label) return
+        if (!map.has(label)) map.set(label, { name: label, qty: 0, revenue: 0 })
+        const entry = map.get(label)
         entry.qty += parseInt(r.quantity) || 0
         entry.revenue += parseFloat(r.total) || 0
       })
@@ -245,6 +259,15 @@ export default function AnalyticsDashboard() {
 
   // ─── Quick stats: carats, shapes, packaging, cord colors ──────────────
   const quickStats = useMemo(() => {
+    const validLabels = new Set(COLLECTIONS.map(c => c.label))
+    const validIds = new Set(COLLECTIONS.map(c => c.id))
+    const isValidRow = (r) => {
+      if (!r.collection) return false
+      const upper = r.collection.trim().toUpperCase()
+      return validLabels.has(r.collection.trim()) || validIds.has(upper) ||
+        COLLECTIONS.some(c => c.label.toUpperCase() === upper)
+    }
+
     const caratMap = new Map()
     const shapeMap = new Map()
     const packMap = new Map()
@@ -255,12 +278,12 @@ export default function AnalyticsDashboard() {
       const fs = d.metadata?.formState
       if (!fs) return
 
-      // Packaging
       if (fs.packaging) {
         packMap.set(fs.packaging, (packMap.get(fs.packaging) || 0) + 1)
       }
 
       (fs.rows || []).forEach(r => {
+        if (!isValidRow(r)) return
         if (r.carat) caratMap.set(r.carat, (caratMap.get(r.carat) || 0) + (parseInt(r.quantity) || 0))
         if (r.shape) shapeMap.set(r.shape, (shapeMap.get(r.shape) || 0) + (parseInt(r.quantity) || 0))
         if (r.colorCord) cordMap.set(r.colorCord, (cordMap.get(r.colorCord) || 0) + (parseInt(r.quantity) || 0))
@@ -286,6 +309,63 @@ export default function AnalyticsDashboard() {
     const totalQty = rows.reduce((s, r) => s + r.qty, 0)
     return { rows, totalQty }
   }, [docs])
+
+  // ─── Serialized context for AI chatbot ─────────────────────────────────
+  const analyticsContext = useMemo(() => {
+    const eventName = selectedEventId
+      ? events.find(e => e.id === selectedEventId)?.name || 'Unknown'
+      : 'All Events'
+    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName})`, '---']
+
+    lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} | Vitrines: ${kpis.totalVitrines} | Total Documents: ${kpis.totalDocs}`)
+    lines.push('---')
+
+    if (revenuePerFair.length > 0) {
+      lines.push('REVENUE PER FAIR:')
+      revenuePerFair.forEach(r => lines.push(`- ${r.name}: ${fmt(r.revenue)} (${r.orders} orders)`))
+      lines.push('---')
+    }
+
+    if (productData.length > 0) {
+      lines.push('TOP PRODUCTS (by quantity):')
+      productData.forEach((p, i) => lines.push(`${i + 1}. ${p.name} - ${p.qty} units, ${fmt(p.revenue)}`))
+      lines.push('---')
+    }
+
+    if (clientData.length > 0) {
+      lines.push('TOP CLIENTS (by revenue):')
+      clientData.slice(0, 20).forEach((c, i) => lines.push(`${i + 1}. ${c.name} - ${fmt(c.revenue)} (${c.orders} orders)`))
+      lines.push('---')
+    }
+
+    if (vitrineData.rows.length > 0) {
+      lines.push(`VITRINE BREAKDOWN (${vitrineData.totalQty} total):`)
+      vitrineData.rows.forEach(r => lines.push(`- ${r.company}: ${r.qty} vitrine${r.qty > 1 ? 's' : ''}, order total ${fmt(r.total)}`))
+      lines.push('---')
+    }
+
+    if (countryData.length > 0) {
+      lines.push('COUNTRIES: ' + countryData.map(c => `${c.name}: ${c.count}`).join(', '))
+    }
+
+    if (quickStats.shapes.length > 0) {
+      lines.push('SHAPES: ' + quickStats.shapes.map(s => `${s.name}: ${s.value}`).join(', '))
+    }
+    if (quickStats.carats.length > 0) {
+      lines.push('CARATS: ' + quickStats.carats.map(s => `${s.name}: ${s.value}`).join(', '))
+    }
+    if (quickStats.sizes.length > 0) {
+      lines.push('SIZES: ' + quickStats.sizes.map(s => `${s.name}: ${s.value}`).join(', '))
+    }
+    if (quickStats.cordColors.length > 0) {
+      lines.push('CORD COLORS: ' + quickStats.cordColors.map(s => `${s.name}: ${s.value}`).join(', '))
+    }
+    if (quickStats.packaging.length > 0) {
+      lines.push('PACKAGING: ' + quickStats.packaging.map(s => `${s.name}: ${s.value}`).join(', '))
+    }
+
+    return lines.join('\n')
+  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, quickStats, selectedEventId, events])
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -327,6 +407,15 @@ export default function AnalyticsDashboard() {
                 <option key={e.id} value={e.id}>{e.name}</option>
               ))}
             </select>
+            <button
+              onClick={() => setShowChat(true)}
+              style={{
+                padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', fontFamily: fonts.body,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
             <button
               onClick={() => router.push('/')}
               style={{
@@ -518,6 +607,13 @@ export default function AnalyticsDashboard() {
           LoveLab Analytics — {documents.length} documents across {events.length} events
         </div>
       </div>
+
+      {/* ─── AI Chat Panel ─── */}
+      <AnalyticsChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        analyticsContext={analyticsContext}
+      />
     </div>
   )
 }

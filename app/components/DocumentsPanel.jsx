@@ -81,7 +81,7 @@ function VitrineSummaryCard({ docs, eventName }) {
   )
 }
 
-export default function DocumentsPanel({ onReEdit }) {
+export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
@@ -99,7 +99,7 @@ export default function DocumentsPanel({ onReEdit }) {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [refreshKey])
 
   const fetchData = async () => {
     setLoading(true)
