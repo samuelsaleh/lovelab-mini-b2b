@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
@@ -61,6 +61,21 @@ function findCollection(productName) {
   ) || COLLECTIONS.find(
     (c) => name.includes(c.label.toUpperCase()) || name.includes(c.id.toUpperCase())
   ) || null
+}
+
+function getHousingOptions(housingKey) {
+  if (!housingKey) return []
+  const h = HOUSING[housingKey]
+  if (!h) return []
+  let labels = []
+  if (Array.isArray(h)) {
+    labels = h.map(item => (typeof item === 'string' ? item : item.label))
+  } else if (typeof h === 'object') {
+    labels = Object.values(h).flatMap(arr =>
+      Array.isArray(arr) ? arr.map(item => (typeof item === 'string' ? item : item.label)) : []
+    )
+  }
+  return [...new Set(labels)]
 }
 
 function prefillRows(quote) {
@@ -211,6 +226,34 @@ function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting
         background: 'transparent',
       }}
     />
+  )
+}
+
+function CellSelect({ value, onChange, options, isPrinting, align }) {
+  const baseStyle = {
+    width: '100%',
+    fontFamily: fonts.body,
+    fontSize: 11,
+    textAlign: align || 'left',
+    padding: '4px',
+    boxSizing: 'border-box',
+  }
+  if (isPrinting) {
+    return (
+      <div style={{ ...baseStyle, minHeight: 18, overflow: 'visible', whiteSpace: 'nowrap' }}>
+        {value || ''}
+      </div>
+    )
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ ...baseStyle, border: 'none', outline: 'none', background: 'transparent', cursor: 'pointer', color: 'rgb(79, 79, 79)' }}
+    >
+      <option value=""></option>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
   )
 }
 
@@ -495,6 +538,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Local state inside the gate (before committing)
   const [gateHasPrepayment, setGateHasPrepayment] = useState(false)
   const [gatePrepaymentAmount, setGatePrepaymentAmount] = useState('')
+  const [prepaymentMethod, setPrepaymentMethod] = useState('')
+  const [gatePrepaymentMethod, setGatePrepaymentMethod] = useState('')
 
   // Vitrine state
   const [hasVitrine, setHasVitrine] = useState(false)
@@ -533,6 +578,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.createdBy != null) setCreatedBy(s.createdBy)
     if (s.hasPrepayment != null) setHasPrepayment(s.hasPrepayment)
     if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
+    if (s.prepaymentMethod != null) setPrepaymentMethod(s.prepaymentMethod)
     if (s.discountDisplay != null) setDiscountDisplay(s.discountDisplay)
     if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
@@ -599,6 +645,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.createdBy != null) setCreatedBy(s.createdBy)
     if (s.hasPrepayment != null) setHasPrepayment(s.hasPrepayment)
     if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
+    if (s.prepaymentMethod != null) setPrepaymentMethod(s.prepaymentMethod)
     if (s.discountDisplay != null) setDiscountDisplay(s.discountDisplay)
     if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
@@ -646,7 +693,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           rows: rows.filter(r => r.collection || r.quantity),
           companyName, contactName, addressLine1, addressLine2, country,
           vatNumber, email, phone, date, packaging, remarks,
-          eventName, createdBy, hasPrepayment, prepaymentAmount,
+          eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
           discountDisplay, finalTotalOverride,
           hasVitrine, vitrinePrice, vitrineQty,
         }
@@ -734,6 +781,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         if (qty && price) {
           next[rowIdx].total = String(qty * price)
         }
+      }
+      // When collection changes, reset dependent fields
+      if (key === 'collection') {
+        next[rowIdx].carat = ''
+        next[rowIdx].unitPrice = ''
+        next[rowIdx].total = ''
+        next[rowIdx].shape = ''
+        next[rowIdx].bpColor = ''
+        next[rowIdx].size = ''
       }
       // Auto-lookup unitPrice from catalog when collection or carat changes
       if (key === 'collection' || key === 'carat') {
@@ -978,22 +1034,24 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (prepaymentConfirmed === null) {
       setGateHasPrepayment(hasPrepayment)
       setGatePrepaymentAmount(prepaymentAmount)
+      setGatePrepaymentMethod(prepaymentMethod)
       setPendingAction(action)
       setShowPrepaymentGate(true)
     } else {
       runAction(action)
     }
-  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, runAction])
+  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction])
 
   const confirmPrepaymentGate = useCallback(() => {
     setHasPrepayment(gateHasPrepayment)
     setPrepaymentAmount(gateHasPrepayment ? gatePrepaymentAmount : '')
+    setPrepaymentMethod(gateHasPrepayment ? gatePrepaymentMethod : '')
     setPrepaymentConfirmed(true)
     setShowPrepaymentGate(false)
     const action = pendingAction
     setPendingAction(null)
     runAction(action)
-  }, [gateHasPrepayment, gatePrepaymentAmount, pendingAction, runAction])
+  }, [gateHasPrepayment, gatePrepaymentAmount, gatePrepaymentMethod, pendingAction, runAction])
 
   // ─── Header field style ───
   const hFieldLabel = { fontSize: 9, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 1 }
@@ -1115,6 +1173,43 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                       background: '#fff', boxSizing: 'border-box',
                     }}
                   />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    {['SumUp', 'N26 (transfer)', 'Revolut'].map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setGatePrepaymentMethod(prev => prev === m ? '' : m)}
+                        style={{
+                          fontSize: 12, padding: '5px 12px', borderRadius: 20,
+                          border: `1.5px solid ${gatePrepaymentMethod === m ? colors.inkPlum : '#ddd'}`,
+                          background: gatePrepaymentMethod === m ? colors.inkPlum : '#fff',
+                          color: gatePrepaymentMethod === m ? '#fff' : colors.charcoal,
+                          cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600,
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                  {/* N26 bank wire coordinates preview in gate modal */}
+                  {gatePrepaymentMethod === 'N26 (transfer)' && (
+                    <div style={{
+                      marginTop: 10,
+                      padding: '8px 12px',
+                      borderLeft: `3px solid ${colors.inkPlum}`,
+                      background: 'rgba(93,58,94,0.04)',
+                      borderRadius: 4,
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: colors.charcoal, marginBottom: 3 }}>
+                        Beneficiary: Elie Schonfeld
+                      </div>
+                      <div style={{ fontSize: 11, color: colors.charcoal, lineHeight: 1.7 }}>
+                        BANK: N26 &nbsp;|&nbsp; BIC: NTSBDEB1XXX
+                      </div>
+                      <div style={{ fontSize: 11, color: colors.charcoal, lineHeight: 1.7 }}>
+                        IBAN: DE11 1001 1001 2301 0675 66
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1165,7 +1260,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             rows: rows.filter(r => isRowFilled(r)),
             companyName, contactName, addressLine1, addressLine2, country,
             vatNumber, email, phone, date, packaging, remarks,
-            eventName, createdBy, hasPrepayment, prepaymentAmount,
+            eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
             discountDisplay, finalTotalOverride,
             hasVitrine, vitrinePrice, vitrineQty,
           },
@@ -1746,22 +1841,73 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                       : pageIdx * ROWS_PER_PAGE + rowIdx
                     return (
                       <tr key={globalIdx}>
-                        {COLUMNS.map((col) => (
-                          <td key={col.key} style={{
-                            ...tdStyle,
-                            borderLeft: col.key === 'no' ? `1px solid ${colors.lineGray}` : 'none',
-                            ...(col.key === 'total' ? { borderRight: `1px solid ${colors.lineGray}` } : {}),
-                          }}>
-                            <CellInput
-                              value={row[col.key]}
-                              onChange={(val) => updateCell(globalIdx, col.key, val)}
-                              align={['quantity', 'unitPrice', 'total', 'no', 'carat'].includes(col.key) ? 'center' : 'left'}
-                              bold={col.key === 'total'}
-                              color={col.key === 'total' ? colors.inkPlum : colors.charcoal}
-                              isPrinting={isPrinting}
-                            />
-                          </td>
-                        ))}
+                        {COLUMNS.map((col) => {
+                          const isCollectionCol = col.key === 'collection'
+                          const isCaratCol = col.key === 'carat'
+                          const isShapeCol = col.key === 'shape'
+                          const isBpColorCol = col.key === 'bpColor'
+                          const isSizeCol = col.key === 'size'
+                          const rowCol = findCollection(row.collection)
+                          const knownCol = (isCaratCol || isShapeCol || isBpColorCol || isSizeCol) ? rowCol : null
+                          const shapeOptions = isShapeCol && knownCol?.shapes ? knownCol.shapes.map(s => ({ value: s, label: s })) : null
+                          const housingOpts = isBpColorCol && knownCol?.housing ? getHousingOptions(knownCol.housing).map(h => ({ value: h, label: h })) : null
+                          const sizeOptions = isSizeCol && knownCol?.sizes ? knownCol.sizes.map(s => ({ value: s, label: s })) : null
+                          return (
+                            <td key={col.key} style={{
+                              ...tdStyle,
+                              borderLeft: col.key === 'no' ? `1px solid ${colors.lineGray}` : 'none',
+                              ...(col.key === 'total' ? { borderRight: `1px solid ${colors.lineGray}` } : {}),
+                            }}>
+                              {isCollectionCol ? (
+                                <CellSelect
+                                  value={row.collection}
+                                  onChange={(val) => updateCell(globalIdx, 'collection', val)}
+                                  options={COLLECTIONS.map(c => ({ value: c.label, label: c.label }))}
+                                  isPrinting={isPrinting}
+                                />
+                              ) : isCaratCol && knownCol ? (
+                                <CellSelect
+                                  value={row.carat}
+                                  onChange={(val) => updateCell(globalIdx, 'carat', val)}
+                                  options={knownCol.carats.map(c => ({ value: c, label: `${c} ct` }))}
+                                  isPrinting={isPrinting}
+                                  align="center"
+                                />
+                              ) : isShapeCol && shapeOptions ? (
+                                <CellSelect
+                                  value={row.shape}
+                                  onChange={(val) => updateCell(globalIdx, 'shape', val)}
+                                  options={shapeOptions}
+                                  isPrinting={isPrinting}
+                                />
+                              ) : isBpColorCol && housingOpts && housingOpts.length > 0 ? (
+                                <CellSelect
+                                  value={row.bpColor}
+                                  onChange={(val) => updateCell(globalIdx, 'bpColor', val)}
+                                  options={housingOpts}
+                                  isPrinting={isPrinting}
+                                />
+                              ) : isSizeCol && sizeOptions ? (
+                                <CellSelect
+                                  value={row.size}
+                                  onChange={(val) => updateCell(globalIdx, 'size', val)}
+                                  options={sizeOptions}
+                                  isPrinting={isPrinting}
+                                  align="center"
+                                />
+                              ) : (
+                                <CellInput
+                                  value={row[col.key]}
+                                  onChange={(val) => updateCell(globalIdx, col.key, val)}
+                                  align={['quantity', 'unitPrice', 'total', 'no', 'carat'].includes(col.key) ? 'center' : 'left'}
+                                  bold={col.key === 'total'}
+                                  color={col.key === 'total' ? colors.inkPlum : colors.charcoal}
+                                  isPrinting={isPrinting}
+                                />
+                              )}
+                            </td>
+                          )
+                        })}
                         {!isPrinting && (
                         <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: mobile ? 120 : 72, verticalAlign: 'middle' }}>
                           {isRowFilled(row) && (
@@ -1940,27 +2086,65 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   borderTop: `1px solid ${colors.lineGray}`,
                 }}>
                   {/* Prepayment */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 200 }}>
-                    <input
-                      type="checkbox"
-                      checked={hasPrepayment}
-                      onChange={(e) => setHasPrepayment(e.target.checked)}
-                      style={{ accentColor: colors.inkPlum, width: 14, height: 14, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, whiteSpace: 'nowrap' }}>Prepayment made</span>
-                    {hasPrepayment && (
-                      <PrintableInput
-                        value={prepaymentAmount}
-                        onChange={(e) => setPrepaymentAmount(e.target.value)}
-                        placeholder="€ amount"
-                        style={{
-                          width: 90, padding: '3px 6px', border: 'none',
-                          borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
-                          fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
-                          background: 'transparent', boxSizing: 'border-box',
-                        }}
-                        isPrinting={isPrinting}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <input
+                        type="checkbox"
+                        checked={hasPrepayment}
+                        onChange={(e) => setHasPrepayment(e.target.checked)}
+                        style={{ accentColor: colors.inkPlum, width: 14, height: 14, cursor: 'pointer' }}
                       />
+                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, whiteSpace: 'nowrap' }}>Prepayment made</span>
+                      {hasPrepayment && (
+                        <PrintableInput
+                          value={prepaymentAmount}
+                          onChange={(e) => setPrepaymentAmount(e.target.value)}
+                          placeholder="€ amount"
+                          style={{
+                            width: 90, padding: '3px 6px', border: 'none',
+                            borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
+                            fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
+                            background: 'transparent', boxSizing: 'border-box',
+                          }}
+                          isPrinting={isPrinting}
+                        />
+                      )}
+                      {['SumUp', 'N26 (transfer)', 'Revolut'].map(m => (
+                        <button
+                          key={m}
+                          onClick={() => setPrepaymentMethod(prev => prev === m ? '' : m)}
+                          style={{
+                            fontSize: 9, padding: '2px 7px', borderRadius: 10,
+                            border: `1px solid ${prepaymentMethod === m ? colors.inkPlum : '#ccc'}`,
+                            background: prepaymentMethod === m ? colors.inkPlum : 'transparent',
+                            color: prepaymentMethod === m ? '#fff' : colors.charcoal,
+                            cursor: 'pointer', fontFamily: fonts.body,
+                            lineHeight: 1.4, whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    {/* N26 bank wire coordinates — visible on screen and in print */}
+                    {prepaymentMethod === 'N26 (transfer)' && (
+                      <div style={{
+                        marginLeft: 20,
+                        padding: '6px 10px',
+                        borderLeft: `2px solid ${colors.inkPlum}`,
+                        background: isPrinting ? 'transparent' : 'rgba(93,58,94,0.04)',
+                        borderRadius: isPrinting ? 0 : 4,
+                      }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: colors.charcoal, marginBottom: 2 }}>
+                          Beneficiary: Elie Schonfeld
+                        </div>
+                        <div style={{ fontSize: 9, color: colors.charcoal, lineHeight: 1.6 }}>
+                          BANK: N26 &nbsp;|&nbsp; BIC: NTSBDEB1XXX
+                        </div>
+                        <div style={{ fontSize: 9, color: colors.charcoal, lineHeight: 1.6 }}>
+                          IBAN: DE11 1001 1001 2301 0675 66
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
