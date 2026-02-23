@@ -23,7 +23,7 @@ export async function GET(request) {
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
       .order('created_at', { ascending: false })
-      .limit(200); // Prevent unbounded queries
+      .limit(2000); // Allow up to 2000 documents for analytics
 
     if (eventId) {
       query = query.eq('event_id', eventId);

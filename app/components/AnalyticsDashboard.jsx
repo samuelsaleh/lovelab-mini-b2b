@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import { colors, fonts, brandGradient } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
+import { COUNTRIES } from '@/lib/countries'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  ComposedChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, Legend,
 } from 'recharts'
 
@@ -53,6 +53,80 @@ function ChartTooltip({ active, payload, label, formatter }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// ─── Sales Timeline Chart ──────────────────────────────────────────────────
+function SalesTimelineChart({ data }) {
+  const rotateLabels = data.length > 5
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ComposedChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: rotateLabels ? 44 : 12 }}>
+        <defs>
+          <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%"  stopColor={colors.inkPlum} stopOpacity={0.22} />
+            <stop offset="95%" stopColor={colors.inkPlum} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+        <XAxis
+          dataKey="date"
+          fontSize={12}
+          tick={{ fill: '#999' }}
+          angle={rotateLabels ? -35 : 0}
+          textAnchor={rotateLabels ? 'end' : 'middle'}
+          interval={0}
+        />
+        <YAxis
+          yAxisId="rev"
+          tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`}
+          fontSize={12}
+          tick={{ fill: '#bbb' }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          yAxisId="cnt"
+          orientation="right"
+          fontSize={11}
+          tick={{ fill: '#ccc' }}
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+          width={28}
+        />
+        <Tooltip
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null
+            const rev = payload.find(p => p.dataKey === 'revenue')
+            const cnt = payload.find(p => p.dataKey === 'orders')
+            return (
+              <div style={{
+                background: '#fff', border: `1px solid ${colors.lineGray}`,
+                borderRadius: 10, padding: '10px 14px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.10)', fontSize: 13,
+              }}>
+                <div style={{ fontWeight: 700, color: colors.inkPlum, marginBottom: 6 }}>{label}</div>
+                {rev && <div style={{ color: colors.inkPlum }}>Revenue: <strong>{fmt(rev.value)}</strong></div>}
+                {cnt && <div style={{ color: '#aaa', marginTop: 2 }}>Orders: <strong>{cnt.value}</strong></div>}
+              </div>
+            )
+          }}
+        />
+        <Bar yAxisId="cnt" dataKey="orders" name="Orders" fill={`${colors.inkPlum}15`} radius={[4, 4, 0, 0]} maxBarSize={36} />
+        <Area
+          yAxisId="rev"
+          type="monotone"
+          dataKey="revenue"
+          name="Revenue"
+          stroke={colors.inkPlum}
+          strokeWidth={2.5}
+          fill="url(#salesGradient)"
+          dot={{ r: 4, fill: '#fff', stroke: colors.inkPlum, strokeWidth: 2 }}
+          activeDot={{ r: 6, fill: colors.inkPlum }}
+        />
+      </ComposedChart>
+    </ResponsiveContainer>
   )
 }
 
@@ -132,7 +206,6 @@ function MiniStat({ label, items, maxItems = 5 }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function AnalyticsDashboard() {
-  const router = useRouter()
   const mobile = useIsMobile()
 
   const [documents, setDocuments] = useState([])
@@ -192,12 +265,20 @@ export default function AnalyticsDashboard() {
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => {
+    const countriesLower = COUNTRIES.map(c => c.toLowerCase())
     const normalizeCountry = (raw) => {
       if (!raw || !raw.trim()) return 'Unknown'
-      return raw.trim().replace(/\s+/g, ' ')
-        .split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ')
+      const cleaned = raw.trim().replace(/\s+/g, ' ')
+      const lower = cleaned.toLowerCase()
+      // Direct match against known countries
+      const idx = countriesLower.indexOf(lower)
+      if (idx >= 0) return COUNTRIES[idx]
+      // Try to find a known country name anywhere in the string (e.g. "Berlin, Germany" → "Germany")
+      for (let i = 0; i < COUNTRIES.length; i++) {
+        if (lower.includes(countriesLower[i])) return COUNTRIES[i]
+      }
+      // Fallback: title-case what we have
+      return cleaned.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
     }
     const map = new Map()
     docs.forEach(d => {
@@ -212,14 +293,17 @@ export default function AnalyticsDashboard() {
 
   // ─── Top products (by quantity) ───────────────────────────────────────
   const productData = useMemo(() => {
-    const validLabels = new Set(COLLECTIONS.map(c => c.label))
     const normalize = (name) => {
       if (!name) return null
       const upper = name.trim().toUpperCase()
+      // Match against collection id or label (case-insensitive)
       for (const c of COLLECTIONS) {
         if (c.label.toUpperCase() === upper || c.id.toUpperCase() === upper) return c.label
       }
-      if (validLabels.has(name.trim())) return name.trim()
+      // Partial match (e.g. "MULTI THREE 0.30ct" contains "MULTI THREE")
+      for (const c of COLLECTIONS) {
+        if (upper.includes(c.label.toUpperCase()) || upper.includes(c.id.toUpperCase())) return c.label
+      }
       return null
     }
     const map = new Map()
@@ -230,7 +314,8 @@ export default function AnalyticsDashboard() {
         if (!label) return
         if (!map.has(label)) map.set(label, { name: label, qty: 0, revenue: 0 })
         const entry = map.get(label)
-        entry.qty += parseInt(r.quantity) || 0
+        const qtyStr = String(r.quantity || '').replace(/[^\d.-]/g, '')
+        entry.qty += parseInt(qtyStr) || 0
         entry.revenue += parseFloat(r.total) || 0
       })
     })
@@ -398,47 +483,33 @@ export default function AnalyticsDashboard() {
   const gridGap = mobile ? 12 : 20
 
   return (
-    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', minHeight: '100vh' }}>
-      {/* ─── Header ─── */}
-      <div style={{ background: '#fff', borderBottom: `1px solid ${colors.lineGray}`, padding: `${mobile ? 12 : 16}px ${pad}px` }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 32 : 40, width: 'auto' }} />
-            <h1 style={{ fontSize: mobile ? 18 : 22, fontWeight: 800, color: colors.inkPlum, margin: 0, fontFamily: fonts.heading }}>Analytics</h1>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <select
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-              style={{
-                padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
-                fontSize: 13, fontFamily: fonts.body, color: colors.charcoal, background: '#fff',
-                cursor: 'pointer', minWidth: 180,
-              }}
-            >
-              <option value="">All Events</option>
-              {events.map(e => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => setShowChat(true)}
-              style={{
-                padding: '8px 16px', borderRadius: 8, border: 'none',
-                background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
-                cursor: 'pointer', fontFamily: fonts.body,
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
-            <button
-              onClick={() => router.push('/')}
-              style={{
-                padding: '8px 16px', borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`,
-                background: '#fdf7fa', color: colors.inkPlum, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', fontFamily: fonts.body,
-              }}
-            >Back</button>
-          </div>
+    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', flex: 1, overflowY: 'auto' }}>
+      {/* ─── Filter toolbar ─── */}
+      <div style={{ background: '#fff', borderBottom: `1px solid ${colors.lineGray}`, padding: `${mobile ? 8 : 10}px ${pad}px` }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <select
+            value={selectedEventId}
+            onChange={(e) => setSelectedEventId(e.target.value)}
+            style={{
+              padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
+              fontSize: 13, fontFamily: fonts.body, color: colors.charcoal, background: '#fff',
+              cursor: 'pointer', minWidth: 180,
+            }}
+          >
+            <option value="">All Events</option>
+            {events.map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowChat(true)}
+            style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none',
+              background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', fontFamily: fonts.body,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
         </div>
       </div>
 
@@ -484,17 +555,9 @@ export default function AnalyticsDashboard() {
             </Section>
           ) : (
             <Section title="Sales Timeline">
-              {timelineData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={timelineData} margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" fontSize={11} tick={{ fill: '#999' }} />
-                    <YAxis tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
-                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
-                    <Area type="monotone" dataKey="revenue" stroke={colors.inkPlum} fill={`${colors.inkPlum}20`} strokeWidth={2} name="Revenue" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No data</div>}
+              {timelineData.length > 0
+                ? <SalesTimelineChart data={timelineData} />
+                : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No data</div>}
             </Section>
           )}
 
@@ -575,17 +638,9 @@ export default function AnalyticsDashboard() {
           {/* Sales Timeline (always visible) */}
           {!selectedEventId && (
             <Section title="Sales Timeline">
-              {timelineData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <AreaChart data={timelineData} margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" fontSize={11} tick={{ fill: '#999' }} />
-                    <YAxis tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
-                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
-                    <Area type="monotone" dataKey="revenue" stroke={colors.inkPlum} fill={`${colors.inkPlum}20`} strokeWidth={2} name="Revenue" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No timeline data</div>}
+              {timelineData.length > 0
+                ? <SalesTimelineChart data={timelineData} />
+                : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No timeline data</div>}
             </Section>
           )}
 

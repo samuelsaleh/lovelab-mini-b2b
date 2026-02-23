@@ -6,11 +6,12 @@ import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import UserMenu from './UserMenu'
 
-export default function TopNav({ activeTab, onTabChange, client, onEditClient, onNewClient }) {
+export default function TopNav({ activeTab, onTabChange, client, onEditClient, onNewClient, hideClientBar }) {
   const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
   const hasClient = client && client.company
+  const showClientUI = !hideClientBar && onEditClient
 
   const NAV_TABS = [
     { id: 'builder', label: t('nav.builder') },
@@ -34,12 +35,12 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
         maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box',
       }}>
         {/* Logo */}
-        <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 36 : 44, width: 'auto' }} />
+        <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 48 : 70, width: 'auto' }} />
 
         {/* Client info + actions + user menu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 6 : 10 }}>
           {/* Client badge (desktop only - shows company info inline) */}
-          {!mobile && hasClient && (
+          {showClientUI && !mobile && hasClient && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#f8f8f8', borderRadius: 8, padding: '5px 12px',
@@ -53,7 +54,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
           )}
 
           {/* Desktop: Change Client + New Client buttons */}
-          {!mobile && (
+          {showClientUI && !mobile && (
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 onClick={onEditClient}
@@ -89,7 +90,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
           )}
 
           {/* Mobile: compact client name badge (tappable) */}
-          {mobile && hasClient && (
+          {showClientUI && mobile && hasClient && (
             <button
               onClick={onEditClient}
               style={{
@@ -109,7 +110,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
       </div>
 
       {/* Mobile: client action bar */}
-      {mobile && (
+      {showClientUI && mobile && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '6px 12px 8px',

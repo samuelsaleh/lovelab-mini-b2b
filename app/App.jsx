@@ -72,7 +72,7 @@ export default function App() {
     vatMessageKey: null,
     vatValidating: false,
   })
-  const [clientReady, setClientReady] = useState(false)
+  const [clientReady, setClientReady] = useState(true)
 
   // AI chat state
   const [descLoading, setDescLoading] = useState(false)
@@ -439,6 +439,14 @@ export default function App() {
           if (documentId) setEditingDocumentId(documentId)
           setShowOrderForm(true)
         }
+      }
+    } catch { /* ignore */ }
+    try {
+      const targetTab = sessionStorage.getItem('lovelab-target-tab')
+      if (targetTab) {
+        sessionStorage.removeItem('lovelab-target-tab')
+        if (targetTab === 'orderform') handleBlankOrderForm()
+        else setActiveTab(targetTab)
       }
     } catch { /* ignore */ }
   }, [])
