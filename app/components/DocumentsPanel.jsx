@@ -7,6 +7,79 @@ import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
 import ConfirmDialog from './ConfirmDialog'
 
+// ─── Vitrine helpers ───────────────────────────────────────────────────────
+
+const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i
+
+function parseVitrineFromRemarks(remarks) {
+  if (!remarks) return null
+  const m = remarks.match(VITRINE_REGEX)
+  if (!m) return remarks.toLowerCase().includes('vitrine') ? 1 : null
+  return parseInt(m[1] || m[2], 10)
+}
+
+function resolveVitrineQty(doc) {
+  const fs = doc?.metadata?.formState
+  if (!fs) return null
+  const { hasVitrine, vitrineQty, remarks } = fs
+  const toggleQty = hasVitrine ? (vitrineQty || 1) : null
+  const remarksQty = parseVitrineFromRemarks(remarks)
+  if (toggleQty !== null && remarksQty !== null) return toggleQty
+  if (toggleQty !== null) return toggleQty
+  if (remarksQty !== null) return remarksQty
+  return null
+}
+
+function VitrineSummaryCard({ docs, eventName }) {
+  const [open, setOpen] = useState(true)
+  const rows = docs
+    .map(doc => ({ company: doc.client_company || doc.client_name || 'Unknown', qty: resolveVitrineQty(doc), total: doc.total_amount || 0 }))
+    .filter(r => r.qty !== null)
+  if (rows.length === 0) return null
+  const totalQty = rows.reduce((s, r) => s + r.qty, 0)
+  const totalAmount = rows.reduce((s, r) => s + r.total, 0)
+  const thS = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}` }
+  const tdS = { padding: '10px 12px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }
+  const ftS = { padding: '10px 12px', fontSize: 13, fontWeight: 700, color: colors.inkPlum }
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', cursor: 'pointer', userSelect: 'none', borderBottom: open ? `1px solid ${colors.lineGray}` : 'none' }} onClick={() => setOpen(o => !o)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>Vitrine Summary</span>
+          {eventName && <span style={{ fontSize: 12, color: colors.lovelabMuted }}>— {eventName}</span>}
+          <span style={{ fontSize: 11, fontWeight: 700, background: colors.ice, color: colors.inkPlum, borderRadius: 20, padding: '2px 8px' }}>{totalQty} total</span>
+        </div>
+        <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{open ? '▲ collapse' : '▼ expand'}</span>
+      </div>
+      {open && (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={thS}>Company</th>
+            <th style={{ ...thS, textAlign: 'center' }}>Vitrines</th>
+            <th style={{ ...thS, textAlign: 'right' }}>Order Total</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td style={tdS}>{r.company}</td>
+                <td style={{ ...tdS, textAlign: 'center', fontWeight: 600, color: colors.inkPlum }}>{r.qty}</td>
+                <td style={{ ...tdS, textAlign: 'right' }}>{r.total ? fmt(r.total) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background: '#faf8fc' }}>
+              <td style={ftS}>TOTAL</td>
+              <td style={{ ...ftS, textAlign: 'center' }}>{totalQty}</td>
+              <td style={{ ...ftS, textAlign: 'right' }}>{totalAmount ? fmt(totalAmount) : '—'}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  )
+}
+
 export default function DocumentsPanel({ onReEdit }) {
   const mobile = useIsMobile()
   const { t } = useI18n()
@@ -429,6 +502,13 @@ export default function DocumentsPanel({ onReEdit }) {
             )}
           </div>
         )}
+
+        {/* Vitrine summary — shown when a specific event is selected */}
+        {selectedEventId && selectedEventId !== 'none' && !loading && (() => {
+          const eventDocs = documents.filter(d => d.event_id === selectedEventId)
+          const eventName = events.find(e => e.id === selectedEventId)?.name
+          return <VitrineSummaryCard docs={eventDocs} eventName={eventName} />
+        })()}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>
