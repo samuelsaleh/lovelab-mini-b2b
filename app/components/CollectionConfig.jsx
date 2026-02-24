@@ -322,7 +322,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               shape: cfg.shape ?? source.shape,
               size: source.size,
             }
-            case 'thickness': return { ...cfg, thickness: source.thickness }
+            case 'thickness': return { ...cfg, cordType: source.cordType, thickness: source.thickness }
             case 'qty': return { ...cfg, qty: source.qty }
             default: return cfg
           }
@@ -1052,7 +1052,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {hasHousing && <th style={thStyle}>{t('quote.housing')}</th>}
                     {hasShapes && <th style={thStyle}>{t('quote.shape')}</th>}
                     {hasSizes && <th style={thStyle}>{t('quote.size')}</th>}
-                    {hasThickness && <th style={thStyle}>Thickness</th>}
+                    {hasThickness && <th style={thStyle}>{hasCordOptions ? 'Material' : 'Thickness'}</th>}
                     <th style={thStyle}>{t('quote.qty')}</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>{t('quote.total')}</th>
                     <th style={{ ...thStyle, width: 54 }}></th>
@@ -1163,19 +1163,41 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         )}
                         {hasThickness && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
-                            {sameForAll
-                              ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.thickness ?? sharedSettings.thickness) || '-'}</span>
-                              : cfg.cordType !== 'braidedNylon' ? (
-                                <select
-                                  value={cfg.thickness || ''}
-                                  onChange={(e) => updateConfig(cfg.id, { thickness: e.target.value || null })}
-                                  style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
-                                >
-                                  <option value="">-</option>
-                                  <option value="Thin">Thin</option>
-                                  <option value="Thick">Thick</option>
-                                </select>
-                              ) : <span style={{ color: '#bbb', fontSize: 11 }}>—</span>}
+                            {sameForAll ? (
+                              <span style={{ color: '#888', fontSize: 11 }}>
+                                {cfg.cordType === 'braidedNylon' ? 'Braided Nylon' : (cfg.thickness ?? sharedSettings.thickness) || '-'}
+                              </span>
+                            ) : hasCordOptions ? (
+                              // silkBraided: single dropdown covering Silk Thin, Silk Thick, Braided Nylon
+                              <select
+                                value={cfg.cordType === 'braidedNylon' ? 'braidedNylon' : (cfg.thickness || '')}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  if (val === 'braidedNylon') {
+                                    updateConfig(cfg.id, { cordType: 'braidedNylon', thickness: null })
+                                  } else {
+                                    updateConfig(cfg.id, { cordType: 'silk', thickness: val || null })
+                                  }
+                                }}
+                                style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                              >
+                                <option value="">-</option>
+                                <option value="Thin">Silk Thin</option>
+                                <option value="Thick">Silk Thick</option>
+                                <option value="braidedNylon">Braided Nylon</option>
+                              </select>
+                            ) : (
+                              // silk-only: Thin / Thick
+                              <select
+                                value={cfg.thickness || ''}
+                                onChange={(e) => updateConfig(cfg.id, { thickness: e.target.value || null })}
+                                style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                              >
+                                <option value="">-</option>
+                                <option value="Thin">Thin</option>
+                                <option value="Thick">Thick</option>
+                              </select>
+                            )}
                             {canFillThickness && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}

@@ -34,7 +34,9 @@ export function AuthProvider({ children }) {
           await fetchProfile(serverUser.id);
         }
       } catch (err) {
-        if (err?.message !== 'Auth timeout') {
+        // Lock timeout (multi-tab) or auth timeout: fail gracefully, don't surface to overlay
+        const isLockTimeout = err?.message?.includes?.('Navigator LockManager') || err?.message?.includes?.('timed out');
+        if (err?.message !== 'Auth timeout' && !isLockTimeout) {
           console.error('Auth init error:', err);
         }
       }
@@ -47,14 +49,17 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
+        try {
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          } else {
+            setProfile(null);
+          }
+        } catch (err) {
+          const isLockTimeout = err?.message?.includes?.('Navigator LockManager') || err?.message?.includes?.('timed out');
+          if (!isLockTimeout) console.error('Auth state change error:', err);
         }
-        
         setLoading(false);
       }
     );
