@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, HOUSING } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -125,7 +125,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Completion check
   const isConfigComplete = (cfg) => {
     if (cfg.caratIdx === null) return false
-    if (col.housing && !cfg.housing) return false
+    if (col.housing && col.housing !== 'sparkleProng' && !cfg.housing) return false
     if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
     if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
     if (hasCordOptions && !cfg.cordType) return false
@@ -322,6 +322,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               shape: cfg.shape ?? source.shape,
               size: source.size,
             }
+            case 'thickness': return { ...cfg, thickness: source.thickness }
             case 'qty': return { ...cfg, qty: source.qty }
             default: return cfg
           }
@@ -405,8 +406,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
 
   // Housing options resolver
   const hasHousing = !!col.housing
+  const isImplicitHousing = col.housing === 'sparkleProng'
   const hasShapes = col.shapes && col.shapes.length > 0
   const hasSizes = col.sizes && col.sizes.length > 0
+  const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
 
   const renderHousingSelector = (cfg, patchFn) => {
     const selectedCarat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : null
@@ -536,6 +539,13 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         </div>
       )
     }
+    if (col.housing === 'sparkleProng') {
+      return (
+        <div style={{ fontSize: 11, color: '#888', fontWeight: 600, padding: '4px 0' }}>
+          Prong
+        </div>
+      )
+    }
     return null
   }
 
@@ -643,7 +653,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         fontFamily: 'inherit',
                       }}
                     >
-                      {ct === 'silk' ? 'Silk' : 'Braided'}
+                      {CORD_TYPE_LABELS[ct] || ct}
                     </button>
                   ))}
                 </div>
@@ -992,7 +1002,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )}
 
                 {/* Shape */}
-                {hasShapes && sharedSettings.caratIdx !== null && (!hasHousing || !!sharedSettings.housing) && (
+                {hasShapes && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (
                   <select
                     value={sharedSettings.shape || ''}
                     onChange={(e) => updateShared({ shape: e.target.value || null })}
@@ -1004,7 +1014,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )}
 
                 {/* Size */}
-                {hasSizes && sharedSettings.caratIdx !== null && (!hasHousing || !!sharedSettings.housing) && (!hasShapes || !!sharedSettings.shape) && (
+                {hasSizes && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (!hasShapes || !!sharedSettings.shape) && (
                   <select
                     value={sharedSettings.size || ''}
                     onChange={(e) => updateShared({ size: e.target.value || null })}
@@ -1042,6 +1052,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {hasHousing && <th style={thStyle}>{t('quote.housing')}</th>}
                     {hasShapes && <th style={thStyle}>{t('quote.shape')}</th>}
                     {hasSizes && <th style={thStyle}>{t('quote.size')}</th>}
+                    {hasThickness && <th style={thStyle}>Thickness</th>}
                     <th style={thStyle}>{t('quote.qty')}</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>{t('quote.total')}</th>
                     <th style={{ ...thStyle, width: 54 }}></th>
@@ -1060,6 +1071,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     const canFillHousing = cfg.housing !== null && hasRowsBelow && !sameForAll
                     const canFillShape = cfg.shape !== null && hasRowsBelow && !sameForAll
                     const canFillSize = cfg.size !== null && hasRowsBelow && !sameForAll
+                    const canFillThickness = cfg.thickness !== null && hasRowsBelow && !sameForAll
                     const canFillQty = hasRowsBelow && !sameForAll
 
                     const isDragTarget = dragFill && cfgIdx > dragFill.sourceIdx && cfgIdx <= dragFill.targetIdx
@@ -1128,7 +1140,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         {hasShapes && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.shape ?? sharedSettings.shape) || '-'}</span>
-                              : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) ? (
+                              : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) ? (
                                 <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
                                   {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1140,13 +1152,31 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         {hasSizes && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.size ?? sharedSettings.size) || '-'}</span>
-                              : cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
+                              : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
                                 <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
                                   {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                             {canFillSize && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} />}
+                          </td>
+                        )}
+                        {hasThickness && (
+                          <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
+                            {sameForAll
+                              ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.thickness ?? sharedSettings.thickness) || '-'}</span>
+                              : cfg.cordType !== 'braidedNylon' ? (
+                                <select
+                                  value={cfg.thickness || ''}
+                                  onChange={(e) => updateConfig(cfg.id, { thickness: e.target.value || null })}
+                                  style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                                >
+                                  <option value="">-</option>
+                                  <option value="Thin">Thin</option>
+                                  <option value="Thick">Thick</option>
+                                </select>
+                              ) : <span style={{ color: '#bbb', fontSize: 11 }}>—</span>}
+                            {canFillThickness && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
@@ -1246,7 +1276,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         </div>
                       )}
                       {/* Shape */}
-                      {hasShapes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (
+                      {hasShapes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.shape')}</span>
                           <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
@@ -1256,7 +1286,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         </div>
                       )}
                       {/* Size */}
-                      {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) && (
+                      {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.size')}</span>
                           <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>

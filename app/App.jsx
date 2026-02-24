@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
-import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -234,23 +234,36 @@ export default function App() {
       const col = COLLECTIONS.find(c => c.id === colId)
       const colorConfigs = rows.map(row => {
         const caratIdx = col.carats.findIndex(c => c === row.carat)
-        // Extract housingType from housing value (e.g., "Bezel White + White" -> "bezel", "White + White")
         let housing = row.bpColor || null
-        let housingType = null
-        if (housing && housing.startsWith('Bezel ')) {
-          housingType = 'bezel'
-          housing = housing.replace('Bezel ', '')
-        } else if (housing && housing.startsWith('Prong ')) {
-          housingType = 'prong'
-          housing = housing.replace('Prong ', '')
+        let housingType = row.setting ? row.setting.toLowerCase() : null
+        // For shapyShine/matchy the builder stores housing as "Bezel Yellow" / "Prong Yellow"
+        // In the order form bpColor is stripped (just "Yellow") and setting holds "Bezel"/"Prong"
+        // Reconstruct the prefixed value the builder expects
+        if (housingType && housing && (col.housing === 'shapyShine' || col.housing === 'matchy')) {
+          housing = `${row.setting} ${housing}`
         }
-        // Infer multiAttached for MULTI THREE from housing value
+        // Fallback: detect prefix in case bpColor still has it (legacy)
+        if (!housingType && housing) {
+          if (housing.startsWith('Bezel ')) {
+            housingType = 'bezel'
+          } else if (housing.startsWith('Prong ')) {
+            housingType = 'prong'
+          }
+        }
         let multiAttached = null
         if (col.housing === 'multiThree' && housing) {
-          if (!HOUSING.multiThree.attached.includes(housing)) {
-            multiAttached = false
+          multiAttached = HOUSING.multiThree.attached.includes(housing)
+        }
+        let cordType = null
+        let thickness = null
+        if (row.material) {
+          const m = row.material.match(/^(.+?)\s*\((\w+)\)\s*$/)
+          if (m) {
+            const label = m[1].trim()
+            cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === label)?.[0] || label.toLowerCase()
+            thickness = m[2]
           } else {
-            multiAttached = true
+            cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === row.material)?.[0] || row.material.toLowerCase()
           }
         }
         return {
@@ -263,6 +276,8 @@ export default function App() {
           shape: row.shape || null,
           size: row.size || null,
           multiAttached,
+          cordType,
+          thickness,
         }
       })
       return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }

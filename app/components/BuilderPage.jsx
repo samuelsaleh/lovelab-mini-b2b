@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, HOUSING, calculateQuote } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -709,7 +709,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     const isSelected = selectedCollections.includes(col.id)
                     const priceRange = `€${col.prices[0]} - €${col.prices[col.prices.length - 1]}`
                     const caratRange = `${col.carats[0]} - ${col.carats[col.carats.length - 1]} ct`
-                    const cordType = col.cord.charAt(0).toUpperCase() + col.cord.slice(1)
+                    const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
                     const colorCount = (CORD_COLORS[col.cord] || []).length
 
                     return (

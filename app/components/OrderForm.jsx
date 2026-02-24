@@ -5,8 +5,9 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
+import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
 
@@ -17,17 +18,19 @@ const PRINT_ROWS_LAST_PAGE = 9 // Fewer rows on last page to leave room for foot
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
   { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
-  { key: 'collection', labelKey: 'order.columns.collection', width: 130 },
-  { key: 'carat', labelKey: 'order.columns.carat', width: 64 },
-  { key: 'shape', labelKey: 'order.columns.shape', width: 80 },
-  { key: 'bpColor', labelKey: 'order.columns.bpColor', width: 90 },
-  { key: 'size', labelKey: 'order.columns.size', width: 50 },
-  { key: 'colorCord', labelKey: 'order.columns.colorCord', width: 120 },
-  { key: 'unitPrice', labelKey: 'order.columns.unitPrice', width: 90 },
-  { key: 'total', labelKey: 'order.columns.total', width: 90 },
+  { key: 'collection', labelKey: 'order.columns.collection', width: 118 },
+  { key: 'carat', labelKey: 'order.columns.carat', width: 58 },
+  { key: 'shape', labelKey: 'order.columns.shape', width: 72 },
+  { key: 'setting', labelKey: 'order.columns.setting', width: 60 },
+  { key: 'bpColor', labelKey: 'order.columns.bpColor', width: 72 },
+  { key: 'size', labelKey: 'order.columns.size', width: 44 },
+  { key: 'material', labelKey: 'order.columns.material', width: 100 },
+  { key: 'colorCord', labelKey: 'order.columns.colorCord', width: 100 },
+  { key: 'unitPrice', labelKey: 'order.columns.unitPrice', width: 84 },
+  { key: 'total', labelKey: 'order.columns.total', width: 84 },
 ]
 
-const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'bpColor', 'size', 'colorCord', 'unitPrice']
+const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'setting', 'bpColor', 'size', 'material', 'colorCord', 'unitPrice']
 
 function isRowFilled(row) {
   // Show action buttons if any field has content (not just when ALL fields are filled)
@@ -45,12 +48,42 @@ function emptyRow(no) {
     collection: '',
     carat: '',
     shape: '',
+    setting: '',
     bpColor: '',
     size: '',
+    material: '',
     colorCord: '',
     unitPrice: '',
     total: '',
   }
+}
+
+function buildMaterial(cordType, thickness) {
+  if (!cordType) return ''
+  const label = CORD_TYPE_LABELS[cordType] || cordType
+  if (thickness) return `${label} (${thickness})`
+  return label
+}
+
+function parseMaterial(material) {
+  if (!material) return { cordType: '', thickness: '' }
+  const m = material.match(/^(.+?)\s*\((\w+)\)\s*$/)
+  if (m) {
+    const label = m[1].trim()
+    const thickness = m[2]
+    const cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === label)?.[0] || label.toLowerCase()
+    return { cordType, thickness }
+  }
+  const cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === material)?.[0] || material.toLowerCase()
+  return { cordType, thickness: '' }
+}
+
+function splitHousing(housing) {
+  if (!housing) return { setting: '', color: '' }
+  if (housing.startsWith('Bezel ')) return { setting: 'Bezel', color: housing.slice(6) }
+  if (housing.startsWith('Prong ')) return { setting: 'Prong', color: housing.slice(6) }
+  if (housing === 'Prong') return { setting: 'Prong', color: '' }
+  return { setting: '', color: housing }
 }
 
 function findCollection(productName) {
@@ -103,27 +136,28 @@ function prefillRows(quote) {
     return Array.from({ length: ROWS_PER_PAGE }, (_, i) => emptyRow(i + 1))
   }
 
-  // Each quote line is already one color config (1:1 mapping)
   const rows = []
   let rowNum = 1
   for (const ln of quote.lines) {
     const qty = ln.qty || 0
     const unit = ln.unitB2B || 0
+    const { setting, color } = splitHousing(ln.housing)
     rows.push({
       no: String(rowNum++),
       quantity: qty ? String(qty) : '',
       collection: ln.product || '',
       carat: ln.carat || '',
       shape: ln.shape || '',
-      bpColor: ln.housing || '',
+      setting,
+      bpColor: color,
       size: ln.size || '',
+      material: buildMaterial(ln.cordType, ln.thickness),
       colorCord: ln.colorName || '',
       unitPrice: unit ? String(unit) : '',
       total: qty && unit ? String(qty * unit) : '',
     })
   }
 
-  // Add a small buffer of empty rows for convenience (not full page padding)
   const buffer = 3
   const totalNeeded = rows.length + buffer
   while (rows.length < totalNeeded) {
@@ -285,6 +319,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
   const [discountFlat, setDiscountFlat] = useState('')
   const [deliveryCost, setDeliveryCost] = useState('')
   const [extraPercent, setExtraPercent] = useState('')
+  const [extraPercentLabel, setExtraPercentLabel] = useState('VAT')
   const [customLabel, setCustomLabel] = useState('')
   const [customAmount, setCustomAmount] = useState('')
   const [showTaxInfo, setShowTaxInfo] = useState(false)
@@ -417,8 +452,28 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
       <div style={calcLabel}>{t('order.deliveryCost')}</div>
       <input type="number" min="0" value={deliveryCost} onChange={(e) => setDeliveryCost(e.target.value)} placeholder="0" style={calcInput} />
 
-      <div style={calcLabel}>{t('order.extraPercentAdd')}</div>
+      <div style={{ ...calcLabel, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>{t('order.extraPercentAdd')}</span>
+        <input
+          value={extraPercentLabel}
+          onChange={(e) => setExtraPercentLabel(e.target.value)}
+          placeholder="VAT"
+          style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.inkPlum, border: 'none', borderBottom: `1px solid ${colors.lineGray}`, outline: 'none', background: 'transparent', width: 60, textAlign: 'right', padding: '0 2px', fontFamily: fonts.body }}
+        />
+      </div>
       <input type="number" min="0" value={extraPercent} onChange={(e) => setExtraPercent(e.target.value)} placeholder="0" style={calcInput} />
+      {calc.extraPct > 0 && (
+        <div style={{ fontSize: 10, color: '#888', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: '#aaa' }}>Before {extraPercentLabel || '%'}:</span>
+            <span>{fmt(calc.baseWithShipping)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: '#aaa' }}>{extraPercentLabel || '%'} ({calc.extraPct}%):</span>
+            <span style={{ color: '#e67e22' }}>+{fmt(calc.extraAmount)}</span>
+          </div>
+        </div>
+      )}
 
       <div style={calcLabel}>{t('order.customAdjustment')}</div>
       <input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder={t('order.labelOptional')} style={{ ...calcInput, marginBottom: 4 }} />
@@ -443,7 +498,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
         )}
         {calc.extraAmount > 0 && (
           <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: colors.charcoal }}>
-            <span>{t('order.extraPercentLine').replace('{percent}', String(calc.extraPct))}</span><span>+{fmt(calc.extraAmount)}</span>
+            <span>{extraPercentLabel || t('order.extraPercentLine').replace('{percent}', String(calc.extraPct))} ({calc.extraPct}%)</span><span>+{fmt(calc.extraAmount)}</span>
           </div>
         )}
         <div style={{
@@ -461,6 +516,12 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
             subtotal: calc.sub,
             totalDiscount: calc.totalDiscount,
             finalTotal: calc.final,
+            delivery: calc.delivery,
+            customLabel,
+            customAmount: calc.custom,
+            extraPercent: calc.extraPct,
+            extraPercentLabel,
+            baseBeforeTax: calc.baseWithShipping,
           })
         }}
         style={{
@@ -536,7 +597,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   )
   const [country, setCountry] = useState(client?.country || '')
   const [vatNumber, setVatNumber] = useState(client?.vat || '')
-  const vatValid = client?.vatValid
+  const [vatLocalValid, setVatLocalValid] = useState(client?.vatValid ?? null)
+  const [vatChecking, setVatChecking] = useState(false)
+  const vatValid = vatLocalValid
   const [email, setEmail] = useState(client?.email || '')
   const [phone, setPhone] = useState(client?.phone || '')
   const [date, setDate] = useState(today())
@@ -628,6 +691,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   // Final total override from calculator
   const [finalTotalOverride, setFinalTotalOverride] = useState(null)
+  // Tax/% applied from calculator
+  const [taxPercent, setTaxPercent] = useState(null)     // e.g. 21
+  const [taxLabel, setTaxLabel] = useState('VAT')         // e.g. "VAT"
+  const [taxBaseAmount, setTaxBaseAmount] = useState(null) // amount before tax
+  // Shipping + custom lines applied from calculator
+  const [shippingAmount, setShippingAmount] = useState(null)
+  const [customLineLabel, setCustomLineLabel] = useState('')
+  const [customLineAmount, setCustomLineAmount] = useState(null)
 
   // Restore form state when re-editing a saved document
   useEffect(() => {
@@ -846,11 +917,26 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Vitrine total (added after discount)
   const vitrineTotal = hasVitrine ? vitrinePrice * vitrineQty : 0
 
-  // Grand total = (after discount or subtotal) + vitrine
+  // Grand total = (after discount or subtotal) + shipping + custom + vitrine + tax
   const grandTotal = useMemo(() => {
-    const baseAmount = afterDiscount != null ? afterDiscount : finalTotal
-    return baseAmount + vitrineTotal
-  }, [afterDiscount, finalTotal, vitrineTotal])
+    const base = afterDiscount != null ? afterDiscount : finalTotal
+    const shipping = shippingAmount || 0
+    const custom = customLineAmount || 0
+    const beforeTax = base + shipping + custom + vitrineTotal
+    const taxAmount = taxPercent > 0 ? (beforeTax * taxPercent / 100) : 0
+    return beforeTax + taxAmount
+  }, [afterDiscount, finalTotal, shippingAmount, customLineAmount, vitrineTotal, taxPercent])
+
+  const checkVat = useCallback(() => {
+    const vat = vatNumber.trim()
+    if (!vat || vat.length < 4 || vatChecking) return
+    setVatChecking(true)
+    setVatLocalValid(null)
+    validateVAT(vat)
+      .then(res => { setVatLocalValid(res.valid) })
+      .catch(() => { setVatLocalValid(null) })
+      .finally(() => setVatChecking(false))
+  }, [vatNumber, vatChecking])
 
   // Row handlers
   const updateCell = useCallback((rowIdx, key, value) => {
@@ -865,14 +951,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           next[rowIdx].total = String(qty * price)
         }
       }
-      // When collection changes, reset dependent fields
+      // When collection changes, reset all collection-specific fields
       if (key === 'collection') {
         next[rowIdx].carat = ''
         next[rowIdx].unitPrice = ''
         next[rowIdx].total = ''
         next[rowIdx].shape = ''
+        next[rowIdx].setting = ''
         next[rowIdx].bpColor = ''
         next[rowIdx].size = ''
+        next[rowIdx].material = ''
+        next[rowIdx].colorCord = ''
       }
       // Auto-lookup unitPrice from catalog when collection or carat changes
       if (key === 'collection' || key === 'carat') {
@@ -1081,7 +1170,21 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, finalTotal: val }) => {
+  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl, baseBeforeTax }) => {
+    // Shipping line
+    setShippingAmount(delivery > 0 ? delivery : null)
+    // Custom line
+    setCustomLineLabel(cl || '')
+    setCustomLineAmount(ca != null && ca !== 0 ? ca : null)
+    // Tax
+    if (ep > 0) {
+      setTaxPercent(ep)
+      setTaxLabel(epl || 'VAT')
+      setTaxBaseAmount(baseBeforeTax ?? null)
+    } else {
+      setTaxPercent(null)
+      setTaxBaseAmount(null)
+    }
     // When calculator applies:
     // - If there's a discount, set discountDisplay so before/after shows
     // - Use the row subtotal as "before" (don't override it)
@@ -1701,20 +1804,47 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 </div>
                 {/* Right header fields */}
                 <div style={{ minWidth: compact ? 0 : 280, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
-                      <PrintableInput value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                      <PrintableInput value={vatNumber} onChange={(e) => { setVatNumber(e.target.value); setVatLocalValid(null) }} style={hFieldInput} isPrinting={isPrinting} />
                     </div>
-                    {vatValid != null && (
-                      <span style={{
-                        marginTop: 12,
-                        fontSize: 14,
-                        color: vatValid ? '#27ae60' : '#c0392b',
-                        fontWeight: 700,
-                      }}>
-                        {vatValid ? '\u2713' : '\u2717'}
-                      </span>
+                    {!isPrinting && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
+                        <button
+                          title={vatValid === true ? 'Marked valid — click to toggle' : vatValid === false ? 'Marked invalid — click to toggle' : 'Mark as manually verified'}
+                          onClick={() => setVatLocalValid(v => v === true ? false : v === false ? null : true)}
+                          disabled={!vatNumber.trim()}
+                          style={{
+                            fontSize: 13, width: 22, height: 22, borderRadius: '50%',
+                            border: `1.5px solid ${vatValid === true ? '#27ae60' : vatValid === false ? '#c0392b' : '#d0d0d0'}`,
+                            background: vatValid === true ? '#eafaf1' : vatValid === false ? '#fdf0f0' : '#fafafa',
+                            color: vatValid === true ? '#27ae60' : vatValid === false ? '#c0392b' : '#bbb',
+                            cursor: vatNumber.trim() ? 'pointer' : 'default',
+                            opacity: !vatNumber.trim() ? 0.3 : 1,
+                            fontWeight: 700, lineHeight: 1,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            padding: 0, flexShrink: 0,
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {vatValid === true ? '✓' : vatValid === false ? '✗' : '?'}
+                        </button>
+                        <button
+                          onClick={checkVat}
+                          disabled={vatChecking || !vatNumber.trim()}
+                          style={{
+                            fontSize: 9, padding: '2px 7px', borderRadius: 10,
+                            border: `1px solid ${colors.lineGray}`,
+                            background: vatChecking ? '#f0f0f0' : 'transparent',
+                            color: colors.charcoal, cursor: vatChecking || !vatNumber.trim() ? 'default' : 'pointer',
+                            opacity: !vatNumber.trim() ? 0.4 : 1,
+                            fontFamily: 'inherit', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {vatChecking ? '…' : vatValid == null ? 'Check VAT' : 'Re-check'}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div>
@@ -1967,33 +2097,70 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const isCollectionCol = col.key === 'collection'
                           const isCaratCol = col.key === 'carat'
                           const isShapeCol = col.key === 'shape'
+                          const isSettingCol = col.key === 'setting'
                           const isBpColorCol = col.key === 'bpColor'
                           const isSizeCol = col.key === 'size'
+                          const isMaterialCol = col.key === 'material'
                           const isColorCordCol = col.key === 'colorCord'
-                          const rowCol = findCollection(row.collection)
-                          const knownCol = (isCaratCol || isShapeCol || isBpColorCol || isSizeCol || isColorCordCol) ? rowCol : null
-                          const shapeOptions = isShapeCol && knownCol?.shapes ? knownCol.shapes.map(s => ({ value: s, label: s })) : null
-                          const housingOpts = isBpColorCol && knownCol?.housing ? getHousingOptions(knownCol.housing).map(h => ({ value: h, label: h })) : null
-                          const sizeOptions = isSizeCol && knownCol?.sizes ? knownCol.sizes.map(s => ({ value: s, label: s })) : null
-                          const cordOptions = isColorCordCol && knownCol?.cord ? (CORD_COLORS[knownCol.cord] || []).map(c => ({ value: c.n, label: c.n })) : null
+                          const needsLookup = isCaratCol || isShapeCol || isSettingCol || isBpColorCol || isSizeCol || isMaterialCol || isColorCordCol
+                          const rowCol = needsLookup ? findCollection(row.collection) : null
+                          const shapeOptions = isShapeCol && rowCol?.shapes ? rowCol.shapes.map(s => ({ value: s, label: s })) : null
+                          const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng'].includes(rowCol.housing)
+                          const settingOptions = isSettingCol && hasSetting
+                            ? (rowCol.housing === 'sparkleProng' ? [{ value: 'Prong', label: 'Prong' }] : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prong' }])
+                            : null
+                          const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing).map(h => {
+                            const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
+                            return { value: stripped, label: stripped }
+                          }).filter((v, i, a) => a.findIndex(x => x.value === v.value) === i) : null
+                          const sizeOptions = isSizeCol && rowCol?.sizes ? rowCol.sizes.map(s => ({ value: s, label: s })) : null
+                          const hasMaterial = rowCol && (rowCol.cord === 'silk' || rowCol.cord === 'silkBraided')
+                          const impliedMaterialLabel = !hasMaterial && rowCol ? (CORD_TYPE_LABELS[rowCol.cord] || rowCol.cord) : null
+                          const materialOptions = isMaterialCol && hasMaterial ? (() => {
+                            const opts = []
+                            const cordTypes = rowCol.cord === 'silkBraided' ? (CORD_OPTIONS.silkBraided || ['silk']) : ['silk']
+                            for (const ct of cordTypes) {
+                              if (ct === 'silk') {
+                                opts.push({ value: buildMaterial('silk', 'Thin'), label: 'Silk (Thin)' })
+                                opts.push({ value: buildMaterial('silk', 'Thick'), label: 'Silk (Thick)' })
+                              } else {
+                                opts.push({ value: buildMaterial(ct, ''), label: CORD_TYPE_LABELS[ct] || ct })
+                              }
+                            }
+                            return opts
+                          })() : null
+                          const { cordType: parsedCord } = parseMaterial(row.material)
+                          const effectiveCord = rowCol?.cord === 'silkBraided' ? (parsedCord || 'silk') : rowCol?.cord
+                          const cordOptions = isColorCordCol && rowCol?.cord ? (CORD_COLORS[effectiveCord] || CORD_COLORS.silk || []).map(c => ({ value: c.n, label: c.n })) : null
+
+                          const na = rowCol && row.collection
+                          const isNA = na && (
+                            (isShapeCol && !rowCol.shapes) ||
+                            (isSettingCol && !hasSetting) ||
+                            (isBpColorCol && rowCol.housing === 'sparkleProng')
+                          )
+
                           return (
                             <td key={col.key} style={{
                               ...tdStyle,
                               borderLeft: col.key === 'no' ? `1px solid ${colors.lineGray}` : 'none',
                               ...(col.key === 'total' ? { borderRight: `1px solid ${colors.lineGray}` } : {}),
+                              ...(isNA ? { background: '#f8f7f6' } : {}),
                             }}>
-                              {isCollectionCol ? (
+                              {isNA ? (
+                                <div style={{ textAlign: 'center', color: '#c5bfb8', fontSize: 11, userSelect: 'none', letterSpacing: 1 }}>—</div>
+                              ) : isCollectionCol ? (
                                 <CellSelect
                                   value={row.collection}
                                   onChange={(val) => updateCell(globalIdx, 'collection', val)}
                                   options={COLLECTIONS.map(c => ({ value: c.label, label: c.label }))}
                                   isPrinting={isPrinting}
                                 />
-                              ) : isCaratCol && knownCol ? (
+                              ) : isCaratCol && rowCol ? (
                                 <CellSelect
                                   value={row.carat}
                                   onChange={(val) => updateCell(globalIdx, 'carat', val)}
-                                  options={knownCol.carats.map(c => ({ value: c, label: `${c} ct` }))}
+                                  options={rowCol.carats.map(c => ({ value: c, label: `${c} ct` }))}
                                   isPrinting={isPrinting}
                                   align="center"
                                 />
@@ -2002,6 +2169,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   value={row.shape}
                                   onChange={(val) => updateCell(globalIdx, 'shape', val)}
                                   options={shapeOptions}
+                                  isPrinting={isPrinting}
+                                />
+                              ) : isSettingCol && settingOptions ? (
+                                <CellSelect
+                                  value={row.setting}
+                                  onChange={(val) => updateCell(globalIdx, 'setting', val)}
+                                  options={settingOptions}
                                   isPrinting={isPrinting}
                                 />
                               ) : isBpColorCol && housingOpts && housingOpts.length > 0 ? (
@@ -2018,6 +2192,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   options={sizeOptions}
                                   isPrinting={isPrinting}
                                   align="center"
+                                />
+                              ) : isMaterialCol && impliedMaterialLabel ? (
+                                <div style={{ fontSize: 10, color: colors.charcoal, paddingLeft: 4 }}>{impliedMaterialLabel}</div>
+                              ) : isMaterialCol && materialOptions ? (
+                                <CellSelect
+                                  value={row.material}
+                                  onChange={(val) => updateCell(globalIdx, 'material', val)}
+                                  options={materialOptions}
+                                  isPrinting={isPrinting}
                                 />
                               ) : isColorCordCol && cordOptions ? (
                                 <CellSelect
@@ -2120,92 +2303,108 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                       isPrinting={isPrinting}
                     />
                   </div>
-                  <div style={{ textAlign: 'right', minWidth: 200 }}>
-                    {/* Final Total (before discount) */}
-                    <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
-                      {afterDiscount != null ? t('order.totalBeforeDiscount') : t('order.finalTotalEuro')}
-                    </div>
-                    <PrintableInput
-                      value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
-                      onChange={(e) => setFinalTotalOverride(Number(e.target.value) || 0)}
-                      style={{
-                        fontSize: afterDiscount != null ? 14 : 18,
-                        fontWeight: 800,
-                        color: afterDiscount != null ? colors.lovelabMuted : colors.inkPlum,
-                        border: 'none',
-                        borderBottom: `2px solid ${afterDiscount != null ? colors.lineGray : colors.inkPlum}`,
-                        outline: 'none', textAlign: 'right',
-                        fontFamily: fonts.body, background: 'transparent', width: 150,
-                        textDecoration: afterDiscount != null ? 'line-through' : 'none',
-                      }}
-                      isPrinting={isPrinting}
-                    />
+                  {(() => {
+                    const hasDiscount = afterDiscount != null
+                    const hasShipping = shippingAmount > 0
+                    const hasCustom = customLineAmount != null && customLineAmount !== 0
+                    const hasTax = taxPercent > 0
+                    const hasAnyExtra = hasDiscount || hasShipping || hasCustom || hasTax || hasVitrine
+                    // Taxable base: after-discount subtotal + shipping + custom + vitrine
+                    const baseForTax = (afterDiscount != null ? afterDiscount : finalTotal) + (shippingAmount || 0) + (customLineAmount || 0) + vitrineTotal
+                    const taxAmount = hasTax ? baseForTax * taxPercent / 100 : 0
+                    const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 10, padding: '2px 0', color: colors.charcoal }
+                    return (
+                      <div style={{ textAlign: 'right', minWidth: 200 }}>
 
-                    {/* Discount input (hidden in PDF when no discount applied) */}
-                    {(!isPrinting || afterDiscount != null) && (
-                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal }}>{t('quote.discount')}:</span>
-                      <PrintableInput
-                        value={discountDisplay}
-                        onChange={(e) => setDiscountDisplay(e.target.value)}
-                        placeholder={t('order.discountPlaceholder')}
-                        style={{
-                          width: 100, padding: '3px 6px', border: 'none',
-                          borderBottom: `1px solid ${colors.lineGray}`, outline: 'none',
-                          fontFamily: fonts.body, fontSize: 10, color: colors.charcoal,
-                          background: 'transparent', boxSizing: 'border-box', textAlign: 'right',
-                        }}
-                        isPrinting={isPrinting}
-                      />
-                    </div>
-                    )}
+                        {/* 1. Bracelets subtotal */}
+                        <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>
+                          {t('order.finalTotalEuro')}
+                        </div>
+                        <PrintableInput
+                          value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
+                          onChange={(e) => setFinalTotalOverride(Number(e.target.value) || 0)}
+                          style={{
+                            fontSize: hasAnyExtra ? 14 : 18,
+                            fontWeight: 800,
+                            color: hasAnyExtra ? colors.lovelabMuted : colors.inkPlum,
+                            border: 'none',
+                            borderBottom: `2px solid ${hasAnyExtra ? colors.lineGray : colors.inkPlum}`,
+                            outline: 'none', textAlign: 'right',
+                            fontFamily: fonts.body, background: 'transparent', width: 150,
+                            textDecoration: hasDiscount ? 'line-through' : 'none',
+                          }}
+                          isPrinting={isPrinting}
+                        />
 
-                    {/* After Discount total */}
-                    {afterDiscount != null && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: '#27ae60', marginBottom: 4 }}>
-                          {t('order.afterDiscount')}
-                        </div>
-                        <div style={{
-                          fontSize: hasVitrine ? 14 : 20,
-                          fontWeight: 800,
-                          color: hasVitrine ? colors.lovelabMuted : colors.inkPlum,
-                          borderBottom: hasVitrine ? 'none' : `2px solid ${colors.inkPlum}`,
-                          paddingBottom: 2,
-                        }}>
-                          {fmt(afterDiscount)}
-                        </div>
+                        {/* 2. Discount — shown only when a discount was applied via calculator */}
+                        {hasDiscount && (
+                          <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#c0392b' }}>
+                            <span style={{ fontWeight: 600 }}>{t('quote.discount')}:</span>
+                            <span style={{ fontWeight: 600 }}>-{fmt(finalTotal - afterDiscount)}</span>
+                          </div>
+                        )}
+
+                        {/* 3. After-discount subtotal */}
+                        {hasDiscount && (
+                          <div style={{ ...rowStyle, marginTop: 4, fontWeight: 700, color: '#27ae60' }}>
+                            <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('order.afterDiscount')}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800 }}>{fmt(afterDiscount)}</span>
+                          </div>
+                        )}
+
+                        {/* 4. Shipping */}
+                        {hasShipping && (
+                          <div style={{ ...rowStyle, marginTop: 4 }}>
+                            <span>Shipping:</span>
+                            <span style={{ fontWeight: 600 }}>+{fmt(shippingAmount)}</span>
+                          </div>
+                        )}
+
+                        {/* 5. Custom line */}
+                        {hasCustom && (
+                          <div style={{ ...rowStyle, marginTop: 2 }}>
+                            <span>{customLineLabel || 'Adjustment'}:</span>
+                            <span style={{ fontWeight: 600 }}>{customLineAmount > 0 ? '+' : ''}{fmt(customLineAmount)}</span>
+                          </div>
+                        )}
+
+                        {/* 6. Vitrine */}
+                        {hasVitrine && (
+                          <div style={{ ...rowStyle, marginTop: 2 }}>
+                            <span>{t('order.vitrine') || 'Vitrine'} x{vitrineQty}:</span>
+                            <span style={{ fontWeight: 600 }}>+{fmt(vitrineTotal)}</span>
+                          </div>
+                        )}
+
+                        {/* 7. Before VAT + VAT */}
+                        {hasTax && (
+                          <div style={{ marginTop: 8, borderTop: `1px dashed ${colors.lineGray}`, paddingTop: 6 }}>
+                            <div style={{ ...rowStyle }}>
+                              <span>Before {taxLabel}:</span>
+                              <span style={{ fontWeight: 600 }}>{fmt(baseForTax)}</span>
+                            </div>
+                            <div style={{ ...rowStyle, color: '#e67e22', fontWeight: 700 }}>
+                              <span>{taxLabel} ({taxPercent}%):</span>
+                              <span>+{fmt(taxAmount)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 8. Grand Total */}
+                        {hasAnyExtra && (
+                          <div style={{ marginTop: 8, borderTop: `2px solid ${colors.inkPlum}`, paddingTop: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>
+                              {hasTax ? `Grand Total incl. ${taxLabel}` : (t('order.grandTotal') || 'Grand Total')}
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: colors.inkPlum }}>
+                              {fmt(grandTotal)}
+                            </div>
+                          </div>
+                        )}
+
                       </div>
-                    )}
-
-                    {/* Vitrine line item (only if enabled) */}
-                    {hasVitrine && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: colors.charcoal, marginBottom: 2 }}>
-                          {t('order.vitrine') || 'Vitrine'} x{vitrineQty}
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: colors.charcoal }}>
-                          + {fmt(vitrineTotal)}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Grand Total (only if vitrine is added or discount applied) */}
-                    {(hasVitrine || afterDiscount != null) && (
-                      <div style={{ marginTop: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
-                          {t('order.grandTotal') || 'Grand Total'}
-                        </div>
-                        <div style={{
-                          fontSize: 20, fontWeight: 800, color: colors.inkPlum,
-                          borderBottom: `2px solid ${colors.inkPlum}`,
-                          paddingBottom: 2,
-                        }}>
-                          {fmt(grandTotal)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    )
+                  })()}
                 </div>
               )}
 

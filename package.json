@@ -9,13 +9,17 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@babel/runtime": "^7.28.6",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
+    "clsx": "^2.1.1",
+    "fast-png": "^8.0.0",
+    "fflate": "^0.8.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.1.0",
-    "next": "^16.1.6",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.2.4",
     "recharts": "^3.7.0"
   },
   "devDependencies": {

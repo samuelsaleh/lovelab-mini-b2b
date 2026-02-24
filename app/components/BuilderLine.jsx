@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef, useState } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, HOUSING } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING } from '@/lib/catalog'
 import { isLight } from '@/lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -98,7 +98,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
   if (cfg.housing) summaryParts.push(cfg.housing)
   if (cfg.shape) summaryParts.push(cfg.shape)
   if (cfg.size) summaryParts.push(cfg.size)
-  if (cfg.cordType) summaryParts.push(cfg.cordType.charAt(0).toUpperCase() + cfg.cordType.slice(1))
+  if (cfg.cordType) summaryParts.push(CORD_TYPE_LABELS[cfg.cordType] || cfg.cordType)
   if (cfg.thickness) summaryParts.push(cfg.thickness)
   summaryParts.push(`qty ${cfg.qty}`)
   const summary = summaryParts.join(' · ')
@@ -291,7 +291,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                         onClick={() => patch({ cordType: ct, thickness: null })}
                         style={tag(cfg.cordType === ct)}
                       >
-                        {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                        {CORD_TYPE_LABELS[ct] || ct}
                       </button>
                     ))}
                   </div>
@@ -308,6 +308,11 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                         <button key={th} onClick={() => patch({ thickness: th })} style={tag(cfg.thickness === th)}>{th}</button>
                       ))}
                     </div>
+                    {!simplified && (
+                      <div style={{ marginTop: 5, fontSize: 10, color: '#aaa', fontStyle: 'italic' }}>
+                        Want both Thin and Thick? Add the same color again from the palette with a different thickness.
+                      </div>
+                    )}
                   </div>
                 )
               )}
@@ -512,10 +517,18 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
     })
   }
 
-  // Count how many configs exist per color name (for badge)
+  // Count configs per color name (for palette badge)
   const colorCounts = {}
   line.colorConfigs.forEach((c) => {
     colorCounts[c.colorName] = (colorCounts[c.colorName] || 0) + 1
+  })
+
+  // Summary chips: group by colorName + thickness (to distinguish Thin vs Thick)
+  const colorChipGroups = []
+  line.colorConfigs.forEach((c) => {
+    const key = c.thickness ? `${c.colorName}||${c.thickness}` : c.colorName
+    const existing = colorChipGroups.find(g => g.key === key)
+    if (existing) { existing.count++ } else { colorChipGroups.push({ key, name: c.colorName, thickness: c.thickness || null, count: 1 }) }
   })
 
   // Swatch lookup (tries exact, then case-insensitive, then fuzzy, else grey)
@@ -792,7 +805,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                             onClick={() => updateShared({ cordType: ct, thickness: null })}
                             style={tag(sharedSettings.cordType === ct)}
                           >
-                            {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                            {CORD_TYPE_LABELS[ct] || ct}
                           </button>
                         ))}
                       </div>
@@ -824,14 +837,15 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
               onToggle={() => setActiveSection(activeSection === 'colors' ? null : 'colors')}
               isCompleted={line.colorConfigs.length > 0 && completeConfigs === line.colorConfigs.length}
             >
-              {/* Added colors summary chips (name + count) */}
-              {Object.keys(colorCounts).length > 0 && (
+              {/* Added colors summary chips (name + thickness + count) */}
+              {colorChipGroups.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                  {Object.entries(colorCounts).map(([name, count]) => {
-                    const hex = swatchForName(name)
+                  {colorChipGroups.map((g) => {
+                    const hex = swatchForName(g.name)
+                    const label = g.thickness ? `${g.name} · ${g.thickness}` : g.name
                     return (
                       <div
-                        key={name}
+                        key={g.key}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -844,7 +858,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                           color: '#222',
                           fontWeight: 600,
                         }}
-                        title={`${name} ×${count}`}
+                        title={`${label} ×${g.count}`}
                       >
                         <span
                           style={{
@@ -856,8 +870,8 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                             flexShrink: 0,
                           }}
                         />
-                        <span>{name}</span>
-                        <span style={{ fontSize: 11, color: '#999', fontWeight: 600 }}>×{count}</span>
+                        <span>{label}</span>
+                        <span style={{ fontSize: 11, color: '#999', fontWeight: 600 }}>×{g.count}</span>
                       </div>
                     )
                   })}
@@ -875,7 +889,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                         onClick={() => setSelectedCordType(ct)}
                         style={tag(selectedCordType === ct)}
                       >
-                        {ct.charAt(0).toUpperCase() + ct.slice(1)}
+                        {CORD_TYPE_LABELS[ct] || ct}
                       </button>
                     ))}
                   </div>
