@@ -60,11 +60,80 @@ const btnGhost = {
   cursor: 'pointer', fontFamily: 'inherit', transition: 'color .15s',
 }
 
-// ─── Quick-fill Presets ───
-const PRESETS = [
-  { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
-  { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
+// ─── Standard Packs ───
+// Each pack defines one or more collection lines that get fully prefilled (all palette colors).
+const PACKS = [
+  {
+    id: 'pack-1',
+    label: 'Lovelab Pack 1',
+    description: ['CUTY — White housing, size M, 0.05 ct'],
+    budget: '€20/bracelet',
+    lines: [
+      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0] },
+    ],
+  },
+  {
+    id: 'pack-2',
+    label: 'Lovelab Pack 2',
+    description: [
+      'CUTY — White housing, size M, 0.05 & 0.10 ct',
+      'CUBIX — White housing, size S/M, 0.05 & 0.10 ct',
+    ],
+    budget: '€20 – €34/bracelet',
+    lines: [
+      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
+      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
+    ],
+  },
+  {
+    id: 'pack-3',
+    label: 'Lovelab Pack 3',
+    description: [
+      'CUTY — White housing, size M, 0.05 & 0.10 ct',
+      'CUBIX — White housing, size S/M, 0.05 & 0.10 ct',
+      'MULTI THREE — WWW housing, size M, 0.15 ct',
+    ],
+    budget: '€20 – €55/bracelet',
+    lines: [
+      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
+      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
+      { collectionId: 'M3', housing: 'WWW', size: 'M', caratIndices: [0] },
+    ],
+  },
+  {
+    id: 'pack-cuty',
+    label: 'Lovelab Pack Cuty',
+    description: ['CUTY — White housing, size M, 0.10 ct'],
+    budget: '€30/bracelet',
+    lines: [
+      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [1] },
+    ],
+  },
+  {
+    id: 'pack-cuty-cubix',
+    label: 'Lovelab Cuty-Cubix',
+    description: [
+      'CUTY — White housing, size M, 0.10 ct',
+      'CUBIX — White housing, size S/M, 0.10 ct',
+    ],
+    budget: '€30 – €34/bracelet',
+    lines: [
+      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [1] },
+      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [1] },
+    ],
+  },
 ]
+
+// ─── Compute total order estimate for a pack ───
+function computePackTotal(pack) {
+  return pack.lines.reduce((sum, line) => {
+    const col = COLLECTIONS.find(c => c.id === line.collectionId)
+    if (!col) return sum
+    const colorCount = (CORD_COLORS[col.cord] || []).length
+    const lineTotal = line.caratIndices.reduce((s, ci) => s + (col.prices[ci] || 0), 0)
+    return sum + lineTotal * colorCount
+  }, 0)
+}
 
 // ─── Collapsible warnings: shows a compact summary when there are many ───
 function WarningsSummary({ warnings }) {
@@ -118,7 +187,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const tablet = useIsTablet()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
-  const [showSuggestions, setShowSuggestions] = useState(false)
   
   // Step: 'select' (collection grid) or 'configure' (config view)
   const [step, setStep] = useState(() => {
@@ -131,6 +199,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   })
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
+  const [showPacks, setShowPacks] = useState(false)
   
   // Selection state for multi-select feature
   const [selectedConfigs, setSelectedConfigs] = useState(new Set())
@@ -534,42 +603,32 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     }
   }, [showAiChat])
 
-  // Apply a quick-fill preset
-  const applySuggestion = useCallback((preset) => {
-    const col = COLLECTIONS.find(c => c.id === preset.collectionId)
-    if (!col) return
-    const palette = CORD_COLORS[col.cord] || []
 
-    // Build colorConfigs: for each color, one entry per carat index
-    const configs = []
-    palette.forEach(color => {
-      preset.caratIndices.forEach(caratIdx => {
-        configs.push({
-          ...mkColorConfig(color.n, 1),
-          caratIdx,
-          housing: preset.housing,
-          size: preset.size,
+  // Apply a standard pack (fully replaces current lines with editable prefilled configs)
+  const applyPack = useCallback((pack) => {
+    const newLines = pack.lines.map(packLine => {
+      const col = COLLECTIONS.find(c => c.id === packLine.collectionId)
+      if (!col) return null
+      const palette = CORD_COLORS[col.cord] || []
+      const configs = []
+      palette.forEach(color => {
+        packLine.caratIndices.forEach(caratIdx => {
+          configs.push({
+            ...mkColorConfig(color.n, col.minC || 1),
+            caratIdx,
+            housing: packLine.housing,
+            size: packLine.size,
+          })
         })
       })
-    })
+      return { uid: uniqueId(), collectionId: packLine.collectionId, colorConfigs: configs, expanded: true }
+    }).filter(Boolean)
 
-    // Find or create line for this collection
-    setLines(prev => {
-      const existing = prev.find(l => l.collectionId === preset.collectionId)
-      if (existing) {
-        return prev.map(l => l.uid === existing.uid ? { ...l, colorConfigs: configs } : l)
-      }
-      const newLine = { uid: uniqueId(), collectionId: preset.collectionId, colorConfigs: configs, expanded: true }
-      const cleaned = prev.filter(l => l.collectionId !== null)
-      return [...cleaned, newLine]
-    })
-
-    // Ensure collection is in selectedCollections
-    setSelectedCollections(prev =>
-      prev.includes(preset.collectionId) ? prev : [...prev, preset.collectionId]
-    )
-    setShowSuggestions(false)
-    setStep('configure')
+    if (newLines.length > 0) {
+      setLines(newLines)
+      setSelectedCollections(newLines.map(l => l.collectionId))
+      setStep('configure')
+    }
   }, [setLines, setSelectedCollections])
 
   return (
@@ -604,7 +663,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       {/* Main content area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {/* ─── Budget Bar ─── */}
-        <div style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '10px 16px', flexShrink: 0 }}>
+        <div style={{ background: '#fff', borderBottom: '1px solid #ede8f0', padding: '10px 20px', flexShrink: 0 }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
             {!hasBudget && !budgetEditing ? (
               <button
@@ -684,16 +743,89 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
 
         {/* ─── Step Content ─── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 32px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
+
+            {/* ─── Packs Collapsible ─── */}
+            <div style={{ marginBottom: 12 }}>
+              <button
+                onClick={() => setShowPacks(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  padding: '8px 12px', borderRadius: 10,
+                  border: `1px dashed ${showPacks ? colors.inkPlum : '#ccc'}`,
+                  background: showPacks ? '#f5eef7' : '#fafafa',
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                  transition: 'all .12s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.background = showPacks ? '#f5eef7' : '#fdf7fa' }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = showPacks ? colors.inkPlum : '#ccc'; e.currentTarget.style.background = showPacks ? '#f5eef7' : '#fafafa' }}
+              >
+                <span style={{ fontSize: 14, opacity: 0.7 }}>▤</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>Packs</div>
+                  <div style={{ fontSize: 10, color: '#aaa' }}>Quick-start with a standard collection</div>
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#999', fontWeight: 600 }}>
+                  {showPacks ? '▲ Close' : '▼ Browse'}
+                </span>
+              </button>
+
+              {showPacks && (
+                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'none' }}>
+                  {PACKS.map(pack => (
+                    <div key={pack.id} style={{
+                      minWidth: 180, maxWidth: 220, flexShrink: 0,
+                      border: '1px solid #e4dded', borderRadius: 10,
+                      padding: '12px 14px', background: '#fff',
+                      boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
+                      display: 'flex', flexDirection: 'column',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: colors.inkPlum, marginBottom: 6 }}>
+                        {pack.label}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        {pack.description.map((line, i) => (
+                          <div key={i} style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>· {line}</div>
+                        ))}
+                      </div>
+                      {pack.budget && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#9a7fa8' }}>
+                            {pack.budget}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#bbb', marginTop: 2 }}>
+                            Total order: ~€{computePackTotal(pack).toLocaleString('fr-FR')}
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => { applyPack(pack); setShowPacks(false) }}
+                        style={{
+                          marginTop: 10, width: '100%', padding: '6px 0',
+                          borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`,
+                          background: colors.inkPlum, color: '#fff', fontSize: 12,
+                          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                          transition: 'opacity .1s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                      >
+                        Use this pack
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {step === 'select' ? (
               /* ═══ STEP 1: Collection Selection Grid ═══ */
               <div>
-                <div style={{ marginBottom: 20 }}>
-                  <h2 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: '0 0 4px', fontFamily: fonts.body }}>
+                <div style={{ marginBottom: 16 }}>
+                  <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
                     {t('builder.selectCollections')}
                   </h2>
-                  <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
+                  <p style={{ fontSize: 12, color: '#999', margin: 0 }}>
                     {t('builder.selectCollectionsHelp')}
                   </p>
                 </div>
@@ -701,16 +833,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 {/* Collection Grid */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: `repeat(auto-fill, minmax(${tablet ? '160px' : '200px'}, 1fr))`,
-                  gap: 12,
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${tablet ? '150px' : '185px'}, 1fr))`,
+                  gap: 10,
                   marginBottom: 24,
                 }}>
                   {COLLECTIONS.map(col => {
                     const isSelected = selectedCollections.includes(col.id)
-                    const priceRange = `€${col.prices[0]} - €${col.prices[col.prices.length - 1]}`
-                    const caratRange = `${col.carats[0]} - ${col.carats[col.carats.length - 1]} ct`
+                    const priceMin = `€${col.prices[0]}`
+                    const priceMax = col.prices.length > 1 ? ` – €${col.prices[col.prices.length - 1]}` : ''
                     const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
-                    const colorCount = (CORD_COLORS[col.cord] || []).length
 
                     return (
                       <button
@@ -718,70 +849,69 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         onClick={() => toggleCollection(col.id)}
                         style={{
                           position: 'relative',
-                          padding: '16px',
+                          padding: '14px 14px 12px',
                           borderRadius: 12,
-                          border: isSelected ? `2px solid ${colors.inkPlum}` : '1.5px solid #e8e8e8',
-                          background: isSelected ? '#fdf7fa' : '#fff',
+                          border: isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #ede8f0',
+                          background: isSelected ? '#fdf7fa' : '#fdfdfd',
                           cursor: 'pointer',
                           fontFamily: 'inherit',
                           textAlign: 'left',
                           transition: 'all .15s',
-                          boxShadow: isSelected ? `0 2px 12px ${colors.inkPlum}15` : '0 1px 4px rgba(0,0,0,0.04)',
+                          boxShadow: isSelected ? `0 2px 12px ${colors.inkPlum}12` : '0 1px 3px rgba(0,0,0,0.03)',
                         }}
                         onMouseEnter={(e) => {
                           if (!isSelected) {
-                            e.currentTarget.style.borderColor = colors.inkPlum + '60'
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
+                            e.currentTarget.style.borderColor = colors.inkPlum + '55'
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(93,58,94,0.08)'
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isSelected) {
-                            e.currentTarget.style.borderColor = '#e8e8e8'
-                            e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'
+                            e.currentTarget.style.borderColor = '#ede8f0'
+                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)'
                           }
                         }}
                       >
-                        {/* Checkbox indicator */}
+                        {/* Selection indicator */}
                         <div style={{
                           position: 'absolute', top: 10, right: 10,
-                          width: 22, height: 22, borderRadius: 6,
-                          border: isSelected ? `2px solid ${colors.inkPlum}` : '2px solid #ddd',
-                          background: isSelected ? colors.inkPlum : '#fff',
+                          width: 20, height: 20, borderRadius: 6,
+                          border: isSelected ? `2px solid ${colors.inkPlum}` : '1.5px solid #d8d0e0',
+                          background: isSelected ? colors.inkPlum : 'transparent',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all .15s',
                         }}>
-                          {isSelected && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
+                          {isSelected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                         </div>
 
                         {/* Collection name */}
                         <div style={{
-                          fontSize: 15, fontWeight: 700,
-                          color: isSelected ? colors.inkPlum : '#222',
-                          marginBottom: 8, paddingRight: 30,
+                          fontSize: 14, fontWeight: 700,
+                          color: isSelected ? colors.inkPlum : '#2a2a2a',
+                          marginBottom: 6, paddingRight: 28, lineHeight: 1.3,
                         }}>
                           {col.label}
                         </div>
 
-                        {/* Details */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>{t('builder.price')}</span>
-                            <span style={{ fontWeight: 600 }}>{priceRange}</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>{t('builder.carats')}</span>
-                            <span>{caratRange}</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: '#999' }}>{t('builder.cord')}</span>
-                            <span>{cordType} ({colorCount} colors)</span>
-                          </div>
-                          {col.shapes && (
-                            <div style={{ fontSize: 12, color: '#666', display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ color: '#999' }}>{t('builder.shapes')}</span>
-                              <span>{t('builder.optionsCount').replace('{count}', col.shapes.length)}</span>
-                            </div>
-                          )}
+                        {/* Price range — prominent */}
+                        <div style={{
+                          fontSize: 13, fontWeight: 600,
+                          color: isSelected ? colors.inkPlum : '#444',
+                          marginBottom: 8,
+                        }}>
+                          {priceMin}{priceMax}
+                          <span style={{ fontWeight: 400, fontSize: 11, color: '#aaa' }}> /pc</span>
+                        </div>
+
+                        {/* Cord type pill */}
+                        <div style={{
+                          display: 'inline-block',
+                          fontSize: 10, fontWeight: 500,
+                          color: isSelected ? colors.inkPlum : '#888',
+                          background: isSelected ? `${colors.inkPlum}12` : '#f0ecf5',
+                          borderRadius: 20, padding: '2px 8px',
+                        }}>
+                          {cordType}
                         </div>
                       </button>
                     )
@@ -816,16 +946,36 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             ) : (
               /* ═══ STEP 2: Configuration View ═══ */
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                   <div>
-                    <h2 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: '0 0 4px', fontFamily: fonts.body }}>
+                    <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
                       {t('builder.configureOrder')}
                     </h2>
-                    <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
+                    <p style={{ fontSize: 12, color: '#999', margin: 0 }}>
                       {t('builder.configureOrderHelp')}
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {/* Collapse / Expand all */}
+                    {(() => {
+                      const allExpanded = lines.filter(l => l.collectionId).every(l => l.expanded !== false)
+                      return (
+                        <button
+                          onClick={() => setLines(prev => prev.map(l => ({ ...l, expanded: !allExpanded })))}
+                          style={{
+                            padding: '7px 12px', fontSize: 11, fontWeight: 600,
+                            borderRadius: 8, border: '1px solid #ddd',
+                            background: '#fafafa', color: '#666',
+                            cursor: 'pointer', fontFamily: 'inherit',
+                            transition: 'all .12s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum + '80'; e.currentTarget.style.color = colors.inkPlum }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#ddd'; e.currentTarget.style.color = '#666' }}
+                        >
+                          {allExpanded ? '↑ Collapse all' : '↓ Expand all'}
+                        </button>
+                      )
+                    })()}
                     {/* AI Advisor Button */}
                     <button
                       onClick={() => setShowAiChat(v => !v)}
@@ -850,61 +1000,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     >
                       ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
                     </button>
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        onClick={() => setShowSuggestions(v => !v)}
-                        style={{
-                          ...btnSecondary,
-                          padding: '8px 14px', fontSize: 12,
-                          background: showSuggestions ? '#fdf7fa' : '#fff',
-                        }}
-                      >
-                        ★ {t('builder.suggestions')}
-                      </button>
-                      {showSuggestions && (
-                        <div style={{
-                          position: 'absolute', top: '100%', right: 0, marginTop: 6,
-                          width: mobile ? 260 : 320, background: '#fff', borderRadius: 12,
-                          border: '1px solid #e8e8e8', boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-                          zIndex: 100, padding: 12,
-                        }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
-                            {t('builder.quickFillPresets')}
-                          </div>
-                          {PRESETS.map(preset => {
-                            const col = COLLECTIONS.find(c => c.id === preset.collectionId)
-                            if (!col) return null
-                            const colorCount = (CORD_COLORS[col.cord] || []).length
-                            const caratLabels = preset.caratIndices.map(i => col.carats[i]).join(' + ')
-                            return (
-                              <button
-                                key={preset.collectionId}
-                                onClick={() => applySuggestion(preset)}
-                                style={{
-                                  display: 'block', width: '100%', textAlign: 'left',
-                                  padding: '10px 12px', marginBottom: 6, borderRadius: 8,
-                                  border: '1px solid #eee', background: '#fafaf8',
-                                  cursor: 'pointer', fontFamily: 'inherit',
-                                  transition: 'all .12s',
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.background = '#fdf7fa' }}
-                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#eee'; e.currentTarget.style.background = '#fafaf8' }}
-                              >
-                                <div style={{ fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 3 }}>
-                                  {col.label}
-                                </div>
-                                <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
-                                  {t('builder.suggestionDesc').replace('{count}', colorCount).replace('{carats}', caratLabels)}
-                                </div>
-                                <div style={{ fontSize: 10, color: '#aaa' }}>
-                                  {t('builder.whiteHousingSize').replace('{housing}', preset.housing).replace('{size}', preset.size)}
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
                     <button onClick={goToSelect} style={btnGhost}>
                       ← {t('builder.editCollections')}
                     </button>

@@ -561,15 +561,15 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
 
   return (
     <div style={{
-      border: '1px solid #eee', borderRadius: 12, marginBottom: 12,
-      overflow: 'hidden', background: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.02)',
+      border: '1px solid #ede8f0', borderRadius: 12, marginBottom: 10,
+      overflow: 'hidden', background: '#fff', boxShadow: '0 1px 4px rgba(93,58,94,0.04)',
     }}>
       {/* Header */}
       <div
         style={{
-          padding: '14px 16px', background: '#fff', display: 'flex',
+          padding: '12px 16px', background: '#faf9fc', display: 'flex',
           justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer',
-          borderBottom: line.expanded ? '1px solid #eee' : 'none',
+          borderBottom: line.expanded ? '1px solid #ede8f0' : 'none',
         }}
         onClick={() => set({ expanded: !line.expanded })}
       >
