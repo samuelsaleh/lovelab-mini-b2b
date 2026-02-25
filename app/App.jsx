@@ -253,7 +253,7 @@ export default function App() {
         let multiAttached = null
         if (col.housing === 'multiThree') {
           if (row.setting === 'F') multiAttached = true
-          else if (row.setting === 'L') multiAttached = false
+          else if (row.setting === 'LO') multiAttached = false
           else if (housing) multiAttached = HOUSING.multiThree.attached.includes(housing)
         }
         let cordType = null

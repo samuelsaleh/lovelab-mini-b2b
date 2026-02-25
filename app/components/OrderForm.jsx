@@ -113,7 +113,7 @@ function getHousingOptions(housingKey, setting) {
     ]
   }
 
-  // multiThree: Fix (F) shows attached list only; Loose (L) or unknown shows full list with YWP
+  // multiThree: Fix (F) shows attached list only; Loose (LO) or unknown shows full list with YWP
   if (housingKey === 'multiThree') {
     if (setting === 'F') return HOUSING.multiThree.attached
     return HOUSING.multiThree.notAttached
@@ -146,7 +146,7 @@ function prefillRows(quote) {
     const colDef = findCollection(ln.product)
     const isMultiThree = colDef?.housing === 'multiThree'
     const setting = isMultiThree
-      ? (ln.multiAttached === true ? 'F' : ln.multiAttached === false ? 'L' : '')
+      ? (ln.multiAttached === true ? 'F' : ln.multiAttached === false ? 'LO' : '')
       : splitSetting
     rows.push({
       no: String(rowNum++),
@@ -2123,7 +2123,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             ? (rowCol.housing === 'sparkleProng'
                                 ? [{ value: 'Prong', label: 'Prong' }]
                                 : rowCol.housing === 'multiThree'
-                                  ? [{ value: 'F', label: 'F' }, { value: 'L', label: 'L' }]
+                                  ? [{ value: 'F', label: 'F' }, { value: 'LO', label: 'LO' }]
                                   : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prong' }])
                             : null
                           const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing, row.setting).map(h => {
