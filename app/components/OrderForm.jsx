@@ -96,7 +96,7 @@ function findCollection(productName) {
   ) || null
 }
 
-function getHousingOptions(housingKey) {
+function getHousingOptions(housingKey, setting) {
   if (!housingKey) return []
 
   // These types store values with a "Bezel X" / "Prong X" prefix — match that format exactly
@@ -113,8 +113,9 @@ function getHousingOptions(housingKey) {
     ]
   }
 
-  // multiThree splits into attached/notAttached — use notAttached as the full superset
+  // multiThree: Fix (F) shows attached list only; Loose (L) or unknown shows full list with YWP
   if (housingKey === 'multiThree') {
+    if (setting === 'F') return HOUSING.multiThree.attached
     return HOUSING.multiThree.notAttached
   }
 
@@ -141,7 +142,12 @@ function prefillRows(quote) {
   for (const ln of quote.lines) {
     const qty = ln.qty || 0
     const unit = ln.unitB2B || 0
-    const { setting, color } = splitHousing(ln.housing)
+    const { setting: splitSetting, color } = splitHousing(ln.housing)
+    const colDef = findCollection(ln.product)
+    const isMultiThree = colDef?.housing === 'multiThree'
+    const setting = isMultiThree
+      ? (ln.multiAttached === true ? 'F' : ln.multiAttached === false ? 'L' : '')
+      : splitSetting
     rows.push({
       no: String(rowNum++),
       quantity: qty ? String(qty) : '',
@@ -962,6 +968,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         next[rowIdx].size = ''
         next[rowIdx].material = ''
         next[rowIdx].colorCord = ''
+      }
+      // For MULTI THREE: when setting changes to Fix (F), YWP is no longer valid
+      if (key === 'setting' && value === 'F') {
+        const rowCol = findCollection(next[rowIdx].collection)
+        if (rowCol?.housing === 'multiThree' && next[rowIdx].bpColor === 'YWP') {
+          next[rowIdx].bpColor = ''
+        }
       }
       // Auto-lookup unitPrice from catalog when collection or carat changes
       if (key === 'collection' || key === 'carat') {
@@ -2105,11 +2118,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const needsLookup = isCaratCol || isShapeCol || isSettingCol || isBpColorCol || isSizeCol || isMaterialCol || isColorCordCol
                           const rowCol = needsLookup ? findCollection(row.collection) : null
                           const shapeOptions = isShapeCol && rowCol?.shapes ? rowCol.shapes.map(s => ({ value: s, label: s })) : null
-                          const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng'].includes(rowCol.housing)
+                          const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng', 'multiThree'].includes(rowCol.housing)
                           const settingOptions = isSettingCol && hasSetting
-                            ? (rowCol.housing === 'sparkleProng' ? [{ value: 'Prong', label: 'Prong' }] : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prong' }])
+                            ? (rowCol.housing === 'sparkleProng'
+                                ? [{ value: 'Prong', label: 'Prong' }]
+                                : rowCol.housing === 'multiThree'
+                                  ? [{ value: 'F', label: 'F' }, { value: 'L', label: 'L' }]
+                                  : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prong' }])
                             : null
-                          const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing).map(h => {
+                          const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing, row.setting).map(h => {
                             const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
                             return { value: stripped, label: stripped }
                           }).filter((v, i, a) => a.findIndex(x => x.value === v.value) === i) : null

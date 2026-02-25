@@ -3,6 +3,7 @@ const path = require('path')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  transpilePackages: ['@supabase/ssr', '@supabase/supabase-js', '@supabase/auth-js'],
   experimental: {
     proxyClientMaxBodySize: '25mb',
   },
