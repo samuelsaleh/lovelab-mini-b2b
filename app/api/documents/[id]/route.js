@@ -81,10 +81,9 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE - Delete a document by ID
+// DELETE - Soft-delete a document (moves to trash, recoverable for 7 days)
 export async function DELETE(request, { params }) {
   try {
-    // Rate limiting (was missing -- critical fix)
     const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'docs-delete' });
     if (rateLimitRes) return rateLimitRes;
 
@@ -101,10 +100,10 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
     }
 
-    // First, get the document
+    // Verify document exists and belongs to user
     const { data: doc, error: fetchError } = await supabase
       .from('documents')
-      .select('file_path, created_by')
+      .select('id, created_by')
       .eq('id', id)
       .single();
 
@@ -112,30 +111,14 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Delete from storage (try both the stored path and owner-scoped path)
-    if (doc.file_path) {
-      const { error: storageError } = await supabase.storage
-        .from('documents')
-        .remove([doc.file_path]);
-      
-      if (storageError) {
-        // Try owner-scoped path as fallback
-        const filename = doc.file_path.split('/').pop();
-        const ownerScopedPath = `${doc.created_by}/${filename}`;
-        if (ownerScopedPath !== doc.file_path) {
-          await supabase.storage.from('documents').remove([ownerScopedPath]);
-        }
-      }
-    }
-
-    // Delete from database
-    const { error: deleteError } = await supabase
+    // Soft-delete: set deleted_at timestamp, keep file in storage
+    const { error: updateError } = await supabase
       .from('documents')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);
 
-    if (deleteError) {
-      console.error('[Documents DELETE] Error:', deleteError.message);
+    if (updateError) {
+      console.error('[Documents DELETE] Error:', updateError.message);
       return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
     }
 

@@ -18,12 +18,20 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get('event_id');
     const search = searchParams.get('search');
+    const trashed = searchParams.get('trashed') === 'true';
 
     let query = supabase
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
       .order('created_at', { ascending: false })
       .limit(2000); // Allow up to 2000 documents for analytics
+
+    // Filter by trash state
+    if (trashed) {
+      query = query.not('deleted_at', 'is', null);
+    } else {
+      query = query.is('deleted_at', null);
+    }
 
     if (eventId) {
       query = query.eq('event_id', eventId);

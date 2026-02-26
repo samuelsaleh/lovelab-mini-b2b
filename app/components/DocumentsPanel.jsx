@@ -96,6 +96,10 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [confirmDelete, setConfirmDelete] = useState(null) // doc to delete
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(null) // event to delete
   const [errorMsg, setErrorMsg] = useState(null)
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashedDocs, setTrashedDocs] = useState([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [confirmPurge, setConfirmPurge] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -116,6 +120,75 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       setErrorMsg('Failed to load documents')
     }
     setLoading(false)
+  }
+
+  const TRASH_DAYS = 7
+
+  const fetchTrash = async () => {
+    setTrashLoading(true)
+    try {
+      const res = await fetch('/api/documents?trashed=true')
+      const data = await res.json()
+      if (data.documents) {
+        const now = Date.now()
+        const expired = data.documents.filter(d => {
+          const age = (now - new Date(d.deleted_at).getTime()) / (1000 * 60 * 60 * 24)
+          return age >= TRASH_DAYS
+        })
+        // Auto-purge expired items silently
+        await Promise.all(expired.map(d =>
+          fetch(`/api/documents/${d.id}/purge`, { method: 'DELETE' }).catch(() => {})
+        ))
+        setTrashedDocs(data.documents.filter(d => {
+          const age = (now - new Date(d.deleted_at).getTime()) / (1000 * 60 * 60 * 24)
+          return age < TRASH_DAYS
+        }))
+      }
+    } catch (err) {
+      setErrorMsg('Failed to load trash')
+    }
+    setTrashLoading(false)
+  }
+
+  const openTrash = () => {
+    setShowTrash(true)
+    fetchTrash()
+  }
+
+  const closeTrash = () => {
+    setShowTrash(false)
+    setTrashedDocs([])
+  }
+
+  const restoreDoc = async (doc) => {
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/restore`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to restore')
+      setTrashedDocs(prev => prev.filter(d => d.id !== doc.id))
+      fetchData()
+    } catch (err) {
+      setErrorMsg('Failed to restore: ' + err.message)
+    }
+  }
+
+  const purgeDoc = async (doc) => {
+    setConfirmPurge(null)
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/purge`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete permanently')
+      setTrashedDocs(prev => prev.filter(d => d.id !== doc.id))
+    } catch (err) {
+      setErrorMsg('Failed to permanently delete: ' + err.message)
+    }
+  }
+
+  const getDaysInfo = (deletedAt) => {
+    const age = (Date.now() - new Date(deletedAt).getTime()) / (1000 * 60 * 60 * 24)
+    const daysAgo = Math.floor(age)
+    const daysLeft = TRASH_DAYS - Math.floor(age)
+    return { daysAgo, daysLeft }
   }
 
   const createEvent = async () => {
@@ -433,7 +506,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
       {/* Main content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? 12 : 20 }}>
-        {/* Search + Analytics link */}
+        {/* Search + Analytics link + Trash */}
         <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', maxWidth: mobile ? '100%' : 700 }}>
           <input
             type="text"
@@ -446,6 +519,20 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
               background: '#fff', outline: 'none', boxSizing: 'border-box',
             }}
           />
+          <button
+            onClick={openTrash}
+            title="Trash — deleted documents (7-day recovery)"
+            style={{
+              padding: mobile ? '12px 14px' : '10px 14px', borderRadius: 10,
+              border: '1px solid #e3e3e3', background: '#fff', color: '#888',
+              fontSize: mobile ? 13 : 12, cursor: 'pointer', fontFamily: fonts.body,
+              whiteSpace: 'nowrap', flexShrink: 0, minHeight: mobile ? 44 : 'auto',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>🗑</span>
+            {!mobile && <span>Trash</span>}
+          </button>
           <button
             onClick={() => router.push('/analytics')}
             style={{
@@ -620,6 +707,120 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
           </div>
         )}
       </div>
+
+      {/* Trash Panel Modal */}
+      {showTrash && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 16,
+        }} onClick={closeTrash}>
+          <div style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640,
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+          }} onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{
+              padding: '18px 20px 14px', borderBottom: '1px solid #eee',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#222' }}>Trash</div>
+                <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>Deleted documents are kept for 7 days before being permanently removed.</div>
+              </div>
+              <button
+                onClick={closeTrash}
+                style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#aaa', padding: '0 4px' }}
+              >×</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', padding: '12px 20px 20px', flex: 1 }}>
+              {trashLoading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>
+              ) : trashedDocs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 48 }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>🗑</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#555' }}>Trash is empty</div>
+                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>Deleted documents will appear here for 7 days.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {trashedDocs.map(doc => {
+                    const { daysAgo, daysLeft } = getDaysInfo(doc.deleted_at)
+                    const urgent = daysLeft <= 1
+                    return (
+                      <div key={doc.id} style={{
+                        background: '#fafafa', borderRadius: 10,
+                        border: `1px solid ${urgent ? '#fecaca' : '#ede8f0'}`,
+                        padding: '12px 14px',
+                        display: 'flex', alignItems: 'center', gap: 12,
+                      }}>
+                        {/* Icon */}
+                        <div style={{
+                          width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                          background: doc.document_type === 'order' ? '#f0f5ff' : '#f5f5f5',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, fontWeight: 700, color: colors.inkPlum,
+                        }}>
+                          {doc.document_type === 'order' ? 'PO' : 'Q'}
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {doc.client_company || doc.client_name || 'Unknown'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                            {doc.file_name} · {doc.total_amount ? fmt(doc.total_amount) : ''}
+                          </div>
+                          <div style={{ fontSize: 11, marginTop: 3, color: urgent ? '#dc2626' : '#888' }}>
+                            Deleted {daysAgo === 0 ? 'today' : `${daysAgo}d ago`} — {daysLeft} day{daysLeft !== 1 ? 's' : ''} left to recover
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            onClick={() => restoreDoc(doc)}
+                            style={{
+                              padding: '6px 12px', borderRadius: 7,
+                              border: `1px solid ${colors.inkPlum}`,
+                              background: '#fdf7fa', color: colors.inkPlum,
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                            }}
+                          >Restore</button>
+                          <button
+                            onClick={() => setConfirmPurge(doc)}
+                            style={{
+                              padding: '6px 10px', borderRadius: 7,
+                              border: '1px solid #fecaca', background: '#fef2f2',
+                              color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
+                            }}
+                          >Delete forever</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Purge Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmPurge}
+        title="Delete forever"
+        message={confirmPurge ? `Permanently delete "${confirmPurge.file_name}"? This cannot be undone.` : ''}
+        confirmLabel="Delete forever"
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+        onConfirm={() => purgeDoc(confirmPurge)}
+        onCancel={() => setConfirmPurge(null)}
+      />
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
