@@ -31,6 +31,7 @@ export function mkColorConfig(colorName, minC = 1) {
     cordType: null,
     thickness: null,
     qty: minC,
+    priceOverride: null,
   }
 }
 

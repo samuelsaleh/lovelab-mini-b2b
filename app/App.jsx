@@ -268,6 +268,7 @@ export default function App() {
             cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === row.material)?.[0] || row.material.toLowerCase()
           }
         }
+        const priceOverride = row.unitOverride != null ? row.unitOverride : null
         return {
           id: uniqueId(),
           colorName: row.colorCord || '',
@@ -280,6 +281,7 @@ export default function App() {
           multiAttached,
           cordType,
           thickness,
+          priceOverride,
         }
       })
       return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }

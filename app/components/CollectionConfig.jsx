@@ -137,8 +137,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
   const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-    const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
-    return sum + (cfg.qty * price)
+    const catalogP = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
+    const unitP = cfg.priceOverride != null ? cfg.priceOverride : catalogP
+    return sum + (cfg.qty * unitP)
   }, 0)
 
   // Selection helpers
@@ -1062,8 +1063,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   {line.colorConfigs.map((cfg, cfgIdx) => {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-                    const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
-                    const rowTotal = price * cfg.qty
+                    const catalogPrice = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
+                    const unitPrice = cfg.priceOverride != null ? cfg.priceOverride : catalogPrice
+                    const price = unitPrice
+                    const rowTotal = unitPrice * cfg.qty
                     const isSelected = selectedConfigs.has(cfg.id)
                     const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
                     const hasRowsBelow = cfgIdx < line.colorConfigs.length - 1
@@ -1209,7 +1212,45 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           </div>
                           {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: rowTotal > 0 ? '#333' : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', minWidth: 80 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span style={{ fontSize: 11, color: '#999' }}>€</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={cfg.priceOverride != null ? cfg.priceOverride : (catalogPrice || '')}
+                                placeholder={catalogPrice > 0 ? String(catalogPrice) : '—'}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  updateConfig(cfg.id, { priceOverride: v === '' ? null : Math.max(0, parseFloat(v) || 0) })
+                                }}
+                                style={{
+                                  width: 52, textAlign: 'right', padding: '2px 4px',
+                                  border: cfg.priceOverride != null ? `1px solid ${colors.inkPlum}` : '1px solid #e0e0e0',
+                                  borderRadius: 4, fontSize: 12, fontWeight: 600,
+                                  color: cfg.priceOverride != null ? colors.inkPlum : '#333',
+                                  background: cfg.priceOverride != null ? '#faf8fc' : 'transparent',
+                                  outline: 'none', fontFamily: 'inherit',
+                                }}
+                                title="Unit price per piece — edit to override"
+                              />
+                              {cfg.priceOverride != null && (
+                                <button
+                                  onClick={() => updateConfig(cfg.id, { priceOverride: null })}
+                                  title="Reset to catalog price"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: 10, padding: '0 1px', lineHeight: 1 }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = '#bbb' }}
+                                >↺</button>
+                              )}
+                            </div>
+                            {cfg.qty > 1 && (
+                              <span style={{ fontSize: 10, color: '#888' }}>= {fmt(rowTotal)}</span>
+                            )}
+                          </div>
+                        </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
                             <button onClick={() => duplicateConfig(cfg.id)} title="Duplicate row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 12, padding: '2px 4px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>+</button>
@@ -1230,8 +1271,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               {line.colorConfigs.map((cfg, cfgIdx) => {
                 const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                 const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-                const price = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
-                const rowTotal = price * cfg.qty
+                const catalogPriceMobile = effectiveCaratIdx !== null ? col.prices[effectiveCaratIdx] : 0
+                const unitPriceMobile = cfg.priceOverride != null ? cfg.priceOverride : catalogPriceMobile
+                const price = unitPriceMobile
+                const rowTotal = unitPriceMobile * cfg.qty
                 const isSelected = selectedConfigs.has(cfg.id)
                 const isRecentlyDuplicated = recentlyDuplicated.has(cfg.id)
                 const hasRowsBelow = cfgIdx < line.colorConfigs.length - 1
@@ -1272,7 +1315,41 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         </select>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: rowTotal > 0 ? colors.inkPlum : '#ccc' }}>{rowTotal > 0 ? fmt(rowTotal) : '-'}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <span style={{ fontSize: 11, color: '#999' }}>€</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={cfg.priceOverride != null ? cfg.priceOverride : (catalogPriceMobile || '')}
+                              placeholder={catalogPriceMobile > 0 ? String(catalogPriceMobile) : '—'}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                updateConfig(cfg.id, { priceOverride: v === '' ? null : Math.max(0, parseFloat(v) || 0) })
+                              }}
+                              style={{
+                                width: 52, textAlign: 'right', padding: '2px 4px',
+                                border: cfg.priceOverride != null ? `1px solid ${colors.inkPlum}` : '1px solid #e0e0e0',
+                                borderRadius: 4, fontSize: 13, fontWeight: 700,
+                                color: cfg.priceOverride != null ? colors.inkPlum : colors.inkPlum,
+                                background: cfg.priceOverride != null ? '#faf8fc' : 'transparent',
+                                outline: 'none', fontFamily: 'inherit',
+                              }}
+                              title="Unit price per piece — edit to override"
+                            />
+                            {cfg.priceOverride != null && (
+                              <button
+                                onClick={() => updateConfig(cfg.id, { priceOverride: null })}
+                                title="Reset to catalog price"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: 11, padding: '0 2px' }}
+                              >↺</button>
+                            )}
+                          </div>
+                          {cfg.qty > 1 && rowTotal > 0 && (
+                            <span style={{ fontSize: 11, color: '#999' }}>= {fmt(rowTotal)}</span>
+                          )}
+                        </div>
                         <button onClick={() => duplicateConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fff', color: '#999', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                         <button onClick={() => removeConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#e74c3c', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
                       </div>

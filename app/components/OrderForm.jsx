@@ -161,6 +161,7 @@ function prefillRows(quote) {
       colorCord: ln.colorName || '',
       unitPrice: unit ? String(unit) : '',
       total: qty && unit ? String(qty * unit) : '',
+      unitOverride: ln.unitOverride ?? null,
     })
   }
 
@@ -602,6 +603,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     [client?.zip, client?.city].filter(Boolean).join(' ')
   )
   const [country, setCountry] = useState(client?.country || '')
+
+  // Shipping address state
+  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true)
+  const [shippingAddressLine1, setShippingAddressLine1] = useState('')
+  const [shippingAddressLine2, setShippingAddressLine2] = useState('')
+  const [shippingCountry, setShippingCountry] = useState('')
   const [vatNumber, setVatNumber] = useState(client?.vat || '')
   const [vatLocalValid, setVatLocalValid] = useState(client?.vatValid ?? null)
   const [vatChecking, setVatChecking] = useState(false)
@@ -695,6 +702,32 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setRowsInternal(JSON.parse(JSON.stringify(rowsHistory[newIndex])))
   }, [canRedo, historyIndex, rowsHistory])
 
+  // Global Undo/Redo keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore if user is typing in a text input (except if they specifically want to undo order items, but it's tricky to distinguish. 
+      // Actually standard browser undo handles text input undo. We only want to intercept if they aren't typing, or we just let standard undo work for inputs.)
+      const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'
+      if (isInput) return
+
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === 'z' || e.key === 'Z') {
+          e.preventDefault()
+          if (e.shiftKey) {
+            handleRedo()
+          } else {
+            handleUndo()
+          }
+        } else if (e.key === 'y' || e.key === 'Y') {
+          e.preventDefault()
+          handleRedo()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleUndo, handleRedo])
+
   // Final total override from calculator
   const [finalTotalOverride, setFinalTotalOverride] = useState(null)
   // Tax/% applied from calculator
@@ -715,6 +748,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.addressLine1 != null) setAddressLine1(s.addressLine1)
     if (s.addressLine2 != null) setAddressLine2(s.addressLine2)
     if (s.country != null) setCountry(s.country)
+    if (s.shippingSameAsBilling != null) setShippingSameAsBilling(s.shippingSameAsBilling)
+    if (s.shippingAddressLine1 != null) setShippingAddressLine1(s.shippingAddressLine1)
+    if (s.shippingAddressLine2 != null) setShippingAddressLine2(s.shippingAddressLine2)
+    if (s.shippingCountry != null) setShippingCountry(s.shippingCountry)
     if (s.vatNumber != null) setVatNumber(s.vatNumber)
     if (s.email != null) setEmail(s.email)
     if (s.phone != null) setPhone(s.phone)
@@ -786,6 +823,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.addressLine1 != null) setAddressLine1(s.addressLine1)
     if (s.addressLine2 != null) setAddressLine2(s.addressLine2)
     if (s.country != null) setCountry(s.country)
+    if (s.shippingSameAsBilling != null) setShippingSameAsBilling(s.shippingSameAsBilling)
+    if (s.shippingAddressLine1 != null) setShippingAddressLine1(s.shippingAddressLine1)
+    if (s.shippingAddressLine2 != null) setShippingAddressLine2(s.shippingAddressLine2)
+    if (s.shippingCountry != null) setShippingCountry(s.shippingCountry)
     if (s.vatNumber != null) setVatNumber(s.vatNumber)
     if (s.email != null) setEmail(s.email)
     if (s.phone != null) setPhone(s.phone)
@@ -852,6 +893,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         const formState = {
           rows: rows.filter(r => r.collection || r.quantity),
           companyName, contactName, addressLine1, addressLine2, country,
+          shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
           vatNumber, email, phone, date, packaging, remarks,
           eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
           discountDisplay, finalTotalOverride,
@@ -884,7 +926,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
@@ -1458,6 +1500,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           formState: {
             rows: rows.filter(r => isRowFilled(r)),
             companyName, contactName, addressLine1, addressLine2, country,
+            shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
             vatNumber, email, phone, date, packaging, remarks,
             eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
             discountDisplay, finalTotalOverride,
@@ -1470,6 +1513,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           eventName,
           contactName,
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
+          shippingAddress: shippingSameAsBilling 
+            ? [addressLine1, addressLine2, country].filter(Boolean).join(', ')
+            : [shippingAddressLine1, shippingAddressLine2, shippingCountry].filter(Boolean).join(', '),
         }}
       />
 
@@ -1809,10 +1855,34 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Contact Name :</div>
                     <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
-                    <div style={{ ...hFieldLabel, marginTop: 4 }}>Address :</div>
+                    <div style={{ ...hFieldLabel, marginTop: 4 }}>Billing Address :</div>
                     <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
                     <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
                     <PrintableInput value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+
+                    {(!isPrinting || !shippingSameAsBilling) && (
+                      <div style={{ marginTop: 8 }}>
+                        {!isPrinting && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontFamily: fonts.body, color: colors.charcoal, cursor: 'pointer', marginBottom: 4 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={shippingSameAsBilling} 
+                              onChange={(e) => setShippingSameAsBilling(e.target.checked)} 
+                              style={{ cursor: 'pointer' }}
+                            />
+                            Shipping address same as billing
+                          </label>
+                        )}
+                        {!shippingSameAsBilling && (
+                          <div style={{ marginTop: isPrinting ? 0 : 4 }}>
+                            <div style={{ ...hFieldLabel }}>Shipping Address :</div>
+                            <PrintableInput value={shippingAddressLine1} onChange={(e) => setShippingAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
+                            <PrintableInput value={shippingAddressLine2} onChange={(e) => setShippingAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+                            <PrintableInput value={shippingCountry} onChange={(e) => setShippingCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {/* Right header fields */}
