@@ -243,7 +243,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Toggle collection selection
   const toggleCollection = (colId) => {
     setSelectedCollections(prev =>
-      prev.includes(colId) ? prev.filter(id => id !== colId) : [...prev, colId]
+      prev.includes(colId) ? prev.filter(id => id !== colId) : [colId, ...prev]
     )
   }
 
@@ -837,7 +837,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   gap: 10,
                   marginBottom: 24,
                 }}>
-                  {COLLECTIONS.map(col => {
+                  {[
+                    ...selectedCollections.map(id => COLLECTIONS.find(c => c.id === id)).filter(Boolean),
+                    ...COLLECTIONS.filter(c => !selectedCollections.includes(c.id)),
+                  ].map(col => {
                     const isSelected = selectedCollections.includes(col.id)
                     const priceMin = `€${col.prices[0]}`
                     const priceMax = col.prices.length > 1 ? ` – €${col.prices[col.prices.length - 1]}` : ''
