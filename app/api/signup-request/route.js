@@ -58,7 +58,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to submit request. Please try again.' }, { status: 500 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+    const { origin } = new URL(request.url);
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || origin;
     const approveUrl = `${siteUrl}/api/approve-signup?token=${signup.token}`;
     const rejectUrl = `${siteUrl}/api/reject-signup?token=${signup.token}`;
     const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'alberto@love-lab.com';
