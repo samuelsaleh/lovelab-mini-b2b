@@ -136,7 +136,7 @@ export default function UserMenu() {
           )}
 
           <button
-            onClick={() => { setOpen(false); router.push('/dashboard'); }}
+            onPointerDown={(e) => { e.preventDefault(); setOpen(false); router.push('/dashboard'); }}
             style={{
               width: '100%',
               padding: mobile ? '14px 16px' : '12px 16px',
@@ -175,7 +175,7 @@ export default function UserMenu() {
             {languages.map(l => (
               <button
                 key={l.code}
-                onClick={() => setLang(l.code)}
+                onPointerDown={(e) => { e.preventDefault(); setLang(l.code); }}
                 style={{
                   padding: '4px 10px',
                   borderRadius: 6,
@@ -193,9 +193,9 @@ export default function UserMenu() {
             ))}
           </div>
           
-          {user ? (
+            {user ? (
             <button
-              onClick={() => { setOpen(false); signOut(); }}
+              onPointerDown={(e) => { e.preventDefault(); setOpen(false); signOut(); }}
               style={{
                 width: '100%',
                 padding: mobile ? '14px 16px' : '12px 16px',
@@ -223,7 +223,7 @@ export default function UserMenu() {
             </button>
           ) : (
             <button
-              onClick={() => { setOpen(false); router.push('/login'); }}
+              onPointerDown={(e) => { e.preventDefault(); setOpen(false); router.push('/login'); }}
               style={{
                 width: '100%',
                 padding: mobile ? '14px 16px' : '12px 16px',

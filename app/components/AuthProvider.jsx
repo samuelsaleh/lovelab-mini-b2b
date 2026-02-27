@@ -85,7 +85,8 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
+      // Execute in background to prevent hanging
+      supabase.auth.signOut().catch(err => console.error('Background sign out error:', err));
     } catch (err) {
       console.error('Sign out error:', err);
     }
