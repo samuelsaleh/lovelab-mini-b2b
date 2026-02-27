@@ -8,25 +8,33 @@
 -- This script drops every possible old policy name and leaves only the
 -- correct role-based policies (which were already created in phase 6 fix).
 
--- ─── DOCUMENTS: drop all old policy names ─────────────────────────────────
-DROP POLICY IF EXISTS "Authenticated users can view documents"   ON public.documents;
-DROP POLICY IF EXISTS "Authenticated users can create documents" ON public.documents;
-DROP POLICY IF EXISTS "Authenticated users can update documents" ON public.documents;
-DROP POLICY IF EXISTS "Authenticated users can delete documents" ON public.documents;
-DROP POLICY IF EXISTS "Users can view own documents"             ON public.documents;
-DROP POLICY IF EXISTS "Users can create own documents"           ON public.documents;
-DROP POLICY IF EXISTS "Users can update own documents"           ON public.documents;
-DROP POLICY IF EXISTS "Users can delete own documents"           ON public.documents;
+-- ─── DOCUMENTS: drop ALL old policy names (every variant ever created) ────
+DROP POLICY IF EXISTS "Authenticated users can view documents"       ON public.documents;
+DROP POLICY IF EXISTS "Authenticated users can create documents"     ON public.documents;
+DROP POLICY IF EXISTS "Authenticated users can update documents"     ON public.documents;
+DROP POLICY IF EXISTS "Authenticated users can delete documents"     ON public.documents;
+DROP POLICY IF EXISTS "All authenticated users can view documents"   ON public.documents;
+DROP POLICY IF EXISTS "All authenticated users can update documents" ON public.documents;
+DROP POLICY IF EXISTS "All authenticated users can delete documents" ON public.documents;
+DROP POLICY IF EXISTS "Allow anon read documents"                    ON public.documents;
+DROP POLICY IF EXISTS "Users can view own documents"                 ON public.documents;
+DROP POLICY IF EXISTS "Users can create own documents"               ON public.documents;
+DROP POLICY IF EXISTS "Users can update own documents"               ON public.documents;
+DROP POLICY IF EXISTS "Users can delete own documents"               ON public.documents;
 
--- ─── EVENTS: drop all old policy names ────────────────────────────────────
-DROP POLICY IF EXISTS "Authenticated users can view events"      ON public.events;
-DROP POLICY IF EXISTS "Authenticated users can create events"    ON public.events;
-DROP POLICY IF EXISTS "Authenticated users can update events"    ON public.events;
-DROP POLICY IF EXISTS "Authenticated users can delete events"    ON public.events;
-DROP POLICY IF EXISTS "Users can view own events"                ON public.events;
-DROP POLICY IF EXISTS "Users can create own events"              ON public.events;
-DROP POLICY IF EXISTS "Users can update own events"              ON public.events;
-DROP POLICY IF EXISTS "Users can delete own events"              ON public.events;
+-- ─── EVENTS: drop ALL old policy names (every variant ever created) ────────
+DROP POLICY IF EXISTS "Authenticated users can view events"          ON public.events;
+DROP POLICY IF EXISTS "Authenticated users can create events"        ON public.events;
+DROP POLICY IF EXISTS "Authenticated users can update events"        ON public.events;
+DROP POLICY IF EXISTS "Authenticated users can delete events"        ON public.events;
+DROP POLICY IF EXISTS "All authenticated users can view events"      ON public.events;
+DROP POLICY IF EXISTS "All authenticated users can update events"    ON public.events;
+DROP POLICY IF EXISTS "All authenticated users can delete events"    ON public.events;
+DROP POLICY IF EXISTS "Allow anon read events"                       ON public.events;
+DROP POLICY IF EXISTS "Users can view own events"                    ON public.events;
+DROP POLICY IF EXISTS "Users can create own events"                  ON public.events;
+DROP POLICY IF EXISTS "Users can update own events"                  ON public.events;
+DROP POLICY IF EXISTS "Users can delete own events"                  ON public.events;
 
 -- ─── PROFILES: drop all old policy names ──────────────────────────────────
 DROP POLICY IF EXISTS "Users can view own profile"               ON public.profiles;
