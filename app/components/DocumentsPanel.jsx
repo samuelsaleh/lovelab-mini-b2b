@@ -7,6 +7,7 @@ import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
 import ConfirmDialog from './ConfirmDialog'
+import { useAuth } from './AuthProvider'
 
 // ─── Vitrine helpers ───────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
+  const { user, profile, profileMissing, profileError } = useAuth()
   const [showSidebar, setShowSidebar] = useState(false)
   const [events, setEvents] = useState([])
   const [documents, setDocuments] = useState([])
@@ -100,6 +102,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [trashedDocs, setTrashedDocs] = useState([])
   const [trashLoading, setTrashLoading] = useState(false)
   const [confirmPurge, setConfirmPurge] = useState(null)
+  const [loadIssue, setLoadIssue] = useState(null) // null | unauthorized | api_error
 
   useEffect(() => {
     fetchData()
@@ -107,19 +110,50 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
   const fetchData = async () => {
     setLoading(true)
+    setLoadIssue(null)
     try {
       const [eventsRes, docsRes] = await Promise.all([
         fetch('/api/events'),
         fetch('/api/documents'),
       ])
-      const eventsData = await eventsRes.json()
-      const docsData = await docsRes.json()
+
+      if (!eventsRes.ok || !docsRes.ok) {
+        if (eventsRes.status === 401 || docsRes.status === 401) {
+          setLoadIssue('unauthorized')
+          setErrorMsg('Session expired or unauthorized. Please sign out and sign in again.')
+          setEvents([])
+          setDocuments([])
+          return
+        }
+        setLoadIssue('api_error')
+        setErrorMsg('Failed to load documents (API error).')
+        return
+      }
+
+      const eventsData = await eventsRes.json().catch(() => ({}))
+      const docsData = await docsRes.json().catch(() => ({}))
+
+      if (eventsData.error || docsData.error) {
+        if (String(eventsData.error || '').toLowerCase().includes('unauthorized') || String(docsData.error || '').toLowerCase().includes('unauthorized')) {
+          setLoadIssue('unauthorized')
+          setErrorMsg('Session expired or unauthorized. Please sign out and sign in again.')
+          setEvents([])
+          setDocuments([])
+          return
+        }
+        setLoadIssue('api_error')
+        setErrorMsg(eventsData.error || docsData.error || 'Failed to load documents')
+        return
+      }
+
       if (eventsData.events) setEvents(eventsData.events)
       if (docsData.documents) setDocuments(docsData.documents)
     } catch (err) {
+      setLoadIssue('api_error')
       setErrorMsg('Failed to load documents')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const TRASH_DAYS = 7
@@ -292,6 +326,67 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
   const getEventDocCount = (eventId) => documents.filter(d => d.event_id === eventId).length
   const noEventDocs = documents.filter(d => !d.event_id).length
+  const selectedEventName = selectedEventId && selectedEventId !== 'none'
+    ? events.find(e => e.id === selectedEventId)?.name
+    : null
+
+  const getEmptyState = () => {
+    if (loadIssue === 'unauthorized') {
+      return {
+        title: 'Session expired or unauthorized',
+        subtitle: 'Sign out and sign in again to refresh your access token.',
+      }
+    }
+
+    if (loadIssue === 'api_error') {
+      return {
+        title: 'Could not load documents',
+        subtitle: 'A temporary API issue occurred. Refresh the page and try again.',
+      }
+    }
+
+    if (search) {
+      return {
+        title: 'No documents match your search',
+        subtitle: 'Try a different client name, company, or file name.',
+      }
+    }
+
+    if (selectedEventName) {
+      return {
+        title: `No documents in ${selectedEventName}`,
+        subtitle: 'Switch to All Documents to see files from other events.',
+      }
+    }
+
+    if (profileMissing) {
+      return {
+        title: 'Account access not configured',
+        subtitle: `Signed in as ${user?.email || 'this account'} but no profile is configured yet. Ask an admin to set up your role.`,
+      }
+    }
+
+    if (profileError === 'failed_to_load_profile') {
+      return {
+        title: 'Profile loading issue',
+        subtitle: 'Your session is active, but role data did not load. Sign out and sign in again.',
+      }
+    }
+
+    if (documents.length === 0 && profile?.role !== 'admin') {
+      return {
+        title: 'No documents visible for this account',
+        subtitle: 'Your account may only see specific events or your own documents. Ask an admin to review your access.',
+      }
+    }
+
+    return {
+      title: 'No documents yet',
+      subtitle: 'Save an order to see it here',
+    }
+  }
+
+  const emptyState = getEmptyState()
 
   // Analytics calculations
   const getEventTotal = (eventId) => {
@@ -612,8 +707,8 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
           <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>
         ) : filteredDocs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e8e8e8' }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#555', marginBottom: 4 }}>No documents yet</div>
-            <div style={{ fontSize: 13, color: '#999' }}>{search ? 'No documents match your search' : 'Save an order to see it here'}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#555', marginBottom: 4 }}>{emptyState.title}</div>
+            <div style={{ fontSize: 13, color: '#999' }}>{emptyState.subtitle}</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

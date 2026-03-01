@@ -39,3 +39,6 @@ coverage
 *.tsbuildinfo
 next-env.d.ts
 node_modules_corrupted/
+
+# Database backups (contain production data)
+backups/

@@ -127,3 +127,42 @@ Run these SQL files in order in the Supabase SQL Editor:
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key (server-only) |
 | `ALLOWED_EMAILS` | Optional | Comma-separated email allowlist (fallback) |
 | `ALLOWED_HOSTS` | Optional | Comma-separated allowed redirect hosts |
+
+## Access Audit Checks
+
+Use these SQL checks in Supabase SQL Editor when users report "documents disappeared":
+
+```sql
+-- 1) Global document health
+select
+  count(*)::int as total_docs,
+  count(*) filter (where deleted_at is null)::int as active_docs,
+  count(*) filter (where deleted_at is not null)::int as trashed_docs,
+  max(deleted_at) as last_deleted_at
+from public.documents;
+
+-- 2) Role matrix
+select email, role
+from public.profiles
+order by email;
+
+-- 3) Event access matrix
+select ea.user_email, e.name as event_name
+from public.event_access ea
+join public.events e on e.id = ea.event_id
+order by ea.user_email, e.name;
+
+-- 4) Ownership distribution
+select p.email, count(d.id)::int as owned_docs
+from public.profiles p
+left join public.documents d on d.created_by = p.id and d.deleted_at is null
+group by p.email
+order by owned_docs asc, p.email;
+
+-- 5) Auth users missing profile rows
+select u.email
+from auth.users u
+left join public.profiles p on p.id = u.id
+where p.id is null
+order by u.email;
+```

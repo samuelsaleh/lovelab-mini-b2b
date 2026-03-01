@@ -29,7 +29,7 @@ const AI_CHIPS = [
 ]
 
 export default function App() {
-  const { profile } = useAuth()
+  const { user, profile, profileMissing, profileError, loading: authLoading, refreshProfile, signOut } = useAuth()
   const { t } = useI18n()
   const mobile = useIsMobile()
   
@@ -469,6 +469,67 @@ export default function App() {
       }
     } catch { /* ignore */ }
   }, [])
+
+  // ─── Client Gate ───
+  if (user && !authLoading && profileMissing) {
+    return (
+      <div style={{ fontFamily: fonts.body, background: '#f8f8f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ maxWidth: 620, width: '100%', background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 24 }}>
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 20, color: colors.inkPlum }}>Account setup incomplete</h2>
+          <p style={{ margin: 0, marginBottom: 8, color: '#555', fontSize: 14, lineHeight: 1.5 }}>
+            You are signed in as <strong>{user.email}</strong>, but this account has no profile row in `public.profiles`.
+          </p>
+          <p style={{ margin: 0, color: '#777', fontSize: 13, lineHeight: 1.5 }}>
+            Ask an admin to create your profile and assign your role. Until then, document lists can appear empty even when data exists.
+          </p>
+          <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => window.location.href = '/login'}
+              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Back to login
+            </button>
+            <button
+              onClick={signOut}
+              style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (user && !authLoading && !profile && profileError === 'failed_to_load_profile') {
+    return (
+      <div style={{ fontFamily: fonts.body, background: '#f8f8f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ maxWidth: 620, width: '100%', background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 24 }}>
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 20, color: colors.inkPlum }}>Session sync issue</h2>
+          <p style={{ margin: 0, marginBottom: 8, color: '#555', fontSize: 14, lineHeight: 1.5 }}>
+            Signed in as <strong>{user.email}</strong>, but your profile could not be loaded right now.
+          </p>
+          <p style={{ margin: 0, color: '#777', fontSize: 13, lineHeight: 1.5 }}>
+            This usually means a temporary auth/session sync problem. Retry profile load or sign out and back in.
+          </p>
+          <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+            <button
+              onClick={refreshProfile}
+              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Retry profile load
+            </button>
+            <button
+              onClick={signOut}
+              style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ─── Client Gate ───
   if (!clientReady) {

@@ -6,13 +6,18 @@ import { createClient } from '@/lib/supabase/client';
 const AuthContext = createContext({
   user: null,
   profile: null,
+  profileMissing: false,
+  profileError: null,
   loading: true,
+  refreshProfile: async () => {},
   signOut: async () => {},
 });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [profileMissing, setProfileMissing] = useState(false);
+  const [profileError, setProfileError] = useState(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
@@ -31,7 +36,11 @@ export function AuthProvider({ children }) {
         const serverUser = result?.data?.user;
         if (serverUser) {
           setUser(serverUser);
-          await fetchProfile(serverUser.id);
+          await fetchProfile(serverUser.id, { retries: 2 });
+        } else {
+          setProfile(null);
+          setProfileMissing(false);
+          setProfileError(null);
         }
       } catch (err) {
         // Lock timeout (multi-tab) or auth timeout: fail gracefully, don't surface to overlay
@@ -52,9 +61,11 @@ export function AuthProvider({ children }) {
         try {
           setUser(session?.user ?? null);
           if (session?.user) {
-            await fetchProfile(session.user.id);
+            await fetchProfile(session.user.id, { retries: 2 });
           } else {
             setProfile(null);
+            setProfileMissing(false);
+            setProfileError(null);
           }
         } catch (err) {
           const isLockTimeout = err?.message?.includes?.('Navigator LockManager') || err?.message?.includes?.('timed out');
@@ -69,18 +80,54 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const fetchProfile = async (userId) => {
+  const fetchProfile = async (userId, options = {}) => {
+    const retries = Number.isFinite(options.retries) ? options.retries : 0;
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
-      
+        .maybeSingle();
+
+      if (error) {
+        setProfile(null);
+        setProfileMissing(false);
+        setProfileError('failed_to_load_profile');
+        console.error('Profile fetch error:', error);
+        return;
+      }
+
+      if (!data) {
+        setProfile(null);
+        setProfileMissing(true);
+        setProfileError('missing_profile');
+        return;
+      }
+
       setProfile(data);
+      setProfileMissing(false);
+      setProfileError(null);
     } catch (err) {
+      if (retries > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return fetchProfile(userId, { retries: retries - 1 });
+      }
+      setProfile(null);
+      setProfileMissing(false);
+      setProfileError('failed_to_load_profile');
       console.error('Profile fetch error:', err);
     }
+  };
+
+  // Self-heal profile state if auth user is present but profile was not loaded.
+  useEffect(() => {
+    if (!user || profile || profileMissing || loading) return;
+    fetchProfile(user.id, { retries: 2 });
+  }, [user?.id, profile, profileMissing, loading]);
+
+  const refreshProfile = async () => {
+    if (!user?.id) return;
+    await fetchProfile(user.id, { retries: 2 });
   };
 
   const signOut = async () => {
@@ -92,11 +139,13 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     setProfile(null);
+    setProfileMissing(false);
+    setProfileError(null);
     window.location.href = '/login';
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, profileMissing, profileError, loading, refreshProfile, signOut }}>
       {children}
     </AuthContext.Provider>
   );

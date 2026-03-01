@@ -5,13 +5,24 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import UserMenu from './UserMenu'
+import { useAuth } from './AuthProvider'
 
 export default function TopNav({ activeTab, onTabChange, client, onEditClient, onNewClient, hideClientBar }) {
   const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
+  const { user, profile, loading: authLoading, profileError } = useAuth()
   const hasClient = client && client.company
   const showClientUI = !hideClientBar && onEditClient
+  const roleLabel = authLoading
+    ? 'Loading'
+    : profile?.role === 'admin'
+      ? 'Admin'
+      : profile
+        ? 'Member'
+        : profileError === 'failed_to_load_profile'
+          ? 'Sync issue'
+          : 'Unknown'
 
   const NAV_TABS = [
     { id: 'builder', label: t('nav.builder') },
@@ -103,6 +114,40 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
               <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
               <span style={{ fontSize: 10, color: '#999' }}>&#x25BE;</span>
             </button>
+          )}
+
+          {user && !mobile && (
+            <div
+              title="Current signed-in account"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 10px',
+                borderRadius: 8,
+                border: '1px solid #ece7ef',
+                background: '#faf8fc',
+                maxWidth: 260,
+              }}
+            >
+              <span style={{ fontSize: 11, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.email}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: colors.inkPlum,
+                  background: '#efe7f2',
+                  borderRadius: 12,
+                  padding: '2px 7px',
+                  flexShrink: 0,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {roleLabel}
+              </span>
+            </div>
           )}
 
           <UserMenu />
