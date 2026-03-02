@@ -14,7 +14,7 @@ async function getAdminUser(request) {
   return { user, profile };
 }
 
-// POST /api/agents/[id]/contract — upload PDF contract (admin only)
+// POST /api/agents/[id]/contract — upload PDF contract (admin or the agent themselves)
 export async function POST(request, { params }) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'contract-post' });
@@ -22,10 +22,13 @@ export async function POST(request, { params }) {
 
     const { user, profile } = await getAdminUser(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-
+    
     const { id: agentId } = await params;
     if (!agentId) return NextResponse.json({ error: 'Missing agent ID' }, { status: 400 });
+
+    const isAdmin = profile?.role === 'admin';
+    const isSelf = user.id === agentId;
+    if (!isAdmin && !isSelf) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const formData = await request.formData();
     const file = formData.get('file');
@@ -115,15 +118,18 @@ export async function GET(request, { params }) {
   }
 }
 
-// DELETE /api/agents/[id]/contract — remove contract (admin only)
+// DELETE /api/agents/[id]/contract — remove contract (admin or the agent themselves)
 export async function DELETE(request, { params }) {
   try {
     const { user, profile } = await getAdminUser(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-
+    
     const { id: agentId } = await params;
     if (!agentId) return NextResponse.json({ error: 'Missing agent ID' }, { status: 400 });
+
+    const isAdmin = profile?.role === 'admin';
+    const isSelf = user.id === agentId;
+    if (!isAdmin && !isSelf) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const adminSupabase = createAdminClient();
     const { data: agentProfile } = await adminSupabase
