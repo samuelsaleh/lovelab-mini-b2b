@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
@@ -18,11 +18,23 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
 
-    let query = supabase
+    // Admins see all clients; members see only their own
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    const isAdmin = profile?.role === 'admin';
+    const queryClient = isAdmin ? createAdminClient() : supabase;
+
+    let query = queryClient
       .from('clients')
       .select('*')
-      .eq('created_by', user.id) // Ownership filter
       .order('updated_at', { ascending: false });
+
+    if (!isAdmin) {
+      query = query.eq('created_by', user.id);
+    }
 
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters (commas, dots, parentheses)
@@ -32,7 +44,7 @@ export async function GET(request) {
       }
     }
 
-    const { data: clients, error } = await query.limit(50);
+    const { data: clients, error } = await query.limit(isAdmin ? 2000 : 50);
 
     if (error) {
       console.error('[Clients GET] Error:', error.message);

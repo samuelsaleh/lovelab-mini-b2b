@@ -9,79 +9,6 @@ import { fmt } from '@/lib/utils'
 import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './AuthProvider'
 
-// ─── Vitrine helpers ───────────────────────────────────────────────────────
-
-const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i
-
-function parseVitrineFromRemarks(remarks) {
-  if (!remarks) return null
-  const m = remarks.match(VITRINE_REGEX)
-  if (!m) return remarks.toLowerCase().includes('vitrine') ? 1 : null
-  return parseInt(m[1] || m[2], 10)
-}
-
-function resolveVitrineQty(doc) {
-  const fs = doc?.metadata?.formState
-  if (!fs) return null
-  const { hasVitrine, vitrineQty, remarks } = fs
-  const toggleQty = hasVitrine ? (vitrineQty || 1) : null
-  const remarksQty = parseVitrineFromRemarks(remarks)
-  if (toggleQty !== null && remarksQty !== null) return toggleQty
-  if (toggleQty !== null) return toggleQty
-  if (remarksQty !== null) return remarksQty
-  return null
-}
-
-function VitrineSummaryCard({ docs, eventName }) {
-  const [open, setOpen] = useState(true)
-  const rows = docs
-    .map(doc => ({ company: doc.client_company || doc.client_name || 'Unknown', qty: resolveVitrineQty(doc), total: doc.total_amount || 0 }))
-    .filter(r => r.qty !== null)
-  if (rows.length === 0) return null
-  const totalQty = rows.reduce((s, r) => s + r.qty, 0)
-  const totalAmount = rows.reduce((s, r) => s + r.total, 0)
-  const thS = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}` }
-  const tdS = { padding: '10px 12px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }
-  const ftS = { padding: '10px 12px', fontSize: 13, fontWeight: 700, color: colors.inkPlum }
-  return (
-    <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', cursor: 'pointer', userSelect: 'none', borderBottom: open ? `1px solid ${colors.lineGray}` : 'none' }} onClick={() => setOpen(o => !o)}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>Vitrine Summary</span>
-          {eventName && <span style={{ fontSize: 12, color: colors.lovelabMuted }}>— {eventName}</span>}
-          <span style={{ fontSize: 11, fontWeight: 700, background: colors.ice, color: colors.inkPlum, borderRadius: 20, padding: '2px 8px' }}>{totalQty} total</span>
-        </div>
-        <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{open ? '▲ collapse' : '▼ expand'}</span>
-      </div>
-      {open && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>
-            <th style={thS}>Company</th>
-            <th style={{ ...thS, textAlign: 'center' }}>Vitrines</th>
-            <th style={{ ...thS, textAlign: 'right' }}>Order Total</th>
-          </tr></thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i}>
-                <td style={tdS}>{r.company}</td>
-                <td style={{ ...tdS, textAlign: 'center', fontWeight: 600, color: colors.inkPlum }}>{r.qty}</td>
-                <td style={{ ...tdS, textAlign: 'right' }}>{r.total ? fmt(r.total) : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: '#faf8fc' }}>
-              <td style={ftS}>TOTAL</td>
-              <td style={{ ...ftS, textAlign: 'center' }}>{totalQty}</td>
-              <td style={{ ...ftS, textAlign: 'right' }}>{totalAmount ? fmt(totalAmount) : '—'}</td>
-            </tr>
-          </tfoot>
-        </table>
-      )}
-    </div>
-  )
-}
-
 export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const router = useRouter()
   const mobile = useIsMobile()
@@ -95,6 +22,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [newEventName, setNewEventName] = useState('')
+  const [newEventType, setNewEventType] = useState('fair')
   const [confirmDelete, setConfirmDelete] = useState(null) // doc to delete
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(null) // event to delete
   const [errorMsg, setErrorMsg] = useState(null)
@@ -103,6 +31,9 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [trashLoading, setTrashLoading] = useState(false)
   const [confirmPurge, setConfirmPurge] = useState(null)
   const [loadIssue, setLoadIssue] = useState(null) // null | unauthorized | api_error
+  const [renamingEventId, setRenamingEventId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameLoading, setRenameLoading] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -154,6 +85,29 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  const startRename = (event) => {
+    setRenamingEventId(event.id)
+    setRenameValue(event.name)
+  }
+
+  const commitRename = async (eventId) => {
+    const trimmed = renameValue.trim()
+    if (!trimmed) { setRenamingEventId(null); return }
+    setRenameLoading(true)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      if (res.ok) {
+        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, name: trimmed } : e))
+      }
+    } catch (e) {}
+    setRenameLoading(false)
+    setRenamingEventId(null)
   }
 
   const TRASH_DAYS = 7
@@ -231,7 +185,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       const res = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEventName.trim() }),
+        body: JSON.stringify({ name: newEventName.trim(), type: newEventType }),
       })
       const data = await res.json()
       if (data.event) {
@@ -373,16 +327,16 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       }
     }
 
-    if (documents.length === 0 && profile?.role !== 'admin') {
+    if (events.length === 0 && documents.length === 0 && profile?.role !== 'admin') {
       return {
-        title: 'No documents visible for this account',
-        subtitle: 'Your account may only see specific events or your own documents. Ask an admin to review your access.',
+        title: 'You don\'t have any folders yet',
+        subtitle: 'Tap the + next to "Events / Fairs" to create your first folder, then save documents into it.',
       }
     }
 
     return {
       title: 'No documents yet',
-      subtitle: 'Save an order to see it here',
+      subtitle: 'Save an order to see it here.',
     }
   }
 
@@ -495,7 +449,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
               type="text"
               value={newEventName}
               onChange={(e) => setNewEventName(e.target.value)}
-              placeholder="Event name..."
+              placeholder="Folder name..."
               style={{
                 width: '100%', padding: '8px 10px', borderRadius: 6,
                 border: '1px solid #e3e3e3', fontSize: 12, fontFamily: fonts.body,
@@ -507,6 +461,20 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
               }}
               autoFocus
             />
+            <select
+              value={newEventType}
+              onChange={(e) => setNewEventType(e.target.value)}
+              style={{
+                width: '100%', padding: '7px 10px', borderRadius: 6,
+                border: '1px solid #e3e3e3', fontSize: 11, fontFamily: fonts.body,
+                marginBottom: 6, background: '#fff', boxSizing: 'border-box',
+              }}
+            >
+              <option value="fair">Fair</option>
+              <option value="agent">Agent</option>
+              <option value="partner">Partner</option>
+              <option value="other">Other</option>
+            </select>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 onClick={createEvent}
@@ -542,43 +510,85 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
           <span style={{ fontSize: 11, color: '#999' }}>{documents.length}</span>
         </button>
 
-        {events.map(event => (
-          <div
-            key={event.id}
-            style={{
-              display: 'flex', alignItems: 'center', marginBottom: 4, borderRadius: 8,
-              background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
-            }}
-          >
-            <button
-              onClick={() => setSelectedEventId(event.id)}
-              style={{
-                flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none',
-                background: 'transparent',
-                color: selectedEventId === event.id ? colors.inkPlum : '#555',
-                fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
-                cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                minWidth: 0,
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
-              <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
-              title="Delete event"
-              style={{
-                width: 24, height: 24, borderRadius: 6, border: 'none',
-                background: 'transparent', color: '#ccc', fontSize: 13,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, marginRight: 4, transition: 'color .15s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-            >×</button>
-          </div>
-        ))}
+        {[
+          { key: 'fair', label: 'Fairs' },
+          { key: 'agent', label: 'Agents' },
+          { key: 'partner', label: 'Partners' },
+          { key: 'other', label: 'Other' },
+        ].map(group => {
+          const groupEvents = events.filter(e => (e.type || 'other') === group.key);
+          if (groupEvents.length === 0) return null;
+          return (
+            <div key={group.key} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
+                {group.label}
+              </div>
+              {groupEvents.map(event => (
+                <div
+                  key={event.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', marginBottom: 2, borderRadius: 8,
+                    background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
+                  }}
+                >
+                  {renamingEventId === event.id ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitRename(event.id); if (e.key === 'Escape') setRenamingEventId(null); }}
+                      onBlur={() => commitRename(event.id)}
+                      disabled={renameLoading}
+                      style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setSelectedEventId(event.id)}
+                      style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                        background: 'transparent',
+                        color: selectedEventId === event.id ? colors.inkPlum : '#555',
+                        fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
+                        cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        minWidth: 0,
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
+                      <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
+                    </button>
+                  )}
+                  {renamingEventId !== event.id && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startRename(event) }}
+                      title="Rename"
+                      style={{
+                        width: 22, height: 22, borderRadius: 5, border: 'none',
+                        background: 'transparent', color: '#ccc', fontSize: 11,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, transition: 'color .15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                    >✎</button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
+                    title="Delete event"
+                    style={{
+                      width: 24, height: 24, borderRadius: 6, border: 'none',
+                      background: 'transparent', color: '#ccc', fontSize: 13,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, marginRight: 4, transition: 'color .15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          );
+        })}
 
         {noEventDocs > 0 && (
           <button
@@ -695,13 +705,6 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
             )}
           </div>
         )}
-
-        {/* Vitrine summary — shown when a specific event is selected */}
-        {selectedEventId && selectedEventId !== 'none' && !loading && (() => {
-          const eventDocs = documents.filter(d => d.event_id === selectedEventId)
-          const eventName = events.find(e => e.id === selectedEventId)?.name
-          return <VitrineSummaryCard docs={eventDocs} eventName={eventName} />
-        })()}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>

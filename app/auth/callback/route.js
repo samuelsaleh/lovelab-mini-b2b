@@ -25,43 +25,58 @@ function getSafeHost(forwardedHost) {
 export async function GET(request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
+  const token_hash = searchParams.get('token_hash');
+  const type = searchParams.get('type');
   const next = getSafeRedirectPath(searchParams.get('next'));
 
+  let sessionUser = null;
+  let supabase = null;
+
+  // Handle PKCE/OAuth code exchange
   if (code) {
-    const supabase = await createClient();
+    supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    
     if (!error && data?.user) {
-      // Check if user email is in the allowed list (using admin client to bypass RLS)
-      const allowedEmails = await getAllowedEmails();
-      const userEmail = data.user.email?.toLowerCase();
-      
-      if (!allowedEmails.includes(userEmail)) {
-        // User not in allowlist - sign them out and show error
-        await supabase.auth.signOut();
-        const url = new URL('/login', origin);
-        url.searchParams.set('error', 'access_denied');
-        return NextResponse.redirect(url);
-      }
-      
-      // User is allowed - ensure they have a profile
-      await ensureProfile(supabase, data.user);
-      
-      const isLocalEnv = process.env.NODE_ENV === 'development';
-      
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
-      
-      // In production, validate x-forwarded-host against allowlist
-      const forwardedHost = request.headers.get('x-forwarded-host');
-      const safeHost = getSafeHost(forwardedHost);
-      
-      if (safeHost) {
-        return NextResponse.redirect(`https://${safeHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+      sessionUser = data.user;
+    }
+  }
+  // Handle magic link / OTP token_hash (used by agent invitations and magic link sign-in)
+  else if (token_hash && type) {
+    supabase = await createClient();
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash, type });
+    if (!error && data?.user) {
+      sessionUser = data.user;
+    }
+  }
+
+  if (sessionUser && supabase) {
+    // Check if user email is in the allowed list (using admin client to bypass RLS)
+    const allowedEmails = await getAllowedEmails();
+    const userEmail = sessionUser.email?.toLowerCase();
+
+    if (!allowedEmails.includes(userEmail)) {
+      await supabase.auth.signOut();
+      const url = new URL('/login', origin);
+      url.searchParams.set('error', 'access_denied');
+      return NextResponse.redirect(url);
+    }
+
+    // User is allowed - ensure they have a profile
+    await ensureProfile(supabase, sessionUser);
+
+    const isLocalEnv = process.env.NODE_ENV === 'development';
+
+    if (isLocalEnv) {
+      return NextResponse.redirect(`${origin}${next}`);
+    }
+
+    const forwardedHost = request.headers.get('x-forwarded-host');
+    const safeHost = getSafeHost(forwardedHost);
+
+    if (safeHost) {
+      return NextResponse.redirect(`https://${safeHost}${next}`);
+    } else {
+      return NextResponse.redirect(`${origin}${next}`);
     }
   }
 
@@ -89,24 +104,64 @@ async function getAllowedEmails() {
   return envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
 }
 
+function getAdminEmails() {
+  const fromEnv = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  // Safety fallback for existing production admins if ADMIN_EMAILS is missing.
+  const fallback = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'];
+  return Array.from(new Set([...fromEnv, ...fallback]));
+}
+
 // Create or update user profile
 async function ensureProfile(supabase, user) {
   try {
-    const { data: existingProfile } = await supabase
+    const adminSupabase = createAdminClient();
+    const userEmail = (user.email || '').toLowerCase();
+    const shouldBeAdmin = getAdminEmails().includes(userEmail);
+
+    const { data: existingProfile } = await adminSupabase
       .from('profiles')
-      .select('id')
+      .select('id, role, is_agent, agent_status')
       .eq('id', user.id)
       .single();
     
     if (!existingProfile) {
-      const { error } = await supabase.from('profiles').insert({
+      const { error } = await adminSupabase.from('profiles').insert({
         id: user.id,
         email: user.email,
         full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
         avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+        role: shouldBeAdmin ? 'admin' : 'member',
       });
       if (error) {
         console.error('Failed to create profile:', error.message);
+      }
+    } else {
+      // Keep admin roles stable even if profile is recreated/updated in future flows.
+      if (shouldBeAdmin && existingProfile.role !== 'admin') {
+        try {
+          await adminSupabase
+            .from('profiles')
+            .update({ role: 'admin' })
+            .eq('id', user.id);
+        } catch (roleErr) {
+          console.error('Admin role repair error (non-blocking):', roleErr.message);
+        }
+      }
+
+      // Activate invited agents on first login
+      if (existingProfile.is_agent && existingProfile.agent_status === 'invited') {
+        try {
+          await adminSupabase
+            .from('profiles')
+            .update({ agent_status: 'active' })
+            .eq('id', user.id);
+        } catch (agentErr) {
+          console.error('Agent activation error (non-blocking):', agentErr.message);
+        }
       }
     }
   } catch (err) {

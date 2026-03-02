@@ -1,0 +1,42 @@
+import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ user: null, profile: null });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!profileError && profile) {
+      return NextResponse.json({ user: { id: user.id, email: user.email }, profile });
+    }
+
+    const admin = createAdminClient();
+    const { data: adminProfile } = await admin
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (adminProfile) {
+      return NextResponse.json({ user: { id: user.id, email: user.email }, profile: adminProfile });
+    }
+
+    return NextResponse.json({
+      user: { id: user.id, email: user.email },
+      profile: null,
+      error: profileError?.message || 'profile not found',
+    });
+  } catch (err) {
+    return NextResponse.json({ user: null, profile: null, error: err.message }, { status: 500 });
+  }
+}

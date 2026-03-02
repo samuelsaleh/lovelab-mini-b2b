@@ -1,5 +1,6 @@
 import './globals.css'
 import { AuthProvider } from './components/AuthProvider'
+import AuthGuard from './components/AuthGuard'
 import { I18nProvider } from '@/lib/i18n'
 
 export const metadata = {
@@ -27,7 +28,9 @@ export default function RootLayout({ children }) {
       <body>
         <I18nProvider>
           <AuthProvider>
-            {children}
+            <AuthGuard>
+              {children}
+            </AuthGuard>
           </AuthProvider>
         </I18nProvider>
       </body>

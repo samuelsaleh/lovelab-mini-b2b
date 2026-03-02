@@ -155,9 +155,13 @@ export default function DashboardPage() {
   const [selectedEventId, setSelectedEventId] = useState(null); // null = all documents
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [newEventName, setNewEventName] = useState('');
+  const [newEventType, setNewEventType] = useState('fair');
   const [errorMsg, setErrorMsg] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // doc to delete or null
   const [actionLoading, setActionLoading] = useState(null); // doc id being acted on
+  const [renamingEventId, setRenamingEventId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -191,7 +195,7 @@ export default function DashboardPage() {
       const res = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEventName.trim() }),
+        body: JSON.stringify({ name: newEventName.trim(), type: newEventType }),
       });
       const data = await res.json();
       if (data.event) {
@@ -201,6 +205,37 @@ export default function DashboardPage() {
       }
     } catch (err) {
       setErrorMsg('Failed to create event');
+    }
+  };
+
+  const startRename = (event) => {
+    setRenamingEventId(event.id);
+    setRenameValue(event.name || '');
+  };
+
+  const commitRename = async (eventId) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenamingEventId(null);
+      return;
+    }
+    setRenameLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to rename folder');
+      }
+      setEvents(prev => prev.map(e => (e.id === eventId ? { ...e, name: trimmed } : e)));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to rename folder');
+    } finally {
+      setRenameLoading(false);
+      setRenamingEventId(null);
     }
   };
 
@@ -401,7 +436,7 @@ export default function DashboardPage() {
                 type="text"
                 value={newEventName}
                 onChange={(e) => setNewEventName(e.target.value)}
-                placeholder="Event name..."
+                placeholder="Folder name..."
                 style={{
                   width: '100%',
                   padding: '8px 10px',
@@ -417,6 +452,25 @@ export default function DashboardPage() {
                 }}
                 autoFocus
               />
+              <select
+                value={newEventType}
+                onChange={(e) => setNewEventType(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '7px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${colors.lineGray}`,
+                  fontSize: 11,
+                  fontFamily: fonts.body,
+                  marginBottom: 6,
+                  background: '#fff',
+                }}
+              >
+                <option value="fair">Fair</option>
+                <option value="agent">Agent</option>
+                <option value="partner">Partner</option>
+                <option value="other">Other</option>
+              </select>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   onClick={createEvent}
@@ -477,37 +531,112 @@ export default function DashboardPage() {
             <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{documents.length}</span>
           </button>
 
-          {/* Event list */}
-          {events.map(event => (
-            <button
-              key={event.id}
-              onClick={() => setSelectedEventId(event.id)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: 'none',
-                background: selectedEventId === event.id ? colors.ice : 'transparent',
-                color: selectedEventId === event.id ? colors.inkPlum : colors.charcoal,
-                fontSize: 13,
-                fontWeight: selectedEventId === event.id ? 600 : 400,
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontFamily: fonts.body,
-                marginBottom: 4,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {event.name}
-              </span>
-              <span style={{ fontSize: 11, color: colors.lovelabMuted, flexShrink: 0, marginLeft: 8 }}>
-                {getEventDocCount(event.id)}
-              </span>
-            </button>
-          ))}
+          {/* Event list grouped by type */}
+          {[
+            { key: 'fair', label: 'Fairs' },
+            { key: 'agent', label: 'Agents' },
+            { key: 'partner', label: 'Partners' },
+            { key: 'other', label: 'Other' },
+          ].map(group => {
+            const groupEvents = events.filter(e => (e.type || 'other') === group.key);
+            if (groupEvents.length === 0) return null;
+            return (
+              <div key={group.key} style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
+                  {group.label}
+                </div>
+                {groupEvents.map(event => (
+                  <div
+                    key={event.id}
+                    style={{
+                      width: '100%',
+                      borderRadius: 8,
+                      marginBottom: 2,
+                      background: selectedEventId === event.id ? colors.ice : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {renamingEventId === event.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitRename(event.id);
+                          if (e.key === 'Escape') setRenamingEventId(null);
+                        }}
+                        onBlur={() => commitRename(event.id)}
+                        disabled={renameLoading}
+                        style={{
+                          flex: 1,
+                          margin: '4px 6px',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          border: `1px solid ${colors.inkPlum}`,
+                          fontSize: 12,
+                          fontFamily: fonts.body,
+                          outline: 'none',
+                        }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setSelectedEventId(event.id)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: 'transparent',
+                          color: selectedEventId === event.id ? colors.inkPlum : colors.charcoal,
+                          fontSize: 13,
+                          fontWeight: selectedEventId === event.id ? 600 : 400,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          fontFamily: fonts.body,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          minWidth: 0,
+                        }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {event.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: colors.lovelabMuted, flexShrink: 0, marginLeft: 8 }}>
+                          {getEventDocCount(event.id)}
+                        </span>
+                      </button>
+                    )}
+                    {renamingEventId !== event.id && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); startRename(event); }}
+                        title="Rename folder"
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 5,
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#bbb',
+                          fontSize: 11,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 6,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#bbb'; }}
+                      >
+                        ✎
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
 
           {/* No event folder */}
           {noEventDocs > 0 && (
@@ -581,10 +710,18 @@ export default function DashboardPage() {
             }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: colors.charcoal, marginBottom: 4 }}>
-                No documents yet
+                {search
+                  ? 'No documents match your search'
+                  : events.length === 0 && documents.length === 0 && profile?.role !== 'admin'
+                    ? 'You don\'t have any folders yet'
+                    : 'No documents yet'}
               </div>
               <div style={{ fontSize: 13, color: colors.lovelabMuted }}>
-                {search ? 'No documents match your search' : 'Save an order to see it here'}
+                {search
+                  ? 'Try a different client name, company, or file name.'
+                  : events.length === 0 && documents.length === 0 && profile?.role !== 'admin'
+                    ? 'Tap the + next to "Events / Fairs" to create your first folder, then save documents into it.'
+                    : 'Save an order to see it here.'}
               </div>
             </div>
           ) : (

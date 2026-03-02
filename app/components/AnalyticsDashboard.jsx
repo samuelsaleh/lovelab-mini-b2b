@@ -497,9 +497,22 @@ export default function AnalyticsDashboard() {
             }}
           >
             <option value="">All Events</option>
-            {events.map(e => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
+            {[
+              { key: 'fair', label: 'Fairs' },
+              { key: 'agent', label: 'Agents' },
+              { key: 'partner', label: 'Partners' },
+              { key: 'other', label: 'Other' },
+            ].map(group => {
+              const groupEvents = events.filter(e => (e.type || 'other') === group.key);
+              if (groupEvents.length === 0) return null;
+              return (
+                <optgroup key={group.key} label={group.label}>
+                  {groupEvents.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
           <button
             onClick={() => setShowChat(true)}

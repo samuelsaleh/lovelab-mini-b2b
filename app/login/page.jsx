@@ -13,19 +13,22 @@ export default function LoginPage() {
   );
 }
 
-// Three modes: 'signin' (email+password), 'google' (google only), 'request' (request access)
+// Modes: 'google' | 'signin' (email+password) | 'magic' (magic link) | 'request' (request access)
 function LoginContent() {
   const mobile = useIsMobile();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [mode, setMode] = useState('google'); // 'google' | 'signin' | 'request'
+  const [mode, setMode] = useState('google');
   const searchParams = useSearchParams();
 
   // Email+password fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Magic link field
+  const [magicEmail, setMagicEmail] = useState('');
 
   // Request access fields
   const [reqName, setReqName] = useState('');
@@ -57,6 +60,29 @@ function LoginContent() {
       setError(err?.message || 'Unexpected error.');
       setLoading(false);
     }
+  };
+
+  const handleMagicLink = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const supabase = createClient();
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`;
+      const { error } = await supabase.auth.signInWithOtp({
+        email: magicEmail.trim(),
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+      });
+      if (error) {
+        setError('Could not send magic link. Make sure your email is registered.');
+      } else {
+        setSuccessMsg('Magic link sent! Check your inbox and click the link to sign in.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Unexpected error.');
+    }
+    setLoading(false);
   };
 
   const handleEmailSignIn = async (e) => {
@@ -116,7 +142,8 @@ function LoginContent() {
         <div style={{ display: 'flex', borderRadius: 10, border: '1px solid #e5e5e5', overflow: 'hidden', marginBottom: 24 }}>
           {[
             { id: 'google', label: 'Google' },
-            { id: 'signin', label: 'Email Login' },
+            { id: 'signin', label: 'Password' },
+            { id: 'magic', label: 'Magic Link' },
             { id: 'request', label: 'Request Access' },
           ].map((tab) => (
             <button
@@ -197,6 +224,33 @@ function LoginContent() {
               </button>
             </p>
           </form>
+        )}
+
+        {/* ── Magic link sign-in ── */}
+        {mode === 'magic' && !successMsg && (
+          <form onSubmit={handleMagicLink} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: 13, color: '#555', marginBottom: 4, textAlign: 'left' }}>
+              Enter your email and we'll send you a one-click sign-in link — no password needed.
+            </p>
+            <input
+              type="email"
+              placeholder="Your email address"
+              value={magicEmail}
+              onChange={e => setMagicEmail(e.target.value)}
+              required
+              style={styles.input}
+            />
+            <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Sending…' : 'Send magic link'}
+            </button>
+          </form>
+        )}
+        {mode === 'magic' && successMsg && (
+          <div style={{ textAlign: 'center', padding: '12px 0' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>📬</div>
+            <p style={{ fontSize: 14, color: '#333', fontWeight: 600 }}>{successMsg}</p>
+            <p style={{ fontSize: 12, color: '#999', marginTop: 8 }}>The link expires in 1 hour.</p>
+          </div>
         )}
 
         {/* ── Request access ── */}

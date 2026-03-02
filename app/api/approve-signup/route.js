@@ -60,7 +60,7 @@ export async function GET(request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'LoveLab B2B <onboarding@resend.dev>',
+          from: 'LoveLab B2B <alberto@love-lab.com>',
           to: [signup.email],
           subject: 'Your LoveLab B2B access has been approved!',
           html: `

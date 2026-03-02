@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 const AuthContext = createContext({
@@ -21,127 +21,93 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  useEffect(() => {
-    // Get initial session -- always use getUser() for server-side verification
-    // Timeout so we don't hang forever if Supabase is slow/unreachable
-    const AUTH_TIMEOUT_MS = 10000;
-    const getInitialSession = async () => {
-      try {
-        const result = await Promise.race([
-          supabase.auth.getUser(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Auth timeout')), AUTH_TIMEOUT_MS)
-          ),
-        ]);
-        const serverUser = result?.data?.user;
-        if (serverUser) {
-          setUser(serverUser);
-          await fetchProfile(serverUser.id, { retries: 2 });
-        } else {
-          setProfile(null);
+  const fetchFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/me');
+      if (!res.ok) return false;
+      const json = await res.json();
+      if (json.user) {
+        setUser(json.user);
+        if (json.profile) {
+          setProfile(json.profile);
           setProfileMissing(false);
           setProfileError(null);
+        } else {
+          setProfile(null);
+          setProfileMissing(true);
+          setProfileError('missing_profile');
         }
-      } catch (err) {
-        // Lock timeout (multi-tab) or auth timeout: fail gracefully, don't surface to overlay
-        const isLockTimeout = err?.message?.includes?.('Navigator LockManager') || err?.message?.includes?.('timed out');
-        if (err?.message !== 'Auth timeout' && !isLockTimeout) {
-          console.error('Auth init error:', err);
-        }
+        return true;
       }
+    } catch (e) {}
+    return false;
+  }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const init = async () => {
+      const ok = await fetchFromServer();
+      if (cancelled) return;
+
+      if (!ok) {
+        setUser(null);
+        setProfile(null);
+        setProfileMissing(false);
+        setProfileError(null);
+      }
       setLoading(false);
     };
 
-    getInitialSession();
+    init();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        try {
-          setUser(session?.user ?? null);
-          if (session?.user) {
-            await fetchProfile(session.user.id, { retries: 2 });
-          } else {
-            setProfile(null);
-            setProfileMissing(false);
-            setProfileError(null);
-          }
-        } catch (err) {
-          const isLockTimeout = err?.message?.includes?.('Navigator LockManager') || err?.message?.includes?.('timed out');
-          if (!isLockTimeout) console.error('Auth state change error:', err);
+      async (_event, session) => {
+        if (cancelled) return;
+        if (session?.user) {
+          await fetchFromServer();
+        } else {
+          setUser(null);
+          setProfile(null);
+          setProfileMissing(false);
+          setProfileError(null);
         }
         setLoading(false);
       }
     );
 
     return () => {
+      cancelled = true;
       subscription.unsubscribe();
     };
   }, []);
 
-  const fetchProfile = async (userId, options = {}) => {
-    const retries = Number.isFinite(options.retries) ? options.retries : 0;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) {
-        setProfile(null);
-        setProfileMissing(false);
-        setProfileError('failed_to_load_profile');
-        console.error('Profile fetch error:', error);
-        return;
-      }
-
-      if (!data) {
-        setProfile(null);
-        setProfileMissing(true);
-        setProfileError('missing_profile');
-        return;
-      }
-
-      setProfile(data);
-      setProfileMissing(false);
-      setProfileError(null);
-    } catch (err) {
-      if (retries > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        return fetchProfile(userId, { retries: retries - 1 });
-      }
-      setProfile(null);
-      setProfileMissing(false);
-      setProfileError('failed_to_load_profile');
-      console.error('Profile fetch error:', err);
-    }
-  };
-
-  // Self-heal profile state if auth user is present but profile was not loaded.
-  useEffect(() => {
-    if (!user || profile || profileMissing || loading) return;
-    fetchProfile(user.id, { retries: 2 });
-  }, [user?.id, profile, profileMissing, loading]);
-
-  const refreshProfile = async () => {
-    if (!user?.id) return;
-    await fetchProfile(user.id, { retries: 2 });
-  };
+  const refreshProfile = useCallback(async () => {
+    await fetchFromServer();
+  }, [fetchFromServer]);
 
   const signOut = async () => {
-    try {
-      // Execute in background to prevent hanging
-      supabase.auth.signOut().catch(err => console.error('Background sign out error:', err));
-    } catch (err) {
-      console.error('Sign out error:', err);
-    }
     setUser(null);
     setProfile(null);
     setProfileMissing(false);
     setProfileError(null);
-    window.location.href = '/login';
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+    try {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const name = cookie.split('=')[0].trim();
+        if (name.startsWith('sb-')) {
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+        }
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+    window.location.href = '/login?signed_out';
   };
 
   return (

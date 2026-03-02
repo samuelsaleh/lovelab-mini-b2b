@@ -1,0 +1,267 @@
+import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { NextResponse } from 'next/server';
+
+async function requireAdmin(supabase, userId) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single();
+  return data?.role === 'admin';
+}
+
+const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at';
+
+// GET - Single agent detail with commission history (admin only)
+export async function GET(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'agent-detail' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (!(await requireAdmin(supabase, user.id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const adminSupabase = createAdminClient();
+
+    const { data: agent, error } = await adminSupabase
+      .from('profiles')
+      .select(AGENT_FIELDS)
+      .eq('id', id)
+      .eq('is_agent', true)
+      .single();
+
+    if (error || !agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    // Fetch commission history
+    const { data: commissions } = await adminSupabase
+      .from('agent_commissions')
+      .select('id, type, document_id, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at')
+      .eq('agent_id', id)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Fetch document details for order-type commissions
+    const docIds = (commissions || [])
+      .filter(c => c.document_id)
+      .map(c => c.document_id);
+
+    let docsMap = {};
+    if (docIds.length > 0) {
+      const { data: docs } = await adminSupabase
+        .from('documents')
+        .select('id, client_name, client_company, created_at')
+        .in('id', docIds);
+
+      for (const d of docs || []) {
+        docsMap[d.id] = d;
+      }
+    }
+
+    const commissionsWithDocs = (commissions || []).map(c => ({
+      ...c,
+      document: c.document_id ? docsMap[c.document_id] || null : null,
+    }));
+
+    return NextResponse.json({ agent, commissions: commissionsWithDocs });
+  } catch (err) {
+    console.error('[Agent GET] Exception:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// PUT - Update agent profile/rate/status (admin only)
+export async function PUT(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'agent-update' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (!(await requireAdmin(supabase, user.id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const adminSupabase = createAdminClient();
+
+    // Verify agent exists
+    const { data: existing } = await adminSupabase
+      .from('profiles')
+      .select('id, is_agent')
+      .eq('id', id)
+      .single();
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    // Handle restore from trash
+    if (body._restore === true) {
+      const { data: restored, error: restoreErr } = await adminSupabase
+        .from('profiles')
+        .update({ agent_status: 'active', agent_deleted_at: null })
+        .eq('id', id)
+        .select(AGENT_FIELDS)
+        .single();
+
+      if (restoreErr) {
+        console.error('[Agent PUT] Restore error:', restoreErr.message);
+        return NextResponse.json({ error: 'Failed to restore agent' }, { status: 500 });
+      }
+      return NextResponse.json({ agent: restored, message: 'Agent restored.' });
+    }
+
+    // Build update object from allowed fields only
+    const allowedFields = [
+      'full_name', 'commission_rate', 'agent_status', 'agent_conditions',
+      'agent_phone', 'agent_company', 'agent_country', 'agent_city',
+      'agent_region', 'agent_territory', 'agent_specialty', 'agent_notes',
+    ];
+
+    const updates = {};
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updates[field] = typeof body[field] === 'string' ? body[field].trim() || null : body[field];
+      }
+    }
+
+    // Validate commission_rate if provided
+    if (updates.commission_rate !== undefined) {
+      const rate = Number(updates.commission_rate);
+      if (isNaN(rate) || rate < 0 || rate > 100) {
+        return NextResponse.json({ error: 'Commission rate must be between 0 and 100' }, { status: 400 });
+      }
+      updates.commission_rate = rate;
+    }
+
+    // Validate agent_status if provided
+    if (updates.agent_status !== undefined) {
+      const validStatuses = ['invited', 'active', 'paused', 'inactive'];
+      if (!validStatuses.includes(updates.agent_status)) {
+        return NextResponse.json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    const { data: agent, error } = await adminSupabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', id)
+      .select(AGENT_FIELDS)
+      .single();
+
+    if (error) {
+      console.error('[Agent PUT] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 });
+    }
+
+    return NextResponse.json({ agent });
+  } catch (err) {
+    console.error('[Agent PUT] Exception:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// DELETE - Soft-delete agent (7-day recovery window, then permanent)
+export async function DELETE(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'agent-delete' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (!(await requireAdmin(supabase, user.id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const adminSupabase = createAdminClient();
+    const url = new URL(request.url);
+    const permanent = url.searchParams.get('permanent') === 'true';
+
+    if (permanent) {
+      // Permanent delete: only allowed if already soft-deleted and past 7 days
+      const { data: check } = await adminSupabase
+        .from('profiles')
+        .select('agent_deleted_at')
+        .eq('id', id)
+        .single();
+
+      if (!check?.agent_deleted_at) {
+        return NextResponse.json({ error: 'Agent must be in trash before permanent deletion' }, { status: 400 });
+      }
+
+      const deletedAt = new Date(check.agent_deleted_at);
+      const daysSince = (Date.now() - deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSince < 7) {
+        return NextResponse.json({ error: `Cannot permanently delete yet. ${Math.ceil(7 - daysSince)} days remaining.` }, { status: 400 });
+      }
+
+      // Wipe agent fields but keep the user profile
+      const { error } = await adminSupabase
+        .from('profiles')
+        .update({
+          is_agent: false,
+          agent_status: null,
+          commission_rate: null,
+          agent_since: null,
+          agent_conditions: null,
+          agent_phone: null,
+          agent_company: null,
+          agent_country: null,
+          agent_city: null,
+          agent_region: null,
+          agent_territory: null,
+          agent_specialty: null,
+          agent_notes: null,
+          agent_deleted_at: null,
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('[Agent DELETE permanent] Error:', error.message);
+        return NextResponse.json({ error: 'Failed to permanently delete agent' }, { status: 500 });
+      }
+
+      return NextResponse.json({ message: 'Agent permanently removed. Commission history preserved.' });
+    }
+
+    // Soft-delete: mark with timestamp, deactivate
+    const { data: agent, error } = await adminSupabase
+      .from('profiles')
+      .update({
+        agent_status: 'inactive',
+        agent_deleted_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(AGENT_FIELDS)
+      .single();
+
+    if (error) {
+      console.error('[Agent DELETE] Error:', error.message);
+      return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 });
+    }
+
+    return NextResponse.json({ agent, message: 'Agent moved to trash. Can be restored within 7 days.' });
+  } catch (err) {
+    console.error('[Agent DELETE] Exception:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

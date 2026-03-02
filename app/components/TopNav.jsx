@@ -14,23 +14,32 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
   const { user, profile, loading: authLoading, profileError } = useAuth()
   const hasClient = client && client.company
   const showClientUI = !hideClientBar && onEditClient
+  const emailLower = (user?.email || '').toLowerCase()
+  const isKnownAdminEmail = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'].includes(emailLower)
+  const isAgent = profile?.is_agent && profile?.agent_status === 'active'
+  const isAdmin = profile?.role === 'admin' || isKnownAdminEmail
+
   const roleLabel = authLoading
     ? 'Loading'
-    : profile?.role === 'admin'
+    : isAdmin
       ? 'Admin'
-      : profile
-        ? 'Member'
-        : profileError === 'failed_to_load_profile'
-          ? 'Sync issue'
-          : 'Unknown'
+      : isAgent
+        ? 'Agent'
+        : 'Member'
 
-  const NAV_TABS = [
-    { id: 'builder', label: t('nav.builder') },
-    { id: 'ai', label: t('nav.ai') },
-    { id: 'orderform', label: t('nav.orderform') },
-    { id: 'documents', label: t('nav.documents') },
-    { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
-  ]
+  const NAV_TABS = isAgent && !isAdmin
+    ? [
+        { id: 'builder', label: t('nav.builder') },
+        { id: 'commissions', label: 'My Commissions', href: '/commissions' },
+        { id: 'documents', label: t('nav.documents') },
+      ]
+    : [
+        { id: 'builder', label: t('nav.builder') },
+        { id: 'ai', label: t('nav.ai') },
+        { id: 'orderform', label: t('nav.orderform') },
+        { id: 'documents', label: t('nav.documents') },
+        { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
+      ]
 
   return (
     <div style={{

@@ -83,7 +83,7 @@ export async function POST(request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'LoveLab B2B <onboarding@resend.dev>',
+          from: 'LoveLab B2B <alberto@love-lab.com>',
           to: [adminEmail],
           subject: `Access Request: ${nameTrimmed} (${emailLower})`,
           html: `

@@ -6,16 +6,12 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "node -e \"try{const fs=require('fs'),p='./node_modules/recharts/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(!require('fs').existsSync('./node_modules/recharts/lib')){pkg.main='es6/index.js';fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched recharts')}}catch(e){}\""
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",
-    "@supabase/auth-js": "^2.95.3",
-    "@supabase/functions-js": "^2.95.3",
-    "@supabase/postgrest-js": "^2.95.3",
-    "@supabase/realtime-js": "^2.95.3",
     "@supabase/ssr": "^0.8.0",
-    "@supabase/storage-js": "^2.95.3",
     "@supabase/supabase-js": "^2.97.0",
     "clsx": "^2.1.1",
     "fast-png": "^8.0.0",
@@ -26,7 +22,8 @@
     "raf": "^3.4.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "resend": "^6.9.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

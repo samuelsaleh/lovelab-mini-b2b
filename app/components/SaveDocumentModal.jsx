@@ -23,6 +23,7 @@ export default function SaveDocumentModal({
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [newEventName, setNewEventName] = useState('');
+  const [newEventType, setNewEventType] = useState('fair');
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -94,7 +95,7 @@ export default function SaveDocumentModal({
       const res = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEventName.trim() }),
+        body: JSON.stringify({ name: newEventName.trim(), type: newEventType }),
       });
       const data = await res.json();
       if (data.event) {
@@ -350,11 +351,22 @@ export default function SaveDocumentModal({
                     }}
                   >
                     <option value="">No event (general folder)</option>
-                    {events.map(event => (
-                      <option key={event.id} value={event.id}>
-                        {event.name}
-                      </option>
-                    ))}
+                    {[
+                      { key: 'fair', label: 'Fairs' },
+                      { key: 'agent', label: 'Agents' },
+                      { key: 'partner', label: 'Partners' },
+                      { key: 'other', label: 'Other' },
+                    ].map(group => {
+                      const groupEvents = events.filter(e => (e.type || 'other') === group.key);
+                      if (groupEvents.length === 0) return null;
+                      return (
+                        <optgroup key={group.key} label={group.label}>
+                          {groupEvents.map(event => (
+                            <option key={event.id} value={event.id}>{event.name}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
 
                   {!showNewEvent ? (
@@ -375,26 +387,46 @@ export default function SaveDocumentModal({
                       + Create new event
                     </button>
                   ) : (
-                    <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                      <input
-                        type="text"
-                        value={newEventName}
-                        onChange={(e) => setNewEventName(e.target.value)}
-                        placeholder="Event name (e.g. Munich Feb 2026)"
-                        style={{
-                          flex: 1,
-                          padding: '8px 10px',
-                          borderRadius: 6,
-                          border: `1px solid ${colors.lineGray}`,
-                          fontSize: 12,
-                          fontFamily: fonts.body,
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') createEvent();
-                          if (e.key === 'Escape') setShowNewEvent(false);
-                        }}
-                        autoFocus
-                      />
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          type="text"
+                          value={newEventName}
+                          onChange={(e) => setNewEventName(e.target.value)}
+                          placeholder="Name (e.g. Munich Feb 2026)"
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: 6,
+                            border: `1px solid ${colors.lineGray}`,
+                            fontSize: 12,
+                            fontFamily: fonts.body,
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') createEvent();
+                            if (e.key === 'Escape') setShowNewEvent(false);
+                          }}
+                          autoFocus
+                        />
+                        <select
+                          value={newEventType}
+                          onChange={(e) => setNewEventType(e.target.value)}
+                          style={{
+                            padding: '8px 8px',
+                            borderRadius: 6,
+                            border: `1px solid ${colors.lineGray}`,
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            background: '#fff',
+                          }}
+                        >
+                          <option value="fair">Fair</option>
+                          <option value="agent">Agent</option>
+                          <option value="partner">Partner</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         onClick={createEvent}
                         disabled={!newEventName.trim() || loading}
@@ -426,6 +458,7 @@ export default function SaveDocumentModal({
                       >
                         Cancel
                       </button>
+                      </div>
                     </div>
                   )}
                 </>

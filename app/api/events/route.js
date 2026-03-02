@@ -48,7 +48,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { name, location, start_date, end_date } = body;
+    const { name, location, start_date, end_date, type } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
@@ -65,6 +65,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
     }
 
+    const validTypes = ['fair', 'agent', 'partner', 'other'];
+    const eventType = validTypes.includes(type) ? type : 'other';
+
     const { data: event, error } = await supabase
       .from('events')
       .insert({
@@ -72,6 +75,7 @@ export async function POST(request) {
         location: location?.trim() || null,
         start_date: start_date || null,
         end_date: end_date || null,
+        type: eventType,
         created_by: user.id,
       })
       .select()
