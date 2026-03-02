@@ -17,7 +17,7 @@ export async function GET() {
       .maybeSingle();
 
     if (!profileError && profile) {
-      return NextResponse.json({ user: { id: user.id, email: user.email }, profile });
+      return NextResponse.json({ user, profile });
     }
 
     const admin = createAdminClient();
@@ -28,11 +28,11 @@ export async function GET() {
       .maybeSingle();
 
     if (adminProfile) {
-      return NextResponse.json({ user: { id: user.id, email: user.email }, profile: adminProfile });
+      return NextResponse.json({ user, profile: adminProfile });
     }
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email },
+      user,
       profile: null,
       error: profileError?.message || 'profile not found',
     });

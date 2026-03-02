@@ -75,6 +75,14 @@ export async function GET(request) {
       document: c.document_id ? docsMap[c.document_id] || null : null,
     }));
 
+    // Fetch agent payments to calculate true pending balance
+    let paymentsQuery = supabase.from('agent_payments').select('amount');
+    if (targetAgentId) {
+      paymentsQuery = paymentsQuery.eq('agent_id', targetAgentId);
+    }
+    const { data: paymentsData } = await paymentsQuery;
+    const total_paid_out = (paymentsData || []).reduce((sum, p) => sum + Number(p.amount), 0);
+
     // Compute summary stats
     const summary = {
       total_earned: 0,
@@ -84,6 +92,8 @@ export async function GET(request) {
       paid_amount: 0,
       order_count: 0,
       bonus_count: 0,
+      total_paid_out,
+      true_pending_balance: 0,
     };
 
     for (const c of commissions || []) {
@@ -97,11 +107,13 @@ export async function GET(request) {
         summary.bonus_count++;
       }
       if (c.status === 'pending' || c.status === 'approved') {
-        summary.pending_amount += amt;
+        summary.pending_amount += amt; // legacy pending
       } else if (c.status === 'paid') {
-        summary.paid_amount += amt;
+        summary.paid_amount += amt; // legacy paid
       }
     }
+
+    summary.true_pending_balance = summary.total_earned - summary.total_paid_out;
 
     // Round summary values
     for (const key of Object.keys(summary)) {

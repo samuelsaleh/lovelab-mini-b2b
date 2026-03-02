@@ -30,7 +30,8 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
   const NAV_TABS = isAgent && !isAdmin
     ? [
         { id: 'builder', label: t('nav.builder') },
-        { id: 'commissions', label: 'My Commissions', href: '/commissions' },
+        { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
+        { id: 'reports', label: 'Reports', href: '/reports' },
         { id: 'documents', label: t('nav.documents') },
       ]
     : [
@@ -39,6 +40,7 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
         { id: 'orderform', label: t('nav.orderform') },
         { id: 'documents', label: t('nav.documents') },
         { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
+        { id: 'reports', label: 'Reports', href: '/reports' },
       ]
 
   return (
