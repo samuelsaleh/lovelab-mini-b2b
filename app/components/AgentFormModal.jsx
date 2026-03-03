@@ -284,8 +284,8 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
           {isEdit && (
             <div style={{ marginBottom: 20, padding: 14, background: '#fafafa', borderRadius: 8, border: '1px solid #eee' }}>
               <label style={{ ...lbl, marginBottom: 8, display: 'block' }}>Contract (PDF)</label>
-              {contractUrl ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {contractUrl && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5D3A5E" strokeWidth="2">
                     <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
                     <polyline points="14 2 14 8 20 8"/>
@@ -302,41 +302,40 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
                     style={{ fontSize: 12, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                   >Remove</button>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
-                      setContractFile(f || null); setContractMsg(null);
-                    }}
-                    style={{ fontSize: 12, flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    disabled={!contractFile || contractUploading}
-                    onClick={async () => {
-                      if (!contractFile) return;
-                      setContractUploading(true); setContractMsg(null);
-                      const fd = new FormData(); fd.append('file', contractFile);
-                      const res = await fetch(`/api/agents/${agent.id}/contract`, { method: 'POST', body: fd });
-                      const d = await res.json();
-                      if (res.ok) {
-                        setContractMsg('Uploaded!');
-                        const r2 = await fetch(`/api/agents/${agent.id}/contract`);
-                        const d2 = await r2.json();
-                        setContractUrl(d2.url || null); setContractName(d2.name || null);
-                        setContractFile(null);
-                      } else { setContractMsg(d.error || 'Upload failed'); }
-                      setContractUploading(false);
-                    }}
-                    style={{ fontSize: 12, padding: '6px 12px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.5 : 1 }}
-                  >{contractUploading ? 'Uploading…' : 'Upload'}</button>
-                </div>
               )}
-              {contractMsg && <div style={{ fontSize: 12, marginTop: 6, color: contractMsg === 'Uploaded!' ? '#059669' : '#dc2626' }}>{contractMsg}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
+                    setContractFile(f || null); setContractMsg(null);
+                  }}
+                  style={{ fontSize: 12, flex: 1 }}
+                />
+                <button
+                  type="button"
+                  disabled={!contractFile || contractUploading}
+                  onClick={async () => {
+                    if (!contractFile) return;
+                    setContractUploading(true); setContractMsg(null);
+                    const fd = new FormData(); fd.append('file', contractFile);
+                    const res = await fetch(`/api/agents/${agent.id}/contract`, { method: 'POST', body: fd });
+                    const d = await res.json();
+                    if (res.ok) {
+                      setContractMsg(contractUrl ? 'Replaced!' : 'Uploaded!');
+                      const r2 = await fetch(`/api/agents/${agent.id}/contract`);
+                      const d2 = await r2.json();
+                      setContractUrl(d2.url || null); setContractName(d2.name || null);
+                      setContractFile(null);
+                    } else { setContractMsg(d.error || 'Upload failed'); }
+                    setContractUploading(false);
+                  }}
+                  style={{ fontSize: 12, padding: '6px 12px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.5 : 1 }}
+                >{contractUploading ? 'Uploading…' : (contractUrl ? 'Replace' : 'Upload')}</button>
+              </div>
+              {contractMsg && <div style={{ fontSize: 12, marginTop: 6, color: /failed|large|only pdf|unauthorized|forbidden/i.test(contractMsg) ? '#dc2626' : '#059669' }}>{contractMsg}</div>}
             </div>
           )}
 

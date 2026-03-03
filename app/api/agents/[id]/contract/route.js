@@ -4,6 +4,13 @@ import { NextResponse } from 'next/server';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const BUCKET = 'documents';
+const PDF_MIME_TYPES = new Set(['application/pdf', 'application/x-pdf', 'binary/octet-stream']);
+
+function isPdfLike(file) {
+  const name = String(file?.name || '').toLowerCase();
+  const type = String(file?.type || '').toLowerCase();
+  return name.endsWith('.pdf') || PDF_MIME_TYPES.has(type);
+}
 
 async function getAdminUser(request) {
   const supabase = await createClient();
@@ -37,7 +44,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (file.type !== 'application/pdf') {
+    if (!isPdfLike(file)) {
       return NextResponse.json({ error: 'Only PDF files are allowed' }, { status: 400 });
     }
 

@@ -248,8 +248,8 @@ export default function AgentAnalytics() {
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                       My Contract
                     </div>
-                    {contractUrl ? (
-                      <div style={{ background: '#fafafa', borderRadius: 8, border: `1px solid ${colors.lineGray}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {contractUrl && (
+                      <div style={{ background: '#fafafa', borderRadius: 8, border: `1px solid ${colors.lineGray}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.inkPlum} strokeWidth="2">
                           <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
                           <polyline points="14 2 14 8 20 8"/>
@@ -272,43 +272,42 @@ export default function AgentAnalytics() {
                           Remove
                         </button>
                       </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <input
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          onChange={e => {
-                            const f = e.target.files?.[0];
-                            if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
-                            setContractFile(f || null); setContractMsg(null);
-                          }}
-                          style={{ fontSize: 13, color: colors.charcoal }}
-                        />
-                        <button
-                          type="button"
-                          disabled={!contractFile || contractUploading}
-                          onClick={async () => {
-                            if (!contractFile) return;
-                            setContractUploading(true); setContractMsg(null);
-                            const fd = new FormData(); fd.append('file', contractFile);
-                            const res = await fetch(`/api/agents/${profile.id}/contract`, { method: 'POST', body: fd });
-                            const d = await res.json();
-                            if (res.ok) {
-                              setContractMsg('Contract uploaded successfully!');
-                              const r2 = await fetch(`/api/agents/${profile.id}/contract`);
-                              const d2 = await r2.json();
-                              setContractUrl(d2.url || null); setContractName(d2.name || null);
-                              setContractFile(null);
-                            } else { setContractMsg(d.error || 'Upload failed'); }
-                            setContractUploading(false);
-                          }}
-                          style={{ alignSelf: 'flex-start', padding: '8px 16px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.6 : 1 }}
-                        >
-                          {contractUploading ? 'Uploading...' : 'Upload Contract (PDF)'}
-                        </button>
-                        {contractMsg && <div style={{ fontSize: 12, color: contractMsg.includes('failed') || contractMsg.includes('large') ? colors.danger : colors.success }}>{contractMsg}</div>}
-                      </div>
                     )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
+                          setContractFile(f || null); setContractMsg(null);
+                        }}
+                        style={{ fontSize: 13, color: colors.charcoal }}
+                      />
+                      <button
+                        type="button"
+                        disabled={!contractFile || contractUploading}
+                        onClick={async () => {
+                          if (!contractFile) return;
+                          setContractUploading(true); setContractMsg(null);
+                          const fd = new FormData(); fd.append('file', contractFile);
+                          const res = await fetch(`/api/agents/${profile.id}/contract`, { method: 'POST', body: fd });
+                          const d = await res.json();
+                          if (res.ok) {
+                            setContractMsg(contractUrl ? 'Contract replaced successfully!' : 'Contract uploaded successfully!');
+                            const r2 = await fetch(`/api/agents/${profile.id}/contract`);
+                            const d2 = await r2.json();
+                            setContractUrl(d2.url || null); setContractName(d2.name || null);
+                            setContractFile(null);
+                          } else { setContractMsg(d.error || 'Upload failed'); }
+                          setContractUploading(false);
+                        }}
+                        style={{ alignSelf: 'flex-start', padding: '8px 16px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.6 : 1 }}
+                      >
+                        {contractUploading ? 'Uploading...' : (contractUrl ? 'Replace Contract (PDF)' : 'Upload Contract (PDF)')}
+                      </button>
+                      {contractMsg && <div style={{ fontSize: 12, color: /failed|large|only pdf|unauthorized|forbidden/i.test(contractMsg) ? colors.danger : colors.success }}>{contractMsg}</div>}
+                    </div>
                   </div>
                 </div>
               </div>
