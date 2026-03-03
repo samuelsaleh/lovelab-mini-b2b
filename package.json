@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "node -e \"try{const fs=require('fs'),p='./node_modules/recharts/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(!require('fs').existsSync('./node_modules/recharts/lib')){pkg.main='es6/index.js';fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched recharts')}}catch(e){}\""
+    "postinstall": ""
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",
@@ -23,7 +23,7 @@
     "raf": "^3.4.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "recharts": "^3.7.0",
+    "recharts": "^2.15.0",
     "resend": "^6.9.3"
   },
   "devDependencies": {

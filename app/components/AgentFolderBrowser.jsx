@@ -204,7 +204,7 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
             onClick={() => setShowNewFolder(v => !v)}
             style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
           >
-            <FolderIcon size={12} /> New Subfolder
+            <FolderIcon size={12} /> {currentFolderId ? 'New Subfolder' : 'New Folder'}
           </button>
           {currentFolderId && (
             <>
@@ -258,7 +258,7 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
         <div style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 10, overflow: 'hidden' }}>
           {folders.length === 0 && files.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
-              {currentFolderId ? 'This folder is empty.' : 'No folder found. It will be created when you upload something.'}
+              {currentFolderId ? 'This folder is empty. Use "Upload File" above to add files.' : 'No folders yet. Click "New Folder" above to create one.'}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

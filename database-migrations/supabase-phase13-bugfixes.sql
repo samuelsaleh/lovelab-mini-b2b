@@ -1,6 +1,9 @@
 -- Phase 13: Bug fixes
 -- Run this migration in the Supabase SQL editor.
 
+-- Ensure has_password_set column exists (from Phase 10, included here for safety).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS has_password_set boolean DEFAULT false;
+
 -- #2: Create function to revoke all sessions for a user by ID.
 -- The Supabase admin JS client's signOut() requires a JWT, not a UUID.
 -- This function deletes refresh-token sessions directly from auth.sessions.
