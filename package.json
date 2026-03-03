@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "node ./scripts/vercel-build-probe.js",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "node -e \"try{const fs=require('fs'),p='./node_modules/recharts/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(!require('fs').existsSync('./node_modules/recharts/lib')){pkg.main='es6/index.js';fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched recharts')}}catch(e){}\""
