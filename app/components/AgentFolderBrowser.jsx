@@ -198,7 +198,7 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
       </div>
 
       {/* Toolbar */}
-      {!readOnly && currentFolderId && (
+      {!readOnly && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
           <button
             onClick={() => setShowNewFolder(v => !v)}
@@ -206,15 +206,19 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
           >
             <FolderIcon size={12} /> New Subfolder
           </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: uploading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, opacity: uploading ? 0.6 : 1 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            {uploading ? 'Uploading…' : 'Upload File'}
-          </button>
-          <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
+          {currentFolderId && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: uploading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, opacity: uploading ? 0.6 : 1 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {uploading ? 'Uploading…' : 'Upload File'}
+              </button>
+              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
+            </>
+          )}
           {uploadMsg && (
             <span style={{ fontSize: 12, color: /failed|large/i.test(uploadMsg) ? colors.danger : colors.success, alignSelf: 'center' }}>
               {uploadMsg}

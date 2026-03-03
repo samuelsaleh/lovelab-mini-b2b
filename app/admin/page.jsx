@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import ResourcesCard from '../components/ResourcesCard'
 
 const fmt = (n) => {
   if (n == null) return '—'
@@ -155,6 +156,9 @@ export default function AdminDashboard() {
             </ResponsiveContainer>
           </div>
         )}
+
+        {/* Resources */}
+        <ResourcesCard />
       </div>
     </div>
   )

@@ -29,12 +29,14 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
 
   const NAV_TABS = isAgent && !isAdmin
     ? [
+        { id: 'home', label: 'Home' },
         { id: 'builder', label: t('nav.builder') },
         { id: 'analytics', label: t('nav.analytics') || 'Analytics', href: '/analytics' },
         { id: 'reports', label: 'Reports', href: '/reports' },
         { id: 'documents', label: t('nav.documents') },
       ]
     : [
+        { id: 'home', label: 'Home' },
         { id: 'builder', label: t('nav.builder') },
         { id: 'ai', label: t('nav.ai') },
         { id: 'orderform', label: t('nav.orderform') },

@@ -15,6 +15,8 @@ import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
 import TopNav from './components/TopNav'
 import DocumentsPanel from './components/DocumentsPanel'
+import AdminHomeTab from './components/AdminHomeTab'
+import AgentHomeTab from './components/AgentHomeTab'
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
 
@@ -33,8 +35,8 @@ export default function App() {
   const { t } = useI18n()
   const mobile = useIsMobile()
   
-  // Active tab: 'builder' | 'ai' | 'orderform' | 'documents'
-  const [activeTab, setActiveTab] = useState('builder')
+  // Active tab: 'home' | 'builder' | 'ai' | 'orderform' | 'documents'
+  const [activeTab, setActiveTab] = useState('home')
 
   // Builder state (shared -- AI results can populate this)
   const [lines, setLines] = useState([mkLine()])
@@ -584,6 +586,18 @@ export default function App() {
 
       {/* ─── Main Content ─── */}
       <main role="main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        {activeTab === 'home' && (
+          (() => {
+            const emailLower = (user?.email || '').toLowerCase()
+            const isKnownAdmin = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'].includes(emailLower)
+            const isAdmin = profile?.role === 'admin' || isKnownAdmin
+            const isActiveAgent = profile?.is_agent && profile?.agent_status === 'active'
+            if (isAdmin) return <AdminHomeTab />
+            if (isActiveAgent) return <AgentHomeTab onSwitchTab={setActiveTab} />
+            return <AdminHomeTab />
+          })()
+        )}
+
         {activeTab === 'builder' && (
           <BuilderPage
             lines={lines}
