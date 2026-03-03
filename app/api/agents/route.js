@@ -27,15 +27,30 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
+    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at';
+
     const { data: agents, error } = await adminSupabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at')
+      .select(AGENT_SELECT)
       .eq('is_agent', true)
+      .is('agent_deleted_at', null)
       .order('agent_since', { ascending: false, nullsFirst: false });
 
     if (error) {
       console.error('[Agents GET] Error:', error.message);
       return NextResponse.json({ error: 'Failed to load agents' }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    let trashedAgents = [];
+    if (searchParams.get('include_trashed') === 'true') {
+      const { data: trashed } = await adminSupabase
+        .from('profiles')
+        .select(AGENT_SELECT)
+        .eq('is_agent', true)
+        .not('agent_deleted_at', 'is', null)
+        .order('agent_deleted_at', { ascending: false });
+      trashedAgents = trashed || [];
     }
 
     // Fetch aggregated commission stats per agent
@@ -82,7 +97,17 @@ export async function GET(request) {
       },
     }));
 
-    return NextResponse.json({ agents: agentsWithStats });
+    const response = { agents: agentsWithStats };
+    if (trashedAgents.length > 0) {
+      response.trashedAgents = trashedAgents.map(a => ({
+        ...a,
+        stats: statsMap[a.id] || {
+          total_orders: 0, total_revenue: 0, total_commission: 0,
+          total_bonuses: 0, pending_commission: 0, paid_commission: 0,
+        },
+      }));
+    }
+    return NextResponse.json(response);
   } catch (err) {
     console.error('[Agents GET] Exception:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -185,6 +210,8 @@ export async function POST(request) {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
       let magicLinkUrl = null;
 
+      let authUser = null;
+
       if (send_invite) {
         const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
           type: 'magiclink',
@@ -196,14 +223,21 @@ export async function POST(request) {
         });
         if (magicError) {
           console.warn('[Agents POST] Magic link warning:', magicError.message);
-        } else if (magicData?.properties?.action_link) {
-          magicLinkUrl = magicData.properties.action_link;
+        } else {
+          if (magicData?.properties?.action_link) {
+            magicLinkUrl = magicData.properties.action_link;
+          }
+          if (magicData?.user) {
+            authUser = magicData.user;
+          }
         }
       }
 
-      // generateLink creates the auth user -- find them and attach a profile
-      const { data: { users } } = await adminSupabase.auth.admin.listUsers();
-      const authUser = users?.find(u => u.email?.toLowerCase() === emailLower);
+      // If generateLink didn't return the user, look them up by paginated list
+      if (!authUser) {
+        const { data: { users } } = await adminSupabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        authUser = users?.find(u => u.email?.toLowerCase() === emailLower) || null;
+      }
 
       if (authUser) {
         const { data, error } = await adminSupabase
@@ -310,6 +344,29 @@ export async function POST(request) {
         } catch (emailErr) {
           console.error('[Agents POST] Upgrade email error:', emailErr.message);
         }
+      }
+    }
+
+    // Auto-create root folder for the agent if they have an ID and don't already have one
+    if (agentProfile?.id && !agentProfile?._pending) {
+      try {
+        const { data: existingFolder } = await adminSupabase
+          .from('agent_folders')
+          .select('id')
+          .eq('agent_id', agentProfile.id)
+          .is('parent_id', null)
+          .maybeSingle();
+
+        if (!existingFolder) {
+          await adminSupabase.from('agent_folders').insert({
+            agent_id: agentProfile.id,
+            name: agentProfile.full_name?.trim() || agentProfile.email || 'My Folder',
+            parent_id: null,
+            created_by: user.id,
+          });
+        }
+      } catch (folderErr) {
+        console.error('[Agents POST] Root folder creation error (non-blocking):', folderErr.message);
       }
     }
 

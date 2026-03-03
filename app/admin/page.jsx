@@ -45,6 +45,7 @@ export default function AdminDashboard() {
 
   const topAgents = useMemo(() =>
     [...agents]
+      .filter(a => !a.agent_deleted_at)
       .sort((a, b) => (b.stats?.total_revenue || 0) - (a.stats?.total_revenue || 0))
       .slice(0, 5),
   [agents])
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
         {/* Summary Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 28 }}>
           <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${documents.length} orders`} accent={colors.inkPlum} />
-          <Card label="Active Agents" value={activeAgents.length} sub={`${agents.length} total`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
+          <Card label="Active Agents" value={activeAgents.length} sub={`${agents.length} registered`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
           <Card label="Fairs" value={events.length} sub={upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming` : 'none upcoming'} accent={colors.luxeGold} onClick={() => router.push('/admin/fairs')} />
           <Card label="Commission Owed" value={fmt(pendingCommission)} sub="pending payouts" accent={colors.warning} />
         </div>

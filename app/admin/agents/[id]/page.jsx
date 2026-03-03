@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
+import ContractChatPanel from '@/app/components/ContractChatPanel';
+import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 
 const fmt = (n) => {
   if (n == null) return '—';
@@ -31,6 +33,68 @@ export default function AdminAgentDetailsPage() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [savingPayment, setSavingPayment] = useState(false);
+
+  // Contract Q&A panel
+  const [contractChatOpen, setContractChatOpen] = useState(false);
+
+  // Commission extraction
+  const [extracting, setExtracting] = useState(false);
+  const [proposedConfig, setProposedConfig] = useState(null);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configMsg, setConfigMsg] = useState(null);
+
+  const handleExtractCommission = useCallback(async () => {
+    if (!agentId) return;
+    setExtracting(true);
+    setProposedConfig(null);
+    setConfigMsg(null);
+    try {
+      const textRes = await fetch(`/api/agents/${agentId}/contract-text`);
+      const textData = await textRes.json();
+      if (!textData.text) { setConfigMsg('No contract text found.'); return; }
+
+      const extRes = await fetch(`/api/agents/${agentId}/extract-commission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractText: textData.text }),
+      });
+      const extData = await extRes.json();
+      if (extRes.ok && extData.proposed) {
+        setProposedConfig(extData.proposed);
+      } else {
+        setConfigMsg(extData.error || 'Extraction failed');
+      }
+    } catch {
+      setConfigMsg('Failed to extract commission structure');
+    } finally {
+      setExtracting(false);
+    }
+  }, [agentId]);
+
+  const handleConfirmConfig = useCallback(async () => {
+    if (!proposedConfig || !agentId) return;
+    setSavingConfig(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/commission-config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: proposedConfig }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setProposedConfig(null);
+        setConfigMsg('Commission structure saved!');
+        // Refresh agent data to show updated rate
+        await load();
+      } else {
+        setConfigMsg(d.error || 'Failed to save');
+      }
+    } catch {
+      setConfigMsg('Failed to save commission config');
+    } finally {
+      setSavingConfig(false);
+    }
+  }, [proposedConfig, agentId]);
 
   const load = async () => {
     if (!agentId) return;
@@ -133,30 +197,83 @@ export default function AdminAgentDetailsPage() {
           <div style={{ padding: 14, borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13 }}>{error}</div>
         ) : (
           <>
-            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: colors.charcoal }}>{agent?.full_name || agent?.email}</div>
-                <div style={{ fontSize: 13, color: colors.lovelabMuted, marginTop: 4 }}>{agent?.email}</div>
-                <div style={{ marginTop: 8, fontSize: 12, color: colors.charcoal }}>
-                  Rate: {agent?.commission_rate ?? '—'}% · Status: {agent?.agent_status || '—'}
+            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.charcoal }}>{agent?.full_name || agent?.email}</div>
+                  <div style={{ fontSize: 13, color: colors.lovelabMuted, marginTop: 4 }}>{agent?.email}</div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: colors.charcoal }}>
+                    Rate: {agent?.commission_rate ?? '—'}% · Status: {agent?.agent_status || '—'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {agent?.agent_contract_url && (
+                    <button
+                      onClick={() => setContractChatOpen(true)}
+                      style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      Contract Q&A
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowPaymentModal(true)}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 13, fontWeight: 700 }}
+                  >
+                    Record Payment
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: colors.inkPlum,
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontFamily: fonts.body,
-                  fontSize: 13,
-                  fontWeight: 700,
-                }}
-              >
-                Record Payment
-              </button>
+
+              {/* Commission config section */}
+              {agent?.agent_contract_url && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.lineGray}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                      {agent?.agent_commission_config
+                        ? <>Commission config: <strong style={{ color: colors.inkPlum }}>{agent.agent_commission_config.type}</strong> — {agent.agent_commission_config.description || JSON.stringify(agent.agent_commission_config).slice(0, 80)}</>
+                        : 'No AI commission config yet.'}
+                    </div>
+                    <button
+                      onClick={handleExtractCommission}
+                      disabled={extracting}
+                      style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: extracting ? 'wait' : 'pointer', fontFamily: fonts.body, fontSize: 11, fontWeight: 600, flexShrink: 0, opacity: extracting ? 0.6 : 1 }}
+                    >
+                      {extracting ? 'Extracting…' : (agent?.agent_commission_config ? 'Re-extract from Contract' : 'Extract from Contract')}
+                    </button>
+                  </div>
+
+                  {/* Proposed config confirmation banner */}
+                  {proposedConfig && (
+                    <div style={{ marginTop: 12, padding: 12, background: '#f0f7ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12 }}>
+                      <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6 }}>AI detected this compensation structure — confirm?</div>
+                      <div style={{ color: '#374151', marginBottom: 10 }}>
+                        <strong>Type:</strong> {proposedConfig.type}
+                        {proposedConfig.description && <> — {proposedConfig.description}</>}
+                        {proposedConfig.type === 'flat' && <> ({proposedConfig.rate}%)</>}
+                        {proposedConfig.type === 'tiered' && (
+                          <ul style={{ margin: '4px 0', paddingLeft: 16 }}>
+                            {(proposedConfig.tiers || []).map((t, i) => (
+                              <li key={i}>{t.upTo ? `Up to €${t.upTo.toLocaleString()}: ${t.rate}%` : `Above: ${t.rate}%`}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={handleConfirmConfig} disabled={savingConfig} style={{ padding: '6px 14px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: savingConfig ? 0.6 : 1 }}>
+                          {savingConfig ? 'Saving…' : 'Confirm & Save'}
+                        </button>
+                        <button onClick={() => setProposedConfig(null)} style={{ padding: '6px 12px', background: 'none', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#1d4ed8' }}>
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {configMsg && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: /saved|success/i.test(configMsg) ? colors.success : colors.danger }}>{configMsg}</div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
@@ -229,6 +346,14 @@ export default function AdminAgentDetailsPage() {
               </div>
             </div>
 
+            {/* Agent Folder */}
+            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 24 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Documents Folder
+              </div>
+              <AgentFolderBrowser agentId={agentId} />
+            </div>
+
             {/* Payment Modal */}
             {showPaymentModal && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
@@ -260,6 +385,13 @@ export default function AdminAgentDetailsPage() {
           </>
         )}
       </div>
+
+      <ContractChatPanel
+        isOpen={contractChatOpen}
+        onClose={() => setContractChatOpen(false)}
+        agentId={agentId}
+        agentName={agent?.full_name || agent?.email}
+      />
     </div>
   );
 }

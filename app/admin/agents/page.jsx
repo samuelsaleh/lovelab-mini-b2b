@@ -32,18 +32,21 @@ export default function AdminAgentsPage() {
   const [bonusLoading, setBonusLoading] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [trashedAgents, setTrashedAgents] = useState([]);
 
   const fetchAgents = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/agents');
+      const res = await fetch('/api/agents?include_trashed=true');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to load agents');
       setAgents(data.agents || []);
+      setTrashedAgents(data.trashedAgents || []);
     } catch (err) {
       setError(err.message || 'Failed to load agents');
       setAgents([]);
+      setTrashedAgents([]);
     } finally {
       setLoading(false);
     }
@@ -53,8 +56,7 @@ export default function AdminAgentsPage() {
     fetchAgents();
   }, []);
 
-  const activeAgents = agents.filter(a => !a.agent_deleted_at);
-  const trashedAgents = agents.filter(a => a.agent_deleted_at);
+  const activeAgents = agents;
 
   const filteredAgents = activeAgents.filter((a) => {
     const matchSearch =

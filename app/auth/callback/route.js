@@ -64,24 +64,43 @@ export async function GET(request) {
     // User is allowed - ensure they have a profile
     await ensureProfile(supabase, sessionUser);
 
+    // Check if this is an agent who hasn't set a password yet
+    const needsPassword = await agentNeedsPassword(sessionUser.id);
+
     const isLocalEnv = process.env.NODE_ENV === 'development';
 
-    if (isLocalEnv) {
-      return NextResponse.redirect(`${origin}${next}`);
+    const buildRedirect = (path) => {
+      if (isLocalEnv) return `${origin}${path}`;
+      const forwardedHost = request.headers.get('x-forwarded-host');
+      const safeHost = getSafeHost(forwardedHost);
+      return safeHost ? `https://${safeHost}${path}` : `${origin}${path}`;
+    };
+
+    if (needsPassword) {
+      const setPasswordPath = `/set-password${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
+      return NextResponse.redirect(buildRedirect(setPasswordPath));
     }
 
-    const forwardedHost = request.headers.get('x-forwarded-host');
-    const safeHost = getSafeHost(forwardedHost);
-
-    if (safeHost) {
-      return NextResponse.redirect(`https://${safeHost}${next}`);
-    } else {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
+    return NextResponse.redirect(buildRedirect(next));
   }
 
   // Return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/login?error=auth_error`);
+}
+
+// Check if an agent needs to set a password (is_agent and has_password_set = false)
+async function agentNeedsPassword(userId) {
+  try {
+    const adminSupabase = createAdminClient();
+    const { data } = await adminSupabase
+      .from('profiles')
+      .select('is_agent, has_password_set')
+      .eq('id', userId)
+      .single();
+    return data?.is_agent === true && data?.has_password_set === false;
+  } catch {
+    return false;
+  }
 }
 
 // Get list of allowed emails using admin client (bypasses RLS)

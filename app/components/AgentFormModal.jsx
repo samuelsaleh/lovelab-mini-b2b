@@ -20,7 +20,11 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Contract upload state (edit mode only)
+  // Two-step create flow: step 1 = form, step 2 = contract upload
+  const [step, setStep] = useState(1);
+  const [createdAgentId, setCreatedAgentId] = useState(null);
+
+  // Contract upload state (edit mode + step 2 on create)
   const [contractName, setContractName] = useState(null);
   const [contractUrl, setContractUrl] = useState(null);
   const [contractFile, setContractFile] = useState(null);
@@ -32,6 +36,8 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   useEffect(() => {
     if (isOpen) {
       setError('');
+      setStep(1);
+      setCreatedAgentId(null);
       if (agent) {
         setEmail(agent.email || '');
         setFullName(agent.full_name || '');
@@ -73,6 +79,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
       }
       setContractFile(null);
       setContractMsg(null);
+      setContractUploading(false);
     }
   }, [isOpen, agent]);
 
@@ -124,6 +131,17 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to create agent');
+        // Advance to step 2 — contract upload — if we have an agent ID
+        if (data?.agent?.id) {
+          setCreatedAgentId(data.agent.id);
+          setContractUrl(null);
+          setContractName(null);
+          setContractFile(null);
+          setContractMsg(null);
+          setStep(2);
+          setSaving(false);
+          return;
+        }
         onSaved?.();
         onClose?.();
       }
@@ -134,7 +152,110 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
     }
   };
 
+  // Contract upload block used in both edit mode and step 2 of create flow
+  const contractAgentId = isEdit ? agent?.id : createdAgentId;
+  const contractSection = (
+    <div style={{ marginBottom: 20, padding: 14, background: '#fafafa', borderRadius: 8, border: '1px solid #eee' }}>
+      <label style={{ ...lbl, marginBottom: 8, display: 'block' }}>Contract (PDF)</label>
+      {contractUrl && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5D3A5E" strokeWidth="2">
+            <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span style={{ fontSize: 13, color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractName}</span>
+          <a href={contractUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: colors.inkPlum, fontWeight: 600, textDecoration: 'none' }}>Download</a>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!confirm('Remove contract?')) return;
+              try {
+                await fetch(`/api/agents/${contractAgentId}/contract`, { method: 'DELETE' });
+                setContractUrl(null); setContractName(null);
+              } catch {
+                setContractMsg('Failed to remove contract. Please try again.');
+              }
+            }}
+            style={{ fontSize: 12, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          >Remove</button>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <input
+          type="file"
+          accept=".pdf,application/pdf"
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
+            setContractFile(f || null); setContractMsg(null);
+          }}
+          style={{ fontSize: 12, flex: 1 }}
+        />
+        <button
+          type="button"
+          disabled={!contractFile || contractUploading}
+          onClick={async () => {
+            if (!contractFile) return;
+            setContractUploading(true); setContractMsg(null);
+            try {
+              const fd = new FormData(); fd.append('file', contractFile);
+              const res = await fetch(`/api/agents/${contractAgentId}/contract`, { method: 'POST', body: fd });
+              const d = await res.json();
+              if (res.ok) {
+                setContractMsg(contractUrl ? 'Replaced!' : 'Uploaded!');
+                const r2 = await fetch(`/api/agents/${contractAgentId}/contract`);
+                const d2 = await r2.json();
+                setContractUrl(d2.url || null); setContractName(d2.name || null);
+                setContractFile(null);
+              } else { setContractMsg(d.error || 'Upload failed'); }
+            } catch {
+              setContractMsg('Upload failed. Please try again.');
+            } finally {
+              setContractUploading(false);
+            }
+          }}
+          style={{ fontSize: 12, padding: '6px 12px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.5 : 1 }}
+        >{contractUploading ? 'Uploading…' : (contractUrl ? 'Replace' : 'Upload')}</button>
+      </div>
+      {contractMsg && <div style={{ fontSize: 12, marginTop: 6, color: /failed|large|only pdf|unauthorized|forbidden/i.test(contractMsg) ? '#dc2626' : '#059669' }}>{contractMsg}</div>}
+    </div>
+  );
+
   if (!isOpen) return null;
+
+  // Step 2: contract upload after new agent was created
+  if (step === 2 && createdAgentId) {
+    const handleSkip = () => { onSaved?.(); onClose?.(); };
+    return (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 20 }}
+        onClick={handleSkip}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 480, width: '100%', boxShadow: '0 8px 30px rgba(0,0,0,0.15)', fontFamily: fonts.body }}
+        >
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: '0 0 4px' }}>
+            Agent Created
+          </h2>
+          <p style={{ fontSize: 13, color: colors.lovelabMuted, margin: '0 0 20px' }}>
+            Would you like to attach a contract PDF for this agent?
+          </p>
+          {contractSection}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={handleSkip} style={btn.ghost}>
+              Skip for now
+            </button>
+            {contractUrl && (
+              <button type="button" onClick={handleSkip} style={btn.primary}>
+                Done
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -281,63 +402,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
             />
           </div>
           {/* Contract PDF upload — edit mode only */}
-          {isEdit && (
-            <div style={{ marginBottom: 20, padding: 14, background: '#fafafa', borderRadius: 8, border: '1px solid #eee' }}>
-              <label style={{ ...lbl, marginBottom: 8, display: 'block' }}>Contract (PDF)</label>
-              {contractUrl && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5D3A5E" strokeWidth="2">
-                    <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                  <span style={{ fontSize: 13, color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractName}</span>
-                  <a href={contractUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: colors.inkPlum, fontWeight: 600, textDecoration: 'none' }}>Download</a>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!confirm('Remove contract?')) return;
-                      await fetch(`/api/agents/${agent.id}/contract`, { method: 'DELETE' });
-                      setContractUrl(null); setContractName(null);
-                    }}
-                    style={{ fontSize: 12, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-                  >Remove</button>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f && f.size > 10 * 1024 * 1024) { setContractMsg('File too large (max 10MB)'); return; }
-                    setContractFile(f || null); setContractMsg(null);
-                  }}
-                  style={{ fontSize: 12, flex: 1 }}
-                />
-                <button
-                  type="button"
-                  disabled={!contractFile || contractUploading}
-                  onClick={async () => {
-                    if (!contractFile) return;
-                    setContractUploading(true); setContractMsg(null);
-                    const fd = new FormData(); fd.append('file', contractFile);
-                    const res = await fetch(`/api/agents/${agent.id}/contract`, { method: 'POST', body: fd });
-                    const d = await res.json();
-                    if (res.ok) {
-                      setContractMsg(contractUrl ? 'Replaced!' : 'Uploaded!');
-                      const r2 = await fetch(`/api/agents/${agent.id}/contract`);
-                      const d2 = await r2.json();
-                      setContractUrl(d2.url || null); setContractName(d2.name || null);
-                      setContractFile(null);
-                    } else { setContractMsg(d.error || 'Upload failed'); }
-                    setContractUploading(false);
-                  }}
-                  style={{ fontSize: 12, padding: '6px 12px', background: colors.inkPlum, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', opacity: (!contractFile || contractUploading) ? 0.5 : 1 }}
-                >{contractUploading ? 'Uploading…' : (contractUrl ? 'Replace' : 'Upload')}</button>
-              </div>
-              {contractMsg && <div style={{ fontSize: 12, marginTop: 6, color: /failed|large|only pdf|unauthorized|forbidden/i.test(contractMsg) ? '#dc2626' : '#059669' }}>{contractMsg}</div>}
-            </div>
-          )}
+          {isEdit && contractSection}
 
           {error && (
             <div style={{ marginBottom: 16, padding: 10, background: '#fef2f2', color: colors.danger, borderRadius: 8, fontSize: 13 }}>

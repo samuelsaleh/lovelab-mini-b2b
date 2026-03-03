@@ -120,6 +120,66 @@ export async function PUT(request, { params }) {
         console.error('[Agent PUT] Restore error:', restoreErr.message);
         return NextResponse.json({ error: 'Failed to restore agent' }, { status: 500 });
       }
+
+      // Re-add to allowed_emails so they can log back in
+      if (restored?.email) {
+        try {
+          await adminSupabase
+            .from('allowed_emails')
+            .upsert({ email: restored.email.toLowerCase() }, { onConflict: 'email' });
+        } catch (allowErr) {
+          console.error('[Agent PUT] allowed_emails re-add error (non-blocking):', allowErr.message);
+        }
+
+        // Generate a new magic link and send a "your access has been restored" email
+        const resendApiKey = process.env.RESEND_API_KEY;
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+        if (resendApiKey) {
+          try {
+            let magicLinkUrl = `${siteUrl}/login`;
+            const { data: magicData } = await adminSupabase.auth.admin.generateLink({
+              type: 'magiclink',
+              email: restored.email.toLowerCase(),
+              options: { redirectTo: `${siteUrl}/auth/callback` },
+            });
+            if (magicData?.properties?.action_link) {
+              magicLinkUrl = magicData.properties.action_link;
+            }
+
+            const agentName = restored.full_name || restored.email;
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${resendApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: 'LoveLab B2B <alberto@love-lab.com>',
+                to: [restored.email],
+                subject: `${agentName}, your LoveLab B2B access has been restored`,
+                html: `
+                  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
+                    <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
+                    <h2 style="color: #1a1a1a; margin: 0 0 8px;">Your access has been restored</h2>
+                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
+                      Hi ${agentName}, your access to <strong style="color: #5D3A5E;">LoveLab B2B</strong> has been restored. You can now log back in.
+                    </p>
+                    <a href="${magicLinkUrl}" style="display: inline-block; padding: 14px 32px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600;">
+                      Sign in to LoveLab B2B
+                    </a>
+                    <p style="color: #ccc; font-size: 11px; margin-top: 24px;">
+                      LoveLab B2B · This email was sent automatically.
+                    </p>
+                  </div>
+                `,
+              }),
+            });
+          } catch (emailErr) {
+            console.error('[Agent PUT] Restore email error (non-blocking):', emailErr.message);
+          }
+        }
+      }
+
       return NextResponse.json({ agent: restored, message: 'Agent restored.' });
     }
 
@@ -257,6 +317,27 @@ export async function DELETE(request, { params }) {
     if (error) {
       console.error('[Agent DELETE] Error:', error.message);
       return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 });
+    }
+
+    // Revoke all active sessions by deleting from auth.sessions.
+    // Existing access-token JWTs remain valid until they expire (Supabase limitation)
+    // but refresh tokens are invalidated so no new tokens can be obtained.
+    try {
+      await adminSupabase.rpc('revoke_user_sessions', { uid: id });
+    } catch (revokeErr) {
+      console.error('[Agent DELETE] Session revocation error (non-blocking):', revokeErr.message);
+    }
+
+    // Remove from allowed_emails so they cannot log back in
+    if (agent?.email) {
+      try {
+        await adminSupabase
+          .from('allowed_emails')
+          .delete()
+          .eq('email', agent.email.toLowerCase());
+      } catch (emailErr) {
+        console.error('[Agent DELETE] allowed_emails removal error (non-blocking):', emailErr.message);
+      }
     }
 
     return NextResponse.json({ agent, message: 'Agent moved to trash. Can be restored within 7 days.' });

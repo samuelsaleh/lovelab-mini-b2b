@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { calculateCommission } from '@/lib/commission';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
@@ -137,22 +138,28 @@ export async function POST(request) {
         const adminSupabase = createAdminClient();
         const { data: agentProfile } = await adminSupabase
           .from('profiles')
-          .select('is_agent, commission_rate, agent_status')
+          .select('is_agent, commission_rate, agent_status, agent_commission_config')
           .eq('id', user.id)
           .single();
 
-        if (agentProfile?.is_agent && agentProfile.agent_status === 'active' && agentProfile.commission_rate > 0) {
-          const rate = agentProfile.commission_rate;
-          const amount = Math.round((document.total_amount * rate) / 100 * 100) / 100;
-          await adminSupabase.from('agent_commissions').upsert({
-            agent_id: user.id,
-            document_id: document.id,
-            type: 'order',
-            order_total: document.total_amount,
-            commission_rate: rate,
-            commission_amount: amount,
-            status: 'pending',
-          }, { onConflict: 'agent_id,document_id' });
+        if (agentProfile?.is_agent && agentProfile.agent_status === 'active') {
+          const { amount, rate } = calculateCommission(
+            document.total_amount,
+            agentProfile.agent_commission_config || null,
+            agentProfile.commission_rate || 0,
+          );
+
+          if (amount > 0) {
+            await adminSupabase.from('agent_commissions').upsert({
+              agent_id: user.id,
+              document_id: document.id,
+              type: 'order',
+              order_total: document.total_amount,
+              commission_rate: rate,
+              commission_amount: amount,
+              status: 'pending',
+            }, { onConflict: 'agent_id,document_id' });
+          }
         }
       }
     } catch (commErr) {

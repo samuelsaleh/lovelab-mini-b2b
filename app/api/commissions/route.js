@@ -181,14 +181,14 @@ export async function POST(request) {
 
     const adminSupabase = createAdminClient();
 
-    // Verify agent exists
+    // Verify agent exists and is not soft-deleted
     const { data: agent } = await adminSupabase
       .from('profiles')
-      .select('id, is_agent')
+      .select('id, is_agent, agent_deleted_at')
       .eq('id', agent_id)
       .single();
 
-    if (!agent) {
+    if (!agent || agent.agent_deleted_at) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 

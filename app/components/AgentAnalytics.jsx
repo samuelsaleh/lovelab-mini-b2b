@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from './AuthProvider'
 import { colors, fonts } from '@/lib/styles'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import ContractChatPanel from './ContractChatPanel'
+import AgentFolderBrowser from './AgentFolderBrowser'
 
 const fmt = (n) => {
   if (n == null) return '—'
@@ -37,9 +39,12 @@ export default function AgentAnalytics() {
   const [contractUploading, setContractUploading] = useState(false);
   const [contractMsg, setContractMsg] = useState(null);
 
+  // Contract Q&A chat
+  const [contractChatOpen, setContractChatOpen] = useState(false);
+
   useEffect(() => {
     if (authLoading) return
-    if (!profile?.is_agent) {
+    if (!profile?.is_agent || profile?.agent_status !== 'active') {
       router.push('/')
       return
     }
@@ -161,7 +166,8 @@ export default function AgentAnalytics() {
             { id: 'overview', label: 'Overview' },
             { id: 'orders', label: 'My Orders' },
             { id: 'history', label: 'Commission History' },
-            { id: 'payouts', label: 'Payouts' }
+            { id: 'payouts', label: 'Payouts' },
+            { id: 'folder', label: 'My Folder' },
           ].map(tab => {
             const isActive = activeTab === tab.id
             return (
@@ -245,8 +251,19 @@ export default function AgentAnalytics() {
 
                   {/* Contract Upload Section */}
                   <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-                      My Contract
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        My Contract
+                      </div>
+                      {contractUrl && (
+                        <button
+                          onClick={() => setContractChatOpen(true)}
+                          style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          Ask about my contract
+                        </button>
+                      )}
                     </div>
                     {contractUrl && (
                       <div style={{ background: '#fafafa', borderRadius: 8, border: `1px solid ${colors.lineGray}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -501,6 +518,16 @@ export default function AgentAnalytics() {
           </div>
         )}
 
+        {/* TAB: MY FOLDER */}
+        {activeTab === 'folder' && (
+          <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, marginBottom: 16 }}>My Documents Folder</div>
+              <AgentFolderBrowser agentId={profile?.id} />
+            </div>
+          </div>
+        )}
+
       </div>
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes fadeIn {
@@ -508,6 +535,13 @@ export default function AgentAnalytics() {
           to { opacity: 1; transform: translateY(0); }
         }
       `}} />
+
+      <ContractChatPanel
+        isOpen={contractChatOpen}
+        onClose={() => setContractChatOpen(false)}
+        agentId={profile?.id}
+        agentName={profile?.full_name || profile?.email}
+      />
     </div>
   )
 }
