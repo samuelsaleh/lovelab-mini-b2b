@@ -1,13 +1,15 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 export async function GET(request) {
   try {
     const supabase = await createClient();
+    const adminSupabase = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data: profile } = await supabase.from('profiles').select('role, is_agent').eq('id', user.id).single();
+    const { data: profile } = await adminSupabase.from('profiles').select('role, is_agent').eq('id', user.id).single();
     const isAdmin = profile?.role === 'admin';
 
     const { searchParams } = new URL(request.url);
@@ -16,16 +18,22 @@ export async function GET(request) {
     const targetId = isAdmin ? (agentId || null) : user.id;
 
     if (!targetId) {
-       // Admin fetching all payments (optional, currently we only fetch per-agent)
-       const { data } = await supabase.from('agent_payments').select('*').order('payment_date', { ascending: false });
+       const { data } = await adminSupabase.from('agent_payments').select('*').order('payment_date', { ascending: false });
        return NextResponse.json({ payments: data });
     }
 
-    const { data, error } = await supabase
+    const allIds = await resolveAgentIds(adminSupabase, targetId);
+
+    let query = adminSupabase
       .from('agent_payments')
       .select('*')
-      .eq('agent_id', targetId)
       .order('payment_date', { ascending: false });
+
+    query = allIds.length === 1
+      ? query.eq('agent_id', allIds[0])
+      : query.in('agent_id', allIds);
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return NextResponse.json({ payments: data });

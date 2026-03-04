@@ -47,7 +47,11 @@ export default function AdminDashboard() {
   const topAgents = useMemo(() =>
     [...agents]
       .filter(a => !a.agent_deleted_at)
-      .sort((a, b) => (b.stats?.total_revenue || 0) - (a.stats?.total_revenue || 0))
+      .sort((a, b) => {
+        const revA = a.stats?.effective_revenue || a.stats?.total_revenue || 0
+        const revB = b.stats?.effective_revenue || b.stats?.total_revenue || 0
+        return revB - revA
+      })
       .slice(0, 5),
   [agents])
 
@@ -100,7 +104,6 @@ export default function AdminDashboard() {
                         {d.events?.name && <span>{d.events.name} · </span>}
                         {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                         {d.profiles?.full_name && <span> · by {d.profiles.full_name}</span>}
-                        {d.created_by && <span> · owner {String(d.created_by).slice(0, 8)}</span>}
                       </div>
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount ? fmt(d.total_amount) : '—'}</div>
@@ -120,7 +123,11 @@ export default function AdminDashboard() {
               <div style={{ padding: 32, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>No agents yet</div>
             ) : (
               <div>
-                {topAgents.map((a, i) => (
+                {topAgents.map((a, i) => {
+                  const orderCount = a.stats?.effective_orders || a.stats?.total_orders || 0
+                  const countLabel = `${orderCount} orders`
+                  const revenueLabel = a.stats?.effective_revenue || a.stats?.total_revenue || 0
+                  return (
                   <div key={a.id} style={{ padding: '10px 18px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, width: 20 }}>{i + 1}.</span>
                     <div style={{ width: 28, height: 28, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
@@ -131,12 +138,13 @@ export default function AdminDashboard() {
                         {a.full_name || a.email}
                       </div>
                       <div style={{ fontSize: 10, color: colors.lovelabMuted }}>
-                        {a.agent_country || ''}{a.agent_country && a.stats?.total_orders ? ' · ' : ''}{a.stats?.total_orders || 0} orders
+                        {a.agent_country || ''}{a.agent_country && countLabel ? ' · ' : ''}{countLabel}
                       </div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>{fmt(a.stats?.total_revenue)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>{fmt(revenueLabel)}</div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
+import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,10 +39,11 @@ export async function POST(request, { params }) {
     if (!doc.deleted_at) {
       return NextResponse.json({ error: 'Document is not in trash' }, { status: 400 });
     }
+    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
     const eventAccess = doc.event_id
       ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
       : { allowed: false };
-    const canRestore = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    const canRestore = isAdmin || isOwner || eventAccess.allowed;
     if (!canRestore) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
+import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,10 +37,11 @@ export async function PUT(request, { params }) {
     if (fetchError || !oldDoc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
+    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, oldDoc.created_by, user);
     const eventAccess = oldDoc.event_id
       ? await requireEventPermission(adminSupabase, oldDoc.event_id, user.id, 'edit', isAdmin)
       : { allowed: false };
-    const canEdit = isAdmin || oldDoc.created_by === user.id || eventAccess.allowed;
+    const canEdit = isAdmin || isOwner || eventAccess.allowed;
     if (!canEdit) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -118,10 +119,11 @@ export async function DELETE(request, { params }) {
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
+    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
     const eventAccess = doc.event_id
       ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
       : { allowed: false };
-    const canDelete = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    const canDelete = isAdmin || isOwner || eventAccess.allowed;
     if (!canDelete) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

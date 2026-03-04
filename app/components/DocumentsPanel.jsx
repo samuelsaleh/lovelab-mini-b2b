@@ -278,6 +278,10 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const canEditDoc = (doc) => {
     if (isAdmin) return true
     if (doc?.created_by && user?.id && doc.created_by === user.id) return true
+    // Handle historical docs created under an older auth user id but same email.
+    const docOwnerEmail = String(doc?.profiles?.email || '').trim().toLowerCase()
+    const currentEmail = String(user?.email || '').trim().toLowerCase()
+    if (docOwnerEmail && currentEmail && docOwnerEmail === currentEmail) return true
     if (!doc?.event_id) return false
     const perm = eventPermissionById.get(doc.event_id)
     return perm === 'edit' || perm === 'manage'

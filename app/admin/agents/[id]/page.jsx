@@ -27,6 +27,7 @@ export default function AdminAgentDetailsPage() {
   const [commissions, setCommissions] = useState([]);
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [docDerivedRows, setDocDerivedRows] = useState([]);
   
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -120,6 +121,34 @@ export default function AdminAgentDetailsPage() {
       setCommissions(commJson.commissions || []);
       setSummary(commJson.summary || null);
       setPayments(payJson.payments || []);
+
+      // When no commission rows exist but the agent has document-derived stats,
+      // fetch order documents to show as virtual commission rows.
+      const commList = commJson.commissions || [];
+      const stats = found.stats || {};
+      if (commList.filter(c => c.type === 'order').length === 0 && (stats.effective_orders || 0) > 0) {
+        try {
+          const docsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}`);
+          const docsJson = await docsRes.json().catch(() => ({}));
+          const orderDocs = (docsJson.documents || []).filter(
+            (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
+          );
+          const rate = Number(found.commission_rate) || 0;
+          setDocDerivedRows(orderDocs.map((d) => ({
+            id: `doc-${d.id}`,
+            type: 'order',
+            created_at: d.created_at,
+            order_total: Number(d.total_amount) || 0,
+            commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
+            document: { client_company: d.client_company || d.client_name || 'Order', id: d.id },
+            _derived: true,
+          })));
+        } catch {
+          setDocDerivedRows([]);
+        }
+      } else {
+        setDocDerivedRows([]);
+      }
     } catch (err) {
       setError(err.message || 'Failed to load details');
     } finally {
@@ -277,11 +306,26 @@ export default function AdminAgentDetailsPage() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
-              <Stat label="Total Earned" value={fmt(summary?.total_earned || 0)} />
-              <Stat label="Total Paid" value={fmt(summary?.total_paid_out || 0)} color={colors.success} />
-              <Stat label="True Pending Balance" value={fmt(summary?.true_pending_balance || 0)} color={summary?.true_pending_balance > 0 ? colors.warning : colors.inkPlum} />
-              <Stat label="Order Revenue" value={fmt(orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0))} />
-              <Stat label="Orders" value={summary?.order_count ?? 0} />
+              {(() => {
+                const s = summary || {};
+                const st = agent?.stats || {};
+                const totalEarned = (s.total_earned || 0) > 0 ? s.total_earned : (st.effective_total_commission || 0);
+                const totalPaid = s.total_paid_out || 0;
+                const pendingBalance = totalEarned > 0 ? totalEarned - totalPaid : (st.effective_pending_commission || 0);
+                const orderRevenue = (s.order_count || 0) > 0
+                  ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
+                  : (st.effective_revenue || 0);
+                const orderCount = (s.order_count || 0) > 0 ? s.order_count : (st.effective_orders || 0);
+                return (
+                  <>
+                    <Stat label="Total Earned" value={fmt(totalEarned)} />
+                    <Stat label="Total Paid" value={fmt(totalPaid)} color={colors.success} />
+                    <Stat label="True Pending Balance" value={fmt(pendingBalance)} color={pendingBalance > 0 ? colors.warning : colors.inkPlum} />
+                    <Stat label="Order Revenue" value={fmt(orderRevenue)} />
+                    <Stat label="Orders" value={orderCount} />
+                  </>
+                );
+              })()}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, alignItems: 'start' }}>
@@ -319,30 +363,46 @@ export default function AdminAgentDetailsPage() {
                 <div style={{ padding: '12px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
                   Commission History (Earned)
                 </div>
-                {commissions.length === 0 ? (
-                  <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions yet.</div>
-                ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#faf8fc' }}>
-                        <th style={th}>Date</th>
-                        <th style={th}>Details</th>
-                        <th style={{ ...th, textAlign: 'right' }}>Commission</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {commissions.map((row) => (
-                        <tr key={row.id}>
-                          <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB')}</td>
-                          <td style={{ ...td, fontSize: 11 }}>
-                            {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
-                          </td>
-                          <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(row.commission_amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                {(() => {
+                  const allRows = commissions.length > 0 ? commissions : docDerivedRows;
+                  const isDerived = commissions.length === 0 && docDerivedRows.length > 0;
+                  if (allRows.length === 0) {
+                    return <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions yet.</div>;
+                  }
+                  return (
+                    <>
+                      {isDerived && (
+                        <div style={{ padding: '8px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
+                          Estimated from order documents (no commission records found)
+                        </div>
+                      )}
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#faf8fc' }}>
+                            <th style={th}>Date</th>
+                            <th style={th}>Details</th>
+                            <th style={{ ...th, textAlign: 'right' }}>Order Total</th>
+                            <th style={{ ...th, textAlign: 'right' }}>Commission</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allRows.map((row) => (
+                            <tr key={row.id}>
+                              <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB')}</td>
+                              <td style={{ ...td, fontSize: 11 }}>
+                                {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
+                              </td>
+                              <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>
+                                {row.type === 'order' ? fmt(row.order_total) : '—'}
+                              </td>
+                              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(row.commission_amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

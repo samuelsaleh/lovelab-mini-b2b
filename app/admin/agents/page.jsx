@@ -362,8 +362,8 @@ export default function AdminAgentsPage() {
                     </div>
                     {agent.stats && (
                       <div style={{ fontSize: 12, color: colors.lovelabMuted, marginBottom: 4 }}>
-                        Orders: {agent.stats.total_orders ?? 0} · Revenue: {fmt(agent.stats.total_revenue)} ·
-                        Commission: {fmt(agent.stats.total_commission)}
+                        Orders: {agent.stats.effective_orders ?? agent.stats.total_orders ?? 0} · Revenue: {fmt(agent.stats.effective_revenue ?? agent.stats.total_revenue)} ·
+                        Commission Owed: {fmt(agent.stats.effective_pending_commission ?? agent.stats.pending_commission)}
                       </div>
                     )}
                     {agent.agent_conditions && (

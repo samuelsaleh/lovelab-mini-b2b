@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 async function getAuthorizedUser(supabase, adminSupabase) {
   const { data: { user } } = await supabase.auth.getUser();
@@ -31,15 +32,17 @@ export async function GET(request) {
 
     if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 });
 
-    // Access check: admin or the agent themselves
-    if (!isAdmin && user.id !== agentId) {
+    const allIds = await resolveAgentIds(adminSupabase, agentId);
+
+    // Access check: admin or the agent themselves (including re-invited IDs)
+    if (!isAdmin && !allIds.includes(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     let query = adminSupabase
       .from('agent_folders')
       .select('id, name, parent_id, agent_id, created_at')
-      .eq('agent_id', agentId)
+      .in('agent_id', allIds)
       .order('name', { ascending: true });
 
     if (parentId) {
@@ -78,7 +81,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'agent_id and name are required' }, { status: 400 });
     }
 
-    if (!isAdmin && user.id !== agent_id) {
+    const postAllIds = await resolveAgentIds(adminSupabase, agent_id);
+    if (!isAdmin && !postAllIds.includes(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -89,7 +93,7 @@ export async function POST(request) {
         .select('agent_id')
         .eq('id', parent_id)
         .single();
-      if (!parentFolder || parentFolder.agent_id !== agent_id) {
+      if (!parentFolder || !postAllIds.includes(parentFolder.agent_id)) {
         return NextResponse.json({ error: 'Invalid parent folder' }, { status: 400 });
       }
     }

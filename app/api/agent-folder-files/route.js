@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 const BUCKET = 'documents';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
@@ -36,7 +37,8 @@ export async function GET(request) {
       .single();
 
     const isAdmin = profile?.role === 'admin';
-    if (!isAdmin && user.id !== folder.agent_id) {
+    const allIds = await resolveAgentIds(adminSupabase, folder.agent_id);
+    if (!isAdmin && !allIds.includes(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -93,7 +95,8 @@ export async function POST(request) {
       .single();
 
     const isAdmin = profile?.role === 'admin';
-    if (!isAdmin && user.id !== folder.agent_id) {
+    const postAllIds = await resolveAgentIds(adminSupabase, folder.agent_id);
+    if (!isAdmin && !postAllIds.includes(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

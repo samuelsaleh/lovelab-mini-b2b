@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 const BUCKET = 'documents';
 
@@ -26,7 +27,12 @@ async function getFileWithAccess(adminSupabase, fileId, userId) {
     .single();
 
   const isAdmin = profile?.role === 'admin';
-  const allowed = isAdmin || (folder?.agent_id === userId);
+  if (isAdmin) return { file, allowed: true };
+
+  const allIds = folder?.agent_id
+    ? await resolveAgentIds(adminSupabase, folder.agent_id)
+    : [];
+  const allowed = allIds.includes(userId);
   return { file, allowed };
 }
 

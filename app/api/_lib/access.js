@@ -92,3 +92,48 @@ export async function getAccessibleEventIds(adminSupabase, userId, isAdmin = fal
   (sharedEvents || []).forEach((row) => ids.add(row.event_id));
   return Array.from(ids);
 }
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+// Some users were re-invited and ended up with a new auth user ID.
+// Allow ownership checks to pass when current user and owner share the same email.
+export async function isUserOwnerOrSameEmail(adminSupabase, ownerUserId, currentUser) {
+  if (!ownerUserId || !currentUser?.id) return false;
+  if (ownerUserId === currentUser.id) return true;
+
+  const { data: rows, error } = await adminSupabase
+    .from('profiles')
+    .select('id, email')
+    .in('id', [ownerUserId, currentUser.id]);
+
+  if (error) {
+    console.error('[access] owner/email lookup error:', error.message);
+    return false;
+  }
+
+  const ownerEmail = normalizeEmail((rows || []).find((r) => r.id === ownerUserId)?.email);
+  const currentEmail = normalizeEmail(currentUser.email || (rows || []).find((r) => r.id === currentUser.id)?.email);
+  return !!ownerEmail && ownerEmail === currentEmail;
+}
+
+// Returns all profile IDs that share the same email as `agentId`.
+// Handles re-invited agents whose auth user ID changed but email stayed the same.
+export async function resolveAgentIds(adminSupabase, agentId) {
+  if (!agentId) return [agentId];
+  const { data: profile } = await adminSupabase
+    .from('profiles')
+    .select('email')
+    .eq('id', agentId)
+    .single();
+  if (!profile?.email) return [agentId];
+  const email = normalizeEmail(profile.email);
+  if (!email) return [agentId];
+  const { data: all } = await adminSupabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email);
+  const ids = (all || []).map((r) => r.id);
+  return ids.length > 0 ? ids : [agentId];
+}

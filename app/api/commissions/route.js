@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 // GET - List commissions. Agents see their own; admins see all.
 export async function GET(request) {
@@ -34,14 +35,21 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
+    // Resolve all profile IDs sharing the same email (handles re-invited agents)
+    const allAgentIds = targetAgentId
+      ? await resolveAgentIds(adminSupabase, targetAgentId)
+      : null;
+
     let query = adminSupabase
       .from('agent_commissions')
       .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at')
       .order('created_at', { ascending: false })
       .limit(1000);
 
-    if (targetAgentId) {
-      query = query.eq('agent_id', targetAgentId);
+    if (allAgentIds) {
+      query = allAgentIds.length === 1
+        ? query.eq('agent_id', allAgentIds[0])
+        : query.in('agent_id', allAgentIds);
     }
 
     if (statusFilter) {
@@ -79,8 +87,10 @@ export async function GET(request) {
 
     // Fetch agent payments to calculate true pending balance
     let paymentsQuery = adminSupabase.from('agent_payments').select('amount');
-    if (targetAgentId) {
-      paymentsQuery = paymentsQuery.eq('agent_id', targetAgentId);
+    if (allAgentIds) {
+      paymentsQuery = allAgentIds.length === 1
+        ? paymentsQuery.eq('agent_id', allAgentIds[0])
+        : paymentsQuery.in('agent_id', allAgentIds);
     }
     const { data: paymentsData } = await paymentsQuery;
     const total_paid_out = (paymentsData || []).reduce((sum, p) => sum + Number(p.amount), 0);

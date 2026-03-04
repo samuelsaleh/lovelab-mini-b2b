@@ -2,7 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { calculateCommission } from '@/lib/commission';
-import { getAccessibleEventIds, getUserContext, requireEventPermission } from '@/app/api/_lib/access';
+import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
@@ -21,14 +21,21 @@ export async function GET(request) {
     const eventId = searchParams.get('event_id');
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
+    const createdByAgent = searchParams.get('created_by_agent');
 
     let query = adminSupabase
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
       .order('created_at', { ascending: false })
-      .limit(2000); // Allow up to 2000 documents for analytics
+      .limit(2000);
 
-    if (!isAdmin) {
+    // Admin filtering by a specific agent's documents (email-reconciled)
+    if (isAdmin && createdByAgent) {
+      const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
+      query = agentIds.length === 1
+        ? query.eq('created_by', agentIds[0])
+        : query.in('created_by', agentIds);
+    } else if (!isAdmin) {
       const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
       if (accessibleEventIds.length > 0) {
         query = query.or(`created_by.eq.${user.id},event_id.in.(${accessibleEventIds.join(',')})`);

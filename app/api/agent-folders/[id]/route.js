@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 const BUCKET = 'documents';
 
@@ -61,7 +62,8 @@ export async function DELETE(request, { params }) {
       .single();
 
     const isAdmin = profile?.role === 'admin';
-    if (!isAdmin && user.id !== folder.agent_id) {
+    const allIds = await resolveAgentIds(adminSupabase, folder.agent_id);
+    if (!isAdmin && !allIds.includes(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

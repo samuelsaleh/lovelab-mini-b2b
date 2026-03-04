@@ -11,6 +11,8 @@ async function requireAdmin(supabase, userId) {
   return data?.role === 'admin';
 }
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
 // GET - List all agents with aggregated commission stats (admin only)
 export async function GET(request) {
   try {
@@ -57,11 +59,43 @@ export async function GET(request) {
     const { data: commissions } = await adminSupabase
       .from('agent_commissions')
       .select('agent_id, type, commission_amount, status, order_total');
+    const { data: documents } = await adminSupabase
+      .from('documents')
+      .select('created_by, document_type, total_amount, deleted_at');
+
+    // Reconcile legacy user ids by email so stats stick to the same person.
+    const currentAgentIdByEmail = new Map(
+      (agents || [])
+        .filter((a) => normalizeEmail(a.email))
+        .map((a) => [normalizeEmail(a.email), a.id])
+    );
+    const sourceIds = Array.from(new Set([
+      ...(commissions || []).map((c) => c.agent_id).filter(Boolean),
+      ...(documents || []).map((d) => d.created_by).filter(Boolean),
+    ]));
+    const sourceEmailById = {};
+    if (sourceIds.length > 0) {
+      const { data: sourceProfiles } = await adminSupabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', sourceIds);
+      for (const p of sourceProfiles || []) {
+        sourceEmailById[p.id] = normalizeEmail(p.email);
+      }
+    }
+    const resolveAgentId = (rawId) => {
+      if (!rawId) return null;
+      if ((agents || []).some((a) => a.id === rawId)) return rawId;
+      const email = sourceEmailById[rawId];
+      return (email && currentAgentIdByEmail.get(email)) || rawId;
+    };
 
     const statsMap = {};
     for (const c of commissions || []) {
-      if (!statsMap[c.agent_id]) {
-        statsMap[c.agent_id] = {
+      const targetAgentId = resolveAgentId(c.agent_id);
+      if (!targetAgentId) continue;
+      if (!statsMap[targetAgentId]) {
+        statsMap[targetAgentId] = {
           total_orders: 0,
           total_revenue: 0,
           total_commission: 0,
@@ -70,7 +104,7 @@ export async function GET(request) {
           paid_commission: 0,
         };
       }
-      const s = statsMap[c.agent_id];
+      const s = statsMap[targetAgentId];
       if (c.type === 'order') {
         s.total_orders++;
         s.total_revenue += Number(c.order_total) || 0;
@@ -85,26 +119,75 @@ export async function GET(request) {
       }
     }
 
+    const docStatsMap = {};
+    for (const d of documents || []) {
+      if (d.deleted_at) continue;
+      const targetAgentId = resolveAgentId(d.created_by);
+      if (!targetAgentId) continue;
+      if (!docStatsMap[targetAgentId]) {
+        docStatsMap[targetAgentId] = {
+          total_docs: 0,
+          total_order_docs: 0,
+          total_doc_revenue: 0,
+        };
+      }
+      const ds = docStatsMap[targetAgentId];
+      ds.total_docs += 1;
+      if (d.document_type === 'order') {
+        ds.total_order_docs += 1;
+        ds.total_doc_revenue += Number(d.total_amount) || 0;
+      }
+    }
+
+    const makeStats = (agentId, commissionRate = 0) => {
+      const base = {
+        ...(statsMap[agentId] || {
+          total_orders: 0,
+          total_revenue: 0,
+          total_commission: 0,
+          total_bonuses: 0,
+          pending_commission: 0,
+          paid_commission: 0,
+        }),
+        ...(docStatsMap[agentId] || {
+          total_docs: 0,
+          total_order_docs: 0,
+          total_doc_revenue: 0,
+        }),
+      };
+      const noCommissionHistory =
+        (base.total_orders || 0) === 0 &&
+        (base.total_commission || 0) === 0 &&
+        (base.pending_commission || 0) === 0 &&
+        (base.paid_commission || 0) === 0;
+      const effective_orders = (base.total_orders || 0) > 0 ? base.total_orders : (base.total_order_docs || 0);
+      const effective_revenue = (base.total_revenue || 0) > 0 ? base.total_revenue : (base.total_doc_revenue || 0);
+      const estimatedFromDocs = ((base.total_doc_revenue || 0) * (Number(commissionRate) || 0)) / 100;
+      const effective_total_commission = (base.total_commission || 0) > 0
+        ? base.total_commission
+        : (noCommissionHistory ? estimatedFromDocs : 0);
+      const effective_pending_commission = (base.pending_commission || 0) > 0
+        ? base.pending_commission
+        : (noCommissionHistory ? estimatedFromDocs : 0);
+      return {
+        ...base,
+        effective_orders: Math.round((effective_orders || 0) * 100) / 100,
+        effective_revenue: Math.round((effective_revenue || 0) * 100) / 100,
+        effective_total_commission: Math.round((effective_total_commission || 0) * 100) / 100,
+        effective_pending_commission: Math.round((effective_pending_commission || 0) * 100) / 100,
+      };
+    };
+
     const agentsWithStats = agents.map(a => ({
       ...a,
-      stats: statsMap[a.id] || {
-        total_orders: 0,
-        total_revenue: 0,
-        total_commission: 0,
-        total_bonuses: 0,
-        pending_commission: 0,
-        paid_commission: 0,
-      },
+      stats: makeStats(a.id, a.commission_rate),
     }));
 
     const response = { agents: agentsWithStats };
     if (trashedAgents.length > 0) {
       response.trashedAgents = trashedAgents.map(a => ({
         ...a,
-        stats: statsMap[a.id] || {
-          total_orders: 0, total_revenue: 0, total_commission: 0,
-          total_bonuses: 0, pending_commission: 0, paid_commission: 0,
-        },
+        stats: makeStats(a.id, a.commission_rate),
       }));
     }
     return NextResponse.json(response);
