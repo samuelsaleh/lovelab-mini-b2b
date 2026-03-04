@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -11,8 +12,9 @@ export async function POST(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
+    const adminSupabase = createAdminClient();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -24,9 +26,9 @@ export async function POST(request, { params }) {
     }
 
     // Verify document exists and is in trash
-    const { data: doc, error: fetchError } = await supabase
+    const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, deleted_at')
+      .select('id, deleted_at, created_by, event_id')
       .eq('id', id)
       .single();
 
@@ -37,9 +39,16 @@ export async function POST(request, { params }) {
     if (!doc.deleted_at) {
       return NextResponse.json({ error: 'Document is not in trash' }, { status: 400 });
     }
+    const eventAccess = doc.event_id
+      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
+      : { allowed: false };
+    const canRestore = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    if (!canRestore) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Restore: clear deleted_at
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminSupabase
       .from('documents')
       .update({ deleted_at: null })
       .eq('id', id);

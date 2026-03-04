@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 const VALID_TYPES = ['fair', 'agent', 'partner', 'other'];
 
@@ -10,11 +11,14 @@ export async function PUT(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     if (!id) return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
+    const { allowed } = await requireEventPermission(adminSupabase, id, user.id, 'manage', isAdmin);
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await request.json();
     const { name, type } = body;
@@ -30,7 +34,7 @@ export async function PUT(request, { params }) {
       updates.type = type;
     }
 
-    const { data: event, error } = await supabase
+    const { data: event, error } = await adminSupabase
       .from('events')
       .update(updates)
       .eq('id', id)
@@ -54,8 +58,9 @@ export async function DELETE(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
+    const adminSupabase = createAdminClient();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -64,14 +69,16 @@ export async function DELETE(request, { params }) {
     if (!id) {
       return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
     }
+    const { allowed } = await requireEventPermission(adminSupabase, id, user.id, 'manage', isAdmin);
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // Unlink documents from this event (set event_id to null) so they aren't orphaned
-    await supabase
+    await adminSupabase
       .from('documents')
       .update({ event_id: null })
       .eq('event_id', id);
 
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('events')
       .delete()
       .eq('id', id);

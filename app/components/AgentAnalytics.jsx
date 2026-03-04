@@ -67,10 +67,16 @@ export default function AgentAnalytics() {
       ])
       if (!commRes.ok) throw new Error('Failed to load analytics data')
       const commJson = await commRes.json()
+      const dedupedCommissions = Array.isArray(commJson?.commissions)
+        ? Object.values((commJson.commissions || []).reduce((acc, row) => {
+            if (row?.id) acc[row.id] = row
+            return acc
+          }, {}))
+        : []
       const payJson = await payRes.json().catch(() => ({ payments: [] }))
       const contractJson = await contractRes.json().catch(() => ({}))
       
-      setData(commJson)
+      setData({ ...commJson, commissions: dedupedCommissions })
       setPayments(payJson.payments || [])
       setContractUrl(contractJson.url || null)
       setContractName(contractJson.name || null)

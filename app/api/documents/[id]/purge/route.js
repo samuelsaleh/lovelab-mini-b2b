@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -11,8 +12,9 @@ export async function DELETE(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
+    const adminSupabase = createAdminClient();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -24,19 +26,26 @@ export async function DELETE(request, { params }) {
     }
 
     // Get the document to find its file path
-    const { data: doc, error: fetchError } = await supabase
+    const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by')
+      .select('file_path, created_by, event_id')
       .eq('id', id)
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
+    const eventAccess = doc.event_id
+      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
+      : { allowed: false };
+    const canPurge = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    if (!canPurge) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Delete from storage (try both stored path and owner-scoped path)
     if (doc.file_path) {
-      const { error: storageError } = await supabase.storage
+      const { error: storageError } = await adminSupabase.storage
         .from('documents')
         .remove([doc.file_path]);
 
@@ -44,13 +53,13 @@ export async function DELETE(request, { params }) {
         const filename = doc.file_path.split('/').pop();
         const ownerScopedPath = `${doc.created_by}/${filename}`;
         if (ownerScopedPath !== doc.file_path) {
-          await supabase.storage.from('documents').remove([ownerScopedPath]);
+          await adminSupabase.storage.from('documents').remove([ownerScopedPath]);
         }
       }
     }
 
     // Permanently delete from database
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminSupabase
       .from('documents')
       .delete()
       .eq('id', id);

@@ -34,6 +34,13 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [renamingEventId, setRenamingEventId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameLoading, setRenameLoading] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareEvent, setShareEvent] = useState(null)
+  const [shareAccessList, setShareAccessList] = useState([])
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareSaving, setShareSaving] = useState(false)
+  const [shareEmail, setShareEmail] = useState('')
+  const [sharePermission, setSharePermission] = useState('read')
 
   useEffect(() => {
     fetchData()
@@ -262,6 +269,101 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     } catch (err) {
       setErrorMsg('Failed to delete event: ' + err.message)
     }
+  }
+
+  const canManageEvent = (event) => event?.permission === 'manage'
+
+  const eventPermissionById = new Map(events.map((evt) => [evt.id, evt.permission || 'read']))
+  const isAdmin = profile?.role === 'admin'
+  const canEditDoc = (doc) => {
+    if (isAdmin) return true
+    if (doc?.created_by && user?.id && doc.created_by === user.id) return true
+    if (!doc?.event_id) return false
+    const perm = eventPermissionById.get(doc.event_id)
+    return perm === 'edit' || perm === 'manage'
+  }
+
+  const openShareModal = async (event) => {
+    setShareEvent(event)
+    setShowShareModal(true)
+    setShareLoading(true)
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(event.id)}/access`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load access')
+      setShareAccessList(data.access || [])
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to load access')
+      setShareAccessList([])
+    }
+    setShareLoading(false)
+  }
+
+  const closeShareModal = () => {
+    setShowShareModal(false)
+    setShareEvent(null)
+    setShareAccessList([])
+    setShareEmail('')
+    setSharePermission('read')
+  }
+
+  const grantShareAccess = async (e) => {
+    e.preventDefault()
+    if (!shareEvent || !shareEmail.trim()) return
+    setShareSaving(true)
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: shareEmail.trim(),
+          permission: sharePermission,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to grant access')
+      setShareEmail('')
+      const refresh = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access`)
+      const refreshData = await refresh.json().catch(() => ({}))
+      setShareAccessList(refreshData.access || [])
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to grant access')
+    }
+    setShareSaving(false)
+  }
+
+  const updateSharePermission = async (targetUserId, permission) => {
+    if (!shareEvent) return
+    setShareSaving(true)
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access/${encodeURIComponent(targetUserId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to update permission')
+      setShareAccessList((prev) => prev.map((row) => row.user_id === targetUserId ? { ...row, permission } : row))
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to update permission')
+    }
+    setShareSaving(false)
+  }
+
+  const revokeShareAccess = async (targetUserId) => {
+    if (!shareEvent) return
+    setShareSaving(true)
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access/${encodeURIComponent(targetUserId)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to revoke access')
+      setShareAccessList((prev) => prev.filter((row) => row.user_id !== targetUserId))
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to revoke access')
+    }
+    setShareSaving(false)
   }
 
   // Filter
@@ -558,7 +660,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                       <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
                     </button>
                   )}
-                  {renamingEventId !== event.id && (
+                  {renamingEventId !== event.id && canManageEvent(event) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); startRename(event) }}
                       title="Rename"
@@ -572,18 +674,34 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
                     >✎</button>
                   )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
-                    title="Delete event"
-                    style={{
-                      width: 24, height: 24, borderRadius: 6, border: 'none',
-                      background: 'transparent', color: '#ccc', fontSize: 13,
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, marginRight: 4, transition: 'color .15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                  >×</button>
+                  {canManageEvent(event) && (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openShareModal(event) }}
+                        title="Share folder"
+                        style={{
+                          width: 24, height: 24, borderRadius: 6, border: 'none',
+                          background: 'transparent', color: '#ccc', fontSize: 12,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0, transition: 'color .15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                      >↗</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
+                        title="Delete event"
+                        style={{
+                          width: 24, height: 24, borderRadius: 6, border: 'none',
+                          background: 'transparent', color: '#ccc', fontSize: 13,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0, marginRight: 4, transition: 'color .15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                      >×</button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -759,7 +877,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                  {onReEdit && doc.metadata?.formState && (
+                  {onReEdit && doc.metadata?.formState && canEditDoc(doc) && (
                     <button
                       onClick={() => onReEdit(doc)}
                       title={t('docs.reEdit')}
@@ -790,15 +908,17 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                       minHeight: mobile ? 44 : 'auto',
                     }}
                   >Download</button>
-                  <button
-                    onClick={() => requestDelete(doc)}
-                    title={t('docs.delete')}
-                    style={{
-                      padding: mobile ? '10px 12px' : '7px 10px', borderRadius: 6, border: '1px solid #fecaca',
-                      background: '#fef2f2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
-                      minHeight: mobile ? 44 : 'auto',
-                    }}
-                  >Delete</button>
+                  {canEditDoc(doc) && (
+                    <button
+                      onClick={() => requestDelete(doc)}
+                      title={t('docs.delete')}
+                      style={{
+                        padding: mobile ? '10px 12px' : '7px 10px', borderRadius: 6, border: '1px solid #fecaca',
+                        background: '#fef2f2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
+                        minHeight: mobile ? 44 : 'auto',
+                      }}
+                    >Delete</button>
+                  )}
                 </div>
               </div>
             ))}
@@ -901,6 +1021,136 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                       </div>
                     )
                   })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showShareModal && shareEvent && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 320,
+            background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={closeShareModal}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680,
+              maxHeight: '82vh', display: 'flex', flexDirection: 'column',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              padding: '18px 20px 14px', borderBottom: '1px solid #eee',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#222' }}>Share Folder</div>
+                <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{shareEvent.name}</div>
+              </div>
+              <button
+                onClick={closeShareModal}
+                style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#aaa', padding: '0 4px' }}
+              >×</button>
+            </div>
+
+            <div style={{ padding: '14px 20px 0' }}>
+              <form onSubmit={grantShareAccess} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  placeholder="User email (ex: corinne@...)"
+                  style={{
+                    flex: 1, minWidth: 220, padding: '10px 12px', borderRadius: 8,
+                    border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body,
+                  }}
+                  required
+                />
+                <select
+                  value={sharePermission}
+                  onChange={(e) => setSharePermission(e.target.value)}
+                  style={{
+                    padding: '10px 12px', borderRadius: 8, border: '1px solid #e3e3e3',
+                    fontSize: 13, fontFamily: fonts.body, background: '#fff',
+                  }}
+                >
+                  <option value="read">Read</option>
+                  <option value="edit">Edit</option>
+                  <option value="manage">Manage</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={shareSaving}
+                  style={{
+                    padding: '10px 14px', borderRadius: 8, border: 'none',
+                    background: colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700,
+                    cursor: shareSaving ? 'default' : 'pointer', fontFamily: fonts.body,
+                    opacity: shareSaving ? 0.6 : 1,
+                  }}
+                >
+                  Add Access
+                </button>
+              </form>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: '14px 20px 20px', flex: 1 }}>
+              {shareLoading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading access…</div>
+              ) : shareAccessList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 36, color: '#999', fontSize: 13 }}>No shared users yet.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {shareAccessList.map((row) => (
+                    <div
+                      key={row.user_id}
+                      style={{
+                        background: '#fafafa', borderRadius: 10, border: '1px solid #ede8f0',
+                        padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {row.profiles?.full_name || row.profiles?.email || row.user_id}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                          {row.profiles?.email || row.user_id}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <select
+                          value={row.permission}
+                          onChange={(e) => updateSharePermission(row.user_id, e.target.value)}
+                          disabled={shareSaving}
+                          style={{
+                            padding: '7px 10px', borderRadius: 7, border: '1px solid #ddd',
+                            fontSize: 12, fontFamily: fonts.body, background: '#fff',
+                          }}
+                        >
+                          <option value="read">Read</option>
+                          <option value="edit">Edit</option>
+                          <option value="manage">Manage</option>
+                        </select>
+                        <button
+                          onClick={() => revokeShareAccess(row.user_id)}
+                          disabled={shareSaving}
+                          style={{
+                            padding: '7px 10px', borderRadius: 7, border: '1px solid #fecaca',
+                            background: '#fef2f2', color: '#dc2626', fontSize: 12,
+                            cursor: shareSaving ? 'default' : 'pointer', fontFamily: fonts.body,
+                            opacity: shareSaving ? 0.6 : 1,
+                          }}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

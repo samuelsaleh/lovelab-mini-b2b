@@ -25,7 +25,16 @@ export default function AgentHomeTab({ onSwitchTab }) {
   useEffect(() => {
     fetch('/api/commissions')
       .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        const deduped = Array.isArray(d?.commissions)
+          ? Object.values((d.commissions || []).reduce((acc, row) => {
+              if (row?.id) acc[row.id] = row
+              return acc
+            }, {}))
+          : []
+        setData({ ...d, commissions: deduped })
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
 

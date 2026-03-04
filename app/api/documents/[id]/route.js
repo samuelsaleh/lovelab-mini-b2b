@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,8 +13,8 @@ export async function PUT(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -27,29 +28,36 @@ export async function PUT(request, { params }) {
     const body = await request.json();
 
     // First, get the old document to delete old file
-    const { data: oldDoc, error: fetchError } = await supabase
+    const { data: oldDoc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by')
+      .select('file_path, created_by, event_id')
       .eq('id', id)
       .single();
 
     if (fetchError || !oldDoc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
+    const eventAccess = oldDoc.event_id
+      ? await requireEventPermission(adminSupabase, oldDoc.event_id, user.id, 'edit', isAdmin)
+      : { allowed: false };
+    const canEdit = isAdmin || oldDoc.created_by === user.id || eventAccess.allowed;
+    if (!canEdit) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Delete old file from storage if we have a new one
     if (oldDoc.file_path && body.file_path && oldDoc.file_path !== body.file_path) {
-      await supabase.storage.from('documents').remove([oldDoc.file_path]);
+      await adminSupabase.storage.from('documents').remove([oldDoc.file_path]);
       // Also try owner-scoped path
       const filename = oldDoc.file_path.split('/').pop();
       const ownerScopedPath = `${oldDoc.created_by}/${filename}`;
       if (ownerScopedPath !== oldDoc.file_path) {
-        await supabase.storage.from('documents').remove([ownerScopedPath]);
+        await adminSupabase.storage.from('documents').remove([ownerScopedPath]);
       }
     }
 
     // Update the document record
-    const { data: doc, error: updateError } = await supabase
+    const { data: doc, error: updateError } = await adminSupabase
       .from('documents')
       .update({
         event_id: body.event_id || null,
@@ -88,8 +96,8 @@ export async function DELETE(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -101,18 +109,25 @@ export async function DELETE(request, { params }) {
     }
 
     // Verify document exists and belongs to user
-    const { data: doc, error: fetchError } = await supabase
+    const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, created_by')
+      .select('id, created_by, event_id')
       .eq('id', id)
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
+    const eventAccess = doc.event_id
+      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
+      : { allowed: false };
+    const canDelete = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    if (!canDelete) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Soft-delete: set deleted_at timestamp, keep file in storage
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminSupabase
       .from('documents')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);

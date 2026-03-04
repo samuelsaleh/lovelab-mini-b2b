@@ -19,6 +19,19 @@ const CHART_COLORS = [
   '#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6',
 ]
 
+const countriesLower = COUNTRIES.map((c) => c.toLowerCase())
+function normalizeCountryValue(raw) {
+  if (!raw || !raw.trim()) return 'Unknown'
+  const cleaned = raw.trim().replace(/\s+/g, ' ')
+  const lower = cleaned.toLowerCase()
+  const idx = countriesLower.indexOf(lower)
+  if (idx >= 0) return COUNTRIES[idx]
+  for (let i = 0; i < COUNTRIES.length; i++) {
+    if (lower.includes(countriesLower[i])) return COUNTRIES[i]
+  }
+  return cleaned.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+}
+
 // ─── Vitrine helpers (shared with DocumentsPanel) ──────────────────────────
 const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i
 
@@ -155,7 +168,7 @@ function Section({ title, children, style: s }) {
 }
 
 // ─── Ranked table ──────────────────────────────────────────────────────────
-function RankedTable({ columns, rows, maxRows = 10 }) {
+function RankedTable({ columns, rows, maxRows = 10, onRowClick, isRowActive }) {
   const thS = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'left', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}` }
   const tdS = { padding: '10px 12px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }
   return (
@@ -171,7 +184,11 @@ function RankedTable({ columns, rows, maxRows = 10 }) {
         </thead>
         <tbody>
           {rows.slice(0, maxRows).map((row, i) => (
-            <tr key={i}>
+            <tr
+              key={i}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              style={onRowClick ? { cursor: 'pointer', background: isRowActive?.(row) ? '#faf8fc' : 'transparent' } : undefined}
+            >
               <td style={{ ...tdS, textAlign: 'center', fontWeight: 700, color: i < 3 ? colors.inkPlum : '#999', fontSize: 12 }}>{i + 1}</td>
               {columns.map((col, j) => (
                 <td key={j} style={{ ...tdS, textAlign: col.align || 'left', fontWeight: col.bold ? 600 : 400, color: col.color || colors.charcoal }}>{col.render ? col.render(row) : row[col.key]}</td>
@@ -212,6 +229,7 @@ export default function AnalyticsDashboard() {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedEventId, setSelectedEventId] = useState('')
+  const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
 
   useEffect(() => {
@@ -265,24 +283,9 @@ export default function AnalyticsDashboard() {
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => {
-    const countriesLower = COUNTRIES.map(c => c.toLowerCase())
-    const normalizeCountry = (raw) => {
-      if (!raw || !raw.trim()) return 'Unknown'
-      const cleaned = raw.trim().replace(/\s+/g, ' ')
-      const lower = cleaned.toLowerCase()
-      // Direct match against known countries
-      const idx = countriesLower.indexOf(lower)
-      if (idx >= 0) return COUNTRIES[idx]
-      // Try to find a known country name anywhere in the string (e.g. "Berlin, Germany" → "Germany")
-      for (let i = 0; i < COUNTRIES.length; i++) {
-        if (lower.includes(countriesLower[i])) return COUNTRIES[i]
-      }
-      // Fallback: title-case what we have
-      return cleaned.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-    }
     const map = new Map()
     docs.forEach(d => {
-      const country = normalizeCountry(d.metadata?.formState?.country)
+      const country = normalizeCountryValue(d.metadata?.formState?.country)
       if (!map.has(country)) map.set(country, { name: country, count: 0, revenue: 0 })
       const entry = map.get(country)
       entry.count++
@@ -290,6 +293,27 @@ export default function AnalyticsDashboard() {
     })
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
   }, [docs])
+
+  const countryDetails = useMemo(() => {
+    if (!selectedCountry) return []
+    const map = new Map()
+    docs.forEach((d) => {
+      const country = normalizeCountryValue(d.metadata?.formState?.country)
+      if (country !== selectedCountry) return
+      const key = (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' ').toLowerCase()
+      if (!map.has(key)) {
+        map.set(key, {
+          company: (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' '),
+          orders: 0,
+          revenue: 0,
+        })
+      }
+      const entry = map.get(key)
+      entry.orders += 1
+      entry.revenue += d.total_amount || 0
+    })
+    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
+  }, [docs, selectedCountry])
 
   // ─── Top products (by quantity) ───────────────────────────────────────
   const productData = useMemo(() => {
@@ -595,7 +619,42 @@ export default function AnalyticsDashboard() {
                     ]}
                     rows={countryData}
                     maxRows={7}
+                    onRowClick={(row) => setSelectedCountry((prev) => (prev === row.name ? '' : row.name))}
+                    isRowActive={(row) => selectedCountry === row.name}
                   />
+                  {selectedCountry && (
+                    <div style={{ marginTop: 10, border: `1px solid ${colors.lineGray}`, borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ padding: '9px 12px', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum }}>
+                          {selectedCountry} - companies
+                        </div>
+                        <button
+                          onClick={() => setSelectedCountry('')}
+                          style={{ border: 'none', background: 'transparent', color: '#999', cursor: 'pointer', fontSize: 12, fontFamily: fonts.body }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thStyleMini, textAlign: 'left' }}>Company</th>
+                            <th style={{ ...thStyleMini, textAlign: 'center' }}>Orders</th>
+                            <th style={{ ...thStyleMini, textAlign: 'right' }}>Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {countryDetails.slice(0, 10).map((row, idx) => (
+                            <tr key={`${row.company}-${idx}`}>
+                              <td style={tdStyleMini}>{row.company}</td>
+                              <td style={{ ...tdStyleMini, textAlign: 'center' }}>{row.orders}</td>
+                              <td style={{ ...tdStyleMini, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(row.revenue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No country data</div>}
@@ -698,4 +757,21 @@ export default function AnalyticsDashboard() {
       />
     </div>
   )
+}
+
+const thStyleMini = {
+  padding: '8px 10px',
+  fontSize: 10,
+  fontWeight: 700,
+  color: colors.lovelabMuted,
+  textTransform: 'uppercase',
+  borderBottom: `1px solid ${colors.lineGray}`,
+  background: '#fff',
+}
+
+const tdStyleMini = {
+  padding: '8px 10px',
+  fontSize: 12,
+  color: colors.charcoal,
+  borderBottom: `1px solid ${colors.lineGray}`,
 }

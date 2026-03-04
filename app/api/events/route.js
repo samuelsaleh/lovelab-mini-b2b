@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext } from '@/app/api/_lib/access';
 
 // Simple ISO date validation (YYYY-MM-DD)
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,13 +13,13 @@ export async function GET(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: events, error } = await supabase
+    const { data: rawEvents, error } = await adminSupabase
       .from('events')
       .select('*, documents(count)')
       .order('created_at', { ascending: false });
@@ -26,6 +27,30 @@ export async function GET(request) {
     if (error) {
       console.error('[Events GET] Error:', error.message);
       return NextResponse.json({ error: 'Failed to load events' }, { status: 500 });
+    }
+
+    const raw = rawEvents || [];
+    let events = raw;
+
+    if (!isAdmin) {
+      let accessRows = [];
+      const { data, error: accessErr } = await adminSupabase
+        .from('event_access')
+        .select('event_id, permission')
+        .eq('user_id', user.id);
+      if (!accessErr) {
+        accessRows = data || [];
+      }
+
+      const accessByEvent = new Map(accessRows.map((row) => [row.event_id, row.permission]));
+      events = raw
+        .filter((evt) => evt.created_by === user.id || accessByEvent.has(evt.id))
+        .map((evt) => ({
+          ...evt,
+          permission: evt.created_by === user.id ? 'manage' : accessByEvent.get(evt.id),
+        }));
+    } else {
+      events = raw.map((evt) => ({ ...evt, permission: 'manage' }));
     }
 
     return NextResponse.json({ events });
@@ -41,8 +66,8 @@ export async function POST(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -68,7 +93,7 @@ export async function POST(request) {
     const validTypes = ['fair', 'agent', 'partner', 'other'];
     const eventType = validTypes.includes(type) ? type : 'other';
 
-    const { data: event, error } = await supabase
+    const { data: event, error } = await adminSupabase
       .from('events')
       .insert({
         name: name.trim(),

@@ -32,7 +32,9 @@ export async function GET(request) {
     // Agents can only see their own; admins can filter by agent_id
     const targetAgentId = isAdmin ? (agentIdFilter || null) : user.id;
 
-    let query = supabase
+    const adminSupabase = createAdminClient();
+
+    let query = adminSupabase
       .from('agent_commissions')
       .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at')
       .order('created_at', { ascending: false })
@@ -60,7 +62,7 @@ export async function GET(request) {
 
     let docsMap = {};
     if (docIds.length > 0) {
-      const { data: docs } = await supabase
+      const { data: docs } = await adminSupabase
         .from('documents')
         .select('id, client_name, client_company, document_type, created_at, event_id')
         .in('id', docIds);
@@ -76,7 +78,7 @@ export async function GET(request) {
     }));
 
     // Fetch agent payments to calculate true pending balance
-    let paymentsQuery = supabase.from('agent_payments').select('amount');
+    let paymentsQuery = adminSupabase.from('agent_payments').select('amount');
     if (targetAgentId) {
       paymentsQuery = paymentsQuery.eq('agent_id', targetAgentId);
     }

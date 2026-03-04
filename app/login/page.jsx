@@ -43,12 +43,18 @@ function LoginContent() {
     }
   }, [searchParams]);
 
+  const getAuthCallbackUrl = () => {
+    // Always use the current browser origin to keep local auth on localhost.
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/auth/callback`;
+  };
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
     try {
       const supabase = createClient();
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`;
+      const redirectTo = getAuthCallbackUrl();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo },
@@ -69,7 +75,7 @@ function LoginContent() {
     setSuccessMsg(null);
     try {
       const supabase = createClient();
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`;
+      const redirectTo = getAuthCallbackUrl();
       const { error } = await supabase.auth.signInWithOtp({
         email: magicEmail.trim(),
         options: { emailRedirectTo: redirectTo, shouldCreateUser: false },

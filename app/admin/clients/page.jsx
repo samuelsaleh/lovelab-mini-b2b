@@ -14,6 +14,7 @@ export default function AdminClientsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [countryFilter, setCountryFilter] = useState('all')
+  const [showAllClients, setShowAllClients] = useState(false)
   const [error, setError] = useState(null)
   const [page, setPage] = useState(0)
 
@@ -75,13 +76,15 @@ export default function AdminClientsPage() {
       const key = (c.company || c.name || '').toLowerCase()
       const stats = docsByCompany[key] || { count: 0, total: 0 }
       return { ...c, orderCount: stats.count, orderTotal: stats.total }
-    }).sort((a, b) => b.orderTotal - a.orderTotal)
-  }, [clients, search, countryFilter, docsByCompany])
+    })
+      .filter(c => showAllClients ? true : c.orderCount > 0)
+      .sort((a, b) => b.orderTotal - a.orderTotal)
+  }, [clients, search, countryFilter, docsByCompany, showAllClients])
 
   const paged = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE)
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
 
-  useEffect(() => { setPage(0) }, [search, countryFilter])
+  useEffect(() => { setPage(0) }, [search, countryFilter, showAllClients])
 
   if (loading) {
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>Loading...</div>
@@ -115,6 +118,23 @@ export default function AdminClientsPage() {
             <option value="all">All Countries</option>
             {countries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          <button
+            onClick={() => setShowAllClients((v) => !v)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: `1px solid ${showAllClients ? colors.inkPlum : colors.lineGray}`,
+              background: showAllClients ? '#fdf7fa' : '#fff',
+              color: showAllClients ? colors.inkPlum : '#666',
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: fonts.body,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {showAllClients ? 'Only ordered clients' : 'Show all clients'}
+          </button>
         </div>
 
         <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden' }}>

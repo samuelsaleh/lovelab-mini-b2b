@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { calculateCommission } from '@/lib/commission';
+import { getAccessibleEventIds, getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
@@ -10,8 +11,8 @@ export async function GET(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -21,11 +22,20 @@ export async function GET(request) {
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
 
-    let query = supabase
+    let query = adminSupabase
       .from('documents')
       .select('*, events(name), profiles(full_name, email)')
       .order('created_at', { ascending: false })
       .limit(2000); // Allow up to 2000 documents for analytics
+
+    if (!isAdmin) {
+      const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
+      if (accessibleEventIds.length > 0) {
+        query = query.or(`created_by.eq.${user.id},event_id.in.(${accessibleEventIds.join(',')})`);
+      } else {
+        query = query.eq('created_by', user.id);
+      }
+    }
 
     // Filter by trash state
     if (trashed) {
@@ -35,6 +45,12 @@ export async function GET(request) {
     }
 
     if (eventId) {
+      if (!isAdmin) {
+        const { allowed } = await requireEventPermission(adminSupabase, eventId, user.id, 'read', isAdmin);
+        if (!allowed) {
+          return NextResponse.json({ documents: [] });
+        }
+      }
       query = query.eq('event_id', eventId);
     }
 
@@ -66,8 +82,8 @@ export async function POST(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -93,6 +109,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
     }
 
+    if (event_id) {
+      const { allowed } = await requireEventPermission(adminSupabase, event_id, user.id, 'edit', isAdmin);
+      if (!allowed) {
+        return NextResponse.json({ error: 'Forbidden: no edit access to this folder' }, { status: 403 });
+      }
+    }
+
     // Sanitize file_path to prevent path traversal
     const safePath = String(file_path)
       .replace(/\.\./g, '')
@@ -109,7 +132,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Metadata too large' }, { status: 400 });
     }
 
-    const { data: document, error } = await supabase
+    const { data: document, error } = await adminSupabase
       .from('documents')
       .insert({
         event_id: event_id || null,

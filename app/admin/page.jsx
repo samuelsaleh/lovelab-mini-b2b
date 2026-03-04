@@ -100,6 +100,7 @@ export default function AdminDashboard() {
                         {d.events?.name && <span>{d.events.name} · </span>}
                         {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                         {d.profiles?.full_name && <span> · by {d.profiles.full_name}</span>}
+                        {d.created_by && <span> · owner {String(d.created_by).slice(0, 8)}</span>}
                       </div>
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount ? fmt(d.total_amount) : '—'}</div>

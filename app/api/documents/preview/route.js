@@ -1,6 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 // UUID v4 format validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,8 +13,8 @@ export async function GET(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -29,9 +30,9 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await adminSupabase
         .from('documents')
-        .select('id, file_path, created_by')
+        .select('id, file_path, created_by, event_id')
         .eq('id', docId)
         .single();
 
@@ -55,9 +56,9 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await adminSupabase
         .from('documents')
-        .select('id, file_path, created_by')
+        .select('id, file_path, created_by, event_id')
         .eq('file_path', filePath)
         .single();
 
@@ -67,11 +68,19 @@ export async function GET(request) {
       doc = data;
     }
 
+    const eventAccess = doc.event_id
+      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'read', isAdmin)
+      : { allowed: false };
+    const canRead = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    if (!canRead) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Try generating signed URL with the stored file_path
     const storedPath = doc.file_path;
     let signedUrl = null;
 
-    const { data: urlData, error: urlError } = await supabase.storage
+    const { data: urlData, error: urlError } = await adminSupabase.storage
       .from('documents')
       .createSignedUrl(storedPath, 60 * 5);
 
@@ -84,7 +93,7 @@ export async function GET(request) {
       const ownerScopedPath = `${doc.created_by}/${filename}`;
 
       if (ownerScopedPath !== storedPath) {
-        const { data: fallbackData, error: fallbackError } = await supabase.storage
+        const { data: fallbackData, error: fallbackError } = await adminSupabase.storage
           .from('documents')
           .createSignedUrl(ownerScopedPath, 60 * 5);
 
@@ -92,7 +101,7 @@ export async function GET(request) {
           signedUrl = fallbackData.signedUrl;
 
           // Fix the stored path in the DB so future lookups work directly
-          await supabase
+          await adminSupabase
             .from('documents')
             .update({ file_path: ownerScopedPath })
             .eq('id', doc.id);
