@@ -45,6 +45,7 @@ const initialFilters = {
 export default function ReportsDashboard() {
   const [loading, setLoading] = useState(true)
   const [documents, setDocuments] = useState([])
+  const [clients, setClients] = useState([])
   const [events, setEvents] = useState([])
   const [reports, setReports] = useState([])
   const [filters, setFilters] = useState(initialFilters)
@@ -58,15 +59,18 @@ export default function ReportsDashboard() {
       setLoading(true)
       setError(null)
       try {
-        const [docsRes, eventsRes, reportsRes] = await Promise.all([
+        const [docsRes, eventsRes, reportsRes, clientsRes] = await Promise.all([
           fetch('/api/documents'),
           fetch('/api/events'),
           fetch('/api/reports'),
+          fetch('/api/clients'),
         ])
         const docsData = await docsRes.json().catch(() => ({}))
         const eventsData = await eventsRes.json().catch(() => ({}))
         const reportsData = await reportsRes.json().catch(() => ({}))
+        const clientsData = await clientsRes.json().catch(() => ({}))
         setDocuments(docsData.documents || [])
+        setClients(clientsData.clients || [])
         setEvents(eventsData.events || [])
         setReports(reportsData.reports || [])
       } catch {
@@ -77,9 +81,12 @@ export default function ReportsDashboard() {
     load()
   }, [])
 
-  const rows = useMemo(() => {
+  const documentRows = useMemo(() => {
     return documents.map((d) => ({
       ...d,
+      rowType: 'document',
+      sourceLabel: 'Order',
+      sourceComment: null,
       country: normalizeCountry(d.metadata?.formState?.country),
       city: (d.metadata?.formState?.city || d.metadata?.formState?.location || '').trim() || 'Unknown',
       amount: Number(d.total_amount) || 0,
@@ -88,6 +95,27 @@ export default function ReportsDashboard() {
       eventLabel: d.events?.name || 'No Event',
     }))
   }, [documents])
+
+  const salesforceRows = useMemo(() => {
+    return clients
+      .filter((c) => c?.source === 'salesforce' || c?.vat === 'UNDER_SALESFORCE')
+      .map((c) => ({
+        id: `sf-${c.id}`,
+        rowType: 'salesforce',
+        sourceLabel: 'Salesforce',
+        sourceComment: c.source_comment || 'Under Salesforce',
+        country: normalizeCountry(c.country),
+        city: (c.city || '').trim() || 'Unknown',
+        amount: 0,
+        dateISO: c.source_imported_at ? new Date(c.source_imported_at).toISOString().slice(0, 10) : '—',
+        clientLabel: c.company || c.name || 'Unknown',
+        eventLabel: 'Salesforce import',
+        document_type: 'account',
+        event_id: null,
+      }))
+  }, [clients])
+
+  const rows = useMemo(() => [...documentRows, ...salesforceRows], [documentRows, salesforceRows])
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -105,7 +133,8 @@ export default function ReportsDashboard() {
           !r.clientLabel.toLowerCase().includes(q) &&
           !r.country.toLowerCase().includes(q) &&
           !r.city.toLowerCase().includes(q) &&
-          !r.eventLabel.toLowerCase().includes(q)
+          !r.eventLabel.toLowerCase().includes(q) &&
+          !r.sourceLabel.toLowerCase().includes(q)
         ) {
           return false
         }
@@ -115,11 +144,12 @@ export default function ReportsDashboard() {
   }, [rows, filters])
 
   const kpis = useMemo(() => {
-    const totalRevenue = filteredRows.reduce((sum, r) => sum + r.amount, 0)
-    const totalOrders = filteredRows.filter((r) => r.document_type === 'order').length
-    const totalQuotes = filteredRows.filter((r) => r.document_type === 'quote').length
+    const documentOnly = filteredRows.filter((r) => r.rowType === 'document')
+    const totalRevenue = documentOnly.reduce((sum, r) => sum + r.amount, 0)
+    const totalOrders = documentOnly.filter((r) => r.document_type === 'order').length
+    const totalQuotes = documentOnly.filter((r) => r.document_type === 'quote').length
     const avgOrderValue = totalOrders > 0
-      ? filteredRows
+      ? documentOnly
           .filter((r) => r.document_type === 'order')
           .reduce((sum, r) => sum + r.amount, 0) / totalOrders
       : 0
@@ -298,7 +328,7 @@ export default function ReportsDashboard() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Amount'].map((h) => (
+                  {['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount'].map((h) => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -306,7 +336,7 @@ export default function ReportsDashboard() {
               <tbody>
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
+                    <td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
                   </tr>
                 ) : (
                   filteredRows.map((r) => (
@@ -317,6 +347,7 @@ export default function ReportsDashboard() {
                       <td style={tdStyle}>{r.city}</td>
                       <td style={tdStyle}>{r.eventLabel}</td>
                       <td style={tdStyle}>{r.document_type}</td>
+                      <td style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(r.amount)}</td>
                     </tr>
                   ))

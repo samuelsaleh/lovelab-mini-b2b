@@ -71,7 +71,35 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { id, name, company, country, address, city, zip, email, phone, vat, vat_valid } = body;
+    const {
+      id,
+      name,
+      company,
+      country,
+      address,
+      city,
+      zip,
+      email,
+      phone,
+      vat,
+      vat_valid,
+      source,
+      source_comment,
+      source_imported_at,
+    } = body;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    const isAdmin = profile?.role === 'admin';
+    const sourcePayload = {};
+    if (isAdmin && (source || source_comment || source_imported_at)) {
+      sourcePayload.source = source === 'salesforce' ? 'salesforce' : 'manual';
+      sourcePayload.source_comment = source_comment?.trim() || null;
+      sourcePayload.source_imported_at = source_imported_at || null;
+    }
 
     if (!company || !company.trim()) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
@@ -92,6 +120,7 @@ export async function POST(request) {
           phone: phone?.trim() || null,
           vat: vat?.trim() || null,
           vat_valid: vat_valid ?? null,
+          ...sourcePayload,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -120,6 +149,7 @@ export async function POST(request) {
           phone: phone?.trim() || null,
           vat: vat?.trim() || null,
           vat_valid: vat_valid ?? null,
+          ...sourcePayload,
           created_by: user.id,
           updated_at: new Date().toISOString(),
         })

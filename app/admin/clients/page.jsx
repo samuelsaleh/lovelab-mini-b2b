@@ -141,7 +141,7 @@ export default function AdminClientsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Company', 'Contact', 'Country', 'Email', 'Phone', 'Orders', 'Total'].map(h => (
+                {['Company', 'Contact', 'Country', 'Email', 'Phone', 'Source', 'Orders', 'Total'].map(h => (
                   <th key={h} style={{ padding: '10px 14px', fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}` }}>
                     {h}
                   </th>
@@ -151,7 +151,7 @@ export default function AdminClientsPage() {
             <tbody>
               {paged.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
+                  <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
                     {search || countryFilter !== 'all' ? 'No clients match your filters' : 'No clients yet'}
                   </td>
                 </tr>
@@ -165,6 +165,12 @@ export default function AdminClientsPage() {
                     <td style={tdStyle}>{c.country || '—'}</td>
                     <td style={{ ...tdStyle, fontSize: 11 }}>{c.email || '—'}</td>
                     <td style={{ ...tdStyle, fontSize: 11 }}>{c.phone || '—'}</td>
+                    <td style={{ ...tdStyle, fontSize: 11 }}>
+                      {(c.source === 'salesforce' || c.vat === 'UNDER_SALESFORCE') ? 'Salesforce' : 'Manual'}
+                      {(c.source_comment || c.vat === 'UNDER_SALESFORCE') ? (
+                        <span style={{ color: colors.lovelabMuted }}> · {c.source_comment || 'Under Salesforce'}</span>
+                      ) : null}
+                    </td>
                     <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600 }}>{c.orderCount || 0}</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{c.orderTotal ? fmt(c.orderTotal) : '—'}</td>
                   </tr>
