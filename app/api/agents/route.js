@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom } from '@/lib/email';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -357,7 +358,7 @@ export async function POST(request) {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                from: 'LoveLab B2B <alberto@love-lab.com>',
+                from: getSenderFrom(),
                 to: [emailLower],
                 subject: `${agentName}, you're invited to LoveLab B2B`,
                 html: `
@@ -404,7 +405,7 @@ export async function POST(request) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              from: 'LoveLab B2B <alberto@love-lab.com>',
+              from: getSenderFrom(),
               to: [existingProfile.email || emailLower],
               subject: `${agentName}, you're now a LoveLab sales partner`,
               html: `

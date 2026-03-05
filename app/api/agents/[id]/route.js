@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom } from '@/lib/email';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -154,7 +155,7 @@ export async function PUT(request, { params }) {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                from: 'LoveLab B2B <alberto@love-lab.com>',
+                from: getSenderFrom(),
                 to: [restored.email],
                 subject: `${agentName}, your LoveLab B2B access has been restored`,
                 html: `

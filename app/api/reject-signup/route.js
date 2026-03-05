@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom } from '@/lib/email';
 
 function confirmationPage(action, token, siteUrl) {
   const color = action === 'approve' ? '#27ae60' : '#dc2626';
@@ -67,7 +68,7 @@ export async function GET(request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'LoveLab B2B <alberto@love-lab.com>',
+          from: getSenderFrom(),
           to: [signup.email],
           subject: 'Your LoveLab B2B access request',
           html: `

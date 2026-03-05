@@ -14,10 +14,8 @@ export default function TopNav({ activeTab, onTabChange, client, onEditClient, o
   const { user, profile, loading: authLoading, profileError } = useAuth()
   const hasClient = client && client.company
   const showClientUI = !hideClientBar && onEditClient
-  const emailLower = (user?.email || '').toLowerCase()
-  const isKnownAdminEmail = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'].includes(emailLower)
   const isAgent = profile?.is_agent && profile?.agent_status === 'active'
-  const isAdmin = profile?.role === 'admin' || isKnownAdminEmail
+  const isAdmin = profile?.role === 'admin'
 
   const roleLabel = authLoading
     ? 'Loading'

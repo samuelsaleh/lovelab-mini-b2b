@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { rateLimit } from '@/lib/rateLimit'
+import { checkRateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
 
 // Allowed models whitelist
@@ -14,14 +14,8 @@ const MAX_TOKENS_LIMIT = 2048
 
 export async function POST(request) {
   try {
-    // Rate limit: 10 requests per minute per IP
-    const rl = rateLimit(request, { maxRequests: 10, windowMs: 60_000, prefix: 'perplexity' })
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
-      )
-    }
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'perplexity' })
+    if (rateLimitRes) return rateLimitRes
 
     // Validate API key is configured
     if (!process.env.PERPLEXITY_API_KEY) {

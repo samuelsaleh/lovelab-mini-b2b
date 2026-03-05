@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
-import { createDailyBackupFolder, uploadJsonToDrive } from '@/lib/google-drive';
+import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive } from '@/lib/google-drive';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom, getSenderEmail } from '@/lib/email';
 import { NextResponse } from 'next/server';
 
 const TABLES = [
@@ -12,6 +13,10 @@ const TABLES = [
   'pending_signups',
   'drafts',
   'agent_commissions',
+  'agent_folders',
+  'agent_folder_files',
+  'agent_payments',
+  'saved_reports',
 ];
 
 const MAX_ROWS_PER_TABLE = 50_000;
@@ -26,7 +31,7 @@ function verifyCronAuth(request) {
 
 async function sendAlertEmail(error) {
   const resendApiKey = process.env.RESEND_API_KEY;
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'alberto@love-lab.com';
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || getSenderEmail();
   if (!resendApiKey) return;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
@@ -39,7 +44,7 @@ async function sendAlertEmail(error) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'LoveLab B2B <alberto@love-lab.com>',
+        from: getSenderFrom(),
         to: [adminEmail],
         subject: 'LoveLab Backup FAILED',
         html: `
@@ -111,11 +116,72 @@ export async function GET(request) {
       }
     }
 
+    // Back up Supabase Storage files (contracts + agent files)
+    const STORAGE_BUCKET = 'documents';
+    const STORAGE_PREFIXES = ['contracts', 'agent-files'];
+    results.storage = {};
+    for (const prefix of STORAGE_PREFIXES) {
+      try {
+        const { data: files, error: listErr } = await adminSupabase.storage
+          .from(STORAGE_BUCKET)
+          .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+
+        if (listErr) {
+          results.storage[prefix] = { status: 'error', error: listErr.message };
+          results.errors.push(`storage/${prefix}: ${listErr.message}`);
+          continue;
+        }
+
+        let backed = 0;
+        const folders = (files || []).filter(f => !f.metadata);
+        const directFiles = (files || []).filter(f => f.metadata);
+
+        for (const file of directFiles) {
+          try {
+            const { data: blob, error: dlErr } = await adminSupabase.storage
+              .from(STORAGE_BUCKET)
+              .download(`${prefix}/${file.name}`);
+            if (dlErr || !blob) continue;
+            const buf = Buffer.from(await blob.arrayBuffer());
+            await uploadFileToDrive(folderId, `storage/${prefix}/${file.name}`, buf, blob.type || 'application/octet-stream');
+            backed++;
+          } catch { /* skip individual file failures */ }
+        }
+
+        for (const folder of folders) {
+          try {
+            const { data: subFiles } = await adminSupabase.storage
+              .from(STORAGE_BUCKET)
+              .list(`${prefix}/${folder.name}`, { limit: 500 });
+            for (const sf of (subFiles || [])) {
+              if (!sf.metadata) continue;
+              try {
+                const path = `${prefix}/${folder.name}/${sf.name}`;
+                const { data: blob, error: dlErr } = await adminSupabase.storage
+                  .from(STORAGE_BUCKET)
+                  .download(path);
+                if (dlErr || !blob) continue;
+                const buf = Buffer.from(await blob.arrayBuffer());
+                await uploadFileToDrive(folderId, `storage/${path}`, buf, blob.type || 'application/octet-stream');
+                backed++;
+              } catch { /* skip individual file failures */ }
+            }
+          } catch { /* skip folder failures */ }
+        }
+
+        results.storage[prefix] = { status: 'ok', files_backed: backed };
+      } catch (storageErr) {
+        results.storage[prefix] = { status: 'error', error: storageErr.message };
+        results.errors.push(`storage/${prefix}: ${storageErr.message}`);
+      }
+    }
+
     // Upload a metadata/summary file
     await uploadJsonToDrive(folderId, '_backup-summary.json', {
       date: today,
       completed_at: new Date().toISOString(),
       tables: results.tables,
+      storage: results.storage,
       errors: results.errors,
       total_tables: TABLES.length,
       successful_tables: Object.values(results.tables).filter(t => t.status === 'ok').length,

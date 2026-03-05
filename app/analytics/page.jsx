@@ -17,9 +17,7 @@ export default function AnalyticsPage() {
     router.push('/')
   }
 
-  const emailLower = (user?.email || '').toLowerCase()
-  const isKnownAdminEmail = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'].includes(emailLower)
-  const isAdmin = profile?.role === 'admin' || isKnownAdminEmail
+  const isAdmin = profile?.role === 'admin'
   const isAgent = profile?.is_agent
 
   return (

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { rateLimit } from '@/lib/rateLimit'
+import { checkRateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
 
 const SOURCE = 'VIES_REST'
@@ -72,14 +72,8 @@ function normalizeViesRestResponse({ data, country, number, upstreamHttpStatus }
 
 export async function GET(request) {
   try {
-    // Rate limit: 15 requests per minute per IP
-    const rl = rateLimit(request, { maxRequests: 15, windowMs: 60_000, prefix: 'vat' })
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
-      )
-    }
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 15, prefix: 'vat' })
+    if (rateLimitRes) return rateLimitRes
 
     // Authentication check
     const supabase = await createClient()

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { rateLimit } from '@/lib/rateLimit'
+import { checkRateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
 
 // Allowed models whitelist
@@ -25,14 +25,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'AI service not configured. Please set ANTHROPIC_API_KEY.' }, { status: 500 })
     }
 
-    // Rate limit: 20 requests per minute per IP
-    const rl = rateLimit(request, { maxRequests: 20, windowMs: 60_000, prefix: 'anthropic' })
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.reset - Date.now()) / 1000)) } }
-      )
-    }
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'anthropic' })
+    if (rateLimitRes) return rateLimitRes
 
     // Authentication check
     const supabase = await createClient()

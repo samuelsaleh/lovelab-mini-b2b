@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom, getSenderEmail } from '@/lib/email';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -66,7 +67,7 @@ export async function POST(request) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || origin;
     const approveUrl = `${siteUrl}/api/approve-signup?token=${signup.token}`;
     const rejectUrl = `${siteUrl}/api/reject-signup?token=${signup.token}`;
-    const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'alberto@love-lab.com';
+    const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || getSenderEmail();
     const resendApiKey = process.env.RESEND_API_KEY;
 
     if (!resendApiKey) {
@@ -87,7 +88,7 @@ export async function POST(request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'LoveLab B2B <alberto@love-lab.com>',
+          from: getSenderFrom(),
           to: [adminEmail],
           subject: `Access Request: ${nameTrimmed} (${emailLower})`,
           html: `

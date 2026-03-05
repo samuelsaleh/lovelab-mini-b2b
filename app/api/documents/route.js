@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { NextResponse } from 'next/server';
 import { calculateCommission } from '@/lib/commission';
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
@@ -220,8 +221,8 @@ export async function POST(request) {
           : `New quote: ${document.client_company || document.client_name}`;
 
         await resend.emails.send({
-          from: 'LoveLab B2B <noreply@love-lab.com>',
-          to: ['alberto@love-lab.com', 'dionne@love-lab.com'],
+          from: getSenderFrom(),
+          to: getOrderNotificationRecipients(),
           subject,
           html: `
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
