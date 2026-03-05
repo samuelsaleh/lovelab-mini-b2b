@@ -1,9 +1,13 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { resolveAgentIds } from '@/app/api/_lib/access';
 
 export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'agent-payments' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -44,6 +48,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'agent-payments-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -61,6 +68,16 @@ export async function POST(request) {
     }
 
     const adminSupabase = createAdminClient();
+
+    const { data: agent } = await adminSupabase
+      .from('profiles')
+      .select('id, is_agent, agent_deleted_at')
+      .eq('id', agent_id)
+      .single();
+    if (!agent || agent.agent_deleted_at) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
     const { data: payment, error } = await adminSupabase
       .from('agent_payments')
       .insert({

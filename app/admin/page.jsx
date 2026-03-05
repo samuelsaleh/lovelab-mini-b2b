@@ -18,21 +18,29 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState([])
   const [commissions, setCommissions] = useState({ summary: {} })
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/agents').then(r => r.json()).catch(() => ({ agents: [] })),
-      fetch('/api/documents').then(r => r.json()).catch(() => ({ documents: [] })),
-      fetch('/api/events').then(r => r.json()).catch(() => ({ events: [] })),
-      fetch('/api/commissions').then(r => r.json()).catch(() => ({ commissions: [], summary: {} })),
-    ]).then(([agentsData, docsData, eventsData, commData]) => {
+  const loadDashboard = async () => {
+    setLoading(true)
+    setFetchError(null)
+    try {
+      const [agentsData, docsData, eventsData, commData] = await Promise.all([
+        fetch('/api/agents').then(r => r.json()),
+        fetch('/api/documents').then(r => r.json()),
+        fetch('/api/events').then(r => r.json()),
+        fetch('/api/commissions').then(r => r.json()),
+      ])
       setAgents(agentsData.agents || [])
       setDocuments(docsData.documents || [])
       setEvents(eventsData.events || [])
       setCommissions(commData)
-      setLoading(false)
-    })
-  }, [])
+    } catch {
+      setFetchError('Failed to load dashboard data.')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { loadDashboard() }, [])
 
   const totalRevenue = useMemo(() =>
     documents.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
@@ -74,6 +82,12 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
+      {fetchError && (
+        <div style={{ padding: 14, marginBottom: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {fetchError}
+          <button onClick={loadDashboard} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Retry</button>
+        </div>
+      )}
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: '0 0 20px' }}>Dashboard</h1>
 
@@ -106,7 +120,7 @@ export default function AdminDashboard() {
                         {d.profiles?.full_name && <span> · by {d.profiles.full_name}</span>}
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount ? fmt(d.total_amount) : '—'}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount != null ? fmt(d.total_amount) : '—'}</div>
                   </div>
                 ))}
               </div>

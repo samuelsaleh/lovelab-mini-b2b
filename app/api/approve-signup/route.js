@@ -1,13 +1,37 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rateLimit';
+
+function confirmationPage(action, token, siteUrl) {
+  const color = action === 'approve' ? '#27ae60' : '#dc2626';
+  const label = action === 'approve' ? 'Approve' : 'Reject';
+  const url = `${siteUrl}/api/${action}-signup?token=${encodeURIComponent(token)}&confirm=1`;
+  return new Response(
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${label} Access Request</title></head>` +
+    `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f8f8">` +
+    `<div style="background:#fff;border-radius:12px;padding:32px;max-width:420px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.08)">` +
+    `<h2 style="margin:0 0 12px;color:#1a1a1a">${label} this access request?</h2>` +
+    `<p style="color:#666;font-size:14px;margin:0 0 24px">Click the button below to confirm.</p>` +
+    `<a href="${url}" style="display:inline-block;padding:14px 32px;background:${color};color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px">${label} Access</a>` +
+    `</div></body></html>`,
+    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }
+  );
+}
 
 export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'approve-signup' });
+  if (rateLimitRes) return rateLimitRes;
+
   const { searchParams, origin } = new URL(request.url);
   const token = searchParams.get('token');
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || origin;
 
   if (!token) {
     return NextResponse.redirect(`${siteUrl}/approve-result?status=invalid`);
+  }
+
+  if (searchParams.get('confirm') !== '1') {
+    return confirmationPage('approve', token, siteUrl);
   }
 
   try {

@@ -1,8 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 5, prefix: 'signup-request' });
+    if (rateLimitRes) return rateLimitRes;
+
     const body = await request.json();
     const { email, full_name } = body;
 

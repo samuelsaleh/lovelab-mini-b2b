@@ -33,6 +33,59 @@ async function collectFilePaths(adminSupabase, folderId, depth = 0) {
   return paths;
 }
 
+// PATCH /api/agent-folders/[id] — rename a folder
+export async function PATCH(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'agent-folders-rename' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const adminSupabase = createAdminClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id: folderId } = await params;
+    const body = await request.json();
+    const newName = body.name?.trim();
+    if (!newName || newName.length > 255) {
+      return NextResponse.json({ error: 'Invalid folder name' }, { status: 400 });
+    }
+
+    const { data: folder } = await adminSupabase
+      .from('agent_folders')
+      .select('id, agent_id')
+      .eq('id', folderId)
+      .single();
+
+    if (!folder) return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+
+    const { data: profile } = await adminSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const isAdmin = profile?.role === 'admin';
+    const allIds = await resolveAgentIds(adminSupabase, folder.agent_id);
+    if (!isAdmin && !allIds.includes(user.id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { data: updated, error } = await adminSupabase
+      .from('agent_folders')
+      .update({ name: newName })
+      .eq('id', folderId)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: 'Failed to rename folder' }, { status: 500 });
+    return NextResponse.json({ folder: updated });
+  } catch (err) {
+    console.error('[agent-folders PATCH] Exception:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // DELETE /api/agent-folders/[id] — delete folder, all children, and their storage files
 export async function DELETE(request, { params }) {
   try {

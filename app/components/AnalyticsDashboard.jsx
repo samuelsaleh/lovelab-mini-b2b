@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { colors, fonts, brandGradient } from '@/lib/styles'
+import { useState, useEffect, useMemo } from 'react'
+import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
 import { COUNTRIES } from '@/lib/countries'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
+import { safeFetch } from '@/lib/api'
 import {
   ComposedChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, Legend,
+  PieChart, Pie, Cell, Area, CartesianGrid,
 } from 'recharts'
 
 // ─── Color palette for charts ──────────────────────────────────────────────
@@ -228,26 +229,30 @@ export default function AnalyticsDashboard() {
   const [documents, setDocuments] = useState([])
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
   const [selectedEventId, setSelectedEventId] = useState('')
   const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [docsRes, eventsRes] = await Promise.all([
-          fetch('/api/documents'),
-          fetch('/api/events'),
-        ])
-        const docsData = await docsRes.json()
-        const eventsData = await eventsRes.json()
-        if (docsData.documents) setDocuments(docsData.documents)
-        if (eventsData.events) setEvents(eventsData.events)
-      } catch { /* ignore */ }
-      setLoading(false)
+  const loadAnalytics = async () => {
+    setLoading(true)
+    setFetchError(null)
+    try {
+      const [docsRes, eventsRes] = await Promise.all([
+        safeFetch('/api/documents'),
+        safeFetch('/api/events'),
+      ])
+      const docsData = await docsRes.json()
+      const eventsData = await eventsRes.json()
+      if (docsData.documents) setDocuments(docsData.documents)
+      if (eventsData.events) setEvents(eventsData.events)
+    } catch {
+      setFetchError('Failed to load analytics data.')
     }
-    load()
-  }, [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadAnalytics() }, [])
 
   // ─── Filtered docs based on event selector ────────────────────────────
   const docs = useMemo(() => {
@@ -257,8 +262,9 @@ export default function AnalyticsDashboard() {
 
   // ─── KPIs ─────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
-    const totalRevenue = docs.reduce((s, d) => s + (d.total_amount || 0), 0)
-    const orderCount = docs.filter(d => d.document_type === 'order').length
+    const orderDocs = docs.filter(d => d.document_type === 'order')
+    const totalRevenue = orderDocs.reduce((s, d) => s + (d.total_amount || 0), 0)
+    const orderCount = orderDocs.length
     const quoteCount = docs.filter(d => d.document_type === 'quote').length
     const avgOrder = orderCount > 0 ? totalRevenue / orderCount : 0
     let totalVitrines = 0
@@ -508,6 +514,12 @@ export default function AnalyticsDashboard() {
 
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', flex: 1, overflowY: 'auto' }}>
+      {fetchError && (
+        <div style={{ padding: 14, margin: '16px 24px 0', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {fetchError}
+          <button onClick={loadAnalytics} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Retry</button>
+        </div>
+      )}
       {/* ─── Filter toolbar ─── */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${colors.lineGray}`, padding: `${mobile ? 8 : 10}px ${pad}px` }}>
         <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>

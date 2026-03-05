@@ -1,10 +1,11 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
-// PATCH /api/me/password-set
-// Marks the current user's profile as having set a password.
-// Called after supabase.auth.updateUser({ password }) succeeds on the client.
 export async function PATCH(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'me-password-set' });
+  if (rateLimitRes) return rateLimitRes;
+
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

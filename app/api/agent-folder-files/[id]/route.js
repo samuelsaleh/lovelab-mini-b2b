@@ -61,6 +61,43 @@ export async function GET(request, { params }) {
   }
 }
 
+// PATCH /api/agent-folder-files/[id] — rename a file
+export async function PATCH(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'agent-files-rename' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const adminSupabase = createAdminClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id: fileId } = await params;
+    const body = await request.json();
+    const newName = body.name?.trim();
+    if (!newName || newName.length > 255) {
+      return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
+    }
+
+    const { file, allowed } = await getFileWithAccess(adminSupabase, fileId, user.id);
+    if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    const { data: updated, error } = await adminSupabase
+      .from('agent_folder_files')
+      .update({ name: newName })
+      .eq('id', fileId)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: 'Failed to rename file' }, { status: 500 });
+    return NextResponse.json({ file: updated });
+  } catch (err) {
+    console.error('[agent-folder-files PATCH] Exception:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // DELETE /api/agent-folder-files/[id]
 export async function DELETE(request, { params }) {
   try {

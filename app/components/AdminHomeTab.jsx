@@ -3,12 +3,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
+import { fmt } from '@/lib/utils'
+import { safeFetch } from '@/lib/api'
 import ResourcesCard from './ResourcesCard'
-
-const fmt = (n) => {
-  if (n == null) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-}
 
 function Card({ label, value, sub, accent, onClick }) {
   return (
@@ -36,25 +33,37 @@ export default function AdminHomeTab() {
   const [events, setEvents] = useState([])
   const [commissions, setCommissions] = useState({ summary: {} })
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/agents').then(r => r.json()).catch(() => ({ agents: [] })),
-      fetch('/api/documents').then(r => r.json()).catch(() => ({ documents: [] })),
-      fetch('/api/events').then(r => r.json()).catch(() => ({ events: [] })),
-      fetch('/api/commissions').then(r => r.json()).catch(() => ({ commissions: [], summary: {} })),
-    ]).then(([agentsData, docsData, eventsData, commData]) => {
-      setAgents(agentsData.agents || [])
-      setDocuments(docsData.documents || [])
-      setEvents(eventsData.events || [])
-      setCommissions(commData)
-      setLoading(false)
-    })
-  }, [])
+  const loadData = async () => {
+    setLoading(true)
+    setFetchError(null)
+    try {
+      const results = await Promise.allSettled([
+        safeFetch('/api/agents').then(r => r.json()),
+        safeFetch('/api/documents').then(r => r.json()),
+        safeFetch('/api/events').then(r => r.json()),
+        safeFetch('/api/commissions').then(r => r.json()),
+      ])
+      const [agentsResult, docsResult, eventsResult, commResult] = results
+      if (agentsResult.status === 'fulfilled') setAgents(agentsResult.value.agents || [])
+      if (docsResult.status === 'fulfilled') setDocuments(docsResult.value.documents || [])
+      if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value.events || [])
+      if (commResult.status === 'fulfilled') setCommissions(commResult.value)
+      const failed = results.filter(r => r.status === 'rejected')
+      if (failed.length > 0) setFetchError(`Some data failed to load (${failed.length}/${results.length} APIs). Showing partial results.`)
+    } catch {
+      setFetchError('Failed to load dashboard data.')
+    }
+    setLoading(false)
+  }
 
+  useEffect(() => { loadData() }, [])
+
+  const orderDocs = useMemo(() => documents.filter(d => d.document_type === 'order'), [documents])
   const totalRevenue = useMemo(() =>
-    documents.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
-  [documents])
+    orderDocs.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
+  [orderDocs])
 
   const activeAgents = agents.filter(a => a.agent_status === 'active' || a.agent_status === 'invited')
   const upcomingEvents = events.filter(e => e.end_date && new Date(e.end_date) >= new Date())
@@ -78,6 +87,12 @@ export default function AdminHomeTab() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
+      {fetchError && (
+        <div style={{ padding: 14, marginBottom: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {fetchError}
+          <button onClick={loadData} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Retry</button>
+        </div>
+      )}
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Dashboard</h1>
@@ -90,13 +105,13 @@ export default function AdminHomeTab() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 28 }}>
-          <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${documents.length} orders`} accent={colors.inkPlum} />
+          <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${orderDocs.length} order${orderDocs.length !== 1 ? 's' : ''}`} accent={colors.inkPlum} />
           <Card label="Active Agents" value={activeAgents.length} sub={`${agents.length} registered`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
           <Card label="Fairs" value={events.length} sub={upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming` : 'none upcoming'} accent={colors.luxeGold} onClick={() => router.push('/admin/fairs')} />
           <Card label="Commission Owed" value={fmt(pendingCommission)} sub="pending payouts" accent={colors.warning} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 24 }}>
           <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden' }}>
             <div style={{ padding: '14px 18px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={sectionLabel}>Recent Orders</span>
@@ -116,7 +131,7 @@ export default function AdminHomeTab() {
                         {d.profiles?.full_name && <span> · by {d.profiles.full_name}</span>}
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount ? fmt(d.total_amount) : '—'}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount != null ? fmt(d.total_amount) : '—'}</div>
                   </div>
                 ))}
               </div>

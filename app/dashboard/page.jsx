@@ -6,6 +6,7 @@ import { useAuth } from '../components/AuthProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 
 // ─── Vitrine helpers ───────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ function VitrineSummaryCard({ docs, eventName }) {
 export default function DashboardPage() {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const { t } = useI18n();
   const [events, setEvents] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -354,7 +356,7 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <img src="/logo.png" alt="LoveLab" style={{ height: 40 }} />
           <h1 style={{ fontSize: 18, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>
-            Documents
+            {t('dashboard.title')}
           </h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -372,7 +374,7 @@ export default function DashboardPage() {
               fontFamily: fonts.body,
             }}
           >
-            ← Back to App
+            ← {t('dashboard.backToApp')}
           </button>
           <div style={{
             width: 32,
@@ -411,7 +413,7 @@ export default function DashboardPage() {
             marginBottom: 12,
           }}>
             <h2 style={{ fontSize: 14, fontWeight: 700, color: colors.charcoal, margin: 0 }}>
-              Events / Fairs
+              {t('dashboard.eventsFairs')}
             </h2>
             <button
               onClick={() => setShowNewEvent(true)}
@@ -436,7 +438,7 @@ export default function DashboardPage() {
                 type="text"
                 value={newEventName}
                 onChange={(e) => setNewEventName(e.target.value)}
-                placeholder="Folder name..."
+                placeholder={t('dashboard.folderName')}
                 style={{
                   width: '100%',
                   padding: '8px 10px',
@@ -486,7 +488,7 @@ export default function DashboardPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  Create
+                  {t('dashboard.create')}
                 </button>
                 <button
                   onClick={() => { setShowNewEvent(false); setNewEventName(''); }}
@@ -500,7 +502,7 @@ export default function DashboardPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </div>
             </div>
@@ -527,16 +529,16 @@ export default function DashboardPage() {
               alignItems: 'center',
             }}
           >
-            <span>All Documents</span>
+            <span>{t('dashboard.allDocuments')}</span>
             <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{documents.length}</span>
           </button>
 
           {/* Event list grouped by type */}
           {[
-            { key: 'fair', label: 'Fairs' },
-            { key: 'agent', label: 'Agents' },
-            { key: 'partner', label: 'Partners' },
-            { key: 'other', label: 'Other' },
+            { key: 'fair', label: t('dashboard.fairs') },
+            { key: 'agent', label: t('dashboard.agents') },
+            { key: 'partner', label: t('dashboard.partners') },
+            { key: 'other', label: t('dashboard.other') },
           ].map(group => {
             const groupEvents = events.filter(e => (e.type || 'other') === group.key);
             if (groupEvents.length === 0) return null;
@@ -661,7 +663,7 @@ export default function DashboardPage() {
                 fontStyle: 'italic',
               }}
             >
-              <span>No event</span>
+              <span>{t('dashboard.noEvent')}</span>
               <span style={{ fontSize: 11 }}>{noEventDocs}</span>
             </button>
           )}
@@ -675,7 +677,7 @@ export default function DashboardPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by client name or company..."
+              placeholder={t('dashboard.searchPlaceholder')}
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -698,7 +700,7 @@ export default function DashboardPage() {
           {/* Documents list */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: colors.lovelabMuted }}>
-              Loading...
+              {t('common.loading')}
             </div>
           ) : filteredDocs.length === 0 ? (
             <div style={{

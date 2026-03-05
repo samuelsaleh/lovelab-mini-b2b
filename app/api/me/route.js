@@ -1,7 +1,11 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'me-get' });
+  if (rateLimitRes) return rateLimitRes;
+
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();

@@ -2,13 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { fmt } from '@/lib/utils'
 import { useAuth } from './AuthProvider'
 import ResourcesCard from './ResourcesCard'
-
-const fmt = (n) => {
-  if (n == null) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0)
-}
 
 const STATUS_COLORS = {
   pending:   { bg: '#fff3cd', color: '#856404' },
@@ -21,22 +17,28 @@ export default function AgentHomeTab({ onSwitchTab }) {
   const { profile, user } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
 
-  useEffect(() => {
-    fetch('/api/commissions')
-      .then(r => r.json())
-      .then(d => {
-        const deduped = Array.isArray(d?.commissions)
-          ? Object.values((d.commissions || []).reduce((acc, row) => {
-              if (row?.id) acc[row.id] = row
-              return acc
-            }, {}))
-          : []
-        setData({ ...d, commissions: deduped })
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [])
+  const loadData = async () => {
+    setLoading(true)
+    setFetchError(null)
+    try {
+      const r = await fetch('/api/commissions')
+      const d = await r.json()
+      const deduped = Array.isArray(d?.commissions)
+        ? Object.values((d.commissions || []).reduce((acc, row) => {
+            if (row?.id) acc[row.id] = row
+            return acc
+          }, {}))
+        : []
+      setData({ ...d, commissions: deduped })
+    } catch {
+      setFetchError('Failed to load your data.')
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { loadData() }, [])
 
   const summary = data?.summary || {}
   const recentOrders = useMemo(() => {
@@ -53,6 +55,12 @@ export default function AgentHomeTab({ onSwitchTab }) {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
+      {fetchError && (
+        <div style={{ padding: 14, marginBottom: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {fetchError}
+          <button onClick={loadData} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Retry</button>
+        </div>
+      )}
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
 
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>

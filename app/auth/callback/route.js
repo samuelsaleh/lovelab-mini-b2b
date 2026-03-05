@@ -129,9 +129,10 @@ function getAdminEmails() {
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
 
-  // Safety fallback for existing production admins if ADMIN_EMAILS is missing.
-  const fallback = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'];
-  return Array.from(new Set([...fromEnv, ...fallback]));
+  if (fromEnv.length === 0) {
+    console.warn('[auth] ADMIN_EMAILS env var is empty -- no admin emails configured');
+  }
+  return fromEnv;
 }
 
 // Create or update user profile

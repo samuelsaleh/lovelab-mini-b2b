@@ -129,7 +129,7 @@ export async function GET(request) {
 
     // Round summary values
     for (const key of Object.keys(summary)) {
-      if (typeof summary[key] === 'number' && key.includes('amount') || key.includes('earned') || key.includes('orders') || key.includes('bonuses')) {
+      if (typeof summary[key] === 'number' && (key.includes('amount') || key.includes('earned') || key.includes('orders') || key.includes('bonuses') || key.includes('balance') || key === 'total_paid_out')) {
         summary[key] = Math.round(summary[key] * 100) / 100;
       }
     }

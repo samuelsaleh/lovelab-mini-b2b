@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { createDailyBackupFolder, uploadJsonToDrive } from '@/lib/google-drive';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 const TABLES = [
@@ -20,12 +21,7 @@ function verifyCronAuth(request) {
   if (!cronSecret) return false;
 
   const headerSecret = request.headers.get('x-vercel-cron-secret');
-  if (headerSecret === cronSecret) return true;
-
-  const { searchParams } = new URL(request.url);
-  if (searchParams.get('secret') === cronSecret) return true;
-
-  return false;
+  return headerSecret === cronSecret;
 }
 
 async function sendAlertEmail(error) {
@@ -72,6 +68,9 @@ async function sendAlertEmail(error) {
 }
 
 export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 5, prefix: 'backup' });
+  if (rateLimitRes) return rateLimitRes;
+
   if (!verifyCronAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

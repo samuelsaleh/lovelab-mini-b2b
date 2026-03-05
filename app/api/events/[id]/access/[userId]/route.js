@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
@@ -6,6 +7,9 @@ const VALID_PERMISSIONS = ['read', 'edit', 'manage'];
 
 export async function PATCH(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'event-access-patch' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: eventId, userId } = await params;
     if (!eventId || !userId) {
       return NextResponse.json({ error: 'Missing event ID or user ID' }, { status: 400 });
@@ -46,6 +50,9 @@ export async function PATCH(request, { params }) {
 
 export async function DELETE(_request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(_request, { maxRequests: 20, prefix: 'event-access-delete' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: eventId, userId } = await params;
     if (!eventId || !userId) {
       return NextResponse.json({ error: 'Missing event ID or user ID' }, { status: 400 });

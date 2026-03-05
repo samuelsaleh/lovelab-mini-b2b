@@ -204,7 +204,7 @@ export default function AgentAnalytics() {
           <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
             {/* Summary Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-              <SummaryCard title="Total Earned" value={fmt(s.total_earned)} subtext={`${s.order_count + s.bonus_count} entries`} accent={colors.inkPlum} />
+              <SummaryCard title="Total Earned" value={fmt(s.total_earned)} subtext={`${(s.order_count || 0) + (s.bonus_count || 0)} entries`} accent={colors.inkPlum} />
               <SummaryCard title="Total Paid Out" value={fmt(s.total_paid_out || 0)} subtext={`${payments.length} payouts`} accent={colors.success} />
               <SummaryCard title="Pending Balance" value={fmt(s.true_pending_balance || 0)} subtext="awaiting payment" accent={s.true_pending_balance > 0 ? colors.warning : colors.lovelabMuted} />
             </div>

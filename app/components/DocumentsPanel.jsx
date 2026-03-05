@@ -6,6 +6,7 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
+import { safeFetch } from '@/lib/api'
 import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './AuthProvider'
 
@@ -41,6 +42,9 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [shareSaving, setShareSaving] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [sharePermission, setSharePermission] = useState('read')
+  const [renamingDocId, setRenamingDocId] = useState(null)
+  const [docRenameValue, setDocRenameValue] = useState('')
+  const [docRenameLoading, setDocRenameLoading] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -51,8 +55,8 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     setLoadIssue(null)
     try {
       const [eventsRes, docsRes] = await Promise.all([
-        fetch('/api/events'),
-        fetch('/api/documents'),
+        safeFetch('/api/events'),
+        safeFetch('/api/documents'),
       ])
 
       if (!eventsRes.ok || !docsRes.ok) {
@@ -112,7 +116,9 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       if (res.ok) {
         setEvents(prev => prev.map(e => e.id === eventId ? { ...e, name: trimmed } : e))
       }
-    } catch (e) {}
+    } catch {
+      setErrorMsg('Failed to rename folder')
+    }
     setRenameLoading(false)
     setRenamingEventId(null)
   }
@@ -233,6 +239,35 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       window.open(data.signedUrl, '_blank')
     } catch (err) {
       setErrorMsg(err.message)
+    }
+  }
+
+  const startDocRename = (doc) => {
+    setRenamingDocId(doc.id)
+    setDocRenameValue(doc.file_name || '')
+  }
+
+  const commitDocRename = async (docId) => {
+    const trimmed = docRenameValue.trim()
+    if (!trimmed) { setRenamingDocId(null); return }
+    setDocRenameLoading(true)
+    try {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_name: trimmed }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        setErrorMsg(d.error || 'Failed to rename')
+      } else {
+        setDocuments(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
+      }
+    } catch {
+      setErrorMsg('Failed to rename document')
+    } finally {
+      setDocRenameLoading(false)
+      setRenamingDocId(null)
     }
   }
 
@@ -861,9 +896,28 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
                 {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
                     {doc.client_company || doc.client_name || 'Unknown'}
+                    {canEditDoc(doc) && renamingDocId !== doc.id && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); startDocRename(doc); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: 11, padding: '0 2px', lineHeight: 1 }}
+                        title="Rename"
+                      >✎</button>
+                    )}
                   </div>
+                  {renamingDocId === doc.id ? (
+                    <input
+                      autoFocus
+                      value={docRenameValue}
+                      onChange={(e) => setDocRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') commitDocRename(doc.id); if (e.key === 'Escape') setRenamingDocId(null); }}
+                      onBlur={() => commitDocRename(doc.id)}
+                      disabled={docRenameLoading}
+                      style={{ fontSize: 11, padding: '3px 6px', border: `1px solid ${colors.lineGray}`, borderRadius: 4, width: '100%', marginTop: 2, fontFamily: fonts.body }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
                   <div style={{ fontSize: 11, color: '#999', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{
                       padding: '1px 6px', borderRadius: 4,
@@ -875,6 +929,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                     <span>{new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                     {doc.events?.name && <span style={{ color: colors.luxeGold }}>@ {doc.events.name}</span>}
                   </div>
+                  )}
                 </div>
 
                 </div>

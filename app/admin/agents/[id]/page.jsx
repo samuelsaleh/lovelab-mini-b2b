@@ -3,18 +3,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
+import { fmt } from '@/lib/utils';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
-
-const fmt = (n) => {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(n) || 0);
-};
 
 export default function AdminAgentDetailsPage() {
   const router = useRouter();
@@ -43,6 +34,67 @@ export default function AdminAgentDetailsPage() {
   const [proposedConfig, setProposedConfig] = useState(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!agentId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const [agentsRes, commRes, payRes] = await Promise.all([
+        fetch('/api/agents'),
+        fetch(`/api/commissions?agent_id=${encodeURIComponent(agentId)}`),
+        fetch(`/api/agent-payments?agent_id=${encodeURIComponent(agentId)}`)
+      ]);
+      const agentsJson = await agentsRes.json().catch(() => ({}));
+      const commJson = await commRes.json().catch(() => ({}));
+      const payJson = await payRes.json().catch(() => ({}));
+
+      if (!agentsRes.ok) throw new Error(agentsJson?.error || 'Failed to load agent');
+      if (!commRes.ok) throw new Error(commJson?.error || 'Failed to load commissions');
+
+      const found = (agentsJson.agents || []).find((a) => a.id === agentId);
+      if (!found) throw new Error('Agent not found');
+
+      setAgent(found);
+      setCommissions(commJson.commissions || []);
+      setSummary(commJson.summary || null);
+      setPayments(payJson.payments || []);
+
+      const commList = commJson.commissions || [];
+      const stats = found.stats || {};
+      if (commList.filter(c => c.type === 'order').length === 0 && (stats.effective_orders || 0) > 0) {
+        try {
+          const docsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}`);
+          const docsJson = await docsRes.json().catch(() => ({}));
+          const orderDocs = (docsJson.documents || []).filter(
+            (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
+          );
+          const rate = Number(found.commission_rate) || 0;
+          setDocDerivedRows(orderDocs.map((d) => ({
+            id: `doc-${d.id}`,
+            type: 'order',
+            created_at: d.created_at,
+            order_total: Number(d.total_amount) || 0,
+            commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
+            document: { client_company: d.client_company || d.client_name || 'Order', id: d.id },
+            _derived: true,
+          })));
+        } catch {
+          setDocDerivedRows([]);
+        }
+      } else {
+        setDocDerivedRows([]);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load details');
+    } finally {
+      setLoading(false);
+    }
+  }, [agentId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleExtractCommission = useCallback(async () => {
     if (!agentId) return;
@@ -85,7 +137,6 @@ export default function AdminAgentDetailsPage() {
       if (res.ok) {
         setProposedConfig(null);
         setConfigMsg('Commission structure saved!');
-        // Refresh agent data to show updated rate
         await load();
       } else {
         setConfigMsg(d.error || 'Failed to save');
@@ -95,70 +146,7 @@ export default function AdminAgentDetailsPage() {
     } finally {
       setSavingConfig(false);
     }
-  }, [proposedConfig, agentId]);
-
-  const load = async () => {
-    if (!agentId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const [agentsRes, commRes, payRes] = await Promise.all([
-        fetch('/api/agents'),
-        fetch(`/api/commissions?agent_id=${encodeURIComponent(agentId)}`),
-        fetch(`/api/agent-payments?agent_id=${encodeURIComponent(agentId)}`)
-      ]);
-      const agentsJson = await agentsRes.json().catch(() => ({}));
-      const commJson = await commRes.json().catch(() => ({}));
-      const payJson = await payRes.json().catch(() => ({}));
-
-      if (!agentsRes.ok) throw new Error(agentsJson?.error || 'Failed to load agent');
-      if (!commRes.ok) throw new Error(commJson?.error || 'Failed to load commissions');
-
-      const found = (agentsJson.agents || []).find((a) => a.id === agentId);
-      if (!found) throw new Error('Agent not found');
-
-      setAgent(found);
-      setCommissions(commJson.commissions || []);
-      setSummary(commJson.summary || null);
-      setPayments(payJson.payments || []);
-
-      // When no commission rows exist but the agent has document-derived stats,
-      // fetch order documents to show as virtual commission rows.
-      const commList = commJson.commissions || [];
-      const stats = found.stats || {};
-      if (commList.filter(c => c.type === 'order').length === 0 && (stats.effective_orders || 0) > 0) {
-        try {
-          const docsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}`);
-          const docsJson = await docsRes.json().catch(() => ({}));
-          const orderDocs = (docsJson.documents || []).filter(
-            (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
-          );
-          const rate = Number(found.commission_rate) || 0;
-          setDocDerivedRows(orderDocs.map((d) => ({
-            id: `doc-${d.id}`,
-            type: 'order',
-            created_at: d.created_at,
-            order_total: Number(d.total_amount) || 0,
-            commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
-            document: { client_company: d.client_company || d.client_name || 'Order', id: d.id },
-            _derived: true,
-          })));
-        } catch {
-          setDocDerivedRows([]);
-        }
-      } else {
-        setDocDerivedRows([]);
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to load details');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, [agentId]);
+  }, [proposedConfig, agentId, load]);
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
@@ -305,7 +293,7 @@ export default function AdminAgentDetailsPage() {
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
               {(() => {
                 const s = summary || {};
                 const st = agent?.stats || {};
@@ -328,7 +316,7 @@ export default function AdminAgentDetailsPage() {
               })()}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 24, alignItems: 'start' }}>
               {/* Payments History */}
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
                 <div style={{ padding: '12px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>

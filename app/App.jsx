@@ -424,6 +424,13 @@ export default function App() {
         if (state.aiColors) setAiColors(state.aiColors)
       }
     } catch { /* ignore */ }
+
+    const pendingTab = sessionStorage.getItem('pendingTab');
+    if (pendingTab) {
+      const validTabs = ['home', 'builder', 'ai', 'orderform', 'documents'];
+      if (validTabs.includes(pendingTab)) setActiveTab(pendingTab);
+      sessionStorage.removeItem('pendingTab');
+    }
   }, [])
 
   useEffect(() => {
@@ -588,13 +595,11 @@ export default function App() {
       <main role="main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {activeTab === 'home' && (
           (() => {
-            const emailLower = (user?.email || '').toLowerCase()
-            const isKnownAdmin = ['albertosaleh@gmail.com', 'alberto@love-lab.com', 'samuelsaleh@gmail.com'].includes(emailLower)
-            const isAdmin = profile?.role === 'admin' || isKnownAdmin
+            const isAdmin = profile?.role === 'admin'
             const isActiveAgent = profile?.is_agent && profile?.agent_status === 'active'
             if (isAdmin) return <AdminHomeTab />
             if (isActiveAgent) return <AgentHomeTab onSwitchTab={setActiveTab} />
-            return <AdminHomeTab />
+            return <AgentHomeTab onSwitchTab={setActiveTab} />
           })()
         )}
 

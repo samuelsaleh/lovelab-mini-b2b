@@ -51,8 +51,13 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState(null)
 
+  // Rename
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameType, setRenameType] = useState(null) // 'folder' | 'file'
+  const [renameValue, setRenameValue] = useState('')
+
   const loadContents = useCallback(async () => {
-    if (!agentId) return
+    if (!agentId) { setLoading(false); return }
     setLoading(true)
     setError(null)
     setUploadMsg(null)
@@ -162,14 +167,56 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
   }
 
   const handleDownload = async (fileId, fileName) => {
-    const res = await fetch(`/api/agent-folder-files/${fileId}`)
-    const d = await res.json()
-    if (d.url) {
+    try {
+      const res = await fetch(`/api/agent-folder-files/${fileId}`)
+      const d = await res.json()
+      if (!res.ok || !d.url) {
+        setError(d.error || 'Failed to get download URL')
+        return
+      }
       const a = document.createElement('a')
       a.href = d.url
       a.download = fileName
       a.target = '_blank'
       a.click()
+    } catch {
+      setError('Failed to download file')
+    }
+  }
+
+  const startRename = (id, type, currentName) => {
+    setRenamingId(id)
+    setRenameType(type)
+    setRenameValue(currentName)
+  }
+
+  const commitRename = async () => {
+    const trimmed = renameValue.trim()
+    if (!trimmed || !renamingId) { setRenamingId(null); return }
+    try {
+      const endpoint = renameType === 'folder'
+        ? `/api/agent-folders/${renamingId}`
+        : `/api/agent-folder-files/${renamingId}`
+      const body = renameType === 'folder' ? { name: trimmed } : { name: trimmed }
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        setError(d.error || 'Failed to rename')
+      } else {
+        if (renameType === 'folder') {
+          setFolders(prev => prev.map(f => f.id === renamingId ? { ...f, name: trimmed } : f))
+        } else {
+          setFiles(prev => prev.map(f => f.id === renamingId ? { ...f, name: trimmed } : f))
+        }
+      }
+    } catch {
+      setError('Failed to rename')
+    } finally {
+      setRenamingId(null)
     }
   }
 
@@ -216,7 +263,7 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 {uploading ? 'Uploading…' : 'Upload File'}
               </button>
-              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
+              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" style={{ display: 'none' }} onChange={handleUpload} />
             </>
           )}
           {uploadMsg && (
@@ -269,18 +316,38 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
                       <span style={{ color: colors.luxeGold }}><FolderIcon size={16} /></span>
                     </td>
                     <td style={{ padding: '10px 4px' }}>
-                      <button
-                        onClick={() => handleOpenFolder(folder)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: colors.charcoal, fontWeight: 600, fontFamily: fonts.body, padding: 0, textAlign: 'left' }}
-                      >
-                        {folder.name}
-                      </button>
+                      {renamingId === folder.id ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null); }}
+                          onBlur={commitRename}
+                          style={{ fontSize: 13, fontWeight: 600, fontFamily: fonts.body, padding: '3px 6px', border: `1px solid ${colors.lineGray}`, borderRadius: 4, width: '100%' }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleOpenFolder(folder)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: colors.charcoal, fontWeight: 600, fontFamily: fonts.body, padding: 0, textAlign: 'left' }}
+                        >
+                          {folder.name}
+                        </button>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <span style={{ fontSize: 11, color: '#bbb', marginRight: 10 }}>
                         {new Date(folder.created_at).toLocaleDateString('en-GB')}
                       </span>
                       {!readOnly && (
+                        <button
+                          onClick={() => startRename(folder.id, 'folder', folder.name)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: 11, padding: '2px 4px', marginRight: 2 }}
+                          title="Rename folder"
+                        >
+                          ✎
+                        </button>
+                      )}
+                      {!readOnly && folder.parent_id && (
                         <button
                           onClick={() => handleDeleteFolder(folder.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: 12, padding: '2px 4px' }}
@@ -298,18 +365,38 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
                       <span style={{ color: colors.lovelabMuted }}><FileIcon size={16} /></span>
                     </td>
                     <td style={{ padding: '10px 4px' }}>
-                      <button
-                        onClick={() => handleDownload(file.id, file.name)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: colors.inkPlum, fontFamily: fonts.body, padding: 0, textAlign: 'left', textDecoration: 'underline', textDecorationColor: 'rgba(93,58,94,0.3)' }}
-                      >
-                        {file.name}
-                      </button>
+                      {renamingId === file.id ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null); }}
+                          onBlur={commitRename}
+                          style={{ fontSize: 13, fontFamily: fonts.body, padding: '3px 6px', border: `1px solid ${colors.lineGray}`, borderRadius: 4, width: '100%' }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleDownload(file.id, file.name)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: colors.inkPlum, fontFamily: fonts.body, padding: 0, textAlign: 'left', textDecoration: 'underline', textDecorationColor: 'rgba(93,58,94,0.3)' }}
+                        >
+                          {file.name}
+                        </button>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <span style={{ fontSize: 11, color: '#bbb', marginRight: 6 }}>{fmt(file.file_size)}</span>
                       <span style={{ fontSize: 11, color: '#bbb', marginRight: 10 }}>
                         {new Date(file.created_at).toLocaleDateString('en-GB')}
                       </span>
+                      {!readOnly && (
+                        <button
+                          onClick={() => startRename(file.id, 'file', file.name)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: 11, padding: '2px 4px', marginRight: 2 }}
+                          title="Rename file"
+                        >
+                          ✎
+                        </button>
+                      )}
                       {!readOnly && (
                         <button
                           onClick={() => handleDeleteFile(file.id)}
@@ -332,7 +419,6 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
 }
 
 const crumbStyle = (active) => ({
-  background: 'none',
   border: 'none',
   cursor: active ? 'default' : 'pointer',
   fontSize: 12,

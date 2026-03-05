@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext } from '@/app/api/_lib/access';
+import { getUserContext, resolveAgentIds } from '@/app/api/_lib/access';
 
 // Simple ISO date validation (YYYY-MM-DD)
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,21 +33,23 @@ export async function GET(request) {
     let events = raw;
 
     if (!isAdmin) {
+      const userIds = await resolveAgentIds(adminSupabase, user.id);
+
       let accessRows = [];
       const { data, error: accessErr } = await adminSupabase
         .from('event_access')
         .select('event_id, permission')
-        .eq('user_id', user.id);
+        .in('user_id', userIds);
       if (!accessErr) {
         accessRows = data || [];
       }
 
       const accessByEvent = new Map(accessRows.map((row) => [row.event_id, row.permission]));
       events = raw
-        .filter((evt) => evt.created_by === user.id || accessByEvent.has(evt.id))
+        .filter((evt) => userIds.includes(evt.created_by) || accessByEvent.has(evt.id))
         .map((evt) => ({
           ...evt,
-          permission: evt.created_by === user.id ? 'manage' : accessByEvent.get(evt.id),
+          permission: userIds.includes(evt.created_by) ? 'manage' : accessByEvent.get(evt.id),
         }));
     } else {
       events = raw.map((evt) => ({ ...evt, permission: 'manage' }));

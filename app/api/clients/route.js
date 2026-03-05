@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 // GET - List all clients (with optional search)
 export async function GET(request) {
@@ -25,7 +26,8 @@ export async function GET(request) {
       .eq('id', user.id)
       .single();
     const isAdmin = profile?.role === 'admin';
-    const queryClient = isAdmin ? createAdminClient() : supabase;
+    const adminSupabase = createAdminClient();
+    const queryClient = isAdmin ? adminSupabase : adminSupabase;
 
     let query = queryClient
       .from('clients')
@@ -33,7 +35,10 @@ export async function GET(request) {
       .order('updated_at', { ascending: false });
 
     if (!isAdmin) {
-      query = query.eq('created_by', user.id);
+      const userIds = await resolveAgentIds(adminSupabase, user.id);
+      query = userIds.length === 1
+        ? query.eq('created_by', userIds[0])
+        : query.in('created_by', userIds);
     }
 
     if (search && search.trim()) {

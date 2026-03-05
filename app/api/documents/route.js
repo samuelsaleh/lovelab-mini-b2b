@@ -36,11 +36,15 @@ export async function GET(request) {
         ? query.eq('created_by', agentIds[0])
         : query.in('created_by', agentIds);
     } else if (!isAdmin) {
+      const userIds = await resolveAgentIds(adminSupabase, user.id);
       const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
+      const createdByFilter = userIds.map(id => `created_by.eq.${id}`).join(',');
       if (accessibleEventIds.length > 0) {
-        query = query.or(`created_by.eq.${user.id},event_id.in.(${accessibleEventIds.join(',')})`);
+        query = query.or(`${createdByFilter},event_id.in.(${accessibleEventIds.join(',')})`);
       } else {
-        query = query.eq('created_by', user.id);
+        query = userIds.length === 1
+          ? query.eq('created_by', userIds[0])
+          : query.in('created_by', userIds);
       }
     }
 

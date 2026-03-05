@@ -6,6 +6,18 @@ import { resolveAgentIds } from '@/app/api/_lib/access';
 const BUCKET = 'documents';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint',
+  'text/plain', 'text/csv',
+]);
+
+const ALLOWED_EXTENSIONS = /\.(pdf|jpe?g|png|gif|webp|svg|docx?|xlsx?|pptx?|txt|csv)$/i;
+
 // GET /api/agent-folder-files?folder_id= — list files in a folder
 export async function GET(request) {
   try {
@@ -77,6 +89,14 @@ export async function POST(request) {
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: 'File too large (max 25MB)' }, { status: 400 });
+    }
+
+    const mimeOk = ALLOWED_MIME_TYPES.has(file.type);
+    const extOk = ALLOWED_EXTENSIONS.test(file.name);
+    if (!mimeOk && !extOk) {
+      return NextResponse.json({
+        error: 'File type not allowed. Accepted: PDF, images, Office docs, text, CSV.',
+      }, { status: 400 });
     }
 
     // Verify folder exists and check access

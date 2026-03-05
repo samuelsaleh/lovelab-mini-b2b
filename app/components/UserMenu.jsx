@@ -175,7 +175,7 @@ export default function UserMenu() {
           )}
 
           <button
-            onPointerDown={(e) => { e.preventDefault(); setOpen(false); router.push('/dashboard'); }}
+            onPointerDown={(e) => { e.preventDefault(); setOpen(false); sessionStorage.setItem('pendingTab', 'documents'); router.push('/'); }}
             style={{
               width: '100%',
               padding: mobile ? '14px 16px' : '12px 16px',

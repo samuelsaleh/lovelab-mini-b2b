@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 
 export async function PUT(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'reports-put' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -10,6 +14,10 @@ export async function PUT(request, { params }) {
 
     const body = await request.json();
     const { name, config } = body;
+
+    if (config && JSON.stringify(config).length > 65536) {
+      return NextResponse.json({ error: 'Report config too large (max 64KB)' }, { status: 400 });
+    }
 
     const updates = { updated_at: new Date().toISOString() };
     if (name) updates.name = name.trim();
@@ -32,6 +40,9 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'reports-delete' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

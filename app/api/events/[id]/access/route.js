@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
@@ -6,6 +7,9 @@ const VALID_PERMISSIONS = ['read', 'edit', 'manage'];
 
 export async function GET(_request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(_request, { maxRequests: 30, prefix: 'event-access-get' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: eventId } = await params;
     if (!eventId) return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
 
@@ -49,6 +53,9 @@ export async function GET(_request, { params }) {
 
 export async function POST(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'event-access-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: eventId } = await params;
     if (!eventId) return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
 

@@ -2,17 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { fmt } from '@/lib/utils'
+import { safeFetch } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
-
-const fmt = (n) => {
-  if (n == null || n === 0) return '—'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Number(n) || 0)
-}
 
 const countriesLower = COUNTRIES.map((c) => c.toLowerCase())
 const normalizeCountry = (raw) => {
@@ -53,33 +45,34 @@ export default function ReportsDashboard() {
   const [selectedReportId, setSelectedReportId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const [docsRes, eventsRes, reportsRes, clientsRes] = await Promise.all([
-          fetch('/api/documents'),
-          fetch('/api/events'),
-          fetch('/api/reports'),
-          fetch('/api/clients'),
-        ])
-        const docsData = await docsRes.json().catch(() => ({}))
-        const eventsData = await eventsRes.json().catch(() => ({}))
-        const reportsData = await reportsRes.json().catch(() => ({}))
-        const clientsData = await clientsRes.json().catch(() => ({}))
-        setDocuments(docsData.documents || [])
-        setClients(clientsData.clients || [])
-        setEvents(eventsData.events || [])
-        setReports(reportsData.reports || [])
-      } catch {
-        setError('Failed to load reports data')
-      }
-      setLoading(false)
+  const loadReports = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [docsRes, eventsRes, reportsRes, clientsRes] = await Promise.all([
+        safeFetch('/api/documents'),
+        safeFetch('/api/events'),
+        safeFetch('/api/reports'),
+        safeFetch('/api/clients'),
+      ])
+      const docsData = await docsRes.json().catch(() => ({}))
+      const eventsData = await eventsRes.json().catch(() => ({}))
+      const reportsData = await reportsRes.json().catch(() => ({}))
+      const clientsData = await clientsRes.json().catch(() => ({}))
+      setDocuments(docsData.documents || [])
+      setClients(clientsData.clients || [])
+      setEvents(eventsData.events || [])
+      setReports(reportsData.reports || [])
+    } catch {
+      setError('Failed to load reports data')
     }
-    load()
-  }, [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadReports() }, [])
 
   const documentRows = useMemo(() => {
     return documents.map((d) => ({
@@ -116,6 +109,8 @@ export default function ReportsDashboard() {
   }, [clients])
 
   const rows = useMemo(() => [...documentRows, ...salesforceRows], [documentRows, salesforceRows])
+
+  useEffect(() => { setPage(0) }, [filters])
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -235,8 +230,9 @@ export default function ReportsDashboard() {
         </div>
 
         {error && (
-          <div style={{ marginBottom: 12, border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: '10px 12px', fontSize: 12 }}>
+          <div style={{ marginBottom: 12, border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: '10px 12px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {error}
+            <button onClick={loadReports} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>Retry</button>
           </div>
         )}
 
@@ -320,42 +316,64 @@ export default function ReportsDashboard() {
           </div>
         </div>
 
-        <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 12, color: '#777' }}>
-            {filteredRows.length} result{filteredRows.length > 1 ? 's' : ''}
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount'].map((h) => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
-                  </tr>
-                ) : (
-                  filteredRows.map((r) => (
-                    <tr key={r.id}>
-                      <td style={tdStyle}>{r.dateISO || '—'}</td>
-                      <td style={tdStyle}>{r.clientLabel}</td>
-                      <td style={tdStyle}>{r.country}</td>
-                      <td style={tdStyle}>{r.city}</td>
-                      <td style={tdStyle}>{r.eventLabel}</td>
-                      <td style={tdStyle}>{r.document_type}</td>
-                      <td style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(r.amount)}</td>
-                    </tr>
-                  ))
+        {(() => {
+          const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
+          const pagedRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+          const showingFrom = filteredRows.length === 0 ? 0 : page * PAGE_SIZE + 1
+          const showingTo = Math.min((page + 1) * PAGE_SIZE, filteredRows.length)
+          return (
+            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 12, color: '#777', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{filteredRows.length} result{filteredRows.length !== 1 ? 's' : ''}{filteredRows.length > PAGE_SIZE ? ` — showing ${showingFrom}–${showingTo}` : ''}</span>
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ ...paginationBtn, opacity: page === 0 ? 0.4 : 1 }}>Prev</button>
+                    <span style={{ fontSize: 11, color: '#999' }}>Page {page + 1} / {totalPages}</span>
+                    <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ ...paginationBtn, opacity: page >= totalPages - 1 ? 0.4 : 1 }}>Next</button>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount'].map((h) => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
+                      </tr>
+                    ) : (
+                      pagedRows.map((r) => (
+                        <tr key={r.id}>
+                          <td style={tdStyle}>{r.dateISO || '—'}</td>
+                          <td style={tdStyle}>{r.clientLabel}</td>
+                          <td style={tdStyle}>{r.country}</td>
+                          <td style={tdStyle}>{r.city}</td>
+                          <td style={tdStyle}>{r.eventLabel}</td>
+                          <td style={tdStyle}>{r.document_type}</td>
+                          <td style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(r.amount)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {totalPages > 1 && (
+                <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'flex-end', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ ...paginationBtn, opacity: page === 0 ? 0.4 : 1 }}>Prev</button>
+                  <span style={{ fontSize: 11, color: '#999' }}>Page {page + 1} / {totalPages}</span>
+                  <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ ...paginationBtn, opacity: page >= totalPages - 1 ? 0.4 : 1 }}>Next</button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )
@@ -420,4 +438,16 @@ const tdStyle = {
   fontSize: 12,
   color: colors.charcoal,
   borderBottom: `1px solid ${colors.lineGray}`,
+}
+
+const paginationBtn = {
+  padding: '5px 12px',
+  borderRadius: 6,
+  border: `1px solid ${colors.lineGray}`,
+  background: '#fff',
+  color: colors.charcoal,
+  fontSize: 11,
+  fontWeight: 600,
+  cursor: 'pointer',
+  fontFamily: fonts.body,
 }
