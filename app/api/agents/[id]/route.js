@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom } from '@/lib/email';
 import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
+import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -247,6 +248,36 @@ export async function PUT(request, { params }) {
             await adminSupabase
               .from('organization_memberships')
               .insert({ organization_id: newOrgId, user_id: id, role: 'member' });
+          }
+
+          // Provision agent subfolder in new org
+          try {
+            const { data: org } = await adminSupabase
+              .from('organizations')
+              .select('id, name')
+              .eq('id', newOrgId)
+              .single();
+
+            if (org) {
+              const { data: ownerMembership } = await adminSupabase
+                .from('organization_memberships')
+                .select('user_id')
+                .eq('organization_id', newOrgId)
+                .eq('role', 'owner')
+                .maybeSingle();
+
+              const { data: agentProfile } = await adminSupabase
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', id)
+                .single();
+
+              const ownerAgentId = ownerMembership?.user_id || id;
+              const { rootFolder } = await ensureOrgRoot(newOrgId, org.name, ownerAgentId);
+              await ensureAgentSubfolder(rootFolder.id, id, agentProfile?.full_name || agentProfile?.email || 'Agent');
+            }
+          } catch (folderErr) {
+            console.error('[Agent PUT] Folder provisioning error (non-blocking):', folderErr.message);
           }
         }
       }

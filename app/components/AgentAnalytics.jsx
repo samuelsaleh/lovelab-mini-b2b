@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from './AuthProvider'
+import { useOrgData } from '@/app/hooks/useOrgData'
 import { colors, fonts } from '@/lib/styles'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ContractChatPanel from './ContractChatPanel'
@@ -33,9 +34,9 @@ export default function AgentAnalytics() {
   const [page, setPage] = useState(0)
   const [pendingInvitations, setPendingInvitations] = useState([])
   const [acceptingInvite, setAcceptingInvite] = useState(null)
-  const [orgLedger, setOrgLedger] = useState(null)
-  const [teamLedger, setTeamLedger] = useState(null)
-  const [orgDetails, setOrgDetails] = useState(null)
+
+  const { orgDetails, orgLedger, orgMembers, reload: reloadOrg } = useOrgData(profile?.organization_id)
+  const teamLedger = orgLedger
 
   // Contract upload state
   const [contractName, setContractName] = useState(null);
@@ -88,33 +89,10 @@ export default function AgentAnalytics() {
       setContractUrl(contractJson.url || null)
       setContractName(contractJson.name || null)
       setPendingInvitations(invJson.invitations || [])
-
-      await loadOrgData()
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
-  }
-
-  const loadOrgData = async () => {
-    if (!profile?.organization_id) return
-    try {
-      const [ledgerRes, teamRes, orgRes] = await Promise.all([
-        fetch(`/api/organizations/${profile.organization_id}/ledger`),
-        fetch(`/api/organizations/${profile.organization_id}/ledger?include_orders=true`),
-        fetch(`/api/organizations/${profile.organization_id}`),
-      ])
-      const ledgerJson = await ledgerRes.json().catch(() => ({}))
-      const teamJson = await teamRes.json().catch(() => ({}))
-      const orgJson = await orgRes.json().catch(() => ({}))
-      setOrgLedger(ledgerRes.ok ? ledgerJson : null)
-      setTeamLedger(teamRes.ok ? teamJson : null)
-      setOrgDetails(orgJson.organization || null)
-    } catch {
-      setOrgLedger(null)
-      setTeamLedger(null)
-      setOrgDetails(null)
-    }
   }
 
   const handleAcceptInvitation = async (token) => {
@@ -128,7 +106,7 @@ export default function AgentAnalytics() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Failed to accept invitation')
       setPendingInvitations(prev => prev.filter(inv => inv.token !== token))
-      await loadOrgData()
+      await reloadOrg()
     } catch (err) {
       setError(err.message || 'Failed to accept invitation')
     } finally {

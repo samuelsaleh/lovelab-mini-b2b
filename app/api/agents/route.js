@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom } from '@/lib/email';
 import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
+import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -453,28 +454,8 @@ export async function POST(request) {
       }
     }
 
-    // Auto-create root folder for the agent if they have an ID and don't already have one
+// Handle organization membership and folder provisioning
     if (agentProfile?.id && !agentProfile?._pending) {
-      try {
-        const { data: existingFolder } = await adminSupabase
-          .from('agent_folders')
-          .select('id')
-          .eq('agent_id', agentProfile.id)
-          .is('parent_id', null)
-          .maybeSingle();
-
-        if (!existingFolder) {
-          await adminSupabase.from('agent_folders').insert({
-            agent_id: agentProfile.id,
-            name: agentProfile.full_name?.trim() || agentProfile.email || 'My Folder',
-            parent_id: null,
-            created_by: user.id,
-          });
-        }
-      } catch (folderErr) {
-        console.error('[Agents POST] Root folder creation error (non-blocking):', folderErr.message);
-      }
-
       if (requestedOrgId) {
         try {
           const { data: existingMembership } = await adminSupabase
@@ -489,8 +470,27 @@ export async function POST(request) {
               .from('organization_memberships')
               .insert({ organization_id: requestedOrgId, user_id: agentProfile.id, role: 'member' });
           }
+
+          const { data: org } = await adminSupabase
+            .from('organizations')
+            .select('id, name')
+            .eq('id', requestedOrgId)
+            .single();
+
+          if (org) {
+            const { data: ownerMembership } = await adminSupabase
+              .from('organization_memberships')
+              .select('user_id')
+              .eq('organization_id', requestedOrgId)
+              .eq('role', 'owner')
+              .maybeSingle();
+
+            const ownerAgentId = ownerMembership?.user_id || agentProfile.id;
+            const { rootFolder } = await ensureOrgRoot(requestedOrgId, org.name, ownerAgentId);
+            await ensureAgentSubfolder(rootFolder.id, agentProfile.id, agentProfile.full_name || agentProfile.email);
+          }
         } catch (memberErr) {
-          console.error('[Agents POST] Org membership error (non-blocking):', memberErr.message);
+          console.error('[Agents POST] Org membership/folder error (non-blocking):', memberErr.message);
         }
       } else if (!agentProfile.organization_id) {
         try {

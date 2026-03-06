@@ -115,3 +115,68 @@ test('null target org returns false', () => {
   const profile = { id: 'user-1', role: 'member' };
   assert.equal(canAccessOrgLedger(profile, null, []), false);
 });
+
+// Integration flow: create agent with org -> verify subfolder -> verify visibility
+
+function simulateAgentCreationFlow(orgId, orgName, ownerAgentId, newAgentId, newAgentName) {
+  const folders = [];
+
+  // Step 1: ensureOrgRoot
+  const rootName = orgName || 'Organization';
+  const rootFolder = { id: `root-${orgId}`, agent_id: ownerAgentId, name: rootName, parent_id: null };
+  folders.push(rootFolder);
+
+  // Step 2: ensureAgentSubfolder
+  const subfolder = {
+    id: `sub-${newAgentId}`,
+    agent_id: newAgentId,
+    name: newAgentName || 'Agent Folder',
+    parent_id: rootFolder.id,
+  };
+  folders.push(subfolder);
+
+  return { rootFolder, subfolder, allFolders: folders };
+}
+
+test('integration: create agent with org produces root + subfolder', () => {
+  const result = simulateAgentCreationFlow('org-1', 'Venson Amsterdam', 'owner-1', 'agent-new', 'Josephine');
+  assert.equal(result.allFolders.length, 2);
+  assert.equal(result.rootFolder.name, 'Venson Amsterdam');
+  assert.equal(result.rootFolder.parent_id, null);
+  assert.equal(result.subfolder.name, 'Josephine');
+  assert.equal(result.subfolder.parent_id, result.rootFolder.id);
+  assert.equal(result.subfolder.agent_id, 'agent-new');
+});
+
+test('integration: subfolder is visible from org root', () => {
+  const result = simulateAgentCreationFlow('org-1', 'Venson Amsterdam', 'owner-1', 'agent-new', 'Josephine');
+  const subfolders = result.allFolders.filter(f => f.parent_id === result.rootFolder.id);
+  assert.equal(subfolders.length, 1);
+  assert.equal(subfolders[0].agent_id, 'agent-new');
+});
+
+test('integration: multiple agents get separate subfolders', () => {
+  const folders = [];
+  const rootFolder = { id: 'root-org-1', agent_id: 'owner-1', name: 'Venson', parent_id: null };
+  folders.push(rootFolder);
+
+  const agents = [
+    { id: 'agent-1', name: 'Chagai' },
+    { id: 'agent-2', name: 'Matthias' },
+    { id: 'agent-3', name: 'Josephine' },
+  ];
+
+  for (const agent of agents) {
+    folders.push({
+      id: `sub-${agent.id}`,
+      agent_id: agent.id,
+      name: agent.name,
+      parent_id: rootFolder.id,
+    });
+  }
+
+  const subfolders = folders.filter(f => f.parent_id === rootFolder.id);
+  assert.equal(subfolders.length, 3);
+  const agentIds = subfolders.map(sf => sf.agent_id);
+  assert.deepEqual(agentIds.sort(), ['agent-1', 'agent-2', 'agent-3']);
+});

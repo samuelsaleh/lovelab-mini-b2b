@@ -73,3 +73,41 @@ test('different agent_id creates new root even if same name exists', () => {
   const result = simulateEnsureOrgFolders(existing, 'org-1', 'Venson Amsterdam', 'agent-1');
   assert.equal(result.created, true);
 });
+
+// Agent subfolder scenarios
+
+function simulateEnsureAgentSubfolder(existingFolders, orgRootFolderId, agentId, agentName) {
+  if (!orgRootFolderId || !agentId) throw new Error('orgRootFolderId and agentId are required');
+  const folderName = agentName || 'Agent Folder';
+  const existing = existingFolders.find(
+    (f) => f.agent_id === agentId && f.parent_id === orgRootFolderId
+  );
+  if (existing) return { subfolder: existing, created: false };
+  return {
+    subfolder: { id: `sub-${agentId}`, agent_id: agentId, name: folderName, parent_id: orgRootFolderId },
+    created: true,
+  };
+}
+
+test('agent subfolder: creates under org root', () => {
+  const result = simulateEnsureAgentSubfolder([], 'root-1', 'agent-1', 'Josephine');
+  assert.equal(result.created, true);
+  assert.equal(result.subfolder.parent_id, 'root-1');
+});
+
+test('agent subfolder: idempotent', () => {
+  const existing = [
+    { id: 'sub-1', agent_id: 'agent-1', name: 'Josephine', parent_id: 'root-1' },
+  ];
+  const result = simulateEnsureAgentSubfolder(existing, 'root-1', 'agent-1', 'Josephine');
+  assert.equal(result.created, false);
+  assert.equal(result.subfolder.id, 'sub-1');
+});
+
+test('agent subfolder: throws without root folder id', () => {
+  assert.throws(() => simulateEnsureAgentSubfolder([], null, 'agent-1', 'Test'), /required/);
+});
+
+test('agent subfolder: throws without agent id', () => {
+  assert.throws(() => simulateEnsureAgentSubfolder([], 'root-1', null, 'Test'), /required/);
+});

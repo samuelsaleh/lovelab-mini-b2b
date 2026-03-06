@@ -76,7 +76,22 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
       ])
 
       const foldersData = await foldersRes.json()
-      const loadedFolders = foldersData.folders || []
+      let loadedFolders = foldersData.folders || []
+
+      // Self-healing: auto-provision folders if none exist and org is set
+      if (!currentFolderId && loadedFolders.length === 0 && organizationId) {
+        try {
+          const provRes = await fetch(`/api/organizations/${organizationId}/folders/provision`, { method: 'POST' })
+          if (provRes.ok) {
+            const retryRes = await fetch(`/api/agent-folders?${foldersParams}`)
+            const retryData = await retryRes.json()
+            loadedFolders = retryData.folders || []
+          }
+        } catch {
+          // provisioning is best-effort
+        }
+      }
+
       setFolders(loadedFolders)
 
       if (!currentFolderId && loadedFolders.length > 0) {

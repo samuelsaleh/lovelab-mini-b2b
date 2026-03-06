@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
@@ -47,6 +47,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [docRenameLoading, setDocRenameLoading] = useState(false)
   const [orgFolders, setOrgFolders] = useState([])
   const [expandedOrgs, setExpandedOrgs] = useState(new Set())
+  const orgFoldersCacheRef = useRef(null)
 
   useEffect(() => {
     fetchData()
@@ -96,8 +97,13 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
       try {
         const orgData = await orgFoldersRes.json().catch(() => ({}))
-        if (orgData.orgFolders) setOrgFolders(orgData.orgFolders)
-      } catch { /* org folders are non-critical */ }
+        if (orgData.orgFolders) {
+          setOrgFolders(orgData.orgFolders)
+          orgFoldersCacheRef.current = orgData.orgFolders
+        }
+      } catch {
+        if (orgFoldersCacheRef.current) setOrgFolders(orgFoldersCacheRef.current)
+      }
     } catch (err) {
       setLoadIssue('api_error')
       setErrorMsg('Failed to load documents')
@@ -747,37 +753,40 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                   </button>
                   {isExpanded && (
                     <div style={{ paddingLeft: 14 }}>
-                      {org.members.map(member => (
-                        <div key={member.user_id} style={{
-                          padding: '5px 10px', fontSize: 12, color: '#555', fontFamily: fonts.body,
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}>
-                          <span style={{
-                            width: 20, height: 20, borderRadius: '50%', background: colors.inkPlum,
-                            color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          }}>
-                            {(member.full_name || member.email || '?')[0].toUpperCase()}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {member.full_name || member.email}
-                          </span>
-                          {member.role === 'owner' && (
-                            <span style={{ fontSize: 9, color: '#999', flexShrink: 0 }}>owner</span>
-                          )}
-                        </div>
-                      ))}
-                      {org.root_folder_id && (
-                        <button
-                          onClick={() => router.push(`/admin/agents/${org.members.find(m => m.role === 'owner')?.user_id || org.members[0]?.user_id}`)}
-                          style={{
-                            width: '100%', padding: '5px 10px', fontSize: 11, color: colors.inkPlum,
-                            background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                            fontFamily: fonts.body, fontWeight: 600, marginTop: 2,
-                          }}
-                        >
-                          Open folder →
-                        </button>
-                      )}
+                      {org.members.map(member => {
+                        const hasSubfolder = !!member.subfolder_id;
+                        return (
+                          <button
+                            key={member.user_id}
+                            onClick={() => {
+                              if (hasSubfolder) {
+                                router.push(`/admin/agents/${member.user_id}`);
+                              }
+                            }}
+                            style={{
+                              width: '100%', padding: '5px 10px', fontSize: 12, color: '#555', fontFamily: fonts.body,
+                              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+                              cursor: hasSubfolder ? 'pointer' : 'default', textAlign: 'left', borderRadius: 6,
+                            }}
+                          >
+                            <span style={{
+                              width: 20, height: 20, borderRadius: '50%', background: colors.inkPlum,
+                              color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            }}>
+                              {(member.full_name || member.email || '?')[0].toUpperCase()}
+                            </span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                              {member.full_name || member.email}
+                            </span>
+                            {member.role === 'owner' && (
+                              <span style={{ fontSize: 9, color: '#999', flexShrink: 0 }}>owner</span>
+                            )}
+                            {hasSubfolder && (
+                              <span style={{ fontSize: 9, color: colors.inkPlum, flexShrink: 0 }}>📁</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

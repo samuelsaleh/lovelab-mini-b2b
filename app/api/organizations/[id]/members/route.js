@@ -8,6 +8,7 @@ import {
   isValidEmail,
   normalizeEmail,
 } from '@/lib/organizations/invitations';
+import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
 
 async function getMembershipRole(supabase, organizationId, userId) {
   const { data, error } = await supabase
@@ -182,6 +183,36 @@ export async function POST(request, { params }) {
       .update({ organization_id: organizationId, is_agent: true })
       .eq('id', targetUserId);
     if (profileUpdateErr) throw profileUpdateErr;
+
+    // Provision agent subfolder in org
+    try {
+      const { data: org } = await adminSupabase
+        .from('organizations')
+        .select('id, name')
+        .eq('id', organizationId)
+        .single();
+
+      if (org) {
+        const { data: ownerMembership } = await adminSupabase
+          .from('organization_memberships')
+          .select('user_id')
+          .eq('organization_id', organizationId)
+          .eq('role', 'owner')
+          .maybeSingle();
+
+        const { data: memberProfile } = await adminSupabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', targetUserId)
+          .single();
+
+        const ownerAgentId = ownerMembership?.user_id || targetUserId;
+        const { rootFolder } = await ensureOrgRoot(organizationId, org.name, ownerAgentId);
+        await ensureAgentSubfolder(rootFolder.id, targetUserId, memberProfile?.full_name || memberProfile?.email || 'Agent');
+      }
+    } catch (folderErr) {
+      console.error('[org-members POST] Folder provisioning error (non-blocking):', folderErr.message);
+    }
 
     return NextResponse.json({ ok: true, organization_id: organizationId, user_id: targetUserId, role });
   } catch (err) {
