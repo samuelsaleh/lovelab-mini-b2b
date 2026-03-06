@@ -45,6 +45,8 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [renamingDocId, setRenamingDocId] = useState(null)
   const [docRenameValue, setDocRenameValue] = useState('')
   const [docRenameLoading, setDocRenameLoading] = useState(false)
+  const [orgFolders, setOrgFolders] = useState([])
+  const [expandedOrgs, setExpandedOrgs] = useState(new Set())
 
   useEffect(() => {
     fetchData()
@@ -54,9 +56,10 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     setLoading(true)
     setLoadIssue(null)
     try {
-      const [eventsRes, docsRes] = await Promise.all([
+      const [eventsRes, docsRes, orgFoldersRes] = await Promise.all([
         safeFetch('/api/events'),
         safeFetch('/api/documents'),
+        safeFetch('/api/org-folders'),
       ])
 
       if (!eventsRes.ok || !docsRes.ok) {
@@ -90,6 +93,11 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
       if (eventsData.events) setEvents(eventsData.events)
       if (docsData.documents) setDocuments(docsData.documents)
+
+      try {
+        const orgData = await orgFoldersRes.json().catch(() => ({}))
+        if (orgData.orgFolders) setOrgFolders(orgData.orgFolders)
+      } catch { /* org folders are non-critical */ }
     } catch (err) {
       setLoadIssue('api_error')
       setErrorMsg('Failed to load documents')
@@ -653,143 +661,130 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
         {[
           { key: 'fair', label: 'Fairs' },
-          { key: 'agent', label: 'Agents' },
           { key: 'partner', label: 'Partners' },
           { key: 'other', label: 'Other' },
         ].map(group => {
           const groupEvents = events.filter(e => (e.type || 'other') === group.key);
           if (groupEvents.length === 0) return null;
-
-          const renderEventRow = (event, indent = false) => (
-            <div
-              key={event.id}
-              style={{
-                display: 'flex', alignItems: 'center', marginBottom: 2, borderRadius: 8,
-                background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
-                paddingLeft: indent ? 10 : 0,
-              }}
-            >
-              {renamingEventId === event.id ? (
-                <input
-                  autoFocus
-                  value={renameValue}
-                  onChange={e => setRenameValue(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') commitRename(event.id); if (e.key === 'Escape') setRenamingEventId(null); }}
-                  onBlur={() => commitRename(event.id)}
-                  disabled={renameLoading}
-                  style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }}
-                />
-              ) : (
-                <button
-                  onClick={() => setSelectedEventId(event.id)}
-                  style={{
-                    flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
-                    background: 'transparent',
-                    color: selectedEventId === event.id ? colors.inkPlum : '#555',
-                    fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
-                    cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    minWidth: 0,
-                  }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
-                  <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
-                </button>
-              )}
-              {renamingEventId !== event.id && canManageEvent(event) && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); startRename(event) }}
-                  title="Rename"
-                  style={{
-                    width: 22, height: 22, borderRadius: 5, border: 'none',
-                    background: 'transparent', color: '#ccc', fontSize: 11,
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0, transition: 'color .15s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                >✎</button>
-              )}
-              {canManageEvent(event) && (
-                <>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openShareModal(event) }}
-                    title="Share folder"
-                    style={{
-                      width: 24, height: 24, borderRadius: 6, border: 'none',
-                      background: 'transparent', color: '#ccc', fontSize: 12,
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, transition: 'color .15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                  >↗</button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
-                    title="Delete event"
-                    style={{
-                      width: 24, height: 24, borderRadius: 6, border: 'none',
-                      background: 'transparent', color: '#ccc', fontSize: 13,
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, marginRight: 4, transition: 'color .15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                  >×</button>
-                </>
-              )}
-            </div>
-          );
-
-          if (group.key === 'agent') {
-            const orgGroups = new Map();
-            const ungrouped = [];
-            for (const evt of groupEvents) {
-              if (evt.organization_id && evt.organization_name) {
-                if (!orgGroups.has(evt.organization_id)) {
-                  orgGroups.set(evt.organization_id, { name: evt.organization_name, events: [] });
-                }
-                orgGroups.get(evt.organization_id).events.push(evt);
-              } else {
-                ungrouped.push(evt);
-              }
-            }
-
-            return (
-              <div key={group.key} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
-                  {group.label}
-                </div>
-                {[...orgGroups.entries()].map(([orgId, orgGroup]) => {
-                  const orgDocCount = orgGroup.events.reduce((sum, e) => sum + getEventDocCount(e.id), 0);
-                  return (
-                    <div key={orgId} style={{ marginBottom: 4 }}>
-                      <div style={{
-                        padding: '6px 12px', fontSize: 11, fontWeight: 700, color: colors.inkPlum,
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        borderLeft: `2px solid ${colors.inkPlum}`, marginLeft: 4, marginTop: 4,
-                      }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{orgGroup.name}</span>
-                        <span style={{ fontSize: 10, color: '#999', flexShrink: 0, marginLeft: 6 }}>{orgDocCount}</span>
-                      </div>
-                      {orgGroup.events.map(evt => renderEventRow(evt, true))}
-                    </div>
-                  );
-                })}
-                {ungrouped.map(evt => renderEventRow(evt, false))}
-              </div>
-            );
-          }
-
           return (
             <div key={group.key} style={{ marginBottom: 8 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
                 {group.label}
               </div>
-              {groupEvents.map(event => renderEventRow(event, false))}
+              {groupEvents.map(event => {
+                const isSelected = selectedEventId === event.id;
+                return (
+                  <div key={event.id} style={{ display: 'flex', alignItems: 'center', marginBottom: 2, borderRadius: 8, background: isSelected ? '#f3f0f5' : 'transparent' }}>
+                    {renamingEventId === event.id ? (
+                      <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitRename(event.id); if (e.key === 'Escape') setRenamingEventId(null); }}
+                        onBlur={() => commitRename(event.id)} disabled={renameLoading}
+                        style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }} />
+                    ) : (
+                      <button onClick={() => setSelectedEventId(event.id)} style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent',
+                        color: isSelected ? colors.inkPlum : '#555', fontSize: 13, fontWeight: isSelected ? 600 : 400,
+                        cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 0,
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
+                        <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
+                      </button>
+                    )}
+                    {renamingEventId !== event.id && canManageEvent(event) && (
+                      <button onClick={(e) => { e.stopPropagation(); startRename(event) }} title="Rename"
+                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: '#ccc', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color .15s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>✎</button>
+                    )}
+                    {canManageEvent(event) && (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); openShareModal(event) }} title="Share folder"
+                          style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#ccc', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'color .15s' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>↗</button>
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }} title="Delete event"
+                          style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: '#ccc', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginRight: 4, transition: 'color .15s' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>×</button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
+
+        {orgFolders.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
+              Companies
+            </div>
+            {orgFolders.filter(o => !o.organization_name.includes('test') && !o.organization_name.includes('albertosaleh')).map(org => {
+              const isExpanded = expandedOrgs.has(org.organization_id);
+              const toggleExpand = () => setExpandedOrgs(prev => {
+                const next = new Set(prev);
+                if (next.has(org.organization_id)) next.delete(org.organization_id);
+                else next.add(org.organization_id);
+                return next;
+              });
+              return (
+                <div key={org.organization_id} style={{ marginBottom: 2 }}>
+                  <button
+                    onClick={toggleExpand}
+                    style={{
+                      width: '100%', padding: '7px 12px', borderRadius: 8, border: 'none',
+                      background: isExpanded ? '#f9f6fa' : 'transparent',
+                      color: colors.inkPlum, fontSize: 12, fontWeight: 700,
+                      cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      borderLeft: `2px solid ${colors.inkPlum}`, marginLeft: 2,
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 10, color: '#999' }}>{isExpanded ? '▾' : '▸'}</span>
+                      {org.organization_name}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#999', flexShrink: 0, marginLeft: 6 }}>{org.member_count}</span>
+                  </button>
+                  {isExpanded && (
+                    <div style={{ paddingLeft: 14 }}>
+                      {org.members.map(member => (
+                        <div key={member.user_id} style={{
+                          padding: '5px 10px', fontSize: 12, color: '#555', fontFamily: fonts.body,
+                          display: 'flex', alignItems: 'center', gap: 6,
+                        }}>
+                          <span style={{
+                            width: 20, height: 20, borderRadius: '50%', background: colors.inkPlum,
+                            color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}>
+                            {(member.full_name || member.email || '?')[0].toUpperCase()}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {member.full_name || member.email}
+                          </span>
+                          {member.role === 'owner' && (
+                            <span style={{ fontSize: 9, color: '#999', flexShrink: 0 }}>owner</span>
+                          )}
+                        </div>
+                      ))}
+                      {org.root_folder_id && (
+                        <button
+                          onClick={() => router.push(`/admin/agents/${org.members.find(m => m.role === 'owner')?.user_id || org.members[0]?.user_id}`)}
+                          style={{
+                            width: '100%', padding: '5px 10px', fontSize: 11, color: colors.inkPlum,
+                            background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                            fontFamily: fonts.body, fontWeight: 600, marginTop: 2,
+                          }}
+                        >
+                          Open folder →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {noEventDocs > 0 && (
           <button
