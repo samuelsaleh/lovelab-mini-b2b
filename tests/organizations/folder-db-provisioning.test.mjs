@@ -2,11 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 /**
- * Tests for the folder DB provisioning logic.
+ * Tests for the folder DB provisioning logic (root-only, no default subfolders).
  * We test the decision logic in isolation without hitting Supabase.
  */
-
-const DEFAULT_SUBFOLDERS = ['Contracts', 'Orders', 'Invoices', 'Other'];
 
 function simulateEnsureOrgFolders(existingFolders, orgId, orgName, ownerId) {
   if (!orgId || !ownerId) throw new Error('organizationId and ownerAgentId are required');
@@ -17,71 +15,27 @@ function simulateEnsureOrgFolders(existingFolders, orgId, orgName, ownerId) {
   );
 
   if (existingRoot) {
-    const existingSubs = existingFolders.filter((f) => f.parent_id === existingRoot.id);
-    const existingNames = new Set(existingSubs.map((s) => s.name));
-    const missingSubs = DEFAULT_SUBFOLDERS.filter((n) => !existingNames.has(n));
-    const newSubs = missingSubs.map((name, i) => ({
-      id: `sub-new-${i}`,
-      agent_id: ownerId,
-      name,
-      parent_id: existingRoot.id,
-    }));
-    return {
-      rootFolder: existingRoot,
-      subfolders: [...existingSubs, ...newSubs],
-      created: false,
-      newSubCount: newSubs.length,
-    };
+    return { rootFolder: existingRoot, created: false };
   }
 
   const rootFolder = { id: `root-${orgId}`, agent_id: ownerId, name: rootName, parent_id: null };
-  const subfolders = DEFAULT_SUBFOLDERS.map((name, i) => ({
-    id: `sub-${i}`,
-    agent_id: ownerId,
-    name,
-    parent_id: rootFolder.id,
-  }));
-
-  return { rootFolder, subfolders, created: true, newSubCount: subfolders.length };
+  return { rootFolder, created: true };
 }
 
-test('creates root + 4 subfolders when none exist', () => {
+test('creates root folder when none exist', () => {
   const result = simulateEnsureOrgFolders([], 'org-1', 'Venson Amsterdam', 'agent-1');
   assert.equal(result.created, true);
   assert.equal(result.rootFolder.name, 'Venson Amsterdam');
   assert.equal(result.rootFolder.parent_id, null);
-  assert.equal(result.subfolders.length, 4);
-  const names = result.subfolders.map((s) => s.name);
-  assert.deepEqual(names, DEFAULT_SUBFOLDERS);
-  for (const sub of result.subfolders) {
-    assert.equal(sub.parent_id, result.rootFolder.id);
-    assert.equal(sub.agent_id, 'agent-1');
-  }
 });
 
-test('idempotent on second call -- no new folders created', () => {
+test('idempotent on second call -- no new folder created', () => {
   const existing = [
     { id: 'root-1', agent_id: 'agent-1', name: 'Venson Amsterdam', parent_id: null },
-    { id: 'sub-1', agent_id: 'agent-1', name: 'Contracts', parent_id: 'root-1' },
-    { id: 'sub-2', agent_id: 'agent-1', name: 'Orders', parent_id: 'root-1' },
-    { id: 'sub-3', agent_id: 'agent-1', name: 'Invoices', parent_id: 'root-1' },
-    { id: 'sub-4', agent_id: 'agent-1', name: 'Other', parent_id: 'root-1' },
   ];
   const result = simulateEnsureOrgFolders(existing, 'org-1', 'Venson Amsterdam', 'agent-1');
   assert.equal(result.created, false);
-  assert.equal(result.newSubCount, 0);
-  assert.equal(result.subfolders.length, 4);
-});
-
-test('fills in missing subfolders on partial state', () => {
-  const existing = [
-    { id: 'root-1', agent_id: 'agent-1', name: 'Venson Amsterdam', parent_id: null },
-    { id: 'sub-1', agent_id: 'agent-1', name: 'Contracts', parent_id: 'root-1' },
-  ];
-  const result = simulateEnsureOrgFolders(existing, 'org-1', 'Venson Amsterdam', 'agent-1');
-  assert.equal(result.created, false);
-  assert.equal(result.newSubCount, 3);
-  assert.equal(result.subfolders.length, 4);
+  assert.equal(result.rootFolder.id, 'root-1');
 });
 
 test('throws when organizationId is missing', () => {

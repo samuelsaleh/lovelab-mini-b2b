@@ -41,6 +41,7 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
 
   const [folders, setFolders] = useState([])
   const [files, setFiles] = useState([])
+  const [rootFolderId, setRootFolderId] = useState(null)
 
   // Create subfolder
   const [newFolderName, setNewFolderName] = useState('')
@@ -75,11 +76,20 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
       ])
 
       const foldersData = await foldersRes.json()
-      setFolders(foldersData.folders || [])
+      const loadedFolders = foldersData.folders || []
+      setFolders(loadedFolders)
+
+      if (!currentFolderId && loadedFolders.length > 0) {
+        setRootFolderId(loadedFolders[0].id)
+      }
 
       if (filesRes) {
         const filesData = await filesRes.json()
         setFiles(filesData.files || [])
+      } else if (!currentFolderId && loadedFolders.length > 0) {
+        const rootFilesRes = await fetch(`/api/agent-folder-files?folder_id=${loadedFolders[0].id}`)
+        const rootFilesData = await rootFilesRes.json()
+        setFiles(rootFilesData.files || [])
       } else {
         setFiles([])
       }
@@ -137,13 +147,14 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]
-    if (!file || !currentFolderId) return
+    const targetFolderId = currentFolderId || rootFolderId
+    if (!file || !targetFolderId) return
     if (file.size > 25 * 1024 * 1024) { setUploadMsg('File too large (max 25 MB)'); return; }
     setUploading(true)
     setUploadMsg(null)
     const fd = new FormData()
     fd.append('file', file)
-    fd.append('folder_id', currentFolderId)
+    fd.append('folder_id', targetFolderId)
     try {
       const res = await fetch('/api/agent-folder-files', { method: 'POST', body: fd })
       const d = await res.json()

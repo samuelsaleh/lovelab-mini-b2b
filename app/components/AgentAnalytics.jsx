@@ -89,29 +89,32 @@ export default function AgentAnalytics() {
       setContractName(contractJson.name || null)
       setPendingInvitations(invJson.invitations || [])
 
-      if (profile?.organization_id) {
-        try {
-          const [ledgerRes, teamRes, orgRes] = await Promise.all([
-            fetch(`/api/organizations/${profile.organization_id}/ledger`),
-            fetch(`/api/organizations/${profile.organization_id}/ledger?include_orders=true`),
-            fetch(`/api/organizations/${profile.organization_id}`),
-          ])
-          const ledgerJson = await ledgerRes.json().catch(() => ({}))
-          const teamJson = await teamRes.json().catch(() => ({}))
-          const orgJson = await orgRes.json().catch(() => ({}))
-          setOrgLedger(ledgerRes.ok ? ledgerJson : null)
-          setTeamLedger(teamRes.ok ? teamJson : null)
-          setOrgDetails(orgJson.organization || null)
-        } catch {
-          setOrgLedger(null)
-          setTeamLedger(null)
-          setOrgDetails(null)
-        }
-      }
+      await loadOrgData()
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
+  }
+
+  const loadOrgData = async () => {
+    if (!profile?.organization_id) return
+    try {
+      const [ledgerRes, teamRes, orgRes] = await Promise.all([
+        fetch(`/api/organizations/${profile.organization_id}/ledger`),
+        fetch(`/api/organizations/${profile.organization_id}/ledger?include_orders=true`),
+        fetch(`/api/organizations/${profile.organization_id}`),
+      ])
+      const ledgerJson = await ledgerRes.json().catch(() => ({}))
+      const teamJson = await teamRes.json().catch(() => ({}))
+      const orgJson = await orgRes.json().catch(() => ({}))
+      setOrgLedger(ledgerRes.ok ? ledgerJson : null)
+      setTeamLedger(teamRes.ok ? teamJson : null)
+      setOrgDetails(orgJson.organization || null)
+    } catch {
+      setOrgLedger(null)
+      setTeamLedger(null)
+      setOrgDetails(null)
+    }
   }
 
   const handleAcceptInvitation = async (token) => {
@@ -125,9 +128,9 @@ export default function AgentAnalytics() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Failed to accept invitation')
       setPendingInvitations(prev => prev.filter(inv => inv.token !== token))
-      await loadData()
+      await loadOrgData()
     } catch (err) {
-      alert(err.message || 'Failed to accept invitation')
+      setError(err.message || 'Failed to accept invitation')
     } finally {
       setAcceptingInvite(null)
     }

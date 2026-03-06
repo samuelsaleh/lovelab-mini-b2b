@@ -5,7 +5,7 @@ import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
 
 export async function POST(_request, { params }) {
   try {
-    const organizationId = params?.id;
+    const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
@@ -20,6 +20,7 @@ export async function POST(_request, { params }) {
     const folder = await ensureOrgFoldersInDb(org.id, org.name, session.user.id);
     return NextResponse.json({ folder });
   } catch (err) {
+    console.error('[org-folders-provision POST]', err.message);
     return NextResponse.json({ error: err.message || 'Failed to provision organization folders' }, { status: 500 });
   }
 }

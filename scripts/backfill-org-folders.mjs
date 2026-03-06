@@ -1,6 +1,6 @@
 /**
  * Backfill script: ensures every existing organization has a root folder
- * and default subfolders in the agent_folders table.
+ * in the agent_folders table.
  *
  * Run with: node scripts/backfill-org-folders.mjs
  *
@@ -20,8 +20,6 @@ if (!supabaseUrl || !serviceKey) {
 
 const supabase = createClient(supabaseUrl, serviceKey);
 
-const DEFAULT_SUBFOLDERS = ['Contracts', 'Orders', 'Invoices', 'Other'];
-
 async function backfill() {
   const { data: orgs, error: orgErr } = await supabase
     .from('organizations')
@@ -40,7 +38,6 @@ async function backfill() {
       .from('organization_memberships')
       .select('user_id, role')
       .eq('organization_id', org.id)
-      .is('deleted_at', null)
       .is('deleted_at', null);
 
     const owner = (members || []).find(m => m.role === 'owner') || members?.[0];
@@ -59,47 +56,18 @@ async function backfill() {
       .limit(1);
 
     if (existingRoot && existingRoot.length > 0) {
-      const rootId = existingRoot[0].id;
-      const { data: existingSubs } = await supabase
-        .from('agent_folders')
-        .select('name')
-        .eq('parent_id', rootId);
-
-      const existingNames = new Set((existingSubs || []).map(s => s.name));
-      const missing = DEFAULT_SUBFOLDERS.filter(n => !existingNames.has(n));
-
-      if (missing.length > 0) {
-        const rows = missing.map(name => ({ agent_id: ownerId, name, parent_id: rootId }));
-        await supabase.from('agent_folders').insert(rows);
-        console.log(`  [PATCHED] ${org.name} -- added ${missing.length} missing subfolders`);
-      } else {
-        console.log(`  [OK] ${org.name} -- root + subfolders exist`);
-      }
+      console.log(`  [OK] ${org.name} -- root folder exists`);
       continue;
     }
 
-    const { data: rootFolder, error: rootErr } = await supabase
+    const { error: rootErr } = await supabase
       .from('agent_folders')
-      .insert({ agent_id: ownerId, name: org.name, parent_id: null })
-      .select('id')
-      .single();
+      .insert({ agent_id: ownerId, name: org.name, parent_id: null });
 
     if (rootErr) {
       console.error(`  [ERROR] ${org.name} -- failed to create root:`, rootErr.message);
-      continue;
-    }
-
-    const subRows = DEFAULT_SUBFOLDERS.map(name => ({
-      agent_id: ownerId,
-      name,
-      parent_id: rootFolder.id,
-    }));
-
-    const { error: subErr } = await supabase.from('agent_folders').insert(subRows);
-    if (subErr) {
-      console.error(`  [ERROR] ${org.name} -- failed to create subfolders:`, subErr.message);
     } else {
-      console.log(`  [CREATED] ${org.name} -- root + 4 subfolders`);
+      console.log(`  [CREATED] ${org.name} -- root folder`);
     }
   }
 

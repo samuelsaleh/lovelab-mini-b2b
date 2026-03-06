@@ -475,8 +475,24 @@ export async function POST(request) {
         console.error('[Agents POST] Root folder creation error (non-blocking):', folderErr.message);
       }
 
-      // Auto-ensure organization + org storage folders
-      if (!agentProfile.organization_id) {
+      if (requestedOrgId) {
+        try {
+          const { data: existingMembership } = await adminSupabase
+            .from('organization_memberships')
+            .select('id')
+            .eq('organization_id', requestedOrgId)
+            .eq('user_id', agentProfile.id)
+            .maybeSingle();
+
+          if (!existingMembership) {
+            await adminSupabase
+              .from('organization_memberships')
+              .insert({ organization_id: requestedOrgId, user_id: agentProfile.id, role: 'member' });
+          }
+        } catch (memberErr) {
+          console.error('[Agents POST] Org membership error (non-blocking):', memberErr.message);
+        }
+      } else if (!agentProfile.organization_id) {
         try {
           const orgRes = await fetch(
             new URL('/api/organizations/auto-ensure', process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin),

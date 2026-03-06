@@ -209,7 +209,7 @@ export default function AdminAgentDetailsPage() {
       setPaymentNotes('');
       await load();
     } catch (err) {
-      alert(err.message);
+      setError(err.message || 'Failed to record payment');
     } finally {
       setSavingPayment(false);
     }
@@ -230,7 +230,7 @@ export default function AdminAgentDetailsPage() {
       setMemberEmail('');
       await load();
     } catch (err) {
-      alert(err.message || 'Failed to add member');
+      setError(err.message || 'Failed to add member');
     } finally {
       setAddingMember(false);
     }

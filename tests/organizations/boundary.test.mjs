@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isAdmin, normalizeSegment, buildRootFolder, DEFAULT_SUBFOLDERS } from '../../lib/organizations/utils.js';
+import { isAdmin, normalizeSegment, buildRootFolder } from '../../lib/organizations/utils.js';
 import { normalizeEmail, isValidEmail, generateInvitationToken, getDefaultExpiryIso } from '../../lib/organizations/invitations.js';
 
 // Simulated org boundary enforcement logic tests.
@@ -32,14 +32,11 @@ test('org folder isolation: different orgs produce different root paths', () => 
   assert.ok(!pathB.includes(orgA.id));
 });
 
-test('org folder isolation: subfolder paths are scoped to org root', () => {
+test('org folder path is scoped to org id', () => {
   const org = { id: 'org-test', name: 'Test Org' };
   const root = buildRootFolder(org);
-  for (const sub of DEFAULT_SUBFOLDERS) {
-    const subPath = `${root}/${normalizeSegment(sub)}`;
-    assert.ok(subPath.startsWith(root));
-    assert.ok(subPath.includes(org.id));
-  }
+  assert.ok(root.startsWith('organizations/'));
+  assert.ok(root.includes(org.id));
 });
 
 test('invitation tokens are unique per generation', () => {

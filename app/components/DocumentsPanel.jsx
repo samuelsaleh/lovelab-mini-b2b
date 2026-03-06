@@ -718,7 +718,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
             <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
               Companies
             </div>
-            {orgFolders.filter(o => !o.organization_name.includes('test') && !o.organization_name.includes('albertosaleh')).map(org => {
+            {orgFolders.map(org => {
               const isExpanded = expandedOrgs.has(org.organization_id);
               const toggleExpand = () => setExpandedOrgs(prev => {
                 const next = new Set(prev);

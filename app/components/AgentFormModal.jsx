@@ -155,16 +155,6 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to create agent');
-        // If org was selected and agent was created, add as member
-        if (selectedOrgId && data?.agent?.id) {
-          try {
-            await fetch(`/api/organizations/${selectedOrgId}/members`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ user_id: data.agent.id, role: 'member' }),
-            });
-          } catch {}
-        }
         if (data?.agent?.id) {
           setCreatedAgentId(data.agent.id);
           setContractUrl(null);

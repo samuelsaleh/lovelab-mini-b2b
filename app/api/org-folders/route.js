@@ -11,14 +11,39 @@ export async function GET() {
     const adminSupabase = createAdminClient();
     const admin = isAdmin(session.profile);
 
-    const { data: orgs, error: orgErr } = await adminSupabase
-      .from('organizations')
-      .select('id, name')
-      .is('deleted_at', null)
-      .order('name');
-    if (orgErr) throw orgErr;
+    let orgs;
 
-    if (!orgs || orgs.length === 0) {
+    if (admin) {
+      const { data, error } = await adminSupabase
+        .from('organizations')
+        .select('id, name')
+        .is('deleted_at', null)
+        .order('name');
+      if (error) throw error;
+      orgs = data || [];
+    } else {
+      const { data: userMemberships } = await adminSupabase
+        .from('organization_memberships')
+        .select('organization_id')
+        .eq('user_id', session.user.id)
+        .is('deleted_at', null);
+
+      const userOrgIds = (userMemberships || []).map(m => m.organization_id);
+      if (userOrgIds.length === 0) {
+        return NextResponse.json({ orgFolders: [] });
+      }
+
+      const { data, error } = await adminSupabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', userOrgIds)
+        .is('deleted_at', null)
+        .order('name');
+      if (error) throw error;
+      orgs = data || [];
+    }
+
+    if (orgs.length === 0) {
       return NextResponse.json({ orgFolders: [] });
     }
 
@@ -36,17 +61,6 @@ export async function GET() {
       membersByOrg.get(m.organization_id).push(m);
     }
 
-    if (!admin) {
-      const userOrgIds = (memberships || [])
-        .filter(m => m.user_id === session.user.id)
-        .map(m => m.organization_id);
-      const allowed = new Set(userOrgIds);
-      const filtered = orgs.filter(o => allowed.has(o.id));
-      if (filtered.length === 0) {
-        return NextResponse.json({ orgFolders: [] });
-      }
-    }
-
     const memberUserIds = [...new Set((memberships || []).map(m => m.user_id))];
     const { data: profiles } = await adminSupabase
       .from('profiles')
@@ -60,16 +74,19 @@ export async function GET() {
       if (owner) allOwnerIds.push(owner.user_id);
     }
 
-    const { data: rootFolders } = await adminSupabase
-      .from('agent_folders')
-      .select('id, name, agent_id, parent_id')
-      .in('agent_id', [...new Set(allOwnerIds)])
-      .is('parent_id', null);
+    const uniqueOwnerIds = [...new Set(allOwnerIds)];
+    let rootByAgent = new Map();
+    if (uniqueOwnerIds.length > 0) {
+      const { data: rootFolders } = await adminSupabase
+        .from('agent_folders')
+        .select('id, name, agent_id, parent_id')
+        .in('agent_id', uniqueOwnerIds)
+        .is('parent_id', null);
 
-    const rootByAgent = new Map();
-    for (const f of rootFolders || []) {
-      if (!rootByAgent.has(f.agent_id)) rootByAgent.set(f.agent_id, []);
-      rootByAgent.get(f.agent_id).push(f);
+      for (const f of rootFolders || []) {
+        if (!rootByAgent.has(f.agent_id)) rootByAgent.set(f.agent_id, []);
+        rootByAgent.get(f.agent_id).push(f);
+      }
     }
 
     const orgFolders = orgs.map(org => {
@@ -100,16 +117,9 @@ export async function GET() {
       };
     });
 
-    const visibleOrgs = admin
-      ? orgFolders
-      : orgFolders.filter(o => {
-          const members = membersByOrg.get(o.organization_id) || [];
-          return members.some(m => m.user_id === session.user.id);
-        });
-
-    return NextResponse.json({ orgFolders: visibleOrgs });
+    return NextResponse.json({ orgFolders });
   } catch (err) {
-    console.error('[org-folders GET]', err);
-    return NextResponse.json({ error: 'Failed to load organization folders' }, { status: 500 });
+    console.error('[org-folders GET]', err.message);
+    return NextResponse.json({ error: err.message || 'Failed to load organization folders' }, { status: 500 });
   }
 }

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DEFAULT_SUBFOLDERS,
   buildRootFolder,
   normalizeSegment,
 } from '../../lib/organizations/utils.js';
@@ -48,15 +47,10 @@ test('buildRootFolder produces consistent paths for same org', () => {
   assert.equal(buildRootFolder(org), buildRootFolder(org));
 });
 
-test('default subfolders are fixed and explicit', () => {
-  assert.deepEqual(DEFAULT_SUBFOLDERS, ['Contracts', 'Orders', 'Invoices', 'Other']);
-});
-
-test('default subfolders are not empty', () => {
-  assert.ok(DEFAULT_SUBFOLDERS.length > 0);
-  for (const sub of DEFAULT_SUBFOLDERS) {
-    assert.ok(sub.length > 0);
-  }
+test('buildRootFolder throws on null/undefined organization', () => {
+  assert.throws(() => buildRootFolder(null), /requires an organization/);
+  assert.throws(() => buildRootFolder(undefined), /requires an organization/);
+  assert.throws(() => buildRootFolder({}), /requires an organization/);
 });
 
 test('buildRootFolder produces unique paths for different orgs', () => {

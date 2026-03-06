@@ -23,7 +23,7 @@ async function getMembershipRole(supabase, organizationId, userId) {
 
 export async function GET(_request, { params }) {
   try {
-    const organizationId = params?.id;
+    const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
@@ -38,13 +38,14 @@ export async function GET(_request, { params }) {
 
     return NextResponse.json({ members: data || [] });
   } catch (err) {
+    console.error('[org-members GET]', err.message);
     return NextResponse.json({ error: err.message || 'Failed to list organization members' }, { status: 500 });
   }
 }
 
 export async function POST(request, { params }) {
   try {
-    const organizationId = params?.id;
+    const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
@@ -184,6 +185,7 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({ ok: true, organization_id: organizationId, user_id: targetUserId, role });
   } catch (err) {
+    console.error('[org-members POST]', err.message);
     return NextResponse.json({ error: err.message || 'Failed to add organization member' }, { status: 500 });
   }
 }
