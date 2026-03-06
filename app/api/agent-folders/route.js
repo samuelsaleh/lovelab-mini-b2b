@@ -14,8 +14,9 @@ async function getAuthorizedUser(supabase, adminSupabase) {
   return { user, isAdmin: profile?.role === 'admin', isAgent: profile?.is_agent === true };
 }
 
-// GET /api/agent-folders?agent_id=&parent_id=
+// GET /api/agent-folders?agent_id=&parent_id=&organization_id=
 // Lists folders at a given level. parent_id=null lists root folders.
+// When organization_id is provided, returns folders for all org members.
 export async function GET(request) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'agent-folders-get' });
@@ -28,21 +29,44 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const agentId = searchParams.get('agent_id');
+    const organizationId = searchParams.get('organization_id') || null;
     const parentId = searchParams.get('parent_id') || null;
 
-    if (!agentId) return NextResponse.json({ error: 'agent_id is required' }, { status: 400 });
+    if (!agentId && !organizationId) {
+      return NextResponse.json({ error: 'agent_id or organization_id is required' }, { status: 400 });
+    }
 
-    const allIds = await resolveAgentIds(adminSupabase, agentId);
+    let targetIds = [];
 
-    // Access check: admin or the agent themselves (including re-invited IDs)
-    if (!isAdmin && !allIds.includes(user.id)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (organizationId) {
+      const { data: members, error: memErr } = await adminSupabase
+        .from('organization_memberships')
+        .select('user_id')
+        .eq('organization_id', organizationId)
+        .is('deleted_at', null);
+      if (memErr) throw memErr;
+      targetIds = (members || []).map((m) => m.user_id);
+
+      if (!isAdmin) {
+        const isMember = targetIds.includes(user.id);
+        if (!isMember) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else {
+      const allIds = await resolveAgentIds(adminSupabase, agentId);
+      if (!isAdmin && !allIds.includes(user.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      targetIds = allIds;
+    }
+
+    if (targetIds.length === 0) {
+      return NextResponse.json({ folders: [] });
     }
 
     let query = adminSupabase
       .from('agent_folders')
       .select('id, name, parent_id, agent_id, created_at')
-      .in('agent_id', allIds)
+      .in('agent_id', targetIds)
       .order('name', { ascending: true });
 
     if (parentId) {

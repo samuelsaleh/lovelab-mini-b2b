@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom } from '@/lib/email';
+import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -9,7 +10,7 @@ async function requireAdmin(supabase, userId) {
     .select('role')
     .eq('id', userId)
     .single();
-  return data?.role === 'admin';
+  return isAdminRole(data);
 }
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at';

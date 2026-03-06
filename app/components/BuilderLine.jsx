@@ -207,7 +207,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                     <div>
                       <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                         <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
-                        <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
+                        <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prongs</button>
                       </div>
                       {cfg.housingType && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -238,7 +238,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                         <>
                           <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                             <button onClick={() => patch({ housingType: 'bezel', housing: null })} style={tag(cfg.housingType === 'bezel')}>Bezel</button>
-                            <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prong</button>
+                            <button onClick={() => patch({ housingType: 'prong', housing: null })} style={tag(cfg.housingType === 'prong')}>Prongs</button>
                           </div>
                           {cfg.housingType && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -720,7 +720,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                           <div>
                             <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                               <button onClick={() => updateShared({ housingType: 'bezel', housing: null })} style={tag(sharedSettings.housingType === 'bezel')}>Bezel</button>
-                              <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prong</button>
+                              <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prongs</button>
                             </div>
                             {sharedSettings.housingType && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -751,7 +751,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                               <>
                                 <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
                                   <button onClick={() => updateShared({ housingType: 'bezel', housing: null })} style={tag(sharedSettings.housingType === 'bezel')}>Bezel</button>
-                                  <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prong</button>
+                                  <button onClick={() => updateShared({ housingType: 'prong', housing: null })} style={tag(sharedSettings.housingType === 'prong')}>Prongs</button>
                                 </div>
                                 {sharedSettings.housingType && (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>

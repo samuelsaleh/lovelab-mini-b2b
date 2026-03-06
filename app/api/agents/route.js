@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom } from '@/lib/email';
+import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
 import { NextResponse } from 'next/server';
 
 async function requireAdmin(supabase, userId) {
@@ -9,7 +10,7 @@ async function requireAdmin(supabase, userId) {
     .select('role')
     .eq('id', userId)
     .single();
-  return data?.role === 'admin';
+  return isAdminRole(data);
 }
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -30,7 +31,7 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
-    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at';
+    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
 
     const { data: agents, error } = await adminSupabase
       .from('profiles')
@@ -179,8 +180,21 @@ export async function GET(request) {
       };
     };
 
+    const orgIds = [...new Set((agents || []).map(a => a.organization_id).filter(Boolean))];
+    const orgNameMap = {};
+    if (orgIds.length > 0) {
+      const { data: orgs } = await adminSupabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+      for (const org of orgs || []) {
+        orgNameMap[org.id] = org.name;
+      }
+    }
+
     const agentsWithStats = agents.map(a => ({
       ...a,
+      organization_name: orgNameMap[a.organization_id] || null,
       stats: makeStats(a.id, a.commission_rate),
     }));
 
@@ -451,6 +465,29 @@ export async function POST(request) {
         }
       } catch (folderErr) {
         console.error('[Agents POST] Root folder creation error (non-blocking):', folderErr.message);
+      }
+
+      // Auto-ensure organization + org storage folders
+      if (!agentProfile.organization_id) {
+        try {
+          const orgRes = await fetch(
+            new URL('/api/organizations/auto-ensure', process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin),
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                cookie: request.headers.get('cookie') || '',
+              },
+              body: JSON.stringify({ user_id: agentProfile.id }),
+            }
+          );
+          if (orgRes.ok) {
+            const orgJson = await orgRes.json();
+            agentProfile.organization_id = orgJson.organization?.id || null;
+          }
+        } catch (orgErr) {
+          console.error('[Agents POST] Auto-ensure org error (non-blocking):', orgErr.message);
+        }
       }
     }
 

@@ -27,10 +27,11 @@ const FileIcon = ({ size = 16 }) => (
  * AgentFolderBrowser
  *
  * Props:
- *   agentId  - string (agent profile UUID)
- *   readOnly - boolean (if true, hide upload/create/delete controls)
+ *   agentId        - string (agent profile UUID)
+ *   organizationId - string (org UUID; when set, shows folders for all org members)
+ *   readOnly       - boolean (if true, hide upload/create/delete controls)
  */
-export default function AgentFolderBrowser({ agentId, readOnly = false }) {
+export default function AgentFolderBrowser({ agentId, organizationId, readOnly = false }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -57,13 +58,15 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
   const [renameValue, setRenameValue] = useState('')
 
   const loadContents = useCallback(async () => {
-    if (!agentId) { setLoading(false); return }
+    if (!agentId && !organizationId) { setLoading(false); return }
     setLoading(true)
     setError(null)
     setUploadMsg(null)
 
     try {
-      const foldersParams = new URLSearchParams({ agent_id: agentId })
+      const foldersParams = new URLSearchParams()
+      if (organizationId) foldersParams.set('organization_id', organizationId)
+      if (agentId) foldersParams.set('agent_id', agentId)
       if (currentFolderId) foldersParams.set('parent_id', currentFolderId)
 
       const [foldersRes, filesRes] = await Promise.all([
@@ -85,7 +88,7 @@ export default function AgentFolderBrowser({ agentId, readOnly = false }) {
     } finally {
       setLoading(false)
     }
-  }, [agentId, currentFolderId])
+  }, [agentId, organizationId, currentFolderId])
 
   useEffect(() => {
     loadContents()

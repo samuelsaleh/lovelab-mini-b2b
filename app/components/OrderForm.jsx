@@ -1066,7 +1066,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   const deleteRow = useCallback((globalIdx) => {
     setRows(prev => {
-      if (prev.length <= 1) return prev
+      if (prev.length <= 1) return [emptyRow(1)]
       const next = [...prev]
       next.splice(globalIdx, 1)
       return renumberRows(next)
@@ -2118,8 +2118,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           ))}
                         </div>
                         {/* Card actions */}
-                        {filled && (
                           <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+                            {filled && (
+                            <>
                             <button
                               onClick={() => insertRowBelow(globalIdx)}
                               style={{
@@ -2136,6 +2137,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                 cursor: 'pointer', fontFamily: fonts.body, minHeight: 40,
                               }}
                             >{t('order.duplicate')}</button>
+                            </>
+                            )}
                             <button
                               onClick={() => deleteRow(globalIdx)}
                               style={{
@@ -2145,7 +2148,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               }}
                             >{t('order.delete')}</button>
                           </div>
-                        )}
                       </div>
                     )
                   })}
@@ -2191,10 +2193,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng', 'multiThree'].includes(rowCol.housing)
                           const settingOptions = isSettingCol && hasSetting
                             ? (rowCol.housing === 'sparkleProng'
-                                ? [{ value: 'Prong', label: 'Prong' }]
+                                ? [{ value: 'Prong', label: 'Prongs' }]
                                 : rowCol.housing === 'multiThree'
                                   ? [{ value: 'F', label: 'F' }, { value: 'LO', label: 'LO' }]
-                                  : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prong' }])
+                                  : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prongs' }])
                             : null
                           const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing, row.setting).map(h => {
                             const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
@@ -2311,9 +2313,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         })}
                         {!isPrinting && (
                         <td className="order-form-dup-col" style={{ border: 'none', padding: 0, width: mobile ? 120 : 72, verticalAlign: 'middle' }}>
-                          {isRowFilled(row) && (
                             <div style={{ display: 'flex', gap: mobile ? 4 : 2, marginLeft: 3 }}>
-                              {/* Add empty row below */}
+                              {isRowFilled(row) && (
+                              <>
                               <button
                                 onClick={() => insertRowBelow(globalIdx)}
                                 title="Add empty row below"
@@ -2328,7 +2330,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               >
                                 +
                               </button>
-                              {/* Duplicate row below */}
                               <button
                                 onClick={() => duplicateRow(globalIdx)}
                                 title="Duplicate row below"
@@ -2343,7 +2344,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               >
                                 &#x2750;
                               </button>
-                              {/* Delete row */}
+                              </>
+                              )}
                               <button
                                 onClick={() => deleteRow(globalIdx)}
                                 title="Delete row"
@@ -2359,7 +2361,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                 &#x2715;
                               </button>
                             </div>
-                          )}
                         </td>
                         )}
                       </tr>

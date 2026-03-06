@@ -19,7 +19,11 @@ export default function AdminAgentDetailsPage() {
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState(null);
   const [docDerivedRows, setDocDerivedRows] = useState([]);
-  
+  const [organizationLedger, setOrganizationLedger] = useState(null);
+  const [organizationMembers, setOrganizationMembers] = useState([]);
+  const [memberEmail, setMemberEmail] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -59,6 +63,20 @@ export default function AdminAgentDetailsPage() {
       setCommissions(commJson.commissions || []);
       setSummary(commJson.summary || null);
       setPayments(payJson.payments || []);
+
+      if (found.organization_id) {
+        const [ledgerRes, membersRes] = await Promise.all([
+          fetch(`/api/organizations/${found.organization_id}/ledger`),
+          fetch(`/api/organizations/${found.organization_id}/members`),
+        ]);
+        const ledgerJson = await ledgerRes.json().catch(() => ({}));
+        const membersJson = await membersRes.json().catch(() => ({}));
+        setOrganizationLedger(ledgerRes.ok ? ledgerJson : null);
+        setOrganizationMembers(membersJson?.members || []);
+      } else {
+        setOrganizationLedger(null);
+        setOrganizationMembers([]);
+      }
 
       const commList = commJson.commissions || [];
       const stats = found.stats || {};
@@ -175,6 +193,27 @@ export default function AdminAgentDetailsPage() {
       alert(err.message);
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleAddMember = async (e) => {
+    e.preventDefault();
+    if (!agent?.organization_id || !memberEmail.trim()) return;
+    setAddingMember(true);
+    try {
+      const res = await fetch(`/api/organizations/${agent.organization_id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: memberEmail.trim().toLowerCase(), role: 'member' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to add member');
+      setMemberEmail('');
+      await load();
+    } catch (err) {
+      alert(err.message || 'Failed to add member');
+    } finally {
+      setAddingMember(false);
     }
   };
 
@@ -316,6 +355,99 @@ export default function AdminAgentDetailsPage() {
               })()}
             </div>
 
+            {organizationLedger?.organization_summary && (
+              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
+                  Company Commission Rollup{agent?.organization_name ? ` — ${agent.organization_name}` : ''}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
+                  <Stat label="Company Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
+                  <Stat label="Company Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} color={colors.success} />
+                  <Stat label="Company Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} color={colors.warning} />
+                </div>
+                {(organizationLedger.per_member || []).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase' }}>
+                      Per Member Totals
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#faf8fc' }}>
+                          <th style={th}>Member</th>
+                          <th style={{ ...th, textAlign: 'right' }}>Earned</th>
+                          <th style={{ ...th, textAlign: 'right' }}>Paid</th>
+                          <th style={{ ...th, textAlign: 'right' }}>Pending</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(organizationLedger.per_member || []).map((m) => (
+                          <tr key={m.user_id}>
+                            <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
+                            <td style={{ ...td, textAlign: 'right', color: colors.success }}>{fmt(m.total_paid_out || 0)}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            )}
+
+            {agent?.organization_id && (
+              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
+                  Company Team Members
+                </div>
+                <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <input
+                    type="email"
+                    placeholder="colleague@company.com"
+                    value={memberEmail}
+                    onChange={(e) => setMemberEmail(e.target.value)}
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={addingMember || !memberEmail.trim()}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: colors.inkPlum,
+                      color: '#fff',
+                      cursor: addingMember ? 'default' : 'pointer',
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {addingMember ? 'Adding...' : 'Add Member'}
+                  </button>
+                </form>
+                {organizationMembers.length > 0 && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#faf8fc' }}>
+                        <th style={th}>Name</th>
+                        <th style={th}>Email</th>
+                        <th style={th}>Role</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {organizationMembers.map((m) => (
+                        <tr key={m.id}>
+                          <td style={td}>{m.profiles?.full_name || '—'}</td>
+                          <td style={td}>{m.profiles?.email || '—'}</td>
+                          <td style={td}>{m.role}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 24, alignItems: 'start' }}>
               {/* Payments History */}
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
@@ -399,7 +531,7 @@ export default function AdminAgentDetailsPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Documents Folder
               </div>
-              <AgentFolderBrowser agentId={agentId} />
+              <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} />
             </div>
 
             {/* Payment Modal */}

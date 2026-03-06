@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import AgentFormModal from '../../components/AgentFormModal';
@@ -59,17 +59,40 @@ export default function AdminAgentsPage() {
   const activeAgents = agents;
 
   const filteredAgents = activeAgents.filter((a) => {
+    const q = search.toLowerCase();
     const matchSearch =
       !search ||
-      (a.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (a.email || '').toLowerCase().includes(search.toLowerCase()) ||
-      (a.agent_company || '').toLowerCase().includes(search.toLowerCase());
+      (a.full_name || '').toLowerCase().includes(q) ||
+      (a.email || '').toLowerCase().includes(q) ||
+      (a.agent_company || '').toLowerCase().includes(q) ||
+      (a.organization_name || '').toLowerCase().includes(q);
     const matchStatus =
       statusFilter === 'all' || (a.agent_status || '').toLowerCase() === statusFilter.toLowerCase();
     return matchSearch && matchStatus;
   });
 
   const activeCount = activeAgents.filter((a) => a.agent_status === 'active').length;
+
+  const orgGroups = useMemo(() => {
+    const groups = new Map();
+    for (const agent of filteredAgents) {
+      const key = agent.organization_id || `solo_${agent.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          organizationId: agent.organization_id,
+          organizationName: agent.organization_name,
+          agents: [],
+        });
+      }
+      groups.get(key).agents.push(agent);
+    }
+    const sorted = [...groups.values()].sort((a, b) => {
+      if (a.agents.length > 1 && b.agents.length <= 1) return -1;
+      if (a.agents.length <= 1 && b.agents.length > 1) return 1;
+      return 0;
+    });
+    return sorted;
+  }, [filteredAgents]);
 
   const handleDelete = async (agent) => {
     try {
@@ -293,166 +316,114 @@ export default function AdminAgentsPage() {
             No agents found
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {filteredAgents.map((agent) => (
-              <div
-                key={agent.id}
-                style={{
-                  background: '#fff',
-                  borderRadius: 12,
-                  border: `1px solid ${colors.lineGray}`,
-                  padding: 18,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: '50%',
-                      background: colors.inkPlum,
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 16,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {(agent.full_name || agent.email || '?')[0].toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: colors.charcoal }}>
-                        {agent.full_name || agent.email || 'Unknown'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {orgGroups.map((group) => {
+              const isMultiAgent = group.organizationId && group.agents.length > 1;
+              return (
+                <div key={group.organizationId || group.agents[0]?.id}>
+                  {isMultiAgent && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 16px', marginBottom: 4,
+                      background: '#f4f0f5', borderRadius: '12px 12px 0 0',
+                      border: `1px solid ${colors.lineGray}`, borderBottom: 'none',
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.inkPlum} strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>
+                        {group.organizationName || 'Organization'}
                       </span>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          padding: '4px 8px',
-                          borderRadius: 6,
-                          background: statusColors[agent.agent_status] || colors.lovelabMuted,
-                          color: '#fff',
-                        }}
-                      >
-                        {agent.agent_status || '—'}
+                      <span style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                        {group.agents.length} agent{group.agents.length !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, color: colors.lovelabMuted, marginBottom: 6 }}>
-                      {agent.email}
-                    </div>
-                    {(agent.agent_city || agent.agent_country || agent.agent_region) && (
-                      <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4 }}>
-                        Territory: {[agent.agent_city, agent.agent_country].filter(Boolean).join(', ')}
-                        {agent.agent_region && ` · ${agent.agent_region}`}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      Rate: {agent.commission_rate ?? '—'}% · Since: {formatAgentSince(agent.agent_since)}
-                      {agent.agent_contract_url && (
-                        <span title="Contract on file" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#059669', fontWeight: 600, background: '#ecfdf5', borderRadius: 5, padding: '2px 7px' }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          Contract
-                        </span>
-                      )}
-                    </div>
-                    {agent.stats && (
-                      <div style={{ fontSize: 12, color: colors.lovelabMuted, marginBottom: 4 }}>
-                        Orders: {agent.stats.effective_orders ?? agent.stats.total_orders ?? 0} · Revenue: {fmt(agent.stats.effective_revenue ?? agent.stats.total_revenue)} ·
-                        Commission Owed: {fmt(agent.stats.effective_pending_commission ?? agent.stats.pending_commission)}
-                      </div>
-                    )}
-                    {agent.agent_conditions && (
+                  )}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: isMultiAgent ? 0 : 12,
+                    ...(isMultiAgent ? {
+                      border: `1px solid ${colors.lineGray}`,
+                      borderRadius: '0 0 12px 12px',
+                      overflow: 'hidden',
+                    } : {}),
+                  }}>
+                    {group.agents.map((agent, idx) => (
                       <div
+                        key={agent.id}
                         style={{
-                          fontSize: 11,
-                          color: colors.lovelabMuted,
-                          marginTop: 6,
-                          maxWidth: 600,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          background: '#fff',
+                          padding: 18,
+                          ...(isMultiAgent
+                            ? { borderBottom: idx < group.agents.length - 1 ? `1px solid ${colors.lineGray}` : 'none' }
+                            : { borderRadius: 12, border: `1px solid ${colors.lineGray}` }
+                          ),
                         }}
                       >
-                        {agent.agent_conditions.length > 100
-                          ? agent.agent_conditions.slice(0, 100) + '...'
-                          : agent.agent_conditions}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                          <div style={{ width: 44, height: 44, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                            {(agent.full_name || agent.email || '?')[0].toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                              <span style={{ fontSize: 15, fontWeight: 600, color: colors.charcoal }}>
+                                {agent.full_name || agent.email || 'Unknown'}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 8px', borderRadius: 6, background: statusColors[agent.agent_status] || colors.lovelabMuted, color: '#fff' }}>
+                                {agent.agent_status || '—'}
+                              </span>
+                              {!isMultiAgent && agent.organization_name && (
+                                <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#f4f0f5', padding: '3px 8px', borderRadius: 5 }}>
+                                  {agent.organization_name}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 13, color: colors.lovelabMuted, marginBottom: 6 }}>{agent.email}</div>
+                            {(agent.agent_city || agent.agent_country || agent.agent_region) && (
+                              <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4 }}>
+                                Territory: {[agent.agent_city, agent.agent_country].filter(Boolean).join(', ')}
+                                {agent.agent_region && ` · ${agent.agent_region}`}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              Rate: {agent.commission_rate ?? '—'}% · Since: {formatAgentSince(agent.agent_since)}
+                              {agent.agent_contract_url && (
+                                <span title="Contract on file" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#059669', fontWeight: 600, background: '#ecfdf5', borderRadius: 5, padding: '2px 7px' }}>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                  Contract
+                                </span>
+                              )}
+                            </div>
+                            {agent.stats && (
+                              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginBottom: 4 }}>
+                                Orders: {agent.stats.effective_orders ?? agent.stats.total_orders ?? 0} · Revenue: {fmt(agent.stats.effective_revenue ?? agent.stats.total_revenue)} ·
+                                Commission Owed: {fmt(agent.stats.effective_pending_commission ?? agent.stats.pending_commission)}
+                              </div>
+                            )}
+                            {agent.agent_conditions && (
+                              <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 6, maxWidth: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {agent.agent_conditions.length > 100 ? agent.agent_conditions.slice(0, 100) + '...' : agent.agent_conditions}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                              <button onClick={() => router.push(`/admin/agents/${agent.id}`)} style={{ padding: '6px 14px', fontSize: 12, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
+                                View Details
+                              </button>
+                              <button onClick={() => handleEdit(agent)} style={{ padding: '6px 14px', fontSize: 12, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
+                                Edit
+                              </button>
+                              <button onClick={() => handleAddBonus(agent)} style={{ padding: '6px 14px', fontSize: 12, border: 'none', background: colors.inkPlum, color: '#fff', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
+                                Add Bonus
+                              </button>
+                              <button onClick={() => setConfirmDelete(agent)} style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => router.push(`/admin/agents/${agent.id}`)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: 12,
-                          border: `1px solid ${colors.inkPlum}`,
-                          background: '#fff',
-                          color: colors.inkPlum,
-                          borderRadius: 8,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          fontFamily: fonts.body,
-                        }}
-                      >
-                        View Details
-                      </button>
-                      <button
-                        onClick={() => handleEdit(agent)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: 12,
-                          border: `1px solid ${colors.lineGray}`,
-                          background: '#fff',
-                          color: colors.charcoal,
-                          borderRadius: 8,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          fontFamily: fonts.body,
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleAddBonus(agent)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: 12,
-                          border: 'none',
-                          background: colors.inkPlum,
-                          color: '#fff',
-                          borderRadius: 8,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          fontFamily: fonts.body,
-                        }}
-                      >
-                        Add Bonus
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(agent)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: 12,
-                          border: '1px solid #fca5a5',
-                          background: '#fff',
-                          color: '#dc2626',
-                          borderRadius: 8,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          fontFamily: fonts.body,
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

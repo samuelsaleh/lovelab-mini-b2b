@@ -29,8 +29,11 @@ export default function AgentAnalytics() {
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('overview') // 'overview', 'orders', 'history', 'payouts'
+  const [activeTab, setActiveTab] = useState('overview')
   const [page, setPage] = useState(0)
+  const [pendingInvitations, setPendingInvitations] = useState([])
+  const [acceptingInvite, setAcceptingInvite] = useState(null)
+  const [orgLedger, setOrgLedger] = useState(null)
 
   // Contract upload state
   const [contractName, setContractName] = useState(null);
@@ -60,10 +63,11 @@ export default function AgentAnalytics() {
     setLoading(true)
     setError(null)
     try {
-      const [commRes, payRes, contractRes] = await Promise.all([
+      const [commRes, payRes, contractRes, invRes] = await Promise.all([
         fetch('/api/commissions'),
         fetch('/api/agent-payments'),
-        fetch(`/api/agents/${profile.id}/contract`)
+        fetch(`/api/agents/${profile.id}/contract`),
+        fetch('/api/organizations/invitations'),
       ])
       if (!commRes.ok) throw new Error('Failed to load analytics data')
       const commJson = await commRes.json()
@@ -75,15 +79,46 @@ export default function AgentAnalytics() {
         : []
       const payJson = await payRes.json().catch(() => ({ payments: [] }))
       const contractJson = await contractRes.json().catch(() => ({}))
+      const invJson = await invRes.json().catch(() => ({ invitations: [] }))
       
       setData({ ...commJson, commissions: dedupedCommissions })
       setPayments(payJson.payments || [])
       setContractUrl(contractJson.url || null)
       setContractName(contractJson.name || null)
+      setPendingInvitations(invJson.invitations || [])
+
+      if (profile?.organization_id) {
+        try {
+          const ledgerRes = await fetch(`/api/organizations/${profile.organization_id}/ledger`)
+          const ledgerJson = await ledgerRes.json().catch(() => ({}))
+          setOrgLedger(ledgerRes.ok ? ledgerJson : null)
+        } catch {
+          setOrgLedger(null)
+        }
+      }
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
+  }
+
+  const handleAcceptInvitation = async (token) => {
+    setAcceptingInvite(token)
+    try {
+      const res = await fetch('/api/organizations/invitations/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Failed to accept invitation')
+      setPendingInvitations(prev => prev.filter(inv => inv.token !== token))
+      await loadData()
+    } catch (err) {
+      alert(err.message || 'Failed to accept invitation')
+    } finally {
+      setAcceptingInvite(null)
+    }
   }
 
   const monthlyData = useMemo(() => {
@@ -166,6 +201,26 @@ export default function AgentAnalytics() {
           </p>
         </div>
 
+        {/* Pending Invitations Banner */}
+        {pendingInvitations.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            {pendingInvitations.map((inv) => (
+              <div key={inv.id} style={{ padding: '14px 18px', background: '#f0f7ff', border: '1px solid #bfdbfe', borderRadius: 10, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 14, color: '#1e40af' }}>
+                  You're invited to join <strong>{inv.organizations?.name || 'a team'}</strong> as {inv.role === 'owner' ? 'an owner' : 'a member'}.
+                </div>
+                <button
+                  onClick={() => handleAcceptInvitation(inv.token)}
+                  disabled={acceptingInvite === inv.token}
+                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#1d4ed8', color: '#fff', cursor: acceptingInvite === inv.token ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, opacity: acceptingInvite === inv.token ? 0.6 : 1 }}
+                >
+                  {acceptingInvite === inv.token ? 'Accepting...' : 'Accept Invitation'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Inner Tabs */}
         <div style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${colors.lineGray}`, marginBottom: 24 }}>
           {[
@@ -208,6 +263,39 @@ export default function AgentAnalytics() {
               <SummaryCard title="Total Paid Out" value={fmt(s.total_paid_out || 0)} subtext={`${payments.length} payouts`} accent={colors.success} />
               <SummaryCard title="Pending Balance" value={fmt(s.true_pending_balance || 0)} subtext="awaiting payment" accent={s.true_pending_balance > 0 ? colors.warning : colors.lovelabMuted} />
             </div>
+
+            {orgLedger?.organization_summary && orgLedger.per_member?.length > 1 && (
+              <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', marginBottom: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16 }}>
+                  Company Totals
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                  <SummaryCard title="Company Earned" value={fmt(orgLedger.organization_summary.total_commission_earned || 0)} accent={colors.inkPlum} />
+                  <SummaryCard title="Company Paid" value={fmt(orgLedger.organization_summary.total_paid_out || 0)} accent={colors.success} />
+                  <SummaryCard title="Company Pending" value={fmt(orgLedger.organization_summary.pending_balance || 0)} accent={colors.warning} />
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'left', borderBottom: `1px solid ${colors.lineGray}` }}>Member</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Earned</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Paid</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgLedger.per_member.map((m) => (
+                      <tr key={m.user_id}>
+                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }}>{m.profile?.full_name || m.profile?.email || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.total_commission_earned || 0)}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.success, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.total_paid_out || 0)}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.pending_balance || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' }}>
               {/* Monthly Chart */}
@@ -529,7 +617,7 @@ export default function AgentAnalytics() {
           <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
             <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, marginBottom: 16 }}>My Documents Folder</div>
-              <AgentFolderBrowser agentId={profile?.id} />
+              <AgentFolderBrowser agentId={profile?.id} organizationId={profile?.organization_id} />
             </div>
           </div>
         )}
