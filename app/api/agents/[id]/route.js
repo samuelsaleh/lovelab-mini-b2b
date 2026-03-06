@@ -13,7 +13,7 @@ async function requireAdmin(supabase, userId) {
   return isAdminRole(data);
 }
 
-const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at';
+const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
 
 // GET - Single agent detail with commission history (admin only)
 export async function GET(request, { params }) {
@@ -199,7 +199,6 @@ export async function PUT(request, { params }) {
       }
     }
 
-    // Validate commission_rate if provided
     if (updates.commission_rate !== undefined) {
       const rate = Number(updates.commission_rate);
       if (isNaN(rate) || rate < 0 || rate > 100) {
@@ -208,11 +207,48 @@ export async function PUT(request, { params }) {
       updates.commission_rate = rate;
     }
 
-    // Validate agent_status if provided
     if (updates.agent_status !== undefined) {
       const validStatuses = ['invited', 'active', 'paused', 'inactive'];
       if (!validStatuses.includes(updates.agent_status)) {
         return NextResponse.json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }, { status: 400 });
+      }
+    }
+
+    // Handle organization reassignment
+    const newOrgId = body.organization_id !== undefined ? (body.organization_id || null) : undefined;
+    if (newOrgId !== undefined) {
+      updates.organization_id = newOrgId;
+
+      const { data: currentProfile } = await adminSupabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', id)
+        .single();
+
+      const oldOrgId = currentProfile?.organization_id || null;
+
+      if (oldOrgId !== newOrgId) {
+        if (oldOrgId) {
+          await adminSupabase
+            .from('organization_memberships')
+            .delete()
+            .eq('organization_id', oldOrgId)
+            .eq('user_id', id);
+        }
+        if (newOrgId) {
+          const { data: existingMembership } = await adminSupabase
+            .from('organization_memberships')
+            .select('id')
+            .eq('organization_id', newOrgId)
+            .eq('user_id', id)
+            .maybeSingle();
+
+          if (!existingMembership) {
+            await adminSupabase
+              .from('organization_memberships')
+              .insert({ organization_id: newOrgId, user_id: id, role: 'member' });
+          }
+        }
       }
     }
 

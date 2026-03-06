@@ -35,7 +35,7 @@ export default function AgentAnalytics() {
   const [acceptingInvite, setAcceptingInvite] = useState(null)
   const [orgLedger, setOrgLedger] = useState(null)
   const [teamLedger, setTeamLedger] = useState(null)
-  const [orgName, setOrgName] = useState(null)
+  const [orgDetails, setOrgDetails] = useState(null)
 
   // Contract upload state
   const [contractName, setContractName] = useState(null);
@@ -101,10 +101,11 @@ export default function AgentAnalytics() {
           const orgJson = await orgRes.json().catch(() => ({}))
           setOrgLedger(ledgerRes.ok ? ledgerJson : null)
           setTeamLedger(teamRes.ok ? teamJson : null)
-          setOrgName(orgJson.organization?.name || null)
+          setOrgDetails(orgJson.organization || null)
         } catch {
           setOrgLedger(null)
           setTeamLedger(null)
+          setOrgDetails(null)
         }
       }
     } catch (err) {
@@ -276,36 +277,81 @@ export default function AgentAnalytics() {
               <SummaryCard title="Pending Balance" value={fmt(s.true_pending_balance || 0)} subtext="awaiting payment" accent={s.true_pending_balance > 0 ? colors.warning : colors.lovelabMuted} />
             </div>
 
-            {orgLedger?.organization_summary && orgLedger.per_member?.length > 1 && (
+            {orgDetails && (
               <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', marginBottom: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16 }}>
-                  Company Totals
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f4f0f5', color: colors.inkPlum, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>
+                    {(orgDetails.name || 'C')[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum }}>{orgDetails.name}</div>
+                    <div style={{ fontSize: 12, color: colors.lovelabMuted }}>My Company</div>
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-                  <SummaryCard title="Company Earned" value={fmt(orgLedger.organization_summary.total_commission_earned || 0)} accent={colors.inkPlum} />
-                  <SummaryCard title="Company Paid" value={fmt(orgLedger.organization_summary.total_paid_out || 0)} accent={colors.success} />
-                  <SummaryCard title="Company Pending" value={fmt(orgLedger.organization_summary.pending_balance || 0)} accent={colors.warning} />
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                  {orgDetails.territory && (
+                    <div style={{ background: '#fafafa', border: `1px solid ${colors.lineGray}`, borderRadius: 8, padding: '8px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Territory</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: colors.charcoal }}>{orgDetails.territory}</div>
+                    </div>
+                  )}
+                  {orgDetails.commission_rate != null && (
+                    <div style={{ background: '#fafafa', border: `1px solid ${colors.lineGray}`, borderRadius: 8, padding: '8px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Company Rate</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: colors.inkPlum }}>{orgDetails.commission_rate}%</div>
+                    </div>
+                  )}
+                  {orgLedger?.per_member && (
+                    <div style={{ background: '#fafafa', border: `1px solid ${colors.lineGray}`, borderRadius: 8, padding: '8px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Members</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: colors.charcoal }}>{orgLedger.per_member.length}</div>
+                    </div>
+                  )}
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'left', borderBottom: `1px solid ${colors.lineGray}` }}>Member</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Earned</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Paid</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>Pending</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orgLedger.per_member.map((m) => (
-                      <tr key={m.user_id}>
-                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }}>{m.profile?.full_name || m.profile?.email || '—'}</td>
-                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.total_commission_earned || 0)}</td>
-                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.success, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.total_paid_out || 0)}</td>
-                        <td style={{ padding: '8px 10px', fontSize: 13, color: colors.charcoal, textAlign: 'right', borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(m.pending_balance || 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+                {orgDetails.conditions && (
+                  <div style={{ background: '#fafafa', padding: 14, borderRadius: 8, fontSize: 13, color: colors.charcoal, lineHeight: 1.6, border: `1px solid ${colors.lineGray}`, marginBottom: 16 }}>
+                    <strong style={{ color: colors.lovelabMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Conditions</strong>
+                    <div style={{ marginTop: 4 }}>{orgDetails.conditions}</div>
+                  </div>
+                )}
+
+                {orgLedger?.per_member && orgLedger.per_member.length > 0 && (
+                  <div style={{ marginBottom: orgLedger?.organization_summary ? 16 : 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Colleagues</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {orgLedger.per_member.map((m) => (
+                        <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: m.user_id === profile?.id ? '#f4f0f5' : '#fafafa', border: `1px solid ${m.user_id === profile?.id ? colors.inkPlum + '33' : colors.lineGray}` }}>
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: m.user_id === profile?.id ? colors.inkPlum : '#ddd', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                            {(m.profile?.full_name || m.profile?.email || '?')[0].toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: colors.charcoal }}>
+                              {m.profile?.full_name || m.profile?.email || '—'}
+                              {m.user_id === profile?.id && <span style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, marginLeft: 6 }}>YOU</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: colors.lovelabMuted }}>{m.role}</div>
+                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, textAlign: 'right' }}>
+                            {fmt(m.total_commission_earned || 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {orgLedger?.organization_summary && (
+                  <div style={{ borderTop: `1px solid ${colors.lineGray}`, paddingTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Company Totals</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                      <SummaryCard title="Earned" value={fmt(orgLedger.organization_summary.total_commission_earned || 0)} accent={colors.inkPlum} />
+                      <SummaryCard title="Paid" value={fmt(orgLedger.organization_summary.total_paid_out || 0)} accent={colors.success} />
+                      <SummaryCard title="Pending" value={fmt(orgLedger.organization_summary.pending_balance || 0)} accent={colors.warning} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -629,7 +675,7 @@ export default function AgentAnalytics() {
           <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
             <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', marginBottom: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
-                {orgName || 'Your Team'}
+                {orgDetails?.name || 'Your Team'}
               </div>
               <div style={{ fontSize: 13, color: colors.lovelabMuted, marginBottom: 20 }}>
                 Full visibility into your team's performance and orders.

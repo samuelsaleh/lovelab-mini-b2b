@@ -318,13 +318,15 @@ export default function AdminAgentsPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {orgGroups.map((group) => {
-              const isMultiAgent = group.organizationId && group.agents.length > 1;
+              const hasOrg = !!group.organizationId;
+              const orgTerritory = group.agents[0]?.organization_territory;
+              const orgRate = group.agents[0]?.organization_rate;
               return (
                 <div key={group.organizationId || group.agents[0]?.id}>
-                  {isMultiAgent && (
+                  {hasOrg && (
                     <div style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '10px 16px', marginBottom: 4,
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      padding: '10px 16px',
                       background: '#f4f0f5', borderRadius: '12px 12px 0 0',
                       border: `1px solid ${colors.lineGray}`, borderBottom: 'none',
                     }}>
@@ -335,13 +337,23 @@ export default function AdminAgentsPage() {
                       <span style={{ fontSize: 12, color: colors.lovelabMuted }}>
                         {group.agents.length} agent{group.agents.length !== 1 ? 's' : ''}
                       </span>
+                      {orgTerritory && (
+                        <span style={{ fontSize: 11, color: '#666', background: '#fff', padding: '2px 8px', borderRadius: 5, border: '1px solid #e3e3e3' }}>
+                          {orgTerritory}
+                        </span>
+                      )}
+                      {orgRate != null && (
+                        <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#fff', padding: '2px 8px', borderRadius: 5, border: `1px solid ${colors.inkPlum}33` }}>
+                          {orgRate}%
+                        </span>
+                      )}
                     </div>
                   )}
                   <div style={{
-                    display: 'flex', flexDirection: 'column', gap: isMultiAgent ? 0 : 12,
-                    ...(isMultiAgent ? {
+                    display: 'flex', flexDirection: 'column', gap: hasOrg ? 0 : 12,
+                    ...(hasOrg ? {
                       border: `1px solid ${colors.lineGray}`,
-                      borderRadius: '0 0 12px 12px',
+                      borderRadius: hasOrg ? '0 0 12px 12px' : 12,
                       overflow: 'hidden',
                     } : {}),
                   }}>
@@ -351,7 +363,7 @@ export default function AdminAgentsPage() {
                         style={{
                           background: '#fff',
                           padding: 18,
-                          ...(isMultiAgent
+                          ...(hasOrg
                             ? { borderBottom: idx < group.agents.length - 1 ? `1px solid ${colors.lineGray}` : 'none' }
                             : { borderRadius: 12, border: `1px solid ${colors.lineGray}` }
                           ),
@@ -369,7 +381,7 @@ export default function AdminAgentsPage() {
                               <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 8px', borderRadius: 6, background: statusColors[agent.agent_status] || colors.lovelabMuted, color: '#fff' }}>
                                 {agent.agent_status || '—'}
                               </span>
-                              {!isMultiAgent && agent.organization_name && (
+                              {!hasOrg && agent.organization_name && (
                                 <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#f4f0f5', padding: '3px 8px', borderRadius: 5 }}>
                                   {agent.organization_name}
                                 </span>

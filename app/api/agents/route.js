@@ -181,22 +181,28 @@ export async function GET(request) {
     };
 
     const orgIds = [...new Set((agents || []).map(a => a.organization_id).filter(Boolean))];
-    const orgNameMap = {};
+    const orgMap = {};
     if (orgIds.length > 0) {
       const { data: orgs } = await adminSupabase
         .from('organizations')
-        .select('id, name')
+        .select('id, name, territory, commission_rate, conditions')
         .in('id', orgIds);
       for (const org of orgs || []) {
-        orgNameMap[org.id] = org.name;
+        orgMap[org.id] = org;
       }
     }
 
-    const agentsWithStats = agents.map(a => ({
-      ...a,
-      organization_name: orgNameMap[a.organization_id] || null,
-      stats: makeStats(a.id, a.commission_rate),
-    }));
+    const agentsWithStats = agents.map(a => {
+      const org = orgMap[a.organization_id] || null;
+      return {
+        ...a,
+        organization_name: org?.name || null,
+        organization_territory: org?.territory || null,
+        organization_rate: org?.commission_rate ?? null,
+        organization_conditions: org?.conditions || null,
+        stats: makeStats(a.id, a.commission_rate),
+      };
+    });
 
     const response = { agents: agentsWithStats };
     if (trashedAgents.length > 0) {
@@ -240,6 +246,7 @@ export async function POST(request) {
       agent_specialty,
       agent_conditions,
       agent_notes,
+      organization_id: requestedOrgId,
       send_invite = true,
     } = body;
 
@@ -280,6 +287,7 @@ export async function POST(request) {
       agent_specialty: agent_specialty?.trim() || null,
       agent_conditions: agent_conditions?.trim() || null,
       agent_notes: agent_notes?.trim() || null,
+      ...(requestedOrgId ? { organization_id: requestedOrgId } : {}),
     };
 
     let agentProfile;
