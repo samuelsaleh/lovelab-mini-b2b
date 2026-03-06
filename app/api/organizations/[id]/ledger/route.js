@@ -6,12 +6,15 @@ function toNumber(value) {
   return Number(value) || 0;
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
-    const organizationId = params?.id;
+    const organizationId = (await params)?.id;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
+
+    const { searchParams } = new URL(request.url);
+    const includeOrders = searchParams.get('include_orders') === 'true';
 
     const { data: members, error: memberErr } = await supabase
       .from('organization_memberships')
@@ -32,10 +35,14 @@ export async function GET(_request, { params }) {
       });
     }
 
+    const commSelect = includeOrders
+      ? 'id, agent_id, commission_amount, commission_rate, order_total, status, type, created_at, document_id, documents:document_id(client_name, client_company)'
+      : 'id, agent_id, commission_amount, status';
+
     const [{ data: commissions, error: commErr }, { data: payments, error: payErr }] = await Promise.all([
       supabase
         .from('agent_commissions')
-        .select('id, agent_id, commission_amount, status')
+        .select(commSelect)
         .in('agent_id', memberIds),
       supabase
         .from('agent_payments')
@@ -55,6 +62,7 @@ export async function GET(_request, { params }) {
         total_commission_earned: 0,
         total_paid_out: 0,
         pending_balance: 0,
+        ...(includeOrders ? { orders: [] } : {}),
       });
     }
 
@@ -64,6 +72,18 @@ export async function GET(_request, { params }) {
       const amount = toNumber(row.commission_amount);
       if (row.status !== 'cancelled') {
         bucket.total_commission_earned += amount;
+      }
+      if (includeOrders && row.type === 'order') {
+        bucket.orders.push({
+          id: row.id,
+          order_total: toNumber(row.order_total),
+          commission_amount: amount,
+          commission_rate: toNumber(row.commission_rate),
+          status: row.status,
+          created_at: row.created_at,
+          client_name: row.documents?.client_name || null,
+          client_company: row.documents?.client_company || null,
+        });
       }
     }
 

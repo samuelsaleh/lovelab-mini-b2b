@@ -55,6 +55,36 @@ export async function GET(request) {
       events = raw.map((evt) => ({ ...evt, permission: 'manage' }));
     }
 
+    const agentEvents = events.filter(e => e.type === 'agent');
+    if (agentEvents.length > 0) {
+      const creatorIds = [...new Set(agentEvents.map(e => e.created_by))];
+      const { data: creatorProfiles } = await adminSupabase
+        .from('profiles')
+        .select('id, organization_id')
+        .in('id', creatorIds);
+
+      const orgIds = [...new Set((creatorProfiles || []).map(p => p.organization_id).filter(Boolean))];
+      let orgMap = new Map();
+      if (orgIds.length > 0) {
+        const { data: orgs } = await adminSupabase
+          .from('organizations')
+          .select('id, name')
+          .in('id', orgIds);
+        orgMap = new Map((orgs || []).map(o => [o.id, o.name]));
+      }
+
+      const profileOrgMap = new Map((creatorProfiles || []).map(p => [p.id, p.organization_id]));
+      for (const evt of events) {
+        if (evt.type === 'agent') {
+          const orgId = profileOrgMap.get(evt.created_by);
+          if (orgId) {
+            evt.organization_id = orgId;
+            evt.organization_name = orgMap.get(orgId) || null;
+          }
+        }
+      }
+    }
+
     return NextResponse.json({ events });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

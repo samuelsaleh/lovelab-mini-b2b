@@ -39,6 +39,13 @@ export default function AdminAgentDetailsPage() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState(null);
 
+  // Org editing
+  const [orgData, setOrgData] = useState(null);
+  const [editingOrg, setEditingOrg] = useState(false);
+  const [orgForm, setOrgForm] = useState({ name: '', territory: '', commission_rate: '', conditions: '' });
+  const [savingOrg, setSavingOrg] = useState(false);
+  const [orgMsg, setOrgMsg] = useState(null);
+
   const load = useCallback(async () => {
     if (!agentId) return;
     setLoading(true);
@@ -65,17 +72,29 @@ export default function AdminAgentDetailsPage() {
       setPayments(payJson.payments || []);
 
       if (found.organization_id) {
-        const [ledgerRes, membersRes] = await Promise.all([
+        const [ledgerRes, membersRes, orgRes] = await Promise.all([
           fetch(`/api/organizations/${found.organization_id}/ledger`),
           fetch(`/api/organizations/${found.organization_id}/members`),
+          fetch(`/api/organizations/${found.organization_id}`),
         ]);
         const ledgerJson = await ledgerRes.json().catch(() => ({}));
         const membersJson = await membersRes.json().catch(() => ({}));
+        const orgJson = await orgRes.json().catch(() => ({}));
         setOrganizationLedger(ledgerRes.ok ? ledgerJson : null);
         setOrganizationMembers(membersJson?.members || []);
+        if (orgRes.ok && orgJson.organization) {
+          setOrgData(orgJson.organization);
+          setOrgForm({
+            name: orgJson.organization.name || '',
+            territory: orgJson.organization.territory || '',
+            commission_rate: orgJson.organization.commission_rate != null ? String(orgJson.organization.commission_rate) : '',
+            conditions: orgJson.organization.conditions || '',
+          });
+        }
       } else {
         setOrganizationLedger(null);
         setOrganizationMembers([]);
+        setOrgData(null);
       }
 
       const commList = commJson.commissions || [];
@@ -217,6 +236,36 @@ export default function AdminAgentDetailsPage() {
     }
   };
 
+  const handleSaveOrg = async () => {
+    if (!agent?.organization_id) return;
+    setSavingOrg(true);
+    setOrgMsg(null);
+    try {
+      const body = {
+        name: orgForm.name.trim(),
+        territory: orgForm.territory.trim() || null,
+        commission_rate: orgForm.commission_rate ? Number(orgForm.commission_rate) : null,
+        conditions: orgForm.conditions.trim() || null,
+      };
+      const res = await fetch(`/api/organizations/${agent.organization_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to update organization');
+      setOrgData(json.organization);
+      setEditingOrg(false);
+      setOrgMsg('Organization updated');
+      setTimeout(() => setOrgMsg(null), 3000);
+      await load();
+    } catch (err) {
+      setOrgMsg(err.message || 'Failed to save');
+    } finally {
+      setSavingOrg(false);
+    }
+  };
+
   const orderRows = useMemo(
     () => commissions.filter((c) => c.type === 'order'),
     [commissions]
@@ -355,41 +404,90 @@ export default function AdminAgentDetailsPage() {
               })()}
             </div>
 
-            {organizationLedger?.organization_summary && (
+            {agent?.organization_id && orgData && (
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
-                  Company Commission Rollup{agent?.organization_name ? ` — ${agent.organization_name}` : ''}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
+                    Organization — {orgData.name}
+                  </div>
+                  <button
+                    onClick={() => { setEditingOrg(!editingOrg); setOrgMsg(null); }}
+                    style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: editingOrg ? '#fef2f2' : '#fff', color: editingOrg ? '#dc2626' : colors.charcoal, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                  >
+                    {editingOrg ? 'Cancel' : 'Edit Org'}
+                  </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
-                  <Stat label="Company Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
-                  <Stat label="Company Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} color={colors.success} />
-                  <Stat label="Company Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} color={colors.warning} />
-                </div>
-                {(organizationLedger.per_member || []).length > 0 && (
-                  <>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase' }}>
-                      Per Member Totals
+                {editingOrg ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Name</label>
+                        <input value={orgForm.name} onChange={(e) => setOrgForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Territory</label>
+                        <input value={orgForm.territory} onChange={(e) => setOrgForm(f => ({ ...f, territory: e.target.value }))} style={inputStyle} />
+                      </div>
                     </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#faf8fc' }}>
-                          <th style={th}>Member</th>
-                          <th style={{ ...th, textAlign: 'right' }}>Earned</th>
-                          <th style={{ ...th, textAlign: 'right' }}>Paid</th>
-                          <th style={{ ...th, textAlign: 'right' }}>Pending</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(organizationLedger.per_member || []).map((m) => (
-                          <tr key={m.user_id}>
-                            <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
-                            <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
-                            <td style={{ ...td, textAlign: 'right', color: colors.success }}>{fmt(m.total_paid_out || 0)}</td>
-                            <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Rate (%)</label>
+                        <input type="number" min="0" max="100" step="0.5" value={orgForm.commission_rate} onChange={(e) => setOrgForm(f => ({ ...f, commission_rate: e.target.value }))} placeholder="e.g. 15" style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Conditions</label>
+                        <input value={orgForm.conditions} onChange={(e) => setOrgForm(f => ({ ...f, conditions: e.target.value }))} placeholder="Special conditions" style={inputStyle} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <button onClick={handleSaveOrg} disabled={savingOrg || !orgForm.name.trim()} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingOrg ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: savingOrg ? 0.6 : 1 }}>
+                        {savingOrg ? 'Saving...' : 'Save Organization'}
+                      </button>
+                      {orgMsg && <span style={{ fontSize: 12, color: /fail|error/i.test(orgMsg) ? '#dc2626' : '#059669' }}>{orgMsg}</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    {orgData.territory && <span>Territory: <strong>{orgData.territory}</strong></span>}
+                    {orgData.commission_rate != null && <span>Org Rate: <strong>{orgData.commission_rate}%</strong></span>}
+                    {orgData.conditions && <span>Conditions: <strong>{orgData.conditions}</strong></span>}
+                    {!orgData.territory && orgData.commission_rate == null && !orgData.conditions && <span style={{ color: colors.lovelabMuted }}>No org-level settings configured yet</span>}
+                  </div>
+                )}
+                {organizationLedger?.organization_summary && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
+                      <Stat label="Company Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
+                      <Stat label="Company Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} color={colors.success} />
+                      <Stat label="Company Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} color={colors.warning} />
+                    </div>
+                    {(organizationLedger.per_member || []).length > 0 && (
+                      <>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase' }}>
+                          Per Member Totals
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: '#faf8fc' }}>
+                              <th style={th}>Member</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Earned</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Paid</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Pending</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(organizationLedger.per_member || []).map((m) => (
+                              <tr key={m.user_id}>
+                                <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
+                                <td style={{ ...td, textAlign: 'right', color: colors.success }}>{fmt(m.total_paid_out || 0)}</td>
+                                <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>
+                    )}
                   </>
                 )}
               </div>

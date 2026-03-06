@@ -73,3 +73,48 @@ test('email validation rejects invalid inputs', () => {
   assert.equal(isValidEmail('user@valid.com'), true);
   assert.equal(isValidEmail('a b@domain.com'), false);
 });
+
+// Team data access boundary tests
+
+function canAccessOrgLedger(profile, targetOrgId, memberships) {
+  if (!targetOrgId) return false;
+  if (isAdmin(profile)) return true;
+  return memberships.some(
+    (m) => m.organization_id === targetOrgId && m.user_id === profile.id && !m.deleted_at
+  );
+}
+
+test('agent in org X can access org X ledger (positive case)', () => {
+  const profile = { id: 'user-1', role: 'member', organization_id: 'org-x' };
+  const memberships = [
+    { organization_id: 'org-x', user_id: 'user-1', deleted_at: null },
+  ];
+  assert.equal(canAccessOrgLedger(profile, 'org-x', memberships), true);
+});
+
+test('agent in org X cannot access org Y ledger (negative case)', () => {
+  const profile = { id: 'user-1', role: 'member', organization_id: 'org-x' };
+  const memberships = [
+    { organization_id: 'org-x', user_id: 'user-1', deleted_at: null },
+  ];
+  assert.equal(canAccessOrgLedger(profile, 'org-y', memberships), false);
+});
+
+test('admin can access any org ledger', () => {
+  const profile = { id: 'admin-1', role: 'admin' };
+  assert.equal(canAccessOrgLedger(profile, 'org-x', []), true);
+  assert.equal(canAccessOrgLedger(profile, 'org-y', []), true);
+});
+
+test('deleted membership does not grant access', () => {
+  const profile = { id: 'user-1', role: 'member', organization_id: 'org-x' };
+  const memberships = [
+    { organization_id: 'org-x', user_id: 'user-1', deleted_at: '2026-01-01' },
+  ];
+  assert.equal(canAccessOrgLedger(profile, 'org-x', memberships), false);
+});
+
+test('null target org returns false', () => {
+  const profile = { id: 'user-1', role: 'member' };
+  assert.equal(canAccessOrgLedger(profile, null, []), false);
+});

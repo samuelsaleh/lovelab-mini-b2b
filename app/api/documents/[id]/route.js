@@ -89,15 +89,25 @@ export async function PUT(request, { params }) {
       if (doc?.total_amount > 0) {
         const { data: agentProfile } = await adminSupabase
           .from('profiles')
-          .select('is_agent, commission_rate, agent_status, agent_commission_config')
+          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
           .eq('id', doc.created_by)
           .single();
 
         if (agentProfile?.is_agent && agentProfile.agent_status === 'active') {
+          let effectiveRate = agentProfile.commission_rate || 0;
+          if (!effectiveRate && agentProfile.organization_id) {
+            const { data: org } = await adminSupabase
+              .from('organizations')
+              .select('commission_rate')
+              .eq('id', agentProfile.organization_id)
+              .single();
+            effectiveRate = org?.commission_rate || 0;
+          }
+
           const { amount, rate } = calculateCommission(
             doc.total_amount,
             agentProfile.agent_commission_config || null,
-            agentProfile.commission_rate || 0,
+            effectiveRate,
           );
 
           if (amount > 0) {

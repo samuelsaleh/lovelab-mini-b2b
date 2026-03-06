@@ -659,90 +659,134 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
         ].map(group => {
           const groupEvents = events.filter(e => (e.type || 'other') === group.key);
           if (groupEvents.length === 0) return null;
+
+          const renderEventRow = (event, indent = false) => (
+            <div
+              key={event.id}
+              style={{
+                display: 'flex', alignItems: 'center', marginBottom: 2, borderRadius: 8,
+                background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
+                paddingLeft: indent ? 10 : 0,
+              }}
+            >
+              {renamingEventId === event.id ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitRename(event.id); if (e.key === 'Escape') setRenamingEventId(null); }}
+                  onBlur={() => commitRename(event.id)}
+                  disabled={renameLoading}
+                  style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }}
+                />
+              ) : (
+                <button
+                  onClick={() => setSelectedEventId(event.id)}
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
+                    background: 'transparent',
+                    color: selectedEventId === event.id ? colors.inkPlum : '#555',
+                    fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
+                    cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
+                  <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
+                </button>
+              )}
+              {renamingEventId !== event.id && canManageEvent(event) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); startRename(event) }}
+                  title="Rename"
+                  style={{
+                    width: 22, height: 22, borderRadius: 5, border: 'none',
+                    background: 'transparent', color: '#ccc', fontSize: 11,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, transition: 'color .15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                >✎</button>
+              )}
+              {canManageEvent(event) && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openShareModal(event) }}
+                    title="Share folder"
+                    style={{
+                      width: 24, height: 24, borderRadius: 6, border: 'none',
+                      background: 'transparent', color: '#ccc', fontSize: 12,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, transition: 'color .15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                  >↗</button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
+                    title="Delete event"
+                    style={{
+                      width: 24, height: 24, borderRadius: 6, border: 'none',
+                      background: 'transparent', color: '#ccc', fontSize: 13,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, marginRight: 4, transition: 'color .15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
+                  >×</button>
+                </>
+              )}
+            </div>
+          );
+
+          if (group.key === 'agent') {
+            const orgGroups = new Map();
+            const ungrouped = [];
+            for (const evt of groupEvents) {
+              if (evt.organization_id && evt.organization_name) {
+                if (!orgGroups.has(evt.organization_id)) {
+                  orgGroups.set(evt.organization_id, { name: evt.organization_name, events: [] });
+                }
+                orgGroups.get(evt.organization_id).events.push(evt);
+              } else {
+                ungrouped.push(evt);
+              }
+            }
+
+            return (
+              <div key={group.key} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
+                  {group.label}
+                </div>
+                {[...orgGroups.entries()].map(([orgId, orgGroup]) => {
+                  const orgDocCount = orgGroup.events.reduce((sum, e) => sum + getEventDocCount(e.id), 0);
+                  return (
+                    <div key={orgId} style={{ marginBottom: 4 }}>
+                      <div style={{
+                        padding: '6px 12px', fontSize: 11, fontWeight: 700, color: colors.inkPlum,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        borderLeft: `2px solid ${colors.inkPlum}`, marginLeft: 4, marginTop: 4,
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{orgGroup.name}</span>
+                        <span style={{ fontSize: 10, color: '#999', flexShrink: 0, marginLeft: 6 }}>{orgDocCount}</span>
+                      </div>
+                      {orgGroup.events.map(evt => renderEventRow(evt, true))}
+                    </div>
+                  );
+                })}
+                {ungrouped.map(evt => renderEventRow(evt, false))}
+              </div>
+            );
+          }
+
           return (
             <div key={group.key} style={{ marginBottom: 8 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
                 {group.label}
               </div>
-              {groupEvents.map(event => (
-                <div
-                  key={event.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', marginBottom: 2, borderRadius: 8,
-                    background: selectedEventId === event.id ? '#f3f0f5' : 'transparent',
-                  }}
-                >
-                  {renamingEventId === event.id ? (
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') commitRename(event.id); if (e.key === 'Escape') setRenamingEventId(null); }}
-                      onBlur={() => commitRename(event.id)}
-                      disabled={renameLoading}
-                      style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }}
-                    />
-                  ) : (
-                    <button
-                      onClick={() => setSelectedEventId(event.id)}
-                      style={{
-                        flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none',
-                        background: 'transparent',
-                        color: selectedEventId === event.id ? colors.inkPlum : '#555',
-                        fontSize: 13, fontWeight: selectedEventId === event.id ? 600 : 400,
-                        cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        minWidth: 0,
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.name}</span>
-                      <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>{getEventDocCount(event.id)}</span>
-                    </button>
-                  )}
-                  {renamingEventId !== event.id && canManageEvent(event) && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); startRename(event) }}
-                      title="Rename"
-                      style={{
-                        width: 22, height: 22, borderRadius: 5, border: 'none',
-                        background: 'transparent', color: '#ccc', fontSize: 11,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0, transition: 'color .15s',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                    >✎</button>
-                  )}
-                  {canManageEvent(event) && (
-                    <>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openShareModal(event) }}
-                        title="Share folder"
-                        style={{
-                          width: 24, height: 24, borderRadius: 6, border: 'none',
-                          background: 'transparent', color: '#ccc', fontSize: 12,
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0, transition: 'color .15s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                      >↗</button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteEvent(event) }}
-                        title="Delete event"
-                        style={{
-                          width: 24, height: 24, borderRadius: 6, border: 'none',
-                          background: 'transparent', color: '#ccc', fontSize: 13,
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0, marginRight: 4, transition: 'color .15s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}
-                      >×</button>
-                    </>
-                  )}
-                </div>
-              ))}
+              {groupEvents.map(event => renderEventRow(event, false))}
             </div>
           );
         })}

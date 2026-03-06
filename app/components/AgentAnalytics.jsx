@@ -34,6 +34,8 @@ export default function AgentAnalytics() {
   const [pendingInvitations, setPendingInvitations] = useState([])
   const [acceptingInvite, setAcceptingInvite] = useState(null)
   const [orgLedger, setOrgLedger] = useState(null)
+  const [teamLedger, setTeamLedger] = useState(null)
+  const [orgName, setOrgName] = useState(null)
 
   // Contract upload state
   const [contractName, setContractName] = useState(null);
@@ -89,11 +91,20 @@ export default function AgentAnalytics() {
 
       if (profile?.organization_id) {
         try {
-          const ledgerRes = await fetch(`/api/organizations/${profile.organization_id}/ledger`)
+          const [ledgerRes, teamRes, orgRes] = await Promise.all([
+            fetch(`/api/organizations/${profile.organization_id}/ledger`),
+            fetch(`/api/organizations/${profile.organization_id}/ledger?include_orders=true`),
+            fetch(`/api/organizations/${profile.organization_id}`),
+          ])
           const ledgerJson = await ledgerRes.json().catch(() => ({}))
+          const teamJson = await teamRes.json().catch(() => ({}))
+          const orgJson = await orgRes.json().catch(() => ({}))
           setOrgLedger(ledgerRes.ok ? ledgerJson : null)
+          setTeamLedger(teamRes.ok ? teamJson : null)
+          setOrgName(orgJson.organization?.name || null)
         } catch {
           setOrgLedger(null)
+          setTeamLedger(null)
         }
       }
     } catch (err) {
@@ -222,12 +233,13 @@ export default function AgentAnalytics() {
         )}
 
         {/* Inner Tabs */}
-        <div style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${colors.lineGray}`, marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${colors.lineGray}`, marginBottom: 24, overflowX: 'auto' }}>
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'orders', label: 'My Orders' },
             { id: 'history', label: 'Commission History' },
             { id: 'payouts', label: 'Payouts' },
+            ...(profile?.organization_id && teamLedger?.per_member?.length > 1 ? [{ id: 'team', label: 'Team' }] : []),
             { id: 'folder', label: 'My Folder' },
           ].map(tab => {
             const isActive = activeTab === tab.id
@@ -609,6 +621,82 @@ export default function AgentAnalytics() {
               )}
             </div>
             <PaginationControls page={page} setPage={setPage} totalPages={totalPages} />
+          </div>
+        )}
+
+        {/* TAB: TEAM */}
+        {activeTab === 'team' && teamLedger && (
+          <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '20px 24px', marginBottom: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, marginBottom: 4 }}>
+                {orgName || 'Your Team'}
+              </div>
+              <div style={{ fontSize: 13, color: colors.lovelabMuted, marginBottom: 20 }}>
+                Full visibility into your team's performance and orders.
+              </div>
+
+              {teamLedger.organization_summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+                  <SummaryCard title="Team Earned" value={fmt(teamLedger.organization_summary.total_commission_earned || 0)} accent={colors.inkPlum} />
+                  <SummaryCard title="Team Paid" value={fmt(teamLedger.organization_summary.total_paid_out || 0)} accent={colors.success} />
+                  <SummaryCard title="Team Pending" value={fmt(teamLedger.organization_summary.pending_balance || 0)} accent={colors.warning} />
+                </div>
+              )}
+
+              {(teamLedger.per_member || []).map((member) => (
+                <div key={member.user_id} style={{ marginBottom: 20, border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ padding: '14px 18px', background: '#faf8fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: colors.charcoal }}>
+                        {member.profile?.full_name || member.profile?.email || 'Unknown'}
+                      </span>
+                      {member.user_id === profile?.id && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: '#f4f0f5', padding: '2px 6px', borderRadius: 4, marginLeft: 8 }}>YOU</span>
+                      )}
+                      <span style={{ fontSize: 11, color: colors.lovelabMuted, marginLeft: 8 }}>{member.role}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                      <span>Earned: <strong style={{ color: colors.inkPlum }}>{fmt(member.total_commission_earned || 0)}</strong></span>
+                      <span>Paid: <strong style={{ color: colors.success }}>{fmt(member.total_paid_out || 0)}</strong></span>
+                      <span>Pending: <strong>{fmt(member.pending_balance || 0)}</strong></span>
+                    </div>
+                  </div>
+                  {member.orders && member.orders.length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          {['Date', 'Client', 'Order Total', 'Commission', 'Status'].map(h => (
+                            <th key={h} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', textAlign: 'left', borderBottom: `1px solid ${colors.lineGray}` }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {member.orders.slice(0, 20).map((order) => {
+                          const st = STATUS_COLORS[order.status] || STATUS_COLORS.pending
+                          return (
+                            <tr key={order.id}>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }}>
+                                {new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}`, fontWeight: 600 }}>
+                                {order.client_company || order.client_name || '—'}
+                              </td>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(order.order_total)}</td>
+                              <td style={{ padding: '10px 14px', fontSize: 12, color: colors.inkPlum, fontWeight: 700, borderBottom: `1px solid ${colors.lineGray}` }}>{fmt(order.commission_amount)}</td>
+                              <td style={{ padding: '10px 14px', borderBottom: `1px solid ${colors.lineGray}` }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: st.bg, color: st.color }}>{st.label}</span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ padding: '16px 18px', fontSize: 13, color: colors.lovelabMuted }}>No orders yet.</div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

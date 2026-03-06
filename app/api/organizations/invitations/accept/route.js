@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/organizations/authz';
-import { ensureOrganizationFolders } from '@/lib/organizations/provisioning';
+import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
 
 export async function POST(request) {
   try {
@@ -74,7 +74,12 @@ export async function POST(request) {
       .single();
     if (orgErr) throw orgErr;
 
-    const folder = await ensureOrganizationFolders(org);
+    let folder = null;
+    try {
+      folder = await ensureOrgFoldersInDb(org.id, org.name, session.user.id);
+    } catch (folderErr) {
+      console.error('[invitation-accept] Folder provisioning error (non-blocking):', folderErr.message);
+    }
 
     return NextResponse.json({
       ok: true,

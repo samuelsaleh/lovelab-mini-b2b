@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
-import { ensureOrganizationFolders } from '@/lib/organizations/provisioning';
+import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
 
 // Utility endpoint to auto-create organization+folders for an existing agent profile.
 // Intended for onboarding hooks or migration verification scripts.
@@ -67,7 +67,12 @@ export async function POST(request) {
       if (memberErr) throw memberErr;
     }
 
-    const folder = await ensureOrganizationFolders(organization);
+    let folder = null;
+    try {
+      folder = await ensureOrgFoldersInDb(organization.id, organization.name, profile.id);
+    } catch (folderErr) {
+      console.error('[auto-ensure] Folder provisioning error (non-blocking):', folderErr.message);
+    }
 
     return NextResponse.json({ ok: true, organization, folder });
   } catch (err) {

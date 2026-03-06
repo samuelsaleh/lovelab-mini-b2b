@@ -173,15 +173,25 @@ export async function POST(request) {
         const adminSupabase = createAdminClient();
         const { data: agentProfile } = await adminSupabase
           .from('profiles')
-          .select('is_agent, commission_rate, agent_status, agent_commission_config')
+          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
           .eq('id', user.id)
           .single();
 
         if (agentProfile?.is_agent && agentProfile.agent_status === 'active') {
+          let effectiveRate = agentProfile.commission_rate || 0;
+          if (!effectiveRate && agentProfile.organization_id) {
+            const { data: org } = await adminSupabase
+              .from('organizations')
+              .select('commission_rate')
+              .eq('id', agentProfile.organization_id)
+              .single();
+            effectiveRate = org?.commission_rate || 0;
+          }
+
           const { amount, rate } = calculateCommission(
             document.total_amount,
             agentProfile.agent_commission_config || null,
-            agentProfile.commission_rate || 0,
+            effectiveRate,
           );
 
           if (amount > 0) {

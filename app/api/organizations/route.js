@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
-import { ensureOrganizationFolders } from '@/lib/organizations/provisioning';
+import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
 
 export async function GET() {
   try {
@@ -96,7 +96,12 @@ export async function POST(request) {
       .eq('id', ownerUserId);
     if (profileError) throw profileError;
 
-    const folderInfo = await ensureOrganizationFolders(organization);
+    let folderInfo = null;
+    try {
+      folderInfo = await ensureOrgFoldersInDb(organization.id, organization.name, ownerUserId);
+    } catch (folderErr) {
+      console.error('[org POST] Folder provisioning error (non-blocking):', folderErr.message);
+    }
 
     return NextResponse.json({ organization, folder: folderInfo }, { status: 201 });
   } catch (err) {

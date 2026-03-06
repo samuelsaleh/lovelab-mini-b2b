@@ -20,6 +20,10 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Organization selector
+  const [organizations, setOrganizations] = useState([]);
+  const [selectedOrgId, setSelectedOrgId] = useState('');
+
   // Two-step create flow: step 1 = form, step 2 = contract upload
   const [step, setStep] = useState(1);
   const [createdAgentId, setCreatedAgentId] = useState(null);
@@ -38,6 +42,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
       setError('');
       setStep(1);
       setCreatedAgentId(null);
+      setSelectedOrgId(agent?.organization_id || '');
       if (agent) {
         setEmail(agent.email || '');
         setFullName(agent.full_name || '');
@@ -67,6 +72,11 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         setAgentConditions('');
         setAgentNotes('');
       }
+      // Fetch organizations for dropdown
+      fetch('/api/organizations')
+        .then(r => r.json())
+        .then(d => setOrganizations(d.organizations || []))
+        .catch(() => setOrganizations([]));
       // Fetch existing contract info when editing
       if (agent) {
         fetch(`/api/agents/${agent.id}/contract`)
@@ -82,6 +92,19 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
       setContractUploading(false);
     }
   }, [isOpen, agent]);
+
+  const handleOrgChange = (orgId) => {
+    setSelectedOrgId(orgId);
+    if (orgId && !isEdit) {
+      const org = organizations.find(o => o.id === orgId);
+      if (org) {
+        if (org.commission_rate != null && !commissionRate) setCommissionRate(String(org.commission_rate));
+        if (org.territory && !agentTerritory) setAgentTerritory(org.territory);
+        if (org.conditions && !agentConditions) setAgentConditions(org.conditions);
+        if (org.name && !agentCompany) setAgentCompany(org.name);
+      }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -107,6 +130,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         agent_specialty: agentSpecialty.trim() || null,
         agent_conditions: agentConditions.trim() || null,
         agent_notes: agentNotes.trim() || null,
+        organization_id: selectedOrgId || null,
       };
       if (isEdit) {
         const res = await fetch(`/api/agents/${agent.id}`, {
@@ -131,7 +155,16 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to create agent');
-        // Advance to step 2 — contract upload — if we have an agent ID
+        // If org was selected and agent was created, add as member
+        if (selectedOrgId && data?.agent?.id) {
+          try {
+            await fetch(`/api/organizations/${selectedOrgId}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: data.agent.id, role: 'member' }),
+            });
+          } catch {}
+        }
         if (data?.agent?.id) {
           setCreatedAgentId(data.agent.id);
           setContractUrl(null);
@@ -302,6 +335,21 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
               />
             </div>
           )}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Organization</label>
+            <select
+              value={selectedOrgId}
+              onChange={(e) => handleOrgChange(e.target.value)}
+              style={{ ...inp, width: '100%' }}
+            >
+              <option value="">— New organization (auto-created) —</option>
+              {organizations.map(org => (
+                <option key={org.id} value={org.id}>
+                  {org.name}{org.commission_rate != null ? ` (${org.commission_rate}%)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div style={{ marginBottom: 16 }}>
             <label style={lbl}>Full name</label>
             <input
