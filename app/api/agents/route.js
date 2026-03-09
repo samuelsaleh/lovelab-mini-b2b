@@ -1,18 +1,10 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getSenderFrom } from '@/lib/email';
-import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
-import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
+import { welcomeAgentEmail, upgradeAgentEmail } from '@/lib/email-templates';
+import { sendEmail } from '@/lib/send-email';
+import { isAdmin, requireSession } from '@/lib/organizations/authz';
+import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
 import { NextResponse } from 'next/server';
-
-async function requireAdmin(supabase, userId) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .single();
-  return isAdminRole(data);
-}
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -23,12 +15,12 @@ export async function GET(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    if (!(await requireAdmin(supabase, user.id))) {
+    const session = await requireSession(supabase);
+    if (session.error) return session.error;
+    if (!isAdmin(session.profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const { user } = session;
 
     const adminSupabase = createAdminClient();
 
@@ -47,35 +39,24 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url);
-    let trashedAgents = [];
-    if (searchParams.get('include_trashed') === 'true') {
-      const { data: trashed } = await adminSupabase
-        .from('profiles')
-        .select(AGENT_SELECT)
-        .eq('is_agent', true)
-        .not('agent_deleted_at', 'is', null)
-        .order('agent_deleted_at', { ascending: false });
-      trashedAgents = trashed || [];
-    }
+    const includeTrashed = searchParams.get('include_trashed') === 'true';
 
-    // Fetch aggregated commission stats per agent
-    const { data: commissions } = await adminSupabase
-      .from('agent_commissions')
-      .select('agent_id, type, commission_amount, status, order_total');
-    const { data: documents } = await adminSupabase
-      .from('documents')
-      .select('created_by, document_type, total_amount, deleted_at');
+    const [trashedResult, statsResult] = await Promise.all([
+      includeTrashed
+        ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      adminSupabase.rpc('get_agent_stats'),
+    ]);
+    const trashedAgents = trashedResult.data || [];
+    const rawStats = statsResult.data;
 
-    // Reconcile legacy user ids by email so stats stick to the same person.
+    // Reconcile legacy user IDs by email so stats stick to the same person.
     const currentAgentIdByEmail = new Map(
       (agents || [])
         .filter((a) => normalizeEmail(a.email))
         .map((a) => [normalizeEmail(a.email), a.id])
     );
-    const sourceIds = Array.from(new Set([
-      ...(commissions || []).map((c) => c.agent_id).filter(Boolean),
-      ...(documents || []).map((d) => d.created_by).filter(Boolean),
-    ]));
+    const sourceIds = (rawStats || []).map(s => s.agent_id).filter(Boolean);
     const sourceEmailById = {};
     if (sourceIds.length > 0) {
       const { data: sourceProfiles } = await adminSupabase
@@ -93,70 +74,29 @@ export async function GET(request) {
       return (email && currentAgentIdByEmail.get(email)) || rawId;
     };
 
-    const statsMap = {};
-    for (const c of commissions || []) {
-      const targetAgentId = resolveAgentId(c.agent_id);
-      if (!targetAgentId) continue;
-      if (!statsMap[targetAgentId]) {
-        statsMap[targetAgentId] = {
-          total_orders: 0,
-          total_revenue: 0,
-          total_commission: 0,
-          total_bonuses: 0,
-          pending_commission: 0,
-          paid_commission: 0,
-        };
+    const mergedStats = {};
+    for (const row of rawStats || []) {
+      const targetId = resolveAgentId(row.agent_id);
+      if (!targetId) continue;
+      if (!mergedStats[targetId]) {
+        mergedStats[targetId] = { total_orders: 0, total_revenue: 0, total_commission: 0, total_bonuses: 0, pending_commission: 0, paid_commission: 0, total_docs: 0, total_order_docs: 0, total_doc_revenue: 0 };
       }
-      const s = statsMap[targetAgentId];
-      if (c.type === 'order') {
-        s.total_orders++;
-        s.total_revenue += Number(c.order_total) || 0;
-        s.total_commission += Number(c.commission_amount) || 0;
-      } else if (c.type === 'bonus') {
-        s.total_bonuses += Number(c.commission_amount) || 0;
-      }
-      if (c.status === 'pending' || c.status === 'approved') {
-        s.pending_commission += Number(c.commission_amount) || 0;
-      } else if (c.status === 'paid') {
-        s.paid_commission += Number(c.commission_amount) || 0;
-      }
-    }
-
-    const docStatsMap = {};
-    for (const d of documents || []) {
-      if (d.deleted_at) continue;
-      const targetAgentId = resolveAgentId(d.created_by);
-      if (!targetAgentId) continue;
-      if (!docStatsMap[targetAgentId]) {
-        docStatsMap[targetAgentId] = {
-          total_docs: 0,
-          total_order_docs: 0,
-          total_doc_revenue: 0,
-        };
-      }
-      const ds = docStatsMap[targetAgentId];
-      ds.total_docs += 1;
-      if (d.document_type === 'order') {
-        ds.total_order_docs += 1;
-        ds.total_doc_revenue += Number(d.total_amount) || 0;
-      }
+      const s = mergedStats[targetId];
+      s.total_orders += Number(row.total_orders) || 0;
+      s.total_revenue += Number(row.total_revenue) || 0;
+      s.total_commission += Number(row.total_commission) || 0;
+      s.total_bonuses += Number(row.total_bonuses) || 0;
+      s.pending_commission += Number(row.pending_commission) || 0;
+      s.paid_commission += Number(row.paid_commission) || 0;
+      s.total_docs += Number(row.total_docs) || 0;
+      s.total_order_docs += Number(row.total_order_docs) || 0;
+      s.total_doc_revenue += Number(row.total_doc_revenue) || 0;
     }
 
     const makeStats = (agentId, commissionRate = 0) => {
-      const base = {
-        ...(statsMap[agentId] || {
-          total_orders: 0,
-          total_revenue: 0,
-          total_commission: 0,
-          total_bonuses: 0,
-          pending_commission: 0,
-          paid_commission: 0,
-        }),
-        ...(docStatsMap[agentId] || {
-          total_docs: 0,
-          total_order_docs: 0,
-          total_doc_revenue: 0,
-        }),
+      const base = mergedStats[agentId] || {
+        total_orders: 0, total_revenue: 0, total_commission: 0, total_bonuses: 0,
+        pending_commission: 0, paid_commission: 0, total_docs: 0, total_order_docs: 0, total_doc_revenue: 0,
       };
       const noCommissionHistory =
         (base.total_orders || 0) === 0 &&
@@ -226,12 +166,12 @@ export async function POST(request) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    if (!(await requireAdmin(supabase, user.id))) {
+    const session = await requireSession(supabase);
+    if (session.error) return session.error;
+    if (!isAdmin(session.profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const { user } = session;
 
     const body = await request.json();
     const {
@@ -340,10 +280,16 @@ export async function POST(request) {
         }
       }
 
-      // If generateLink didn't return the user, look them up by paginated list
       if (!authUser) {
-        const { data: { users } } = await adminSupabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        authUser = users?.find(u => u.email?.toLowerCase() === emailLower) || null;
+        // generateLink creates the auth user; if send_invite was false, create one now
+        const { data: createData, error: createErr } = await adminSupabase.auth.admin.createUser({
+          email: emailLower,
+          email_confirm: true,
+          user_metadata: { full_name: full_name?.trim() || '' },
+        });
+        if (!createErr && createData?.user) {
+          authUser = createData.user;
+        }
       }
 
       if (authUser) {
@@ -367,94 +313,22 @@ export async function POST(request) {
         agentProfile = { email: emailLower, ...agentFields, full_name: full_name?.trim() || '', _pending: true };
       }
 
-      // Send branded welcome email with magic link via Resend
       if (send_invite) {
-        const resendApiKey = process.env.RESEND_API_KEY;
-        if (resendApiKey) {
-          const agentName = full_name?.trim() || emailLower;
-          const signInUrl = magicLinkUrl || `${siteUrl}/login`;
-          try {
-            await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${resendApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                from: getSenderFrom(),
-                to: [emailLower],
-                subject: `${agentName}, you're invited to LoveLab B2B`,
-                html: `
-                  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                    <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-                    <h2 style="color: #1a1a1a; margin: 0 0 8px;">Welcome, ${agentName}!</h2>
-                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                      You've been invited to join <strong style="color: #5D3A5E;">LoveLab B2B</strong> as a sales partner.
-                    </p>
-                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                      Click the button below to sign in — no password needed.
-                    </p>
-                    <a href="${signInUrl}" style="display: inline-block; padding: 14px 32px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                      Sign in to LoveLab B2B
-                    </a>
-                    <p style="color: #aaa; font-size: 12px; margin-top: 24px;">
-                      You can also sign in anytime at <a href="${siteUrl}/login" style="color: #5D3A5E;">${siteUrl.replace('https://', '')}</a> using Google.
-                    </p>
-                    <p style="color: #ccc; font-size: 11px; margin-top: 24px;">
-                      LoveLab B2B · This email was sent automatically.
-                    </p>
-                  </div>
-                `,
-              }),
-            });
-          } catch (emailErr) {
-            console.error('[Agents POST] Welcome email error:', emailErr.message);
-          }
-        }
+        const agentName = full_name?.trim() || emailLower;
+        const signInUrl = magicLinkUrl || `${siteUrl}/login`;
+        const { subject, html } = welcomeAgentEmail(agentName, signInUrl, siteUrl);
+        await sendEmail({ to: emailLower, subject, html });
       }
     }
 
-    // Send branded welcome email for existing users being upgraded to agent
     if (existingProfile && send_invite) {
-      const resendApiKey = process.env.RESEND_API_KEY;
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-      if (resendApiKey) {
-        const agentName = full_name?.trim() || existingProfile.email;
-        try {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${resendApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              from: getSenderFrom(),
-              to: [existingProfile.email || emailLower],
-              subject: `${agentName}, you're now a LoveLab sales partner`,
-              html: `
-                <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                  <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-                  <h2 style="color: #1a1a1a; margin: 0 0 8px;">Welcome, ${agentName}!</h2>
-                  <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                    You've been added as a <strong style="color: #5D3A5E;">LoveLab sales partner</strong>. Your orders and commissions will now be tracked automatically.
-                  </p>
-                  <a href="${siteUrl}/login" style="display: inline-block; padding: 14px 32px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                    Go to LoveLab B2B
-                  </a>
-                  <p style="color: #ccc; font-size: 11px; margin-top: 24px;">
-                    LoveLab B2B · This email was sent automatically.
-                  </p>
-                </div>
-              `,
-            }),
-          });
-        } catch (emailErr) {
-          console.error('[Agents POST] Upgrade email error:', emailErr.message);
-        }
-      }
+      const agentName = full_name?.trim() || existingProfile.email;
+      const { subject, html } = upgradeAgentEmail(agentName, siteUrl);
+      await sendEmail({ to: existingProfile.email || emailLower, subject, html });
     }
 
-// Handle organization membership and folder provisioning
+    // Handle organization membership and folder provisioning
     if (agentProfile?.id && !agentProfile?._pending) {
       if (requestedOrgId) {
         try {
@@ -471,44 +345,14 @@ export async function POST(request) {
               .insert({ organization_id: requestedOrgId, user_id: agentProfile.id, role: 'member' });
           }
 
-          const { data: org } = await adminSupabase
-            .from('organizations')
-            .select('id, name')
-            .eq('id', requestedOrgId)
-            .single();
-
-          if (org) {
-            const { data: ownerMembership } = await adminSupabase
-              .from('organization_memberships')
-              .select('user_id')
-              .eq('organization_id', requestedOrgId)
-              .eq('role', 'owner')
-              .maybeSingle();
-
-            const ownerAgentId = ownerMembership?.user_id || agentProfile.id;
-            const { rootFolder } = await ensureOrgRoot(requestedOrgId, org.name, ownerAgentId);
-            await ensureAgentSubfolder(rootFolder.id, agentProfile.id, agentProfile.full_name || agentProfile.email);
-          }
+          await provisionAgentInOrg(requestedOrgId, agentProfile.id);
         } catch (memberErr) {
           console.error('[Agents POST] Org membership/folder error (non-blocking):', memberErr.message);
         }
       } else if (!agentProfile.organization_id) {
         try {
-          const orgRes = await fetch(
-            new URL('/api/organizations/auto-ensure', process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin),
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                cookie: request.headers.get('cookie') || '',
-              },
-              body: JSON.stringify({ user_id: agentProfile.id }),
-            }
-          );
-          if (orgRes.ok) {
-            const orgJson = await orgRes.json();
-            agentProfile.organization_id = orgJson.organization?.id || null;
-          }
+          const result = await autoEnsureOrganization(agentProfile.id, user.id);
+          agentProfile.organization_id = result.organization?.id || null;
         } catch (orgErr) {
           console.error('[Agents POST] Auto-ensure org error (non-blocking):', orgErr.message);
         }

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
+import { checkRateLimit } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'org-folders' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     const session = await requireSession(supabase);
     if (session.error) return session.error;
@@ -22,11 +26,12 @@ export async function GET() {
       if (error) throw error;
       orgs = data || [];
     } else {
-      const { data: userMemberships } = await adminSupabase
+      const { data: userMemberships, error: memErr } = await adminSupabase
         .from('organization_memberships')
         .select('organization_id')
         .eq('user_id', session.user.id)
         .is('deleted_at', null);
+      if (memErr) throw memErr;
 
       const userOrgIds = (userMemberships || []).map(m => m.organization_id);
       if (userOrgIds.length === 0) {
@@ -49,11 +54,21 @@ export async function GET() {
 
     const orgIds = orgs.map(o => o.id);
 
-    const { data: memberships } = await adminSupabase
-      .from('organization_memberships')
-      .select('organization_id, user_id, role')
-      .in('organization_id', orgIds)
-      .is('deleted_at', null);
+    // Parallel: fetch memberships and root folders at the same time
+    const [{ data: memberships, error: memErr2 }, { data: rootFolders, error: rfErr }] = await Promise.all([
+      adminSupabase
+        .from('organization_memberships')
+        .select('organization_id, user_id, role')
+        .in('organization_id', orgIds)
+        .is('deleted_at', null),
+      adminSupabase
+        .from('agent_folders')
+        .select('id, name, agent_id, parent_id, organization_id')
+        .in('organization_id', orgIds)
+        .is('parent_id', null),
+    ]);
+    if (memErr2) throw memErr2;
+    if (rfErr) throw rfErr;
 
     const membersByOrg = new Map();
     for (const m of memberships || []) {
@@ -61,58 +76,35 @@ export async function GET() {
       membersByOrg.get(m.organization_id).push(m);
     }
 
+    // Build org-to-root mapping directly via organization_id
+    const orgRootMap = new Map();
+    for (const f of rootFolders || []) {
+      if (f.organization_id && !orgRootMap.has(f.organization_id)) {
+        orgRootMap.set(f.organization_id, f);
+      }
+    }
+
+    // Parallel: fetch profiles and subfolders
     const memberUserIds = [...new Set((memberships || []).map(m => m.user_id))];
-    const { data: profiles } = await adminSupabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .in('id', memberUserIds);
+    const rootFolderIds = [...orgRootMap.values()].map(r => r.id);
+
+    const [{ data: profiles, error: profErr }, subfolderResult] = await Promise.all([
+      memberUserIds.length > 0
+        ? adminSupabase.from('profiles').select('id, full_name, email').in('id', memberUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      rootFolderIds.length > 0
+        ? adminSupabase.from('agent_folders').select('id, name, agent_id, parent_id').in('parent_id', rootFolderIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (profErr) throw profErr;
+    if (subfolderResult.error) throw subfolderResult.error;
+
     const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
-    const allOwnerIds = [];
-    for (const [, members] of membersByOrg) {
-      const owner = members.find(m => m.role === 'owner') || members[0];
-      if (owner) allOwnerIds.push(owner.user_id);
-    }
-
-    const uniqueOwnerIds = [...new Set(allOwnerIds)];
-    let rootByAgent = new Map();
-    if (uniqueOwnerIds.length > 0) {
-      const { data: rootFolders } = await adminSupabase
-        .from('agent_folders')
-        .select('id, name, agent_id, parent_id')
-        .in('agent_id', uniqueOwnerIds)
-        .is('parent_id', null);
-
-      for (const f of rootFolders || []) {
-        if (!rootByAgent.has(f.agent_id)) rootByAgent.set(f.agent_id, []);
-        rootByAgent.get(f.agent_id).push(f);
-      }
-    }
-
-    // Build org-to-root mapping first
-    const orgRootMap = new Map();
-    for (const org of orgs) {
-      const members = membersByOrg.get(org.id) || [];
-      const owner = members.find(m => m.role === 'owner') || members[0];
-      const ownerId = owner?.user_id;
-      const ownerRoots = rootByAgent.get(ownerId) || [];
-      const matchingRoot = ownerRoots.find(f => f.name.toLowerCase() === org.name.toLowerCase()) || ownerRoots[0];
-      if (matchingRoot) orgRootMap.set(org.id, matchingRoot);
-    }
-
-    // Fetch per-agent subfolders for all root folders
-    const rootFolderIds = [...orgRootMap.values()].map(r => r.id);
-    let subfoldersByParent = new Map();
-    if (rootFolderIds.length > 0) {
-      const { data: subfolders } = await adminSupabase
-        .from('agent_folders')
-        .select('id, name, agent_id, parent_id')
-        .in('parent_id', rootFolderIds);
-
-      for (const sf of subfolders || []) {
-        if (!subfoldersByParent.has(sf.parent_id)) subfoldersByParent.set(sf.parent_id, []);
-        subfoldersByParent.get(sf.parent_id).push(sf);
-      }
+    const subfoldersByParent = new Map();
+    for (const sf of subfolderResult.data || []) {
+      if (!subfoldersByParent.has(sf.parent_id)) subfoldersByParent.set(sf.parent_id, []);
+      subfoldersByParent.get(sf.parent_id).push(sf);
     }
 
     const orgFolders = orgs.map(org => {

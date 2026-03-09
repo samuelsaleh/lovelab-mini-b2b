@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
+import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
 
 // UUID v4 format validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +71,8 @@ export async function GET(request) {
     const eventAccess = doc.event_id
       ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'read', isAdmin)
       : { allowed: false };
-    const canRead = isAdmin || doc.created_by === user.id || eventAccess.allowed;
+    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
+    const canRead = isAdmin || isOwner || eventAccess.allowed;
     if (!canRead) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

@@ -24,7 +24,10 @@ export function AuthProvider({ children }) {
   const fetchFromServer = useCallback(async () => {
     try {
       const res = await fetch('/api/me');
-      if (!res.ok) return false;
+      if (!res.ok) {
+        setProfileError('failed_to_load_profile');
+        return false;
+      }
       const json = await res.json();
       if (json.user) {
         setUser(json.user);
@@ -39,7 +42,9 @@ export function AuthProvider({ children }) {
         }
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      setProfileError('failed_to_load_profile');
+    }
     return false;
   }, []);
 

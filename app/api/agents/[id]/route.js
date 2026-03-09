@@ -1,18 +1,10 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getSenderFrom } from '@/lib/email';
-import { isAdmin as isAdminRole } from '@/lib/organizations/utils';
-import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
+import { restoreAgentEmail } from '@/lib/email-templates';
+import { sendEmail } from '@/lib/send-email';
+import { isAdmin, requireSession } from '@/lib/organizations/authz';
+import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
 import { NextResponse } from 'next/server';
-
-async function requireAdmin(supabase, userId) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .single();
-  return isAdminRole(data);
-}
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
 
@@ -23,10 +15,9 @@ export async function GET(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    if (!(await requireAdmin(supabase, user.id))) {
+    const session = await requireSession(supabase);
+    if (session.error) return session.error;
+    if (!isAdmin(session.profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -88,10 +79,9 @@ export async function PUT(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    if (!(await requireAdmin(supabase, user.id))) {
+    const session = await requireSession(supabase);
+    if (session.error) return session.error;
+    if (!isAdmin(session.profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -150,33 +140,8 @@ export async function PUT(request, { params }) {
             }
 
             const agentName = restored.full_name || restored.email;
-            await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${resendApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                from: getSenderFrom(),
-                to: [restored.email],
-                subject: `${agentName}, your LoveLab B2B access has been restored`,
-                html: `
-                  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                    <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-                    <h2 style="color: #1a1a1a; margin: 0 0 8px;">Your access has been restored</h2>
-                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                      Hi ${agentName}, your access to <strong style="color: #5D3A5E;">LoveLab B2B</strong> has been restored. You can now log back in.
-                    </p>
-                    <a href="${magicLinkUrl}" style="display: inline-block; padding: 14px 32px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                      Sign in to LoveLab B2B
-                    </a>
-                    <p style="color: #ccc; font-size: 11px; margin-top: 24px;">
-                      LoveLab B2B · This email was sent automatically.
-                    </p>
-                  </div>
-                `,
-              }),
-            });
+            const { subject, html } = restoreAgentEmail(agentName, magicLinkUrl, siteUrl);
+            await sendEmail({ to: restored.email, subject, html });
           } catch (emailErr) {
             console.error('[Agent PUT] Restore email error (non-blocking):', emailErr.message);
           }
@@ -250,32 +215,8 @@ export async function PUT(request, { params }) {
               .insert({ organization_id: newOrgId, user_id: id, role: 'member' });
           }
 
-          // Provision agent subfolder in new org
           try {
-            const { data: org } = await adminSupabase
-              .from('organizations')
-              .select('id, name')
-              .eq('id', newOrgId)
-              .single();
-
-            if (org) {
-              const { data: ownerMembership } = await adminSupabase
-                .from('organization_memberships')
-                .select('user_id')
-                .eq('organization_id', newOrgId)
-                .eq('role', 'owner')
-                .maybeSingle();
-
-              const { data: agentProfile } = await adminSupabase
-                .from('profiles')
-                .select('full_name, email')
-                .eq('id', id)
-                .single();
-
-              const ownerAgentId = ownerMembership?.user_id || id;
-              const { rootFolder } = await ensureOrgRoot(newOrgId, org.name, ownerAgentId);
-              await ensureAgentSubfolder(rootFolder.id, id, agentProfile?.full_name || agentProfile?.email || 'Agent');
-            }
+            await provisionAgentInOrg(newOrgId, id);
           } catch (folderErr) {
             console.error('[Agent PUT] Folder provisioning error (non-blocking):', folderErr.message);
           }
@@ -313,10 +254,9 @@ export async function DELETE(request, { params }) {
     if (rateLimitRes) return rateLimitRes;
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    if (!(await requireAdmin(supabase, user.id))) {
+    const session = await requireSession(supabase);
+    if (session.error) return session.error;
+    if (!isAdmin(session.profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireOrganizationAccess } from '@/lib/organizations/authz';
-import { getSenderFrom } from '@/lib/email';
+import { orgInvitationEmail } from '@/lib/email-templates';
+import { sendEmail } from '@/lib/send-email';
 import {
   generateInvitationToken,
   getDefaultExpiryIso,
   isValidEmail,
   normalizeEmail,
 } from '@/lib/organizations/invitations';
-import { ensureOrgRoot, ensureAgentSubfolder } from '@/lib/organizations/folder-provisioning';
+import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 async function getMembershipRole(supabase, organizationId, userId) {
   const { data, error } = await supabase
@@ -22,8 +24,11 @@ async function getMembershipRole(supabase, organizationId, userId) {
   return data?.role || null;
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'org-members' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
@@ -46,6 +51,9 @@ export async function GET(_request, { params }) {
 
 export async function POST(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'org-members-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);
@@ -110,45 +118,9 @@ export async function POST(request, { params }) {
           .single();
         const orgName = org?.name || 'your team';
 
-        const resendApiKey = process.env.RESEND_API_KEY;
-        if (resendApiKey) {
-          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://b2b.love-lab.com';
-          const signInUrl = `${siteUrl}/login`;
-          try {
-            await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${resendApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                from: getSenderFrom(),
-                to: [email],
-                subject: `You're invited to join ${orgName} on LoveLab B2B`,
-                html: `
-                  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                    <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-                    <h2 style="color: #1a1a1a; margin: 0 0 8px;">You're invited!</h2>
-                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                      You've been invited to join <strong style="color: #5D3A5E;">${orgName}</strong> on LoveLab B2B as a sales partner.
-                    </p>
-                    <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                      Sign in or create your account to get started.
-                    </p>
-                    <a href="${signInUrl}" style="display: inline-block; padding: 14px 32px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                      Sign in to LoveLab B2B
-                    </a>
-                    <p style="color: #ccc; font-size: 11px; margin-top: 24px;">
-                      LoveLab B2B &middot; This email was sent automatically.
-                    </p>
-                  </div>
-                `,
-              }),
-            });
-          } catch (emailErr) {
-            console.error('[org-members POST] Invitation email error:', emailErr.message);
-          }
-        }
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://b2b.love-lab.com';
+        const { subject, html } = orgInvitationEmail(orgName, siteUrl);
+        await sendEmail({ to: email, subject, html });
 
         return NextResponse.json(
           {
@@ -184,32 +156,8 @@ export async function POST(request, { params }) {
       .eq('id', targetUserId);
     if (profileUpdateErr) throw profileUpdateErr;
 
-    // Provision agent subfolder in org
     try {
-      const { data: org } = await adminSupabase
-        .from('organizations')
-        .select('id, name')
-        .eq('id', organizationId)
-        .single();
-
-      if (org) {
-        const { data: ownerMembership } = await adminSupabase
-          .from('organization_memberships')
-          .select('user_id')
-          .eq('organization_id', organizationId)
-          .eq('role', 'owner')
-          .maybeSingle();
-
-        const { data: memberProfile } = await adminSupabase
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', targetUserId)
-          .single();
-
-        const ownerAgentId = ownerMembership?.user_id || targetUserId;
-        const { rootFolder } = await ensureOrgRoot(organizationId, org.name, ownerAgentId);
-        await ensureAgentSubfolder(rootFolder.id, targetUserId, memberProfile?.full_name || memberProfile?.email || 'Agent');
-      }
+      await provisionAgentInOrg(organizationId, targetUserId);
     } catch (folderErr) {
       console.error('[org-members POST] Folder provisioning error (non-blocking):', folderErr.message);
     }

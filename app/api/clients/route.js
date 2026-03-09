@@ -111,8 +111,7 @@ export async function POST(request) {
     }
 
     if (id) {
-      // Update existing client -- with ownership check
-      const { data: client, error } = await supabase
+      let query = adminSupabase
         .from('clients')
         .update({
           name: name?.trim() || null,
@@ -128,10 +127,14 @@ export async function POST(request) {
           ...sourcePayload,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id)
-        .eq('created_by', user.id) // Ownership check
-        .select()
-        .single();
+        .eq('id', id);
+
+      if (!isAdmin) {
+        const agentIds = await resolveAgentIds(adminSupabase, user.id);
+        query = query.in('created_by', agentIds);
+      }
+
+      const { data: client, error } = await query.select().single();
 
       if (error) {
         console.error('[Clients POST update] Error:', error.message);

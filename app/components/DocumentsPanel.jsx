@@ -45,7 +45,12 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [renamingDocId, setRenamingDocId] = useState(null)
   const [docRenameValue, setDocRenameValue] = useState('')
   const [docRenameLoading, setDocRenameLoading] = useState(false)
+  const [docsPage, setDocsPage] = useState(1)
+  const [docsTotalCount, setDocsTotalCount] = useState(null)
+  const [hasMoreDocs, setHasMoreDocs] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [orgFolders, setOrgFolders] = useState([])
+  const [orgFoldersError, setOrgFoldersError] = useState(null)
   const [expandedOrgs, setExpandedOrgs] = useState(new Set())
   const orgFoldersCacheRef = useRef(null)
 
@@ -59,7 +64,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     try {
       const [eventsRes, docsRes, orgFoldersRes] = await Promise.all([
         safeFetch('/api/events'),
-        safeFetch('/api/documents'),
+        safeFetch('/api/documents?per_page=200'),
         safeFetch('/api/org-folders'),
       ])
 
@@ -93,15 +98,28 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       }
 
       if (eventsData.events) setEvents(eventsData.events)
-      if (docsData.documents) setDocuments(docsData.documents)
+      if (docsData.documents) {
+        setDocuments(docsData.documents)
+        setDocsPage(1)
+        setDocsTotalCount(docsData.total_count ?? null)
+        setHasMoreDocs(docsData.total_count != null && docsData.documents.length < docsData.total_count)
+      }
 
       try {
-        const orgData = await orgFoldersRes.json().catch(() => ({}))
-        if (orgData.orgFolders) {
-          setOrgFolders(orgData.orgFolders)
-          orgFoldersCacheRef.current = orgData.orgFolders
+        if (!orgFoldersRes.ok) {
+          console.error('[DocumentsPanel] org-folders failed:', orgFoldersRes.status)
+          setOrgFoldersError('Failed to load company folders')
+          if (orgFoldersCacheRef.current) setOrgFolders(orgFoldersCacheRef.current)
+        } else {
+          const orgData = await orgFoldersRes.json().catch(() => ({}))
+          if (orgData.orgFolders) {
+            setOrgFolders(orgData.orgFolders)
+            orgFoldersCacheRef.current = orgData.orgFolders
+            setOrgFoldersError(null)
+          }
         }
       } catch {
+        setOrgFoldersError('Failed to load company folders')
         if (orgFoldersCacheRef.current) setOrgFolders(orgFoldersCacheRef.current)
       }
     } catch (err) {
@@ -110,6 +128,24 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadMoreDocs = async () => {
+    if (loadingMore || !hasMoreDocs) return
+    setLoadingMore(true)
+    try {
+      const nextPage = docsPage + 1
+      const res = await safeFetch(`/api/documents?per_page=200&page=${nextPage}`)
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.documents) {
+          setDocuments(prev => [...prev, ...data.documents])
+          setDocsPage(nextPage)
+          setHasMoreDocs(data.total_count != null && (documents.length + data.documents.length) < data.total_count)
+        }
+      }
+    } catch {}
+    setLoadingMore(false)
   }
 
   const startRename = (event) => {
@@ -719,6 +755,12 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
           );
         })}
 
+        {orgFoldersError && orgFolders.length === 0 && (
+          <div style={{ padding: '8px 12px', fontSize: 11, color: '#c44' }}>
+            {orgFoldersError} <button onClick={fetchData} style={{ background: 'none', border: 'none', color: colors.inkPlum, cursor: 'pointer', fontSize: 11, textDecoration: 'underline', padding: 0 }}>Retry</button>
+          </div>
+        )}
+
         {orgFolders.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 2px', userSelect: 'none' }}>
@@ -758,15 +800,11 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                         return (
                           <button
                             key={member.user_id}
-                            onClick={() => {
-                              if (hasSubfolder) {
-                                router.push(`/admin/agents/${member.user_id}`);
-                              }
-                            }}
+                            onClick={() => router.push(`/admin/agents/${member.user_id}`)}
                             style={{
                               width: '100%', padding: '5px 10px', fontSize: 12, color: '#555', fontFamily: fonts.body,
                               display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
-                              cursor: hasSubfolder ? 'pointer' : 'default', textAlign: 'left', borderRadius: 6,
+                              cursor: 'pointer', textAlign: 'left', borderRadius: 6,
                             }}
                           >
                             <span style={{
@@ -1029,6 +1067,20 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                 </div>
               </div>
             ))}
+            {hasMoreDocs && (
+              <button
+                onClick={loadMoreDocs}
+                disabled={loadingMore}
+                style={{
+                  width: '100%', padding: '12px', marginTop: 8, borderRadius: 8,
+                  border: '1px solid #e3e3e3', background: '#fafafa', color: colors.inkPlum,
+                  fontSize: 13, fontWeight: 600, cursor: loadingMore ? 'wait' : 'pointer',
+                  fontFamily: fonts.body,
+                }}
+              >
+                {loadingMore ? 'Loading...' : `Load more (${docsTotalCount != null ? `${documents.length} of ${docsTotalCount}` : '...'})`}
+              </button>
+            )}
           </div>
         )}
       </div>

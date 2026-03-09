@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
+import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { calculateCommission } from '@/lib/commission';
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
@@ -23,12 +24,15 @@ export async function GET(request) {
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const perPage = Math.min(200, Math.max(1, parseInt(searchParams.get('per_page') || '50', 10)));
+    const offset = (page - 1) * perPage;
 
     let query = adminSupabase
       .from('documents')
-      .select('*, events(name), profiles(full_name, email)')
+      .select('*, events(name), profiles(full_name, email)', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(2000);
+      .range(offset, offset + perPage - 1);
 
     // Admin filtering by a specific agent's documents (email-reconciled)
     if (isAdmin && createdByAgent) {
@@ -74,14 +78,14 @@ export async function GET(request) {
       }
     }
 
-    const { data: documents, error } = await query;
+    const { data: documents, error, count } = await query;
 
     if (error) {
       console.error('[Documents GET] Error:', error.message);
       return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
     }
 
-    return NextResponse.json({ documents });
+    return NextResponse.json({ documents, total_count: count, page, per_page: perPage });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -224,36 +228,23 @@ export async function POST(request) {
           (await adminSupabase2.from('profiles').select('full_name').eq('id', user.id).single())?.data?.full_name ||
           user.email;
 
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+        const { subject, html } = orderNotificationEmail({
+          documentType: document.document_type,
+          clientCompany: document.client_company,
+          clientName: document.client_name,
+          totalAmount: document.total_amount,
+          eventName,
+          creatorName,
+        }, siteUrl);
+
         const { Resend } = await import('resend');
         const resend = new Resend(resendApiKey);
-        const subject = document.document_type === 'order'
-          ? `New order: ${document.client_company || document.client_name} — €${(document.total_amount || 0).toLocaleString('fr-FR')}`
-          : `New quote: ${document.client_company || document.client_name}`;
-
         await resend.emails.send({
           from: getSenderFrom(),
           to: getOrderNotificationRecipients(),
           subject,
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
-              <img src="https://lovelab-b2b.vercel.app/logo.png" alt="LoveLab" style="height:48px;margin-bottom:16px"/>
-              <h2 style="color:#5D3A5E;margin:0 0 16px">
-                ${document.document_type === 'order' ? '📦 New Order Created' : '📝 New Quote Created'}
-              </h2>
-              <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td style="padding:6px 0;color:#666;width:140px">Client</td><td style="padding:6px 0;font-weight:600">${document.client_company || document.client_name || '—'}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Contact</td><td style="padding:6px 0">${document.client_name || '—'}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Amount</td><td style="padding:6px 0;font-weight:600;color:#5D3A5E">€${(document.total_amount || 0).toLocaleString('fr-FR')}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Folder</td><td style="padding:6px 0">${eventName || 'No folder'}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Created by</td><td style="padding:6px 0">${creatorName}</td></tr>
-                <tr><td style="padding:6px 0;color:#666">Type</td><td style="padding:6px 0;text-transform:capitalize">${document.document_type}</td></tr>
-              </table>
-              <div style="margin-top:20px">
-                <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app'}/dashboard" style="background:#5D3A5E;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">View in Dashboard →</a>
-              </div>
-              <p style="margin-top:24px;font-size:11px;color:#aaa">LoveLab B2B — automated notification</p>
-            </div>
-          `,
+          html,
         });
       }
     } catch (emailErr) {

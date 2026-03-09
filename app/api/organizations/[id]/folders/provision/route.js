@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireOrganizationAccess } from '@/lib/organizations/authz';
 import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
+import { checkRateLimit } from '@/lib/rateLimit';
 
-export async function POST(_request, { params }) {
+export async function POST(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'org-folders-provision' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);

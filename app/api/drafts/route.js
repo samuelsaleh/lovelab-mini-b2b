@@ -76,7 +76,7 @@ export async function POST(request) {
       .eq('user_id', user.id)
       .eq('company_name', company_name)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let result;
     if (existing) {

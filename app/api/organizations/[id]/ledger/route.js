@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireOrganizationAccess } from '@/lib/organizations/authz';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 function toNumber(value) {
   return Number(value) || 0;
@@ -8,6 +9,9 @@ function toNumber(value) {
 
 export async function GET(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'org-ledger' });
+    if (rateLimitRes) return rateLimitRes;
+
     const organizationId = (await params)?.id;
     const supabase = await createClient();
     const session = await requireOrganizationAccess(supabase, organizationId);

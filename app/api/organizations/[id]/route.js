@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
+import { checkRateLimit } from '@/lib/rateLimit';
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'org-detail' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireSession(supabase);
@@ -43,6 +47,9 @@ export async function GET(_request, { params }) {
 
 export async function PATCH(request, { params }) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'org-patch' });
+    if (rateLimitRes) return rateLimitRes;
+
     const { id: organizationId } = await params;
     const supabase = await createClient();
     const session = await requireSession(supabase);
