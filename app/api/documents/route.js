@@ -72,16 +72,23 @@ export async function GET(request) {
     }
 
     if (organizationId && isAdmin) {
-      const [{ data: orgMembers }, { data: orgProfiles }] = await Promise.all([
+      const [{ data: orgMembers }, { data: orgProfiles }, { data: orgEvents }] = await Promise.all([
         adminSupabase.from('organization_memberships').select('user_id').eq('organization_id', organizationId),
         adminSupabase.from('profiles').select('id').eq('organization_id', organizationId),
+        adminSupabase.from('events').select('id').eq('organization_id', organizationId),
       ]);
       const allMemberIds = [...new Set([
         ...(orgMembers || []).map(m => m.user_id),
         ...(orgProfiles || []).map(p => p.id),
       ])];
-      if (allMemberIds.length > 0) {
-        query = query.in('created_by', allMemberIds);
+      const orgEventIds = (orgEvents || []).map(e => e.id);
+
+      const orParts = [];
+      if (allMemberIds.length > 0) orParts.push(`created_by.in.(${allMemberIds.join(',')})`);
+      if (orgEventIds.length > 0) orParts.push(`event_id.in.(${orgEventIds.join(',')})`);
+
+      if (orParts.length > 0) {
+        query = query.or(orParts.join(','));
       } else {
         return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
       }
