@@ -94,17 +94,17 @@ export default function AdminAgentDetailsPage() {
             conditions: orgJson.organization.conditions || '',
           });
         }
-        try {
-          const orgDocsRes = await fetch(`/api/documents?organization_id=${found.organization_id}&per_page=200`);
-          const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
-          setOrgDocuments(orgDocsJson.documents || []);
-        } catch {
-          setOrgDocuments([]);
-        }
       } else {
         setOrganizationLedger(null);
         setOrganizationMembers([]);
         setOrgData(null);
+      }
+
+      try {
+        const orgDocsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`);
+        const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
+        setOrgDocuments(orgDocsJson.documents || []);
+      } catch {
         setOrgDocuments([]);
       }
 
@@ -642,11 +642,13 @@ export default function AdminAgentDetailsPage() {
               </div>
               <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} />
 
-              {orgDocuments.length > 0 && (
-                <div style={{ marginTop: 20, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Orders & Quotes
-                  </div>
+              <div style={{ marginTop: 20, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Orders & Quotes
+                </div>
+                {orgDocuments.length === 0 ? (
+                  <div style={{ fontSize: 12, color: colors.lovelabMuted, padding: '8px 0' }}>No orders or quotes yet.</div>
+                ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#faf8fc' }}>
@@ -697,8 +699,8 @@ export default function AdminAgentDetailsPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Payment Modal */}
