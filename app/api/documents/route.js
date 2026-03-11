@@ -38,9 +38,36 @@ export async function GET(request) {
     // Admin filtering by a specific agent's documents (email-reconciled)
     if (isAdmin && createdByAgent) {
       const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
-      query = agentIds.length === 1
-        ? query.eq('created_by', agentIds[0])
-        : query.in('created_by', agentIds);
+
+      const { data: agentProf } = await adminSupabase
+        .from('profiles')
+        .select('organization_id')
+        .in('id', agentIds)
+        .not('organization_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      const eventQueries = [
+        adminSupabase.from('events').select('id').in('created_by', agentIds),
+        adminSupabase.from('event_access').select('event_id').in('user_id', agentIds),
+      ];
+      if (agentProf?.organization_id) {
+        eventQueries.push(
+          adminSupabase.from('events').select('id').eq('organization_id', agentProf.organization_id),
+        );
+      }
+      const evResults = await Promise.all(eventQueries);
+      const agentEventIds = [...new Set([
+        ...(evResults[0].data || []).map(e => e.id),
+        ...(evResults[1].data || []).map(e => e.event_id),
+        ...(evResults[2]?.data || []).map(e => e.id),
+      ])];
+
+      const orParts = [`created_by.in.(${agentIds.join(',')})`];
+      if (agentEventIds.length > 0) {
+        orParts.push(`event_id.in.(${agentEventIds.join(',')})`);
+      }
+      query = query.or(orParts.join(','));
     } else if (!isAdmin) {
       const userIds = await resolveAgentIds(adminSupabase, user.id);
       const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);

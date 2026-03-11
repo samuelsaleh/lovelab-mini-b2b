@@ -101,10 +101,7 @@ export default function AdminAgentDetailsPage() {
       }
 
       try {
-        const docsParam = found.organization_id
-          ? `organization_id=${encodeURIComponent(found.organization_id)}`
-          : `created_by_agent=${encodeURIComponent(agentId)}`;
-        const orgDocsRes = await fetch(`/api/documents?${docsParam}&per_page=200`);
+        const orgDocsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`);
         const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
         setOrgDocuments(orgDocsJson.documents || []);
       } catch {
