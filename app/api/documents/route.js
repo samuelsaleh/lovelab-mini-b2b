@@ -21,6 +21,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get('event_id');
+    const organizationId = searchParams.get('organization_id');
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
@@ -30,7 +31,7 @@ export async function GET(request) {
 
     let query = adminSupabase
       .from('documents')
-      .select('*, events(name), profiles(full_name, email)', { count: 'exact' })
+      .select('*, events(name, organization_id), profiles(full_name, email)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + perPage - 1);
 
@@ -68,6 +69,19 @@ export async function GET(request) {
         }
       }
       query = query.eq('event_id', eventId);
+    }
+
+    if (organizationId && isAdmin) {
+      const { data: orgEvents } = await adminSupabase
+        .from('events')
+        .select('id')
+        .eq('organization_id', organizationId);
+      const orgEventIds = (orgEvents || []).map(e => e.id);
+      if (orgEventIds.length > 0) {
+        query = query.in('event_id', orgEventIds);
+      } else {
+        return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
+      }
     }
 
     if (search && search.trim()) {

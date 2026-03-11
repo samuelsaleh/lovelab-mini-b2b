@@ -75,7 +75,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { name, location, start_date, end_date, type } = body;
+    const { name, location, start_date, end_date, type, organization_id } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
@@ -103,6 +103,7 @@ export async function POST(request) {
         start_date: start_date || null,
         end_date: end_date || null,
         type: eventType,
+        organization_id: (eventType === 'agent' && organization_id) ? organization_id : null,
         created_by: user.id,
       })
       .select()

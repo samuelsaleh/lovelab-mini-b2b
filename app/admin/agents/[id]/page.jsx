@@ -39,6 +39,9 @@ export default function AdminAgentDetailsPage() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState(null);
 
+  // Organization documents (orders/quotes linked via events)
+  const [orgDocuments, setOrgDocuments] = useState([]);
+
   // Org editing
   const [orgData, setOrgData] = useState(null);
   const [editingOrg, setEditingOrg] = useState(false);
@@ -91,10 +94,18 @@ export default function AdminAgentDetailsPage() {
             conditions: orgJson.organization.conditions || '',
           });
         }
+        try {
+          const orgDocsRes = await fetch(`/api/documents?organization_id=${found.organization_id}&per_page=200`);
+          const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
+          setOrgDocuments(orgDocsJson.documents || []);
+        } catch {
+          setOrgDocuments([]);
+        }
       } else {
         setOrganizationLedger(null);
         setOrganizationMembers([]);
         setOrgData(null);
+        setOrgDocuments([]);
       }
 
       const commList = commJson.commissions || [];
@@ -624,12 +635,70 @@ export default function AdminAgentDetailsPage() {
               </div>
             </div>
 
-            {/* Agent Folder */}
+            {/* Agent Folder + Organization Documents */}
             <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 24 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Documents Folder
               </div>
               <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} />
+
+              {orgDocuments.length > 0 && (
+                <div style={{ marginTop: 20, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Orders & Quotes
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#faf8fc' }}>
+                        <th style={th}>Date</th>
+                        <th style={th}>Type</th>
+                        <th style={th}>Client</th>
+                        <th style={{ ...th, textAlign: 'right' }}>Amount</th>
+                        <th style={th}>Event</th>
+                        <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orgDocuments.map((doc) => (
+                        <tr key={doc.id}>
+                          <td style={td}>{new Date(doc.created_at).toLocaleDateString('en-GB')}</td>
+                          <td style={td}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                              padding: '2px 6px', borderRadius: 4,
+                              background: doc.document_type === 'order' ? '#fef3c7' : '#e0e7ff',
+                              color: doc.document_type === 'order' ? '#92400e' : '#3730a3',
+                            }}>
+                              {doc.document_type}
+                            </span>
+                          </td>
+                          <td style={td}>{doc.client_company || doc.client_name || '—'}</td>
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
+                            {doc.total_amount ? `€${Number(doc.total_amount).toLocaleString('de-DE', { minimumFractionDigits: 2 })}` : '—'}
+                          </td>
+                          <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{doc.events?.name || '—'}</td>
+                          <td style={{ ...td, textAlign: 'right' }}>
+                            {doc.file_path && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/documents/preview?id=${doc.id}`);
+                                    const d = await res.json();
+                                    if (d.url) window.open(d.url, '_blank');
+                                  } catch { /* ignore */ }
+                                }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.inkPlum, fontSize: 11, fontWeight: 600, textDecoration: 'underline' }}
+                              >
+                                View PDF
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Payment Modal */}
