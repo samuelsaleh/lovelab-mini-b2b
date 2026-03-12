@@ -52,6 +52,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const [orgFolders, setOrgFolders] = useState([])
   const [orgFoldersError, setOrgFoldersError] = useState(null)
   const [expandedOrgs, setExpandedOrgs] = useState(new Set())
+  const [selectedOrgId, setSelectedOrgId] = useState(null)
   const orgFoldersCacheRef = useRef(null)
 
   useEffect(() => {
@@ -455,18 +456,33 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     setShareSaving(false)
   }
 
+  // Build org member ID set for filtering
+  const selectedOrgMemberIds = (() => {
+    if (!selectedOrgId) return null;
+    const org = orgFolders.find(o => o.organization_id === selectedOrgId);
+    if (!org) return null;
+    return new Set(org.members.map(m => m.user_id));
+  })();
+
   // Filter
   const filteredDocs = documents.filter(doc => {
-    const matchesEvent = selectedEventId === null
-      ? true
-      : selectedEventId === 'none'
-        ? !doc.event_id
-        : doc.event_id === selectedEventId
+    if (selectedOrgId) {
+      const byMember = selectedOrgMemberIds?.has(doc.created_by);
+      const byEvent = doc.events?.organization_id === selectedOrgId;
+      if (!byMember && !byEvent) return false;
+    } else {
+      const matchesEvent = selectedEventId === null
+        ? true
+        : selectedEventId === 'none'
+          ? !doc.event_id
+          : doc.event_id === selectedEventId
+      if (!matchesEvent) return false;
+    }
     const matchesSearch = !search ||
       doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
       doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
       doc.file_name?.toLowerCase().includes(search.toLowerCase())
-    return matchesEvent && matchesSearch
+    return matchesSearch
   })
 
   const getEventDocCount = (eventId) => documents.filter(d => d.event_id === eventId).length
@@ -554,14 +570,18 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
     return Object.entries(byDate).sort((a, b) => new Date(b[0]) - new Date(a[0]))
   }
 
-  const currentEventName = selectedEventId 
-    ? events.find(e => e.id === selectedEventId)?.name 
-    : selectedEventId === 'none' 
-      ? 'No Event' 
-      : 'All Documents'
-  const currentEventTotal = selectedEventId && selectedEventId !== 'none'
-    ? getEventTotal(selectedEventId)
-    : filteredDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0)
+  const currentEventName = selectedOrgId
+    ? orgFolders.find(o => o.organization_id === selectedOrgId)?.organization_name || 'Company'
+    : selectedEventId 
+      ? events.find(e => e.id === selectedEventId)?.name 
+      : selectedEventId === 'none' 
+        ? 'No Event' 
+        : 'All Documents'
+  const currentEventTotal = selectedOrgId
+    ? filteredDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0)
+    : selectedEventId && selectedEventId !== 'none'
+      ? getEventTotal(selectedEventId)
+      : filteredDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0)
   const currentSalesByDate = getSalesByDate(selectedEventId && selectedEventId !== 'none' ? selectedEventId : null)
 
   return (
@@ -687,12 +707,12 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
         {/* All documents */}
         <button
-          onClick={() => setSelectedEventId(null)}
+          onClick={() => { setSelectedEventId(null); setSelectedOrgId(null); }}
           style={{
             width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
-            background: selectedEventId === null ? '#f3f0f5' : 'transparent',
-            color: selectedEventId === null ? colors.inkPlum : '#555',
-            fontSize: 13, fontWeight: selectedEventId === null ? 600 : 400,
+            background: selectedEventId === null && !selectedOrgId ? '#f3f0f5' : 'transparent',
+            color: selectedEventId === null && !selectedOrgId ? colors.inkPlum : '#555',
+            fontSize: 13, fontWeight: selectedEventId === null && !selectedOrgId ? 600 : 400,
             cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
             marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}
@@ -723,7 +743,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                         onBlur={() => commitRename(event.id)} disabled={renameLoading}
                         style={{ flex: 1, margin: '4px 6px', padding: '5px 8px', fontSize: 13, border: '1.5px solid #5D3A5E', borderRadius: 6, outline: 'none', fontFamily: fonts.body }} />
                     ) : (
-                      <button onClick={() => setSelectedEventId(event.id)} style={{
+                      <button onClick={() => { setSelectedEventId(event.id); setSelectedOrgId(null); }} style={{
                         flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent',
                         color: isSelected ? colors.inkPlum : '#555', fontSize: 13, fontWeight: isSelected ? 600 : 400,
                         cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
@@ -768,23 +788,32 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
             </div>
             {orgFolders.map(org => {
               const isExpanded = expandedOrgs.has(org.organization_id);
-              const toggleExpand = () => setExpandedOrgs(prev => {
-                const next = new Set(prev);
-                if (next.has(org.organization_id)) next.delete(org.organization_id);
-                else next.add(org.organization_id);
-                return next;
-              });
+              const isOrgSelected = selectedOrgId === org.organization_id;
+              const handleOrgClick = () => {
+                if (isOrgSelected) {
+                  setSelectedOrgId(null);
+                } else {
+                  setSelectedOrgId(org.organization_id);
+                  setSelectedEventId(null);
+                }
+                setExpandedOrgs(prev => {
+                  const next = new Set(prev);
+                  if (isOrgSelected) next.delete(org.organization_id);
+                  else next.add(org.organization_id);
+                  return next;
+                });
+              };
               return (
                 <div key={org.organization_id} style={{ marginBottom: 2 }}>
                   <button
-                    onClick={toggleExpand}
+                    onClick={handleOrgClick}
                     style={{
                       width: '100%', padding: '7px 12px', borderRadius: 8, border: 'none',
-                      background: isExpanded ? '#f9f6fa' : 'transparent',
-                      color: colors.inkPlum, fontSize: 12, fontWeight: 700,
+                      background: isOrgSelected ? '#f3ecf5' : isExpanded ? '#f9f6fa' : 'transparent',
+                      color: colors.inkPlum, fontSize: 12, fontWeight: isOrgSelected ? 800 : 700,
                       cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      borderLeft: `2px solid ${colors.inkPlum}`, marginLeft: 2,
+                      borderLeft: `2px solid ${isOrgSelected ? colors.inkPlum : colors.inkPlum}`, marginLeft: 2,
                     }}
                   >
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -835,7 +864,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
 
         {noEventDocs > 0 && (
           <button
-            onClick={() => setSelectedEventId('none')}
+            onClick={() => { setSelectedEventId('none'); setSelectedOrgId(null); }}
             style={{
               width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
               background: selectedEventId === 'none' ? '#f3f0f5' : 'transparent',

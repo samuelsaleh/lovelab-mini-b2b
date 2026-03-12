@@ -41,14 +41,28 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const includeTrashed = searchParams.get('include_trashed') === 'true';
 
-    const [trashedResult, statsResult] = await Promise.all([
+    const [trashedResult, statsResult, commResult] = await Promise.all([
       includeTrashed
         ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
         : Promise.resolve({ data: [] }),
-      adminSupabase.rpc('get_agent_stats'),
+      adminSupabase.rpc('get_agent_stats').catch(() => ({ data: null })),
+      adminSupabase.from('agent_commissions').select('agent_id, type, order_total, commission_amount, status'),
     ]);
     const trashedAgents = trashedResult.data || [];
     const rawStats = statsResult.data;
+
+    // Direct commission aggregation as robust fallback
+    const commByAgent = {};
+    for (const c of commResult.data || []) {
+      if (!c.agent_id) continue;
+      if (!commByAgent[c.agent_id]) commByAgent[c.agent_id] = { orders: 0, revenue: 0, commission: 0, pending: 0, paid: 0 };
+      const a = commByAgent[c.agent_id];
+      const amt = Number(c.commission_amount) || 0;
+      if (c.type === 'order') { a.orders++; a.revenue += Number(c.order_total) || 0; }
+      a.commission += amt;
+      if (c.status === 'pending' || c.status === 'approved') a.pending += amt;
+      else if (c.status === 'paid') a.paid += amt;
+    }
 
     // Reconcile legacy user IDs by email so stats stick to the same person.
     const currentAgentIdByEmail = new Map(
@@ -98,20 +112,17 @@ export async function GET(request) {
         total_orders: 0, total_revenue: 0, total_commission: 0, total_bonuses: 0,
         pending_commission: 0, paid_commission: 0, total_docs: 0, total_order_docs: 0, total_doc_revenue: 0,
       };
-      const noCommissionHistory =
-        (base.total_orders || 0) === 0 &&
-        (base.total_commission || 0) === 0 &&
-        (base.pending_commission || 0) === 0 &&
-        (base.paid_commission || 0) === 0;
-      const effective_orders = (base.total_orders || 0) > 0 ? base.total_orders : (base.total_order_docs || 0);
-      const effective_revenue = (base.total_revenue || 0) > 0 ? base.total_revenue : (base.total_doc_revenue || 0);
-      const estimatedFromDocs = ((base.total_doc_revenue || 0) * (Number(commissionRate) || 0)) / 100;
-      const effective_total_commission = (base.total_commission || 0) > 0
-        ? base.total_commission
-        : (noCommissionHistory ? estimatedFromDocs : 0);
-      const effective_pending_commission = (base.pending_commission || 0) > 0
-        ? base.pending_commission
-        : (noCommissionHistory ? estimatedFromDocs : 0);
+      const fb = commByAgent[agentId];
+
+      const effective_orders = (base.total_orders || 0) > 0 ? base.total_orders
+        : fb ? fb.orders : (base.total_order_docs || 0);
+      const effective_revenue = (base.total_revenue || 0) > 0 ? base.total_revenue
+        : fb ? fb.revenue : (base.total_doc_revenue || 0);
+      const effective_total_commission = (base.total_commission || 0) > 0 ? base.total_commission
+        : fb ? fb.commission : 0;
+      const effective_pending_commission = (base.pending_commission || 0) > 0 ? base.pending_commission
+        : fb ? fb.pending : 0;
+
       return {
         ...base,
         effective_orders: Math.round((effective_orders || 0) * 100) / 100,
