@@ -46,7 +46,7 @@ export async function GET(request) {
         ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
         : Promise.resolve({ data: [] }),
       adminSupabase.rpc('get_agent_stats').catch(() => ({ data: null })),
-      adminSupabase.from('agent_commissions').select('agent_id, type, order_total, commission_amount, status'),
+      adminSupabase.from('agent_commissions').select('agent_id, type, order_total, commission_amount, status').catch(() => ({ data: null })),
     ]);
     const trashedAgents = trashedResult.data || [];
     const rawStats = statsResult.data;
