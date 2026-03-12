@@ -41,27 +41,38 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const includeTrashed = searchParams.get('include_trashed') === 'true';
 
-    const [trashedResult, statsResult, commResult] = await Promise.all([
-      includeTrashed
-        ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
-        : Promise.resolve({ data: [] }),
-      adminSupabase.rpc('get_agent_stats').catch(() => ({ data: null })),
-      adminSupabase.from('agent_commissions').select('agent_id, type, order_total, commission_amount, status').catch(() => ({ data: null })),
-    ]);
-    const trashedAgents = trashedResult.data || [];
-    const rawStats = statsResult.data;
+    let trashedAgents = [];
+    let rawStats = null;
+    try {
+      const [trashedResult, statsResult] = await Promise.all([
+        includeTrashed
+          ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
+          : Promise.resolve({ data: [] }),
+        adminSupabase.rpc('get_agent_stats'),
+      ]);
+      trashedAgents = trashedResult.data || [];
+      rawStats = statsResult.data;
+    } catch (e) {
+      console.error('[Agents GET] stats/trashed query error (non-blocking):', e?.message);
+    }
 
-    // Direct commission aggregation as robust fallback
     const commByAgent = {};
-    for (const c of commResult.data || []) {
-      if (!c.agent_id) continue;
-      if (!commByAgent[c.agent_id]) commByAgent[c.agent_id] = { orders: 0, revenue: 0, commission: 0, pending: 0, paid: 0 };
-      const a = commByAgent[c.agent_id];
-      const amt = Number(c.commission_amount) || 0;
-      if (c.type === 'order') { a.orders++; a.revenue += Number(c.order_total) || 0; }
-      a.commission += amt;
-      if (c.status === 'pending' || c.status === 'approved') a.pending += amt;
-      else if (c.status === 'paid') a.paid += amt;
+    try {
+      const { data: commRows } = await adminSupabase
+        .from('agent_commissions')
+        .select('agent_id, type, order_total, commission_amount, status');
+      for (const c of commRows || []) {
+        if (!c.agent_id) continue;
+        if (!commByAgent[c.agent_id]) commByAgent[c.agent_id] = { orders: 0, revenue: 0, commission: 0, pending: 0, paid: 0 };
+        const a = commByAgent[c.agent_id];
+        const amt = Number(c.commission_amount) || 0;
+        if (c.type === 'order') { a.orders++; a.revenue += Number(c.order_total) || 0; }
+        a.commission += amt;
+        if (c.status === 'pending' || c.status === 'approved') a.pending += amt;
+        else if (c.status === 'paid') a.paid += amt;
+      }
+    } catch (e) {
+      console.error('[Agents GET] commission query error (non-blocking):', e?.message);
     }
 
     // Reconcile legacy user IDs by email so stats stick to the same person.
