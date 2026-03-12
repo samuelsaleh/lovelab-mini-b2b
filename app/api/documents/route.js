@@ -270,21 +270,10 @@ export async function POST(request) {
             .eq('id', event_id)
             .single();
 
-          if (evt?.type === 'agent') {
+          if (evt) {
             let targetAgent = null;
 
-            if (evt.created_by && evt.created_by !== user.id) {
-              const { data: p } = await commSupabase
-                .from('profiles')
-                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-                .eq('id', evt.created_by)
-                .eq('is_agent', true)
-                .eq('agent_status', 'active')
-                .maybeSingle();
-              if (p) targetAgent = p;
-            }
-
-            if (!targetAgent && evt.organization_id) {
+            if (evt.organization_id) {
               const { data: p } = await commSupabase
                 .from('profiles')
                 .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
@@ -292,6 +281,17 @@ export async function POST(request) {
                 .eq('is_agent', true)
                 .eq('agent_status', 'active')
                 .limit(1)
+                .maybeSingle();
+              if (p) targetAgent = p;
+            }
+
+            if (!targetAgent && evt.created_by && evt.created_by !== user.id) {
+              const { data: p } = await commSupabase
+                .from('profiles')
+                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
+                .eq('id', evt.created_by)
+                .eq('is_agent', true)
+                .eq('agent_status', 'active')
                 .maybeSingle();
               if (p) targetAgent = p;
             }
