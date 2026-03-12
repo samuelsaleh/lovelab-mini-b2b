@@ -49,6 +49,7 @@ export async function GET(request) {
 
       const eventQueries = [
         adminSupabase.from('events').select('id').in('created_by', agentIds),
+        adminSupabase.from('agent_commissions').select('document_id').in('agent_id', agentIds),
       ];
       if (agentProf?.organization_id) {
         eventQueries.push(
@@ -58,12 +59,18 @@ export async function GET(request) {
       const evResults = await Promise.all(eventQueries);
       const agentEventIds = [...new Set([
         ...(evResults[0].data || []).map(e => e.id),
-        ...(evResults[1]?.data || []).map(e => e.id),
+        ...(evResults[2]?.data || []).map(e => e.id),
       ])];
+      const commDocIds = [...new Set(
+        (evResults[1].data || []).map(c => c.document_id).filter(Boolean),
+      )];
 
       const orParts = [];
       if (agentEventIds.length > 0) {
         orParts.push(`event_id.in.(${agentEventIds.join(',')})`);
+      }
+      if (commDocIds.length > 0) {
+        orParts.push(`id.in.(${commDocIds.join(',')})`);
       }
       orParts.push(`and(created_by.in.(${agentIds.join(',')}),event_id.is.null)`);
 
