@@ -35,7 +35,7 @@ export async function GET(request) {
       .order('created_at', { ascending: false })
       .range(offset, offset + perPage - 1);
 
-    // Admin filtering by a specific agent's documents (email-reconciled)
+    // Admin filtering: all documents on events owned by this agent
     if (isAdmin && createdByAgent) {
       const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
 
@@ -49,7 +49,6 @@ export async function GET(request) {
 
       const eventQueries = [
         adminSupabase.from('events').select('id').in('created_by', agentIds),
-        adminSupabase.from('event_access').select('event_id').in('user_id', agentIds),
       ];
       if (agentProf?.organization_id) {
         eventQueries.push(
@@ -59,14 +58,15 @@ export async function GET(request) {
       const evResults = await Promise.all(eventQueries);
       const agentEventIds = [...new Set([
         ...(evResults[0].data || []).map(e => e.id),
-        ...(evResults[1].data || []).map(e => e.event_id),
-        ...(evResults[2]?.data || []).map(e => e.id),
+        ...(evResults[1]?.data || []).map(e => e.id),
       ])];
 
-      const orParts = [`created_by.in.(${agentIds.join(',')})`];
+      const orParts = [];
       if (agentEventIds.length > 0) {
         orParts.push(`event_id.in.(${agentEventIds.join(',')})`);
       }
+      orParts.push(`and(created_by.in.(${agentIds.join(',')}),event_id.is.null)`);
+
       query = query.or(orParts.join(','));
     } else if (!isAdmin) {
       const userIds = await resolveAgentIds(adminSupabase, user.id);
@@ -225,33 +225,26 @@ export async function POST(request) {
     // Wrapped in try/catch so failures never block the document response.
     try {
       if (document?.total_amount > 0) {
-        const adminSupabase = createAdminClient();
-        const { data: agentProfile } = await adminSupabase
-          .from('profiles')
-          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-          .eq('id', user.id)
-          .single();
+        const commSupabase = createAdminClient();
 
-        if (agentProfile?.is_agent && agentProfile.agent_status === 'active') {
-          let effectiveRate = agentProfile.commission_rate || 0;
-          if (!effectiveRate && agentProfile.organization_id) {
-            const { data: org } = await adminSupabase
+        const createCommissionFor = async (agentId, profile) => {
+          let effectiveRate = profile.commission_rate || 0;
+          if (!effectiveRate && profile.organization_id) {
+            const { data: org } = await commSupabase
               .from('organizations')
               .select('commission_rate')
-              .eq('id', agentProfile.organization_id)
+              .eq('id', profile.organization_id)
               .single();
             effectiveRate = org?.commission_rate || 0;
           }
-
           const { amount, rate } = calculateCommission(
             document.total_amount,
-            agentProfile.agent_commission_config || null,
+            profile.agent_commission_config || null,
             effectiveRate,
           );
-
           if (amount > 0) {
-            await adminSupabase.from('agent_commissions').upsert({
-              agent_id: user.id,
+            await commSupabase.from('agent_commissions').upsert({
+              agent_id: agentId,
               document_id: document.id,
               type: 'order',
               order_total: document.total_amount,
@@ -259,6 +252,53 @@ export async function POST(request) {
               commission_amount: amount,
               status: 'pending',
             }, { onConflict: 'agent_id,document_id' });
+          }
+        };
+
+        const { data: creatorProfile } = await commSupabase
+          .from('profiles')
+          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
+          .eq('id', user.id)
+          .single();
+
+        if (creatorProfile?.is_agent && creatorProfile.agent_status === 'active') {
+          await createCommissionFor(user.id, creatorProfile);
+        } else if (event_id) {
+          const { data: evt } = await commSupabase
+            .from('events')
+            .select('created_by, organization_id, type')
+            .eq('id', event_id)
+            .single();
+
+          if (evt?.type === 'agent') {
+            let targetAgent = null;
+
+            if (evt.created_by && evt.created_by !== user.id) {
+              const { data: p } = await commSupabase
+                .from('profiles')
+                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
+                .eq('id', evt.created_by)
+                .eq('is_agent', true)
+                .eq('agent_status', 'active')
+                .maybeSingle();
+              if (p) targetAgent = p;
+            }
+
+            if (!targetAgent && evt.organization_id) {
+              const { data: p } = await commSupabase
+                .from('profiles')
+                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
+                .eq('organization_id', evt.organization_id)
+                .eq('is_agent', true)
+                .eq('agent_status', 'active')
+                .limit(1)
+                .maybeSingle();
+              if (p) targetAgent = p;
+            }
+
+            if (targetAgent) {
+              await createCommissionFor(targetAgent.id, targetAgent);
+            }
           }
         }
       }
