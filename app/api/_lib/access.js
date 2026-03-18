@@ -39,13 +39,17 @@ export async function getEventPermission(adminSupabase, eventId, userId, isAdmin
     .maybeSingle();
 
   if (!eventRow) return null;
-  if (eventRow.created_by === userId) return 'manage';
+
+  // Resolve all profile IDs sharing the same email (handles re-invited agents
+  // whose auth user ID changed but whose events still reference the old ID).
+  const userIds = await resolveAgentIds(adminSupabase, userId);
+  if (userIds.includes(eventRow.created_by)) return 'manage';
 
   const { data: shareRow, error: shareErr } = await adminSupabase
     .from('event_access')
     .select('permission')
     .eq('event_id', eventId)
-    .eq('user_id', userId)
+    .in('user_id', userIds)
     .maybeSingle();
 
   if (shareErr && !isMissingTableError(shareErr)) {
