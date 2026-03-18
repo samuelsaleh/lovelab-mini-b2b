@@ -8,6 +8,41 @@ const fmt = (n) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
+// Known country synonyms / typo aliases → canonical English name
+const COUNTRY_ALIASES = {
+  duitsland: 'Germany',
+  suisse: 'Switzerland',
+  zwitserland: 'Switzerland',
+  italia: 'Italy',
+  'haute-corse (france)': 'France',
+  corse: 'France',
+  holland: 'Netherlands',
+  uea: 'UAE',
+  usa: 'United States',
+  uk: 'United Kingdom',
+  belgique: 'Belgium',
+  belgie: 'Belgium',
+  österreich: 'Austria',
+  oesterreich: 'Austria',
+  espagne: 'Spain',
+  espana: 'Spain',
+}
+
+export function normaliseCountry(str) {
+  if (!str || !str.trim()) return ''
+  const lower = str.trim().toLowerCase()
+  if (COUNTRY_ALIASES[lower]) return COUNTRY_ALIASES[lower]
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
+export function csvEscape(val) {
+  const s = val == null ? '' : String(val)
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"'
+  }
+  return s
+}
+
 export default function AdminClientsPage() {
   const [clients, setClients] = useState([])
   const [documents, setDocuments] = useState([])
@@ -54,12 +89,14 @@ export default function AdminClientsPage() {
   const countries = useMemo(() => {
     const set = new Set()
     for (const c of clients) {
-      if (c.country) set.add(c.country)
+      const norm = normaliseCountry(c.country)
+      if (norm) set.add(norm)
     }
-    return [...set].sort()
+    return [...set].filter(Boolean).sort()
   }, [clients])
 
-  const filtered = useMemo(() => {
+  // Enriched + sorted list — recomputes only when data, search, or country changes
+  const enrichedClients = useMemo(() => {
     let result = clients
     if (search) {
       const q = search.toLowerCase()
@@ -70,16 +107,37 @@ export default function AdminClientsPage() {
       )
     }
     if (countryFilter !== 'all') {
-      result = result.filter(c => c.country === countryFilter)
+      result = result.filter(c => normaliseCountry(c.country) === countryFilter)
     }
     return result.map(c => {
       const key = (c.company || c.name || '').toLowerCase()
       const stats = docsByCompany[key] || { count: 0, total: 0 }
       return { ...c, orderCount: stats.count, orderTotal: stats.total }
-    })
-      .filter(c => showAllClients ? true : c.orderCount > 0)
-      .sort((a, b) => b.orderTotal - a.orderTotal)
-  }, [clients, search, countryFilter, docsByCompany, showAllClients])
+    }).sort((a, b) => b.orderTotal - a.orderTotal)
+  }, [clients, search, countryFilter, docsByCompany])
+
+  // showAllClients toggle — cheap boolean filter on top of enriched list
+  const filtered = useMemo(() =>
+    showAllClients ? enrichedClients : enrichedClients.filter(c => c.orderCount > 0),
+  [enrichedClients, showAllClients])
+
+  const exportCSV = () => {
+    const headers = ['Company', 'Contact', 'Country', 'Email', 'Phone', 'Source', 'Orders', 'Total (EUR)']
+    const rows = filtered.map(c => [
+      c.company, c.name, c.country, c.email, c.phone,
+      c.source === 'salesforce' ? 'Salesforce' : 'Manual',
+      c.orderCount, c.orderTotal || 0,
+    ].map(csvEscape).join(','))
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob(['\ufeff' + csv, ''], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const label = countryFilter !== 'all' ? countryFilter.replace(/\s+/g, '-').toLowerCase() : 'all-countries'
+    a.download = `clients-${label}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const paged = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE)
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
@@ -112,7 +170,7 @@ export default function AdminClientsPage() {
           />
           <select
             value={countryFilter}
-            onChange={e => setCountryFilter(e.target.value)}
+            onChange={e => setCountryFilter(e.target.value === 'all' ? 'all' : normaliseCountry(e.target.value))}
             style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${colors.lineGray}`, fontSize: 13, fontFamily: fonts.body, background: '#fff', minWidth: 140 }}
           >
             <option value="all">All Countries</option>
@@ -134,6 +192,31 @@ export default function AdminClientsPage() {
             }}
           >
             {showAllClients ? 'Hide clients without orders' : 'Show all clients'}
+          </button>
+          <button
+            onClick={exportCSV}
+            disabled={filtered.length === 0}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: `1px solid ${colors.lineGray}`,
+              background: '#fff',
+              color: filtered.length === 0 ? '#ccc' : colors.charcoal,
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: fonts.body,
+              cursor: filtered.length === 0 ? 'default' : 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export CSV {countryFilter !== 'all' ? `(${filtered.length})` : ''}
           </button>
         </div>
 
