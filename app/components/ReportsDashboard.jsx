@@ -25,15 +25,6 @@ function getCellValue(row, col) {
   }
 }
 
-// RFC 4180 CSV escape
-function csvCell(val) {
-  const s = String(val ?? '')
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
 
 const initialFilters = {
   dateFrom: '',
@@ -207,20 +198,180 @@ export default function ReportsDashboard() {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [rows, filters.country])
 
-  const exportCSV = () => {
-    const header = activeColumns.map(csvCell).join(',')
-    const rows = filteredRows.map(r =>
-      activeColumns.map(col => {
-        if (col === 'Amount') return csvCell(r.amount != null ? r.amount.toFixed(2) : '0')
-        return csvCell(getCellValue(r, col))
-      }).join(',')
-    )
-    const csv = [header, ...rows].join('\r\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `lovelab-report-${new Date().toISOString().slice(0, 10)}.csv`
+  const exportXLSX = async () => {
+    const ExcelJSModule = await import('exceljs')
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule
+
+    // ── Brand constants ──────────────────────────────────────────────────────
+    const PLUM      = 'FF5D3A5E'   // inkPlum
+    const PLUM_DARK = 'FF4A2545'   // lovelabDark — totals row
+    const PLUM_MID  = 'FF7A4F7C'   // inkPlumLight — header border
+    const WHITE     = 'FFFFFFFF'
+    const LIGHT_ROW = 'FFFFF9FF'   // barely-tinted alternating row
+    const TEXT_GRAY = 'FF4F4F4F'   // charcoal
+    const KPI_GRAY  = 'FF8A6A7D'   // lovelabMuted
+
+    const numCols = activeColumns.length
+    const lastCol = String.fromCharCode(64 + numCols)  // e.g. "H" for 8 cols
+
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'LoveLab'
+    wb.created = new Date()
+
+    const ws = wb.addWorksheet('Report', {
+      views: [{ state: 'frozen', ySplit: 7 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    })
+
+    // ── Helper: style every cell in a row identically ────────────────────────
+    const styleRow = (rowNum, fill, font, alignment) => {
+      for (let c = 1; c <= numCols; c++) {
+        const cell = ws.getCell(rowNum, c)
+        if (fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+        if (font) cell.font = { ...font, name: 'Calibri' }
+        if (alignment) cell.alignment = alignment
+      }
+    }
+
+    // ── Row 1: Brand title bar ───────────────────────────────────────────────
+    ws.getRow(1).height = 40
+    ws.mergeCells(`A1:${lastCol}1`)
+    const titleCell = ws.getCell('A1')
+    titleCell.value = '✦  LoveLab'
+    titleCell.font  = { bold: true, size: 18, color: { argb: WHITE }, name: 'Calibri' }
+    titleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+
+    // ── Row 2: Subtitle (filter context) ────────────────────────────────────
+    ws.getRow(2).height = 20
+    ws.mergeCells(`A2:${lastCol}2`)
+    const countryLabel = filters.country !== 'all' ? filters.country : 'All Countries'
+    const dateLabel    = [filters.dateFrom, filters.dateTo].filter(Boolean).join(' – ') || 'All Dates'
+    const reportLabel  = selectedReportId ? reports.find(r => r.id === selectedReportId)?.name : null
+    const subtitleCell = ws.getCell('A2')
+    subtitleCell.value = [reportLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
+    subtitleCell.font  = { size: 10, color: { argb: 'FFCFAECF' }, italic: true, name: 'Calibri' }
+    subtitleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
+    subtitleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+
+    // ── Row 3: Bottom of title band (spacer in brand color) ─────────────────
+    ws.getRow(3).height = 6
+    ws.mergeCells(`A3:${lastCol}3`)
+    ws.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
+
+    // ── Row 4: KPI labels ────────────────────────────────────────────────────
+    ws.getRow(4).height = 16
+    const kpiDefs = [
+      { label: 'Total Revenue',  value: kpis.totalRevenue,   fmt: '€#,##0.00' },
+      { label: 'Orders',         value: kpis.totalOrders,    fmt: null },
+      { label: 'Quotes',         value: kpis.totalQuotes,    fmt: null },
+      { label: 'Average Order',  value: kpis.avgOrderValue,  fmt: '€#,##0.00' },
+    ]
+    kpiDefs.forEach(({ label }, i) => {
+      const cell = ws.getCell(4, i + 1)
+      cell.value = label.toUpperCase()
+      cell.font  = { size: 8, color: { argb: KPI_GRAY }, name: 'Calibri', bold: false }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7FF' } }
+    })
+
+    // ── Row 5: KPI values ────────────────────────────────────────────────────
+    ws.getRow(5).height = 28
+    kpiDefs.forEach(({ value, fmt }, i) => {
+      const cell = ws.getCell(5, i + 1)
+      cell.value = value
+      if (fmt) cell.numFmt = fmt
+      cell.font  = { size: 14, bold: true, color: { argb: PLUM }, name: 'Calibri' }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7FF' } }
+    })
+
+    // ── Row 6: Spacer before table ───────────────────────────────────────────
+    ws.getRow(6).height = 10
+
+    // ── Row 7: Column headers ────────────────────────────────────────────────
+    ws.getRow(7).height = 26
+    activeColumns.forEach((col, i) => {
+      const cell = ws.getCell(7, i + 1)
+      cell.value = col.toUpperCase()
+      cell.font  = { bold: true, color: { argb: WHITE }, size: 9, name: 'Calibri' }
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
+      cell.alignment = {
+        horizontal: col === 'Amount' ? 'right' : 'left',
+        vertical: 'middle',
+        indent: col === 'Amount' ? 0 : 1,
+      }
+      cell.border = {
+        bottom: { style: 'medium', color: { argb: PLUM_MID } },
+      }
+    })
+
+    // ── Rows 8+: Data rows ───────────────────────────────────────────────────
+    filteredRows.forEach((r, rowIdx) => {
+      const xlRow = ws.getRow(8 + rowIdx)
+      xlRow.height = 18
+      const isEven = rowIdx % 2 === 0
+
+      activeColumns.forEach((col, colIdx) => {
+        const cell = ws.getCell(8 + rowIdx, colIdx + 1)
+        cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? WHITE : LIGHT_ROW } }
+        cell.border = { bottom: { style: 'hair', color: { argb: 'FFE8E8E8' } } }
+
+        if (col === 'Amount') {
+          cell.value  = r.amount != null ? r.amount : 0
+          cell.numFmt = '"€"#,##0.00'
+          cell.font   = { bold: true, color: { argb: PLUM }, size: 11, name: 'Calibri' }
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else {
+          cell.value = getCellValue(r, col) || ''
+          cell.font  = { size: 10, color: { argb: TEXT_GRAY }, name: 'Calibri' }
+          cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+        }
+      })
+    })
+
+    // ── Totals row ───────────────────────────────────────────────────────────
+    const totalsRowIdx = 8 + filteredRows.length
+    ws.getRow(totalsRowIdx).height = 26
+    activeColumns.forEach((col, colIdx) => {
+      const cell = ws.getCell(totalsRowIdx, colIdx + 1)
+      cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM_DARK } }
+      cell.border = { top: { style: 'medium', color: { argb: PLUM_MID } } }
+
+      if (col === 'Amount') {
+        cell.value  = filteredRows.reduce((s, r) => s + (r.amount || 0), 0)
+        cell.numFmt = '"€"#,##0.00'
+        cell.font   = { bold: true, color: { argb: WHITE }, size: 12, name: 'Calibri' }
+        cell.alignment = { horizontal: 'right', vertical: 'middle' }
+      } else if (colIdx === 0) {
+        cell.value = `TOTAL  (${filteredRows.length} rows)`
+        cell.font  = { bold: true, color: { argb: WHITE }, size: 10, name: 'Calibri' }
+        cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+      } else {
+        cell.value = ''
+      }
+    })
+
+    // ── Column widths ────────────────────────────────────────────────────────
+    const colWidths = { Date: 14, Client: 30, Country: 18, City: 18, Event: 26, Type: 12, Source: 14, Amount: 16 }
+    activeColumns.forEach((col, i) => {
+      ws.getColumn(i + 1).width = colWidths[col] || 16
+    })
+
+    // ── Build filename ───────────────────────────────────────────────────────
+    const countrySlug = filters.country !== 'all'
+      ? `_${filters.country.replace(/\s+/g, '_')}`
+      : ''
+    const dateSlug = new Date().toISOString().slice(0, 10)
+    const filename = `LoveLab_Report${countrySlug}_${dateSlug}.xlsx`
+
+    // ── Download ─────────────────────────────────────────────────────────────
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url    = URL.createObjectURL(blob)
+    const a      = document.createElement('a')
+    a.href     = url
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -428,23 +579,24 @@ export default function ReportsDashboard() {
               )}
             </div>
 
-            {/* Export CSV */}
+            {/* Export Excel */}
             <button
-              onClick={exportCSV}
+              onClick={exportXLSX}
               style={{
                 ...btnPrimary,
-                background: '#fff',
-                color: colors.inkPlum,
-                border: `1px solid ${colors.inkPlum}`,
+                background: colors.inkPlum,
+                color: '#fff',
                 display: 'flex', alignItems: 'center', gap: 5,
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+                <line x1="10" y1="9" x2="8" y2="9"/>
               </svg>
-              Export CSV
+              Export Excel
             </button>
           </div>
         </div>
