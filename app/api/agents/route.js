@@ -4,6 +4,7 @@ import { welcomeAgentEmail, upgradeAgentEmail } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
+import { grantAccess } from '@/lib/agents/access';
 import { NextResponse } from 'next/server';
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -270,11 +271,20 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
       }
       agentProfile = data;
+
+      // Ensure existing users are also granted login access
+      try {
+        await grantAccess(adminSupabase, emailLower);
+      } catch (grantErr) {
+        console.error('[Agents POST] grantAccess error (non-blocking):', grantErr.message);
+      }
     } else {
       // New user -- add to allowed_emails and create auth account with magic link
-      await adminSupabase
-        .from('allowed_emails')
-        .upsert({ email: emailLower }, { onConflict: 'email' });
+      try {
+        await grantAccess(adminSupabase, emailLower);
+      } catch (grantErr) {
+        console.error('[Agents POST] grantAccess error (non-blocking):', grantErr.message);
+      }
 
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
       let magicLinkUrl = null;

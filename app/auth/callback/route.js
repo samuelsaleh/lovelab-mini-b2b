@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { isUserAllowed } from '@/lib/auth/isUserAllowed';
 import { NextResponse } from 'next/server';
 
 // Validate the redirect path to prevent open redirects
@@ -18,7 +19,7 @@ function getSafeRedirectPath(next) {
 function getSafeHost(forwardedHost) {
   if (!forwardedHost) return null;
   const allowedHosts = (process.env.ALLOWED_HOSTS || '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
-  if (allowedHosts.length === 0) return null; // No allowlist configured, don't trust forwarded host
+  if (allowedHosts.length === 0) return null;
   return allowedHosts.includes(forwardedHost.toLowerCase()) ? forwardedHost : null;
 }
 
@@ -28,6 +29,9 @@ export async function GET(request) {
   const token_hash = searchParams.get('token_hash');
   const type = searchParams.get('type');
   const next = getSafeRedirectPath(searchParams.get('next'));
+
+  // Track sign-in method so we can conditionally trigger set-password
+  const isOAuthSignIn = Boolean(code);
 
   let sessionUser = null;
   let supabase = null;
@@ -40,7 +44,7 @@ export async function GET(request) {
       sessionUser = data.user;
     }
   }
-  // Handle magic link / OTP token_hash (used by agent invitations and magic link sign-in)
+  // Handle magic link / OTP token_hash (agent invitations and magic link sign-in)
   else if (token_hash && type) {
     supabase = await createClient();
     const { data, error } = await supabase.auth.verifyOtp({ token_hash, type });
@@ -50,22 +54,24 @@ export async function GET(request) {
   }
 
   if (sessionUser && supabase) {
-    // Check if user email is in the allowed list (using admin client to bypass RLS)
-    const allowedEmails = await getAllowedEmails();
+    const adminSupabase = createAdminClient();
     const userEmail = sessionUser.email?.toLowerCase();
 
-    if (!allowedEmails.includes(userEmail)) {
+    // Run allowed_emails point-lookup and profile fetch in parallel
+    const [allowedRow, profileRow] = await Promise.all([
+      checkAllowedEmail(adminSupabase, userEmail),
+      fetchAuthProfile(adminSupabase, sessionUser.id),
+    ]);
+
+    if (!isUserAllowed({ isInAllowedEmails: allowedRow, agentProfile: profileRow })) {
       await supabase.auth.signOut();
       const url = new URL('/login', origin);
       url.searchParams.set('error', 'access_denied');
       return NextResponse.redirect(url);
     }
 
-    // User is allowed - ensure they have a profile
-    await ensureProfile(supabase, sessionUser);
-
-    // Check if this is an agent who hasn't set a password yet
-    const needsPassword = await agentNeedsPassword(sessionUser.id);
+    // User is allowed — ensure they have a profile
+    await ensureProfile(adminSupabase, sessionUser, profileRow);
 
     const isLocalEnv = process.env.NODE_ENV === 'development';
 
@@ -76,7 +82,9 @@ export async function GET(request) {
       return safeHost ? `https://${safeHost}${path}` : `${origin}${path}`;
     };
 
-    if (needsPassword) {
+    // Only redirect to set-password for magic link / OTP sign-ins, not for Google OAuth.
+    // OAuth users already have an identity — forcing a password step makes no sense.
+    if (!isOAuthSignIn && profileRow?.is_agent === true && profileRow?.has_password_set === false) {
       const setPasswordPath = `/set-password${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
       return NextResponse.redirect(buildRedirect(setPasswordPath));
     }
@@ -84,43 +92,53 @@ export async function GET(request) {
     return NextResponse.redirect(buildRedirect(next));
   }
 
-  // Return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/login?error=auth_error`);
 }
 
-// Check if an agent needs to set a password (is_agent and has_password_set = false)
-async function agentNeedsPassword(userId) {
+/**
+ * Check if the email exists in allowed_emails (point lookup, not full table scan).
+ * Falls back to the ALLOWED_EMAILS env var if the DB returns no rows at all.
+ */
+async function checkAllowedEmail(adminSupabase, userEmail) {
+  if (!userEmail) return false;
   try {
-    const adminSupabase = createAdminClient();
+    // First try a fast point-lookup in the DB
     const { data } = await adminSupabase
-      .from('profiles')
-      .select('is_agent, has_password_set')
-      .eq('id', userId)
-      .single();
-    return data?.is_agent === true && data?.has_password_set === false;
-  } catch {
+      .from('allowed_emails')
+      .select('email')
+      .eq('email', userEmail)
+      .maybeSingle();
+
+    if (data) return true;
+
+    // Fallback: check env var (used when allowed_emails table is empty or not yet populated)
+    const envEmails = (process.env.ALLOWED_EMAILS || '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+    return envEmails.includes(userEmail);
+  } catch (err) {
+    console.error('[auth/callback] checkAllowedEmail error:', err);
+    // Fail closed on unexpected errors — do not grant access
     return false;
   }
 }
 
-// Get list of allowed emails using admin client (bypasses RLS)
-async function getAllowedEmails() {
+/**
+ * Fetch the profile fields needed for the access gate and password check.
+ */
+async function fetchAuthProfile(adminSupabase, userId) {
   try {
-    const adminSupabase = createAdminClient();
-    const { data: allowedEmailsData } = await adminSupabase
-      .from('allowed_emails')
-      .select('email');
-    
-    if (allowedEmailsData && allowedEmailsData.length > 0) {
-      return allowedEmailsData.map(row => row.email.toLowerCase());
-    }
+    const { data } = await adminSupabase
+      .from('profiles')
+      .select('id, role, is_agent, agent_status, agent_deleted_at, has_password_set')
+      .eq('id', userId)
+      .maybeSingle();
+    return data || null;
   } catch (err) {
-    console.error('Failed to fetch allowed emails from DB:', err);
+    console.error('[auth/callback] fetchAuthProfile error:', err);
+    return null;
   }
-  
-  // Fallback to environment variable (comma-separated list)
-  const envEmails = process.env.ALLOWED_EMAILS || '';
-  return envEmails.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
 }
 
 function getAdminEmails() {
@@ -135,19 +153,15 @@ function getAdminEmails() {
   return fromEnv;
 }
 
-// Create or update user profile
-async function ensureProfile(supabase, user) {
+/**
+ * Create or update user profile on first/subsequent sign-in.
+ * Receives the already-fetched profile row to avoid a redundant DB query.
+ */
+async function ensureProfile(adminSupabase, user, existingProfile) {
   try {
-    const adminSupabase = createAdminClient();
     const userEmail = (user.email || '').toLowerCase();
     const shouldBeAdmin = getAdminEmails().includes(userEmail);
 
-    const { data: existingProfile } = await adminSupabase
-      .from('profiles')
-      .select('id, role, is_agent, agent_status')
-      .eq('id', user.id)
-      .single();
-    
     if (!existingProfile) {
       const { error } = await adminSupabase.from('profiles').insert({
         id: user.id,
@@ -157,10 +171,10 @@ async function ensureProfile(supabase, user) {
         role: shouldBeAdmin ? 'admin' : 'member',
       });
       if (error) {
-        console.error('Failed to create profile:', error.message);
+        console.error('[auth/callback] Failed to create profile:', error.message);
       }
     } else {
-      // Keep admin roles stable even if profile is recreated/updated in future flows.
+      // Repair admin role if needed
       if (shouldBeAdmin && existingProfile.role !== 'admin') {
         try {
           await adminSupabase
@@ -168,7 +182,7 @@ async function ensureProfile(supabase, user) {
             .update({ role: 'admin' })
             .eq('id', user.id);
         } catch (roleErr) {
-          console.error('Admin role repair error (non-blocking):', roleErr.message);
+          console.error('[auth/callback] Admin role repair error (non-blocking):', roleErr.message);
         }
       }
 
@@ -180,11 +194,11 @@ async function ensureProfile(supabase, user) {
             .update({ agent_status: 'active' })
             .eq('id', user.id);
         } catch (agentErr) {
-          console.error('Agent activation error (non-blocking):', agentErr.message);
+          console.error('[auth/callback] Agent activation error (non-blocking):', agentErr.message);
         }
       }
     }
   } catch (err) {
-    console.error('ensureProfile error:', err);
+    console.error('[auth/callback] ensureProfile error:', err);
   }
 }

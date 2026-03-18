@@ -34,6 +34,7 @@ function SetPasswordContent() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -84,6 +85,19 @@ function SetPasswordContent() {
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
       setLoading(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    setSkipping(true);
+    setError(null);
+    try {
+      // Mark has_password_set = true so this page is never shown again
+      await fetch('/api/me/password-set', { method: 'PATCH' });
+      router.replace(next);
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setSkipping(false);
     }
   };
 
@@ -203,17 +217,17 @@ function SetPasswordContent() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || skipping}
               style={{
                 width: '100%',
                 padding: '13px',
-                background: loading ? colors.lovelabMuted : colors.inkPlum,
+                background: (loading || skipping) ? colors.lovelabMuted : colors.inkPlum,
                 color: '#fff',
                 border: 'none',
                 borderRadius: 10,
                 fontSize: 14,
                 fontWeight: 700,
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: (loading || skipping) ? 'not-allowed' : 'pointer',
                 fontFamily: fonts.body,
                 transition: 'background .15s',
               }}
@@ -221,6 +235,29 @@ function SetPasswordContent() {
               {loading ? 'Saving…' : 'Set Password & Continue'}
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={loading || skipping}
+            style={{
+              width: '100%',
+              marginTop: 12,
+              padding: '11px',
+              background: 'none',
+              color: colors.lovelabMuted,
+              border: `1px solid ${colors.lineGray}`,
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: (loading || skipping) ? 'not-allowed' : 'pointer',
+              fontFamily: fonts.body,
+              transition: 'opacity .15s',
+              opacity: (loading || skipping) ? 0.6 : 1,
+            }}
+          >
+            {skipping ? 'Skipping…' : 'Skip — I\'ll use Google to sign in'}
+          </button>
         </div>
       </div>
     </div>

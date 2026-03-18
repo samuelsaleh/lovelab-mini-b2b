@@ -4,6 +4,7 @@ import { restoreAgentEmail } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
+import { grantAccess, revokeAccess } from '@/lib/agents/access';
 import { NextResponse } from 'next/server';
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
@@ -117,11 +118,9 @@ export async function PUT(request, { params }) {
       // Re-add to allowed_emails so they can log back in
       if (restored?.email) {
         try {
-          await adminSupabase
-            .from('allowed_emails')
-            .upsert({ email: restored.email.toLowerCase() }, { onConflict: 'email' });
+          await grantAccess(adminSupabase, restored.email);
         } catch (allowErr) {
-          console.error('[Agent PUT] allowed_emails re-add error (non-blocking):', allowErr.message);
+          console.error('[Agent PUT] grantAccess error (non-blocking):', allowErr.message);
         }
 
         // Generate a new magic link and send a "your access has been restored" email
@@ -340,12 +339,9 @@ export async function DELETE(request, { params }) {
     // Remove from allowed_emails so they cannot log back in
     if (agent?.email) {
       try {
-        await adminSupabase
-          .from('allowed_emails')
-          .delete()
-          .eq('email', agent.email.toLowerCase());
+        await revokeAccess(adminSupabase, agent.email);
       } catch (emailErr) {
-        console.error('[Agent DELETE] allowed_emails removal error (non-blocking):', emailErr.message);
+        console.error('[Agent DELETE] revokeAccess error (non-blocking):', emailErr.message);
       }
     }
 
