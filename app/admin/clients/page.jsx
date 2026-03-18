@@ -14,7 +14,7 @@ export default function AdminClientsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [countryFilter, setCountryFilter] = useState('all')
-  const [showAllClients, setShowAllClients] = useState(false)
+  const [showAllClients, setShowAllClients] = useState(true)
   const [error, setError] = useState(null)
   const [page, setPage] = useState(0)
 
@@ -29,7 +29,7 @@ export default function AdminClientsPage() {
     try {
       const [clientsRes, docsRes] = await Promise.all([
         fetch('/api/clients').then(r => r.json()),
-        fetch('/api/documents').then(r => r.json()),
+        fetch('/api/documents?per_page=200').then(r => r.json()),
       ])
       setClients(clientsRes.clients || [])
       setDocuments(docsRes.documents || [])
@@ -133,7 +133,7 @@ export default function AdminClientsPage() {
               whiteSpace: 'nowrap',
             }}
           >
-            {showAllClients ? 'Only ordered clients' : 'Show all clients'}
+            {showAllClients ? 'Hide clients without orders' : 'Show all clients'}
           </button>
         </div>
 
