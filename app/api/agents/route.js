@@ -27,10 +27,12 @@ export async function GET(request) {
 
     const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
 
+    // Use OR so agents whose is_agent flag was lost (NULL after a profile migration
+    // race or partial upsert) are still visible as long as agent_status is set.
     const { data: agents, error } = await adminSupabase
       .from('profiles')
       .select(AGENT_SELECT)
-      .eq('is_agent', true)
+      .or('is_agent.eq.true,agent_status.in.(invited,active,inactive)')
       .is('agent_deleted_at', null)
       .order('agent_since', { ascending: false, nullsFirst: false });
 
@@ -47,7 +49,7 @@ export async function GET(request) {
     try {
       const [trashedResult, statsResult] = await Promise.all([
         includeTrashed
-          ? adminSupabase.from('profiles').select(AGENT_SELECT).eq('is_agent', true).not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
+          ? adminSupabase.from('profiles').select(AGENT_SELECT).or('is_agent.eq.true,agent_status.in.(invited,active,inactive)').not('agent_deleted_at', 'is', null).order('agent_deleted_at', { ascending: false })
           : Promise.resolve({ data: [] }),
         adminSupabase.rpc('get_agent_stats'),
       ]);
