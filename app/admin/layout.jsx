@@ -4,13 +4,9 @@ import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '../components/AuthProvider'
 import { colors, fonts } from '@/lib/styles'
-
-const ADMIN_TABS = [
-  { id: 'dashboard', label: 'Dashboard', href: '/admin' },
-  { id: 'agents', label: 'Agents', href: '/admin/agents' },
-  { id: 'fairs', label: 'Fairs', href: '/admin/fairs' },
-  { id: 'clients', label: 'Clients', href: '/admin/clients' },
-]
+import Sidebar from '../components/Sidebar'
+import { ADMIN_NAV_ITEMS } from '@/lib/navItems'
+import UserMenu from '../components/UserMenu'
 
 export default function AdminLayout({ children }) {
   const router = useRouter()
@@ -33,63 +29,83 @@ export default function AdminLayout({ children }) {
 
   if (!user || profile?.role !== 'admin') return null
 
-  const activeTab = ADMIN_TABS.find(t => t.href === pathname)?.id
-    || (pathname.startsWith('/admin/agents') ? 'agents' : null)
-    || (pathname.startsWith('/admin/fairs') ? 'fairs' : null)
-    || (pathname.startsWith('/admin/clients') ? 'clients' : null)
-    || 'dashboard'
+  // Determine active sidebar item from current path
+  const activeId =
+    pathname === '/admin' ? 'dashboard'
+    : pathname.startsWith('/admin/agents') ? 'agents'
+    : pathname.startsWith('/admin/fairs') ? 'fairs'
+    : pathname.startsWith('/admin/clients') ? 'clients'
+    : 'dashboard'
+
+  const canGoBack = pathname !== '/admin'
 
   return (
-    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Admin Header */}
+    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Slim top bar */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${colors.lineGray}`, flexShrink: 0, zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="/logo.png" alt="LoveLab" style={{ height: 48 }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, background: '#efe7f2', padding: '3px 10px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <img src="/logo.png" alt="LoveLab" style={{ height: 44 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, background: '#efe7f2', padding: '3px 10px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Admin
             </span>
+            {canGoBack && (
+              <button
+                onClick={() => router.back()}
+                aria-label="Go back"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.lineGray}`,
+                  background: '#fff',
+                  color: colors.charcoal,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all .15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.lineGray; e.currentTarget.style.color = colors.charcoal }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"/>
+                  <polyline points="12 19 5 12 12 5"/>
+                </svg>
+                Back
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              onClick={() => router.push('/')}
-              style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fdf7fa', color: colors.inkPlum, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            <div
+              style={{
+                fontSize: 11, color: '#666',
+                padding: '4px 10px', borderRadius: 8,
+                border: '1px solid #ece7ef', background: '#faf8fc',
+              }}
             >
-              Back to App
-            </button>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
-              {(profile?.full_name || user?.email || '?')[0].toUpperCase()}
+              {profile?.full_name || user?.email}
             </div>
+            <UserMenu />
           </div>
-        </div>
-
-        {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 0, padding: '0 20px', maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-          {ADMIN_TABS.map(tab => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => router.push(tab.href)}
-                style={{
-                  padding: '12px 20px', border: 'none',
-                  borderBottom: isActive ? `2.5px solid ${colors.inkPlum}` : '2.5px solid transparent',
-                  background: 'transparent', color: isActive ? colors.inkPlum : '#888',
-                  fontSize: 13, fontWeight: isActive ? 700 : 500,
-                  cursor: 'pointer', fontFamily: fonts.body, whiteSpace: 'nowrap',
-                }}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
         </div>
       </div>
 
-      {/* Content */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        {children}
-      </main>
+      {/* Two-column body */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        <Sidebar
+          items={ADMIN_NAV_ITEMS}
+          activeId={activeId}
+          onSelect={() => {}}
+        />
+
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

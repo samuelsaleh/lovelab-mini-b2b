@@ -244,7 +244,8 @@ export default function AnalyticsDashboard() {
       ])
       const docsData = await docsRes.json()
       const eventsData = await eventsRes.json()
-      if (docsData.documents) setDocuments(docsData.documents)
+      // Exclude internal (supplier) orders from all analytics — they are not revenue
+      if (docsData.documents) setDocuments(docsData.documents.filter(d => d.order_channel !== 'internal'))
       if (eventsData.events) setEvents(eventsData.events)
     } catch {
       setFetchError('Failed to load analytics data.')

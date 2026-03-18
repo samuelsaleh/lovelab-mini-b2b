@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
 import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
+import { getMainNavItems } from '@/lib/navItems'
 import LoadingDots from './components/LoadingDots'
 import MiniQuote from './components/MiniQuote'
 import QuoteModal from './components/QuoteModal'
@@ -14,11 +15,14 @@ import BuilderPage, { mkLine, mkColorConfig, uniqueId } from './components/Build
 import OrderForm from './components/OrderForm'
 import ClientGate from './components/ClientGate'
 import TopNav from './components/TopNav'
+import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
-import AdminHomeTab from './components/AdminHomeTab'
-import AgentHomeTab from './components/AgentHomeTab'
+import HomeTab from './components/HomeTab'
+import InternalOrdersPanel from './components/InternalOrdersPanel'
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
+
+const MyAccountPanel = lazy(() => import('./components/MyAccountPanel'))
 
 const STORAGE_KEY = 'lovelab-b2b-state'
 
@@ -37,6 +41,17 @@ export default function App() {
   
   // Active tab: 'home' | 'builder' | 'ai' | 'orderform' | 'documents'
   const [activeTab, setActiveTab] = useState('home')
+
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false) // mobile drawer
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    // Lazy initializer — safe for SSR (Next.js client component but guard anyway)
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('lovelab-sidebar-collapsed') === 'true'
+  })
+
+  // MyAccountPanel overlay state
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false)
 
   // Builder state (shared -- AI results can populate this)
   const [lines, setLines] = useState([mkLine()])
@@ -296,6 +311,11 @@ export default function App() {
     setActiveTab('builder')
   }, [])
 
+  // ─── Persist sidebar collapse preference ───
+  useEffect(() => {
+    try { localStorage.setItem('lovelab-sidebar-collapsed', String(sidebarCollapsed)) } catch { /* ignore */ }
+  }, [sidebarCollapsed])
+
   // ─── Tab change handler ───
   const handleTabChange = useCallback((tab) => {
     if (tab === 'orderform') {
@@ -547,60 +567,92 @@ export default function App() {
     )
   }
 
+  const navItems = getMainNavItems(profile)
+
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
       {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} />}
 
-      {/* ─── Top Navigation ─── */}
+      {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
+      {accountPanelOpen && (
+        <div
+          onClick={() => setAccountPanelOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 499 }}
+        />
+      )}
+      {accountPanelOpen && (
+        <Suspense fallback={null}>
+          <MyAccountPanel onClose={() => setAccountPanelOpen(false)} />
+        </Suspense>
+      )}
+
+      {/* ─── Top Navigation (slim bar — no tabs) ─── */}
       <TopNav
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
         client={client}
         onEditClient={() => setClientReady(false)}
         onNewClient={handleNewClient}
+        onOpenSidebar={() => setSidebarOpen(true)}
+        onOpenAccount={() => setAccountPanelOpen(true)}
       />
 
       {/* ─── VAT banner ─── */}
       {showVatBanner && (
         <div style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '8px 20px', flexShrink: 0 }}>
-          <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-            <div style={{
-              borderRadius: 8, padding: '8px 12px',
-              border: `1px solid ${client.vatValidating ? '#e0e0e0' : vatStatus === 'INVALID' ? '#f5c6cb' : '#ffeeba'}`,
-              background: client.vatValidating ? '#f7f7f7' : vatStatus === 'INVALID' ? '#f8d7da' : '#fff3cd',
-              color: client.vatValidating ? '#555' : vatStatus === 'INVALID' ? '#721c24' : '#856404',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12,
-            }}>
-              <span style={{ fontWeight: 600 }}>
-                {client.vatValidating
-                  ? t('vat.checking')
-                  : vatStatus === 'INVALID'
-                    ? t('vat.invalid')
-                    : t(client.vatMessageKey || 'vat.notVerified')}
-                <span style={{ fontWeight: 400, marginLeft: 8 }}>{client.vat}</span>
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {!client.vatValidating && (
-                  <button onClick={retryVatValidation} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
-                )}
-                <button onClick={() => setClientReady(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('vat.editVat')}</button>
-              </div>
+          <div style={{
+            borderRadius: 8, padding: '8px 12px',
+            border: `1px solid ${client.vatValidating ? '#e0e0e0' : vatStatus === 'INVALID' ? '#f5c6cb' : '#ffeeba'}`,
+            background: client.vatValidating ? '#f7f7f7' : vatStatus === 'INVALID' ? '#f8d7da' : '#fff3cd',
+            color: client.vatValidating ? '#555' : vatStatus === 'INVALID' ? '#721c24' : '#856404',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12,
+          }}>
+            <span style={{ fontWeight: 600 }}>
+              {client.vatValidating
+                ? t('vat.checking')
+                : vatStatus === 'INVALID'
+                  ? t('vat.invalid')
+                  : t(client.vatMessageKey || 'vat.notVerified')}
+              <span style={{ fontWeight: 400, marginLeft: 8 }}>{client.vat}</span>
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {!client.vatValidating && (
+                <button onClick={retryVatValidation} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
+              )}
+              <button onClick={() => setClientReady(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('vat.editVat')}</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ─── Body: Sidebar + Main Content ─── */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        {/* Desktop sidebar */}
+        {!mobile && (
+          <Sidebar
+            items={navItems}
+            activeId={activeTab}
+            onSelect={handleTabChange}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+          />
+        )}
+
+        {/* Mobile drawer sidebar */}
+        {mobile && (
+          <Sidebar
+            mobile
+            items={navItems}
+            activeId={activeTab}
+            onSelect={handleTabChange}
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          />
+        )}
+
       {/* ─── Main Content ─── */}
       <main role="main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {activeTab === 'home' && (
-          (() => {
-            const isAdmin = profile?.role === 'admin'
-            const isActiveAgent = profile?.is_agent && profile?.agent_status === 'active'
-            if (isAdmin) return <AdminHomeTab />
-            if (isActiveAgent) return <AgentHomeTab onSwitchTab={setActiveTab} />
-            return <AgentHomeTab onSwitchTab={setActiveTab} />
-          })()
+          <HomeTab onSwitchTab={handleTabChange} />
         )}
 
         {activeTab === 'builder' && (
@@ -789,7 +841,12 @@ export default function App() {
         {activeTab === 'documents' && (
           <DocumentsPanel onReEdit={handleReEdit} refreshKey={docsRefreshKey} />
         )}
+
+        {activeTab === 'internal_orders' && (
+          <InternalOrdersPanel />
+        )}
       </main>
+      </div>
     </div>
   )
 }

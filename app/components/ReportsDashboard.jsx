@@ -1,10 +1,38 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
+
+// ─── Column config ─────────────────────────────────────────────────────────
+
+const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount']
+
+// Map column label → row field
+function getCellValue(row, col) {
+  switch (col) {
+    case 'Date':   return row.dateISO || '—'
+    case 'Client': return row.clientLabel
+    case 'Country': return row.country
+    case 'City':   return row.city
+    case 'Event':  return row.eventLabel
+    case 'Type':   return row.document_type
+    case 'Source': return row.sourceLabel
+    case 'Amount': return row.amount != null ? String(row.amount) : '0'
+    default: return ''
+  }
+}
+
+// RFC 4180 CSV escape
+function csvCell(val) {
+  const s = String(val ?? '')
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
 
 const countriesLower = COUNTRIES.map((c) => c.toLowerCase())
 const normalizeCountry = (raw) => {
@@ -48,6 +76,34 @@ export default function ReportsDashboard() {
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
 
+  // Column visibility — default all visible
+  const [visibleColumns, setVisibleColumns] = useState(new Set(ALL_COLUMNS))
+  const [colMenuOpen, setColMenuOpen] = useState(false)
+  const colMenuRef = useRef(null)
+
+  // Close column menu on outside click
+  useEffect(() => {
+    if (!colMenuOpen) return
+    const handler = (e) => {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target)) {
+        setColMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [colMenuOpen])
+
+  const toggleColumn = (col) => {
+    setVisibleColumns(prev => {
+      if (prev.has(col) && prev.size === 1) return prev // keep at least one
+      const next = new Set(prev)
+      next.has(col) ? next.delete(col) : next.add(col)
+      return next
+    })
+  }
+
+  const activeColumns = ALL_COLUMNS.filter(c => visibleColumns.has(c))
+
   const loadReports = async () => {
     setLoading(true)
     setError(null)
@@ -75,7 +131,8 @@ export default function ReportsDashboard() {
   useEffect(() => { loadReports() }, [])
 
   const documentRows = useMemo(() => {
-    return documents.map((d) => ({
+    // Internal (supplier) orders are excluded from the reports view — they live in the Internal Orders tab
+    return documents.filter(d => d.order_channel !== 'internal').map((d) => ({
       ...d,
       rowType: 'document',
       sourceLabel: 'Order',
@@ -165,14 +222,36 @@ export default function ReportsDashboard() {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [rows, filters.country])
 
+  const exportCSV = () => {
+    const header = activeColumns.map(csvCell).join(',')
+    const rows = filteredRows.map(r =>
+      activeColumns.map(col => {
+        if (col === 'Amount') return csvCell(r.amount != null ? r.amount.toFixed(2) : '0')
+        return csvCell(getCellValue(r, col))
+      }).join(',')
+    )
+    const csv = [header, ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `lovelab-report-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const applySavedReport = (reportId) => {
     setSelectedReportId(reportId)
     const report = reports.find((r) => r.id === reportId)
     if (!report) return
-    setFilters({
-      ...initialFilters,
-      ...(report.config || {}),
-    })
+    const cfg = report.config || {}
+    setFilters({ ...initialFilters, ...cfg })
+    // Restore saved column visibility if present (fall back to all columns)
+    if (Array.isArray(cfg.visibleColumns) && cfg.visibleColumns.length > 0) {
+      setVisibleColumns(new Set(cfg.visibleColumns.filter(c => ALL_COLUMNS.includes(c))))
+    } else {
+      setVisibleColumns(new Set(ALL_COLUMNS))
+    }
   }
 
   const saveReport = async () => {
@@ -186,7 +265,8 @@ export default function ReportsDashboard() {
         body: JSON.stringify({
           name: saveName.trim(),
           entity_type: 'documents',
-          config: filters,
+          // Include current column visibility in the saved config
+          config: { ...filters, visibleColumns: [...visibleColumns] },
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -294,7 +374,7 @@ export default function ReportsDashboard() {
         </div>
 
         <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 12, marginBottom: 14 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={selectedReportId} onChange={(e) => applySavedReport(e.target.value)} style={{ ...inputStyle, minWidth: 220 }}>
               <option value="">Load saved report</option>
               {reports.map((r) => (
@@ -312,6 +392,74 @@ export default function ReportsDashboard() {
             </button>
             <button onClick={deleteSelectedReport} disabled={saving || !selectedReportId} style={btnDanger}>
               Delete selected
+            </button>
+
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+
+            {/* Column visibility toggle */}
+            <div ref={colMenuRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setColMenuOpen(v => !v)}
+                style={{
+                  ...btnPrimary,
+                  background: colMenuOpen ? colors.inkPlum : '#fff',
+                  color: colMenuOpen ? '#fff' : colors.inkPlum,
+                  border: `1px solid ${colors.inkPlum}`,
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                  <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                Columns {visibleColumns.size < ALL_COLUMNS.length && `(${visibleColumns.size}/${ALL_COLUMNS.length})`}
+              </button>
+              {colMenuOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                  background: '#fff', border: `1px solid ${colors.lineGray}`,
+                  borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                  padding: '8px 4px', zIndex: 200, minWidth: 160,
+                }}>
+                  {ALL_COLUMNS.map(col => (
+                    <label key={col} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 14px', cursor: 'pointer', fontSize: 13,
+                      color: visibleColumns.has(col) ? colors.inkPlum : '#666',
+                      fontWeight: visibleColumns.has(col) ? 600 : 400,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.has(col)}
+                        disabled={visibleColumns.has(col) && visibleColumns.size === 1}
+                        onChange={() => toggleColumn(col)}
+                        style={{ accentColor: colors.inkPlum }}
+                      />
+                      {col}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Export CSV */}
+            <button
+              onClick={exportCSV}
+              style={{
+                ...btnPrimary,
+                background: '#fff',
+                color: colors.inkPlum,
+                border: `1px solid ${colors.inkPlum}`,
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export CSV
             </button>
           </div>
         </div>
@@ -337,7 +485,7 @@ export default function ReportsDashboard() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      {['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount'].map((h) => (
+                      {activeColumns.map((h) => (
                         <th key={h} style={thStyle}>{h}</th>
                       ))}
                     </tr>
@@ -345,19 +493,20 @@ export default function ReportsDashboard() {
                   <tbody>
                     {pagedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
+                        <td colSpan={activeColumns.length} style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>No results for current filters.</td>
                       </tr>
                     ) : (
                       pagedRows.map((r) => (
                         <tr key={r.id}>
-                          <td style={tdStyle}>{r.dateISO || '—'}</td>
-                          <td style={tdStyle}>{r.clientLabel}</td>
-                          <td style={tdStyle}>{r.country}</td>
-                          <td style={tdStyle}>{r.city}</td>
-                          <td style={tdStyle}>{r.eventLabel}</td>
-                          <td style={tdStyle}>{r.document_type}</td>
-                          <td style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(r.amount)}</td>
+                          {activeColumns.map(col => {
+                            if (col === 'Amount') {
+                              return <td key={col} style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(r.amount)}</td>
+                            }
+                            if (col === 'Source') {
+                              return <td key={col} style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
+                            }
+                            return <td key={col} style={tdStyle}>{getCellValue(r, col)}</td>
+                          })}
                         </tr>
                       ))
                     )}

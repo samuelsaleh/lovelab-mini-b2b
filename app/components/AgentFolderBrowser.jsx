@@ -333,9 +333,9 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
         <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>Loading…</div>
       ) : (
         <div style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 10, overflow: 'hidden' }}>
-          {folders.length === 0 && files.length === 0 && (!currentFolderId && orderDocuments.length === 0) ? (
+          {folders.length === 0 && files.length === 0 && currentFolderId ? (
             <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
-              {currentFolderId ? 'This folder is empty. Use "Upload File" above to add files.' : 'No folders yet. Click "New Folder" above to create one.'}
+              This folder is empty. Use "Upload File" above to add files.
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -439,57 +439,97 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
                     </td>
                   </tr>
                 ))}
-                {/* Order documents shown as virtual files in the root folder */}
-                {!currentFolderId && orderDocuments.map(doc => {
-                  const label = [
-                    doc.document_type?.toUpperCase(),
-                    doc.client_company || doc.client_name,
-                    doc.total_amount ? `€${Number(doc.total_amount).toLocaleString('de-DE', { minimumFractionDigits: 2 })}` : null,
-                  ].filter(Boolean).join(' — ')
-                  return (
-                    <tr key={`doc-${doc.id}`} style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
-                      <td style={{ padding: '10px 14px', width: 32 }}>
-                        <span style={{ color: colors.lovelabMuted }}><FileIcon size={16} /></span>
-                      </td>
-                      <td style={{ padding: '10px 4px' }}>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(`/api/documents/preview?id=${doc.id}`)
-                              const d = await res.json()
-                              if (d.url) window.open(d.url, '_blank')
-                            } catch { /* ignore */ }
-                          }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: colors.inkPlum, fontFamily: fonts.body, padding: 0, textAlign: 'left', textDecoration: 'underline', textDecorationColor: 'rgba(93,58,94,0.3)' }}
-                        >
-                          {label || doc.file_name || 'Document'}
-                        </button>
-                        {doc.events?.name && (
-                          <span style={{ fontSize: 10, color: colors.lovelabMuted, marginLeft: 8 }}>{doc.events.name}</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                          padding: '2px 6px', borderRadius: 4, marginRight: 8,
-                          background: doc.document_type === 'order' ? '#fef3c7' : '#e0e7ff',
-                          color: doc.document_type === 'order' ? '#92400e' : '#3730a3',
-                        }}>
-                          {doc.document_type}
-                        </span>
-                        <span style={{ fontSize: 11, color: '#bbb' }}>
-                          {new Date(doc.created_at).toLocaleDateString('en-GB')}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {/* B2B Orders virtual folder — shown at root only */}
+                {!currentFolderId && <VirtualOrderGroup docs={orderDocuments} channel="b2b" label="B2B Orders" />}
+                {/* B2C Orders virtual folder — shown at root only */}
+                {!currentFolderId && <VirtualOrderGroup docs={orderDocuments} channel="b2c" label="B2C Orders" />}
               </tbody>
             </table>
           )}
         </div>
       )}
     </div>
+  )
+}
+
+// ─── VirtualOrderGroup ────────────────────────────────────────────────────────
+// Renders an expandable virtual folder row for B2B or B2C orders.
+
+function VirtualOrderGroup({ docs, channel, label }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const filtered = (docs || []).filter(d =>
+    channel === 'b2c' ? d.order_channel === 'b2c' : (!d.order_channel || d.order_channel === 'b2b')
+  )
+
+  const openDoc = async (doc) => {
+    try {
+      const res = await fetch(`/api/documents/preview?id=${doc.id}`)
+      const d = await res.json()
+      if (d.url) window.open(d.url, '_blank')
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <>
+      <tr
+        data-testid={`virtual-folder-${channel}`}
+        style={{ borderBottom: `1px solid ${colors.lineGray}`, cursor: 'pointer', background: '#fafafa' }}
+        onClick={() => setExpanded(v => !v)}
+      >
+        <td style={{ padding: '10px 14px', width: 32 }}>
+          <span style={{ color: channel === 'b2c' ? colors.luxeGold : colors.inkPlum, display: 'flex', alignItems: 'center', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }}>
+            <FolderIcon size={16} />
+          </span>
+        </td>
+        <td style={{ padding: '10px 4px' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: channel === 'b2c' ? colors.luxeGold : colors.charcoal, fontFamily: fonts.body }}>
+            {label}
+          </span>
+          <span style={{ marginLeft: 8, fontSize: 11, color: colors.lovelabMuted }}>({filtered.length})</span>
+        </td>
+        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+          <span style={{ fontSize: 11, color: '#bbb' }}>{expanded ? '▲' : '▼'}</span>
+        </td>
+      </tr>
+      {expanded && filtered.map(doc => {
+        const docLabel = [
+          doc.document_type?.toUpperCase(),
+          doc.client_company || doc.client_name,
+          doc.total_amount ? `€${Number(doc.total_amount).toLocaleString('de-DE', { minimumFractionDigits: 2 })}` : null,
+        ].filter(Boolean).join(' — ')
+        return (
+          <tr key={`doc-${doc.id}`} style={{ borderBottom: `1px solid ${colors.lineGray}`, background: '#fff' }}>
+            <td style={{ padding: '8px 14px 8px 32px', width: 32 }}>
+              <span style={{ color: colors.lovelabMuted }}><FileIcon size={14} /></span>
+            </td>
+            <td style={{ padding: '8px 4px' }}>
+              <button
+                onClick={() => openDoc(doc)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.inkPlum, fontFamily: fonts.body, padding: 0, textAlign: 'left', textDecoration: 'underline', textDecorationColor: 'rgba(93,58,94,0.3)' }}
+              >
+                {docLabel || doc.file_name || 'Document'}
+              </button>
+              {doc.events?.name && (
+                <span style={{ fontSize: 10, color: colors.lovelabMuted, marginLeft: 8 }}>{doc.events.name}</span>
+              )}
+            </td>
+            <td style={{ padding: '8px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: '#bbb' }}>
+                {new Date(doc.created_at).toLocaleDateString('en-GB')}
+              </span>
+            </td>
+          </tr>
+        )
+      })}
+      {expanded && filtered.length === 0 && (
+        <tr style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
+          <td colSpan={3} style={{ padding: '12px 32px', fontSize: 12, color: colors.lovelabMuted, fontStyle: 'italic' }}>
+            No {label.toLowerCase()} yet.
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 

@@ -25,6 +25,7 @@ export async function GET(request) {
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
+    const orderChannelFilter = searchParams.get('order_channel'); // e.g. 'internal'
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const perPage = Math.min(200, Math.max(1, parseInt(searchParams.get('per_page') || '50', 10)));
     const offset = (page - 1) * perPage;
@@ -128,6 +129,14 @@ export async function GET(request) {
       }
     }
 
+    // Filter by order_channel if specified (e.g. 'internal' for supplier orders)
+    if (orderChannelFilter) {
+      const allowed = ['b2b', 'b2c', 'internal'];
+      if (allowed.includes(orderChannelFilter)) {
+        query = query.eq('order_channel', orderChannelFilter);
+      }
+    }
+
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters
       const sanitized = search.trim().replace(/[,.()"'\\%_*]/g, '');
@@ -173,6 +182,7 @@ export async function POST(request) {
       file_size,
       total_amount,
       metadata,
+      order_channel,
     } = body;
 
     if (!client_name || !document_type || !file_path || !file_name) {
@@ -182,6 +192,9 @@ export async function POST(request) {
     if (!['quote', 'order'].includes(document_type)) {
       return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
     }
+
+    const safeOrderChannel = ['b2b', 'b2c', 'internal'].includes(order_channel) ? order_channel : 'b2b';
+    const isInternalOrder = safeOrderChannel === 'internal';
 
     if (event_id) {
       const { allowed } = await requireEventPermission(adminSupabase, event_id, user.id, 'edit', isAdmin);
@@ -219,6 +232,7 @@ export async function POST(request) {
         total_amount: total_amount || null,
         created_by: user.id,
         metadata: metadata || {},
+        order_channel: safeOrderChannel,
       })
       .select()
       .single();
@@ -229,9 +243,10 @@ export async function POST(request) {
     }
 
     // Agent commission hook: auto-create commission for active agents.
+    // Skipped for internal (supplier) orders — they carry no agent commission.
     // Wrapped in try/catch so failures never block the document response.
     try {
-      if (document?.total_amount > 0) {
+      if (document?.total_amount > 0 && !isInternalOrder) {
         const commSupabase = createAdminClient();
 
         const createCommissionFor = async (agentId, profile) => {

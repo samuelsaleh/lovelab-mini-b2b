@@ -6,6 +6,7 @@ import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
+import KpiCard from '@/app/components/KpiCard';
 
 export default function AdminAgentDetailsPage() {
   const router = useRouter();
@@ -392,28 +393,43 @@ export default function AdminAgentDetailsPage() {
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-              {(() => {
-                const s = summary || {};
-                const st = agent?.stats || {};
-                const totalEarned = (s.total_earned || 0) > 0 ? s.total_earned : (st.effective_total_commission || 0);
-                const totalPaid = s.total_paid_out || 0;
-                const pendingBalance = totalEarned > 0 ? totalEarned - totalPaid : (st.effective_pending_commission || 0);
-                const orderRevenue = (s.order_count || 0) > 0
-                  ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
-                  : (st.effective_revenue || 0);
-                const orderCount = (s.order_count || 0) > 0 ? s.order_count : (st.effective_orders || 0);
-                return (
-                  <>
-                    <Stat label="Total Earned" value={fmt(totalEarned)} />
-                    <Stat label="Total Paid" value={fmt(totalPaid)} color={colors.success} />
-                    <Stat label="True Pending Balance" value={fmt(pendingBalance)} color={pendingBalance > 0 ? colors.warning : colors.inkPlum} />
-                    <Stat label="Order Revenue" value={fmt(orderRevenue)} />
-                    <Stat label="Orders" value={orderCount} />
-                  </>
-                );
-              })()}
-            </div>
+            {(() => {
+              const s = summary || {};
+              const st = agent?.stats || {};
+              const totalEarned = (s.total_earned || 0) > 0 ? s.total_earned : (st.effective_total_commission || 0);
+              const totalPaid = s.total_paid_out || 0;
+              const pendingBalance = totalEarned > 0 ? totalEarned - totalPaid : (st.effective_pending_commission || 0);
+              const orderRevenue = (s.order_count || 0) > 0
+                ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
+                : (st.effective_revenue || 0);
+              const orderCount = (s.order_count || 0) > 0 ? s.order_count : (st.effective_orders || 0);
+
+              // B2B / B2C split from orgDocuments
+              const b2bDocs = orgDocuments.filter(d => !d.order_channel || d.order_channel === 'b2b');
+              const b2cDocs = orgDocuments.filter(d => d.order_channel === 'b2c');
+
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
+                  <KpiCard label="Total Earned" value={fmt(totalEarned)} />
+                  <KpiCard label="Total Paid" value={fmt(totalPaid)} accent={colors.success} />
+                  <KpiCard label="Pending Balance" value={fmt(pendingBalance)} accent={pendingBalance > 0 ? colors.warning : colors.inkPlum} />
+                  <KpiCard label="Order Revenue" value={fmt(orderRevenue)} />
+                  <KpiCard
+                    data-testid="b2b-orders-card"
+                    label="B2B Orders"
+                    value={b2bDocs.length || orderCount}
+                    sub="trade fair / manual"
+                  />
+                  <KpiCard
+                    data-testid="b2c-orders-card"
+                    label="B2C Orders"
+                    value={b2cDocs.length}
+                    sub="from website"
+                    accent={colors.luxeGold}
+                  />
+                </div>
+              );
+            })()}
 
             {agent?.organization_id && orgData && (
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
@@ -620,6 +636,9 @@ export default function AdminAgentDetailsPage() {
                               <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB')}</td>
                               <td style={{ ...td, fontSize: 11 }}>
                                 {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
+                                {row.document?.order_channel === 'b2c' && (
+                                  <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
+                                )}
                               </td>
                               <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>
                                 {row.type === 'order' ? fmt(row.order_total) : '—'}
