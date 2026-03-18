@@ -41,8 +41,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
 
   return (
     <div style={{
-      background: '#fff',
-      borderBottom: '1px solid #eaeaea',
+      background: colors.inkPlum,
       flexShrink: 0,
       zIndex: 100,
     }}>
@@ -52,7 +51,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
         padding: mobile ? '8px 12px' : '8px 20px',
         width: '100%', boxSizing: 'border-box',
       }}>
-        {/* Left side: hamburger (mobile) + logo (mobile only) + back button (desktop, non-root) */}
+        {/* Left side: hamburger (mobile) + logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {mobile && (
             <button
@@ -63,7 +62,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: colors.inkPlum,
+                color: '#fff',
                 padding: '6px',
                 display: 'flex',
                 alignItems: 'center',
@@ -79,10 +78,8 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
             </button>
           )}
 
-          {/* Logo — only on mobile; desktop Sidebar owns the logo */}
-          {mobile && (
-            <img src="/logo.png" alt="LoveLab" style={{ height: 44, width: 'auto' }} />
-          )}
+          {/* Logo — always visible in TopNav */}
+          <img src="/logo.png" alt="LoveLab" style={{ height: 36, width: 'auto', display: 'block' }} />
 
           {/* Back button — desktop only, shown when not at root */}
           {!mobile && canGoBack && (
@@ -95,17 +92,17 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
                 gap: 5,
                 padding: '7px 12px',
                 borderRadius: 8,
-                border: `1px solid ${colors.lineGray}`,
-                background: '#fff',
-                color: colors.charcoal,
+                border: '1px solid rgba(255,255,255,0.35)',
+                background: 'rgba(255,255,255,0.12)',
+                color: '#fff',
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 transition: 'all .15s',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.color = colors.inkPlum }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.lineGray; e.currentTarget.style.color = colors.charcoal }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"/>
@@ -122,12 +119,12 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
           {showClientUI && !mobile && hasClient && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: '#f8f8f8', borderRadius: 8, padding: '5px 12px',
+              background: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: '5px 12px',
             }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>{client.company}</span>
-              {client.country && <span style={{ fontSize: 11, color: '#999' }}>{client.country}</span>}
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{client.company}</span>
+              {client.country && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>{client.country}</span>}
               {client.vatValid === true && (
-                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: '#d4edda', color: '#155724', fontWeight: 600 }}>{t('nav.vatOk')}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.25)', color: '#fff', fontWeight: 600 }}>{t('nav.vatOk')}</span>
               )}
             </div>
           )}
@@ -140,12 +137,13 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '7px 14px', borderRadius: 8,
-                  border: `1.5px solid ${colors.inkPlum}`, background: '#fdf7fa',
-                  color: colors.inkPlum, fontSize: 12, fontWeight: 600,
+                  border: '1.5px solid rgba(255,255,255,0.5)',
+                  background: 'rgba(255,255,255,0.14)',
+                  color: '#fff', fontSize: 12, fontWeight: 600,
                   cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = `${colors.inkPlum}15` }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#fdf7fa' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)' }}
               >
                 {hasClient ? t('nav.changeClient') : t('nav.selectClient')}
               </button>
@@ -154,12 +152,13 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '7px 14px', borderRadius: 8,
-                  border: `1.5px solid ${colors.lineGray}`, background: '#fff',
-                  color: '#666', fontSize: 12, fontWeight: 600,
+                  border: '1.5px solid rgba(255,255,255,0.3)',
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 600,
                   cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               >
                 {t('nav.new')}
               </button>
@@ -172,12 +171,12 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
               onClick={onEditClient}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                background: '#f8f8f8', border: 'none', borderRadius: 8,
+                background: 'rgba(255,255,255,0.14)', border: 'none', borderRadius: 8,
                 padding: '10px 14px', cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
-              <span style={{ fontSize: 10, color: '#999' }}>&#x25BE;</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#fff', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company}</span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>&#x25BE;</span>
             </button>
           )}
 
@@ -188,15 +187,16 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '5px 10px', borderRadius: 8,
-                border: '1px solid #ece7ef', background: '#faf8fc', maxWidth: 260,
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.1)', maxWidth: 260,
               }}
             >
-              <span style={{ fontSize: 11, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user.email}
               </span>
               <span style={{
                 fontSize: 10, fontWeight: 700, color: colors.inkPlum,
-                background: '#efe7f2', borderRadius: 12, padding: '2px 7px',
+                background: '#fff', borderRadius: 12, padding: '2px 7px',
                 flexShrink: 0, textTransform: 'uppercase',
               }}>
                 {roleLabel}
@@ -213,15 +213,15 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '6px 12px 8px',
-          borderBottom: '1px solid #f0f0f0',
+          borderTop: '1px solid rgba(255,255,255,0.15)',
         }}>
           <button
             onClick={onEditClient}
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '10px 12px', borderRadius: 8,
-              border: `1.5px solid ${colors.inkPlum}`, background: '#fdf7fa',
-              color: colors.inkPlum, fontSize: 13, fontWeight: 700,
+              border: '1.5px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.14)',
+              color: '#fff', fontSize: 13, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
             }}
           >
@@ -232,8 +232,8 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '10px 12px', borderRadius: 8,
-              border: `1.5px solid ${colors.lineGray}`, background: '#fff',
-              color: '#666', fontSize: 13, fontWeight: 700,
+              border: '1.5px solid rgba(255,255,255,0.3)', background: 'transparent',
+              color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
             }}
           >

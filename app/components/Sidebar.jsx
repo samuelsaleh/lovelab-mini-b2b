@@ -137,19 +137,30 @@ function CollapseIcon({ collapsed }) {
 
 // ─── Icon map ────────────────────────────────────────────────────────────────
 
+function InternalOrdersIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+      <path d="M9 22V12h6v10"/>
+      <line x1="12" y1="6" x2="12" y2="6.01"/>
+    </svg>
+  )
+}
+
 const ICONS = {
-  home:      <HomeIcon />,
-  builder:   <BuilderIcon />,
-  ai:        <AIIcon />,
-  orderform: <OrderFormIcon />,
-  analytics: <AnalyticsIcon />,
-  reports:   <ReportsIcon />,
-  documents: <DocumentsIcon />,
-  dashboard: <DashboardIcon />,
-  agents:    <AgentsIcon />,
-  fairs:     <FairsIcon />,
-  clients:   <ClientsIcon />,
-  back:      <BackIcon />,
+  home:            <HomeIcon />,
+  builder:         <BuilderIcon />,
+  ai:              <AIIcon />,
+  orderform:       <OrderFormIcon />,
+  internal_orders: <InternalOrdersIcon />,
+  analytics:       <AnalyticsIcon />,
+  reports:         <ReportsIcon />,
+  documents:       <DocumentsIcon />,
+  dashboard:       <DashboardIcon />,
+  agents:          <AgentsIcon />,
+  fairs:           <FairsIcon />,
+  clients:         <ClientsIcon />,
+  back:            <BackIcon />,
 }
 
 // ─── Sidebar component ───────────────────────────────────────────────────────
@@ -197,27 +208,9 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
         fontFamily: fonts.body,
       }}
     >
-      {/* Logo area */}
-      <div style={{
-        padding: collapsed && !mobile ? '16px 0' : '16px 20px',
-        borderBottom: `1px solid ${colors.lineGray}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: collapsed && !mobile ? 'center' : 'space-between',
-        flexShrink: 0,
-      }}>
-        {(!collapsed || mobile) && (
-          <img src="/logo.png" alt="LoveLab" style={{ height: 44, width: 'auto' }} />
-        )}
-        {collapsed && !mobile && (
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            background: colors.inkPlum, color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 700,
-          }}>L</div>
-        )}
-        {mobile && (
+      {/* Mobile close button — no logo here since it lives in TopNav */}
+      {mobile && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
           <button
             onClick={onClose}
             aria-label="Close menu"
@@ -227,8 +220,8 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Nav items */}
       <nav style={{ flex: 1, padding: '8px 0' }}>
