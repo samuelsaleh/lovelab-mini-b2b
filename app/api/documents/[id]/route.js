@@ -59,19 +59,23 @@ export async function PUT(request, { params }) {
     }
 
     // Update the document record
+    const updatePayload = {
+      event_id: body.event_id || null,
+      client_name: body.client_name,
+      client_company: body.client_company,
+      document_type: body.document_type,
+      file_path: body.file_path,
+      file_name: body.file_name,
+      file_size: body.file_size,
+      total_amount: body.total_amount,
+      metadata: body.metadata,
+    };
+    if (['b2b', 'b2c', 'internal'].includes(body.order_channel)) {
+      updatePayload.order_channel = body.order_channel;
+    }
     const { data: doc, error: updateError } = await adminSupabase
       .from('documents')
-      .update({
-        event_id: body.event_id || null,
-        client_name: body.client_name,
-        client_company: body.client_company,
-        document_type: body.document_type,
-        file_path: body.file_path,
-        file_name: body.file_name,
-        file_size: body.file_size,
-        total_amount: body.total_amount,
-        metadata: body.metadata,
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
@@ -84,9 +88,9 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
-    // Recalculate commission when total_amount changes
+    // Recalculate commission when total_amount changes (skip for internal orders)
     try {
-      if (doc?.total_amount > 0) {
+      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal') {
         const { data: agentProfile } = await adminSupabase
           .from('profiles')
           .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
@@ -209,8 +213,17 @@ export async function PATCH(request, { params }) {
 
     const body = await request.json();
     const newName = body.file_name?.trim();
-    if (!newName || newName.length > 255) {
-      return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
+    const newChannel = body.order_channel;
+
+    // Must provide at least one updatable field
+    const hasName = newName && newName.length <= 255;
+    const hasChannel = ['b2b', 'b2c', 'internal'].includes(newChannel);
+    if (!hasName && !hasChannel) {
+      return NextResponse.json({ error: 'Provide file_name or a valid order_channel' }, { status: 400 });
+    }
+    // Changing order_channel is admin-only
+    if (hasChannel && !isAdmin) {
+      return NextResponse.json({ error: 'Only admins can change order channel' }, { status: 403 });
     }
 
     const { data: doc, error: fetchError } = await adminSupabase
@@ -231,15 +244,19 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const patchPayload = {};
+    if (hasName) patchPayload.file_name = newName;
+    if (hasChannel) patchPayload.order_channel = newChannel;
+
     const { data: updated, error: updateError } = await adminSupabase
       .from('documents')
-      .update({ file_name: newName })
+      .update(patchPayload)
       .eq('id', id)
       .select()
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: 'Failed to rename document' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to update document' }, { status: 500 });
     }
 
     return NextResponse.json({ document: updated });

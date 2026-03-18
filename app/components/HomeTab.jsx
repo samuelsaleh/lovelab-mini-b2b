@@ -25,7 +25,7 @@ export default function HomeTab({ onSwitchTab }) {
       data-testid="home-tab"
       style={{ flex: 1, overflowY: 'auto', padding: '40px 24px' }}
     >
-      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         {/* Welcome heading */}
         <h1 style={{
           fontSize: 28,

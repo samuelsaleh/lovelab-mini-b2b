@@ -23,7 +23,10 @@ const MAX_ROWS_PER_TABLE = 50_000;
 
 function verifyCronAuth(request) {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
+  if (!cronSecret) {
+    console.error('[backup] CRON_SECRET env var is not set — all backup requests will be rejected. Set CRON_SECRET in your environment variables.');
+    return false;
+  }
 
   const headerSecret = request.headers.get('x-vercel-cron-secret');
   return headerSecret === cronSecret;

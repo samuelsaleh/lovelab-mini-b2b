@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
+import { useAuth } from './AuthProvider';
 
 export default function SaveDocumentModal({
   isOpen,
@@ -20,6 +21,9 @@ export default function SaveDocumentModal({
   editingDocumentId = null, // ID of document being re-edited (for replacement)
   onSaveSuccess = null, // Callback when save completes successfully
 }) {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [newEventName, setNewEventName] = useState('');
@@ -29,6 +33,7 @@ export default function SaveDocumentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [isInternal, setIsInternal] = useState(false);
   const closeTimerRef = useRef(null);
 
   // Clean up timeout on unmount to prevent memory leak
@@ -45,6 +50,7 @@ export default function SaveDocumentModal({
       setShowNewEvent(false);
       setSuccess(false);
       setError(null);
+      setIsInternal(false);
       // Pre-fill new event name if provided
       if (defaultEventName) {
         setNewEventName(defaultEventName);
@@ -215,7 +221,7 @@ export default function SaveDocumentModal({
         method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_id: selectedEventId || null,
+          event_id: isInternal ? null : (selectedEventId || null),
           client_name: clientName || 'Unknown',
           client_company: clientCompany || null,
           document_type: documentType,
@@ -224,6 +230,7 @@ export default function SaveDocumentModal({
           file_size: pdfBlob.size,
           total_amount: totalAmount || null,
           metadata,
+          ...(isInternal ? { order_channel: 'internal' } : {}),
         }),
       });
 
@@ -317,8 +324,30 @@ export default function SaveDocumentModal({
               )}
             </div>
 
-            {/* Event selector */}
-            <div style={{ marginBottom: 16 }}>
+            {/* Internal order toggle — admin only */}
+            {isAdmin && documentType === 'order' && (
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 12px', borderRadius: 8, marginBottom: 12,
+                background: isInternal ? `${colors.inkPlum}10` : '#f9f9f9',
+                border: `1px solid ${isInternal ? colors.inkPlum + '40' : colors.lineGray}`,
+                cursor: 'pointer', userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isInternal}
+                  onChange={e => setIsInternal(e.target.checked)}
+                  style={{ accentColor: colors.inkPlum, width: 16, height: 16, cursor: 'pointer' }}
+                />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: colors.inkPlum }}>Save as Internal Order</div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>Not counted in revenue or analytics</div>
+                </div>
+              </label>
+            )}
+
+            {/* Event selector — hidden for internal orders */}
+            {!isInternal && <div style={{ marginBottom: 16 }}>
               <label style={{
                 display: 'block',
                 fontSize: 11,
@@ -463,7 +492,7 @@ export default function SaveDocumentModal({
                   )}
                 </>
               )}
-            </div>
+            </div>}
 
             {/* Error message */}
             {error && (
@@ -518,7 +547,11 @@ export default function SaveDocumentModal({
                   width: mobile ? '100%' : 'auto',
                 }}
               >
-                {saving ? (editingDocumentId ? 'Updating...' : 'Saving...') : (editingDocumentId ? 'Update Document' : 'Save Document')}
+                {saving
+                  ? (editingDocumentId ? 'Updating...' : 'Saving...')
+                  : isInternal
+                    ? 'Save as Internal Order'
+                    : (editingDocumentId ? 'Update Document' : 'Save Document')}
               </button>
             </div>
           </>

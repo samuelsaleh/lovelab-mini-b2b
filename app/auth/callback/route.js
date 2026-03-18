@@ -63,15 +63,26 @@ export async function GET(request) {
       fetchAuthProfile(adminSupabase, sessionUser.id),
     ]);
 
-    if (!isUserAllowed({ isInAllowedEmails: allowedRow, agentProfile: profileRow })) {
+    // If no profile by ID, check by email (handles auth ID mismatch for agents)
+    let agentProfileForGate = profileRow;
+    if (!profileRow && userEmail) {
+      const { data: emailProfile } = await adminSupabase
+        .from('profiles')
+        .select('id, role, is_agent, agent_status, agent_deleted_at, has_password_set')
+        .eq('email', userEmail)
+        .maybeSingle();
+      if (emailProfile) agentProfileForGate = emailProfile;
+    }
+
+    if (!isUserAllowed({ isInAllowedEmails: allowedRow, agentProfile: agentProfileForGate })) {
       await supabase.auth.signOut();
       const url = new URL('/login', origin);
       url.searchParams.set('error', 'access_denied');
       return NextResponse.redirect(url);
     }
 
-    // User is allowed — ensure they have a profile
-    await ensureProfile(adminSupabase, sessionUser, profileRow);
+    // User is allowed — ensure they have a profile (may migrate from a different auth ID)
+    const effectiveProfile = await ensureProfile(adminSupabase, sessionUser, profileRow);
 
     const isLocalEnv = process.env.NODE_ENV === 'development';
 
@@ -84,7 +95,9 @@ export async function GET(request) {
 
     // Only redirect to set-password for magic link / OTP sign-ins, not for Google OAuth.
     // OAuth users already have an identity — forcing a password step makes no sense.
-    if (!isOAuthSignIn && profileRow?.is_agent === true && profileRow?.has_password_set === false) {
+    // Use falsy check (not strict ===) so null and undefined also trigger the redirect.
+    const p = effectiveProfile || profileRow;
+    if (!isOAuthSignIn && p?.is_agent === true && !p?.has_password_set) {
       const setPasswordPath = `/set-password${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
       return NextResponse.redirect(buildRedirect(setPasswordPath));
     }
@@ -156,6 +169,12 @@ function getAdminEmails() {
 /**
  * Create or update user profile on first/subsequent sign-in.
  * Receives the already-fetched profile row to avoid a redundant DB query.
+ *
+ * Handles the case where the auth user ID differs from the profile ID
+ * (e.g. generateLink created one auth user, but Google OAuth or a new magic
+ * link created a different one for the same email). When no profile exists
+ * for the session user, we look up by email and migrate the existing agent
+ * profile to the new auth ID.
  */
 async function ensureProfile(adminSupabase, user, existingProfile) {
   try {
@@ -163,15 +182,68 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
     const shouldBeAdmin = getAdminEmails().includes(userEmail);
 
     if (!existingProfile) {
-      const { error } = await adminSupabase.from('profiles').insert({
-        id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
-        avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
-        role: shouldBeAdmin ? 'admin' : 'member',
-      });
-      if (error) {
-        console.error('[auth/callback] Failed to create profile:', error.message);
+      // Check if there's an agent profile for this email under a different auth ID
+      const { data: emailProfile } = await adminSupabase
+        .from('profiles')
+        .select('id, email, full_name, avatar_url, role, is_agent, agent_status, agent_deleted_at, has_password_set, commission_rate, agent_since, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_conditions, agent_notes, agent_contract_url, organization_id')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (emailProfile && emailProfile.id !== user.id) {
+        // Migrate: update the old profile row to use the new auth ID
+        const oldId = emailProfile.id;
+        const updates = {
+          full_name: emailProfile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || '',
+          avatar_url: emailProfile.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+          role: shouldBeAdmin ? 'admin' : emailProfile.role,
+        };
+
+        // Activate invited agents on first login
+        if (emailProfile.is_agent && emailProfile.agent_status === 'invited') {
+          updates.agent_status = 'active';
+        }
+
+        // Supabase profiles.id is the PK tied to auth.users.id, so we need
+        // to delete the old row and insert a new one with the correct ID.
+        const fullRow = { ...emailProfile, ...updates };
+        delete fullRow.id;
+
+        try {
+          await adminSupabase.from('profiles').delete().eq('id', oldId);
+          const { error: insertErr } = await adminSupabase.from('profiles').insert({
+            id: user.id,
+            ...fullRow,
+          });
+          if (insertErr) {
+            console.error('[auth/callback] Profile migration insert error:', insertErr.message);
+          }
+
+          // Also update organization_memberships to point to the new user ID
+          if (emailProfile.organization_id) {
+            await adminSupabase
+              .from('organization_memberships')
+              .update({ user_id: user.id })
+              .eq('user_id', oldId);
+          }
+        } catch (migrateErr) {
+          console.error('[auth/callback] Profile migration error:', migrateErr.message);
+        }
+        return { ...emailProfile, ...updates, id: user.id };
+      } else if (emailProfile && emailProfile.id === user.id) {
+        return emailProfile;
+      } else {
+        // No profile at all — create a fresh one
+        const { error } = await adminSupabase.from('profiles').insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+          avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+          role: shouldBeAdmin ? 'admin' : 'member',
+        });
+        if (error) {
+          console.error('[auth/callback] Failed to create profile:', error.message);
+        }
+        return null;
       }
     } else {
       // Repair admin role if needed
@@ -197,8 +269,10 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
           console.error('[auth/callback] Agent activation error (non-blocking):', agentErr.message);
         }
       }
+      return null;
     }
   } catch (err) {
     console.error('[auth/callback] ensureProfile error:', err);
+    return null;
   }
 }

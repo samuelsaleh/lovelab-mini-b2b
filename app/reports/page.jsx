@@ -1,23 +1,29 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { fonts } from '@/lib/styles'
-import TopNav from '../components/TopNav'
-import ReportsDashboard from '../components/ReportsDashboard'
+import { useAuth } from '../components/AuthProvider'
+import { colors, fonts } from '@/lib/styles'
 
-export default function ReportsPage() {
+/** Reports has moved into role-specific portals. Redirect based on role. */
+export default function ReportsRedirect() {
   const router = useRouter()
+  const { profile, loading } = useAuth()
 
-  const handleTabChange = (tab) => {
-    if (tab === 'reports') return
-    sessionStorage.setItem('lovelab-target-tab', tab)
-    router.push('/')
-  }
+  useEffect(() => {
+    if (loading) return
+    if (profile?.role === 'admin') {
+      router.replace('/admin/reports')
+    } else if (profile?.is_agent) {
+      router.replace('/agent/reports')
+    } else {
+      router.replace('/')
+    }
+  }, [loading, profile, router])
 
   return (
-    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <TopNav activeTab="reports" onTabChange={handleTabChange} hideClientBar />
-      <ReportsDashboard />
+    <div style={{ fontFamily: fonts.body, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
+      Redirecting…
     </div>
   )
 }

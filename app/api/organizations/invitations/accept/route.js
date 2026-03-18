@@ -55,9 +55,13 @@ export async function POST(request) {
       );
     if (memberErr) throw memberErr;
 
+    const profileUpdate = { organization_id: invitation.organization_id };
+    if (session.profile?.role !== 'admin') {
+      profileUpdate.is_agent = true;
+    }
     const { error: profileErr } = await adminSupabase
       .from('profiles')
-      .update({ organization_id: invitation.organization_id, is_agent: true })
+      .update(profileUpdate)
       .eq('id', session.user.id);
     if (profileErr) throw profileErr;
 

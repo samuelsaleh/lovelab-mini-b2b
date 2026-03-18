@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { resolveAgentIds } from '@/app/api/_lib/access';
 
 const BUCKET = 'documents';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_RECURSION_DEPTH = 20;
 
@@ -45,6 +46,7 @@ export async function PATCH(request, { params }) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id: folderId } = await params;
+    if (!folderId || !UUID_REGEX.test(folderId)) return NextResponse.json({ error: 'Invalid folder ID' }, { status: 400 });
     const body = await request.json();
     const newName = body.name?.trim();
     if (!newName || newName.length > 255) {
@@ -98,6 +100,7 @@ export async function DELETE(request, { params }) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id: folderId } = await params;
+    if (!folderId || !UUID_REGEX.test(folderId)) return NextResponse.json({ error: 'Invalid folder ID' }, { status: 400 });
 
     // Fetch folder to verify ownership
     const { data: folder } = await adminSupabase

@@ -29,6 +29,9 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const agentIdFilter = searchParams.get('agent_id');
     const statusFilter = searchParams.get('status');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const perPage = Math.min(500, Math.max(1, parseInt(searchParams.get('per_page') || '200', 10)));
+    const offset = (page - 1) * perPage;
 
     // Agents can only see their own; admins can filter by agent_id
     const targetAgentId = isAdmin ? (agentIdFilter || null) : user.id;
@@ -40,30 +43,41 @@ export async function GET(request) {
       ? await resolveAgentIds(adminSupabase, targetAgentId)
       : null;
 
-    let query = adminSupabase
-      .from('agent_commissions')
-      .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at')
-      .order('created_at', { ascending: false })
-      .limit(1000);
+    const applyFilters = (q) => {
+      if (allAgentIds) {
+        q = allAgentIds.length === 1
+          ? q.eq('agent_id', allAgentIds[0])
+          : q.in('agent_id', allAgentIds);
+      }
+      if (statusFilter) q = q.eq('status', statusFilter);
+      return q;
+    };
 
-    if (allAgentIds) {
-      query = allAgentIds.length === 1
-        ? query.eq('agent_id', allAgentIds[0])
-        : query.in('agent_id', allAgentIds);
-    }
+    // Paginated detail query
+    let detailQuery = applyFilters(
+      adminSupabase
+        .from('agent_commissions')
+        .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + perPage - 1)
+    );
 
-    if (statusFilter) {
-      query = query.eq('status', statusFilter);
-    }
+    // Light aggregate query for summary (all records, no limit)
+    let summaryQuery = applyFilters(
+      adminSupabase
+        .from('agent_commissions')
+        .select('commission_amount, status, type')
+    );
 
-    const { data: commissions, error } = await query;
+    const [{ data: commissions, error, count: totalCount }, { data: allForSummary }] =
+      await Promise.all([detailQuery, summaryQuery]);
 
     if (error) {
       console.error('[Commissions GET] Error:', error.message);
       return NextResponse.json({ error: 'Failed to load commissions' }, { status: 500 });
     }
 
-    // Fetch document details for order-type commissions
+    // Fetch document details for order-type commissions (current page only)
     const docIds = (commissions || [])
       .filter(c => c.document_id)
       .map(c => c.document_id);
@@ -108,7 +122,7 @@ export async function GET(request) {
       true_pending_balance: 0,
     };
 
-    for (const c of commissions || []) {
+    for (const c of allForSummary || []) {
       const amt = Number(c.commission_amount) || 0;
       summary.total_earned += amt;
       if (c.type === 'order') {
@@ -119,9 +133,9 @@ export async function GET(request) {
         summary.bonus_count++;
       }
       if (c.status === 'pending' || c.status === 'approved') {
-        summary.pending_amount += amt; // legacy pending
+        summary.pending_amount += amt;
       } else if (c.status === 'paid') {
-        summary.paid_amount += amt; // legacy paid
+        summary.paid_amount += amt;
       }
     }
 
@@ -137,6 +151,9 @@ export async function GET(request) {
     const response = {
       commissions: commissionsWithDocs,
       summary,
+      total_count: totalCount ?? (allForSummary?.length ?? 0),
+      page,
+      per_page: perPage,
     };
 
     // For agents, include their profile info

@@ -5,7 +5,7 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
-import { COUNTRIES } from '@/lib/countries'
+import { normalizeCountry } from '@/lib/countries'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
@@ -20,18 +20,8 @@ const CHART_COLORS = [
   '#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6',
 ]
 
-const countriesLower = COUNTRIES.map((c) => c.toLowerCase())
-function normalizeCountryValue(raw) {
-  if (!raw || !raw.trim()) return 'Unknown'
-  const cleaned = raw.trim().replace(/\s+/g, ' ')
-  const lower = cleaned.toLowerCase()
-  const idx = countriesLower.indexOf(lower)
-  if (idx >= 0) return COUNTRIES[idx]
-  for (let i = 0; i < COUNTRIES.length; i++) {
-    if (lower.includes(countriesLower[i])) return COUNTRIES[i]
-  }
-  return cleaned.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-}
+// normalizeCountry imported from @/lib/countries — handles aliases, typos, non-English names
+const normalizeCountryValue = normalizeCountry
 
 // ─── Vitrine helpers (shared with DocumentsPanel) ──────────────────────────
 const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i

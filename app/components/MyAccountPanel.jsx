@@ -333,7 +333,7 @@ export default function MyAccountPanel({ onClose }) {
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>{t('nav.myAccount')}</div>
           <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>
-            {displayName} · {isAdmin ? 'Admin' : 'Agent'}
+            {displayName} · Admin
           </div>
         </div>
         <button
@@ -350,12 +350,8 @@ export default function MyAccountPanel({ onClose }) {
         </button>
       </div>
 
-      {/* Role-gated content */}
-      {isAdmin ? (
-        <AdminContent onClose={onClose} />
-      ) : (
-        <AgentContent />
-      )}
+      {/* Admin-only content — agents access their data via /agent portal */}
+      <AdminContent onClose={onClose} />
     </div>
   )
 }

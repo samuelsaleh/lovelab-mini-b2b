@@ -8,6 +8,7 @@ import { grantAccess, revokeAccess } from '@/lib/agents/access';
 import { NextResponse } from 'next/server';
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET - Single agent detail with commission history (admin only)
 export async function GET(request, { params }) {
@@ -23,6 +24,7 @@ export async function GET(request, { params }) {
     }
 
     const { id } = await params;
+    if (!id || !UUID_REGEX.test(id)) return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 });
     const adminSupabase = createAdminClient();
 
     const { data: agent, error } = await adminSupabase

@@ -41,14 +41,15 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
 
   return (
     <div style={{
-      background: colors.inkPlum,
+      background: colors.inkPlumLight,
       flexShrink: 0,
       zIndex: 100,
+      borderBottom: `2px solid ${colors.luxeGold}`,
     }}>
       {/* Main row */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: mobile ? '8px 12px' : '8px 20px',
+        padding: mobile ? '4px 12px' : '4px 20px',
         width: '100%', boxSizing: 'border-box',
       }}>
         {/* Left side: hamburger (mobile) + logo */}
@@ -79,7 +80,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
           )}
 
           {/* Logo — always visible in TopNav */}
-          <img src="/logo.png" alt="LoveLab" style={{ height: 36, width: 'auto', display: 'block' }} />
+          <img src="/logo.png" alt="LoveLab" style={{ height: 96, width: 'auto', display: 'block' }} />
 
           {/* Back button — desktop only, shown when not at root */}
           {!mobile && canGoBack && (

@@ -227,7 +227,7 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
       const endpoint = renameType === 'folder'
         ? `/api/agent-folders/${renamingId}`
         : `/api/agent-folder-files/${renamingId}`
-      const body = renameType === 'folder' ? { name: trimmed } : { name: trimmed }
+      const body = { name: trimmed }
       const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

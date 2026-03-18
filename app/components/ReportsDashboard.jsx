@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
-import { COUNTRIES } from '@/lib/countries'
+import { normalizeCountry } from '@/lib/countries'
 
 // ─── Column config ─────────────────────────────────────────────────────────
 
@@ -34,21 +34,6 @@ function csvCell(val) {
   return s
 }
 
-const countriesLower = COUNTRIES.map((c) => c.toLowerCase())
-const normalizeCountry = (raw) => {
-  if (!raw || !String(raw).trim()) return 'Unknown'
-  const cleaned = String(raw).trim().replace(/\s+/g, ' ')
-  const lower = cleaned.toLowerCase()
-  const idx = countriesLower.indexOf(lower)
-  if (idx >= 0) return COUNTRIES[idx]
-  for (let i = 0; i < COUNTRIES.length; i++) {
-    if (lower.includes(countriesLower[i])) return COUNTRIES[i]
-  }
-  return cleaned
-    .split(' ')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ')
-}
 
 const initialFilters = {
   dateFrom: '',

@@ -38,7 +38,7 @@ export async function GET(request) {
     return NextResponse.json({
       user,
       profile: null,
-      error: profileError?.message || 'profile not found',
+      error: 'profile_not_found',
     });
   } catch (err) {
     return NextResponse.json({ user: null, profile: null, error: err.message }, { status: 500 });

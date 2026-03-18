@@ -96,6 +96,12 @@ export async function GET(request) {
       query = query.is('deleted_at', null);
     }
 
+    // Exclude internal (supplier) orders from all default views.
+    // Only include them when the caller explicitly requests order_channel=internal.
+    if (!orderChannelFilter) {
+      query = query.neq('order_channel', 'internal');
+    }
+
     if (eventId) {
       if (!isAdmin) {
         const { allowed } = await requireEventPermission(adminSupabase, eventId, user.id, 'read', isAdmin);

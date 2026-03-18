@@ -23,14 +23,14 @@ const STATUS_COLORS = {
 
 const ITEMS_PER_PAGE = 20
 
-export default function AgentAnalytics() {
+export default function AgentAnalytics({ defaultTab = null }) {
   const router = useRouter()
   const { profile, loading: authLoading } = useAuth()
   const [data, setData] = useState(null)
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(defaultTab ?? 'overview')
   const [page, setPage] = useState(0)
   const [pendingInvitations, setPendingInvitations] = useState([])
   const [acceptingInvite, setAcceptingInvite] = useState(null)
@@ -214,39 +214,41 @@ export default function AgentAnalytics() {
           </div>
         )}
 
-        {/* Inner Tabs */}
-        <div style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${colors.lineGray}`, marginBottom: 24, overflowX: 'auto' }}>
-          {[
-            { id: 'overview', label: 'Overview' },
-            { id: 'orders', label: 'My Orders' },
-            { id: 'history', label: 'Commission History' },
-            { id: 'payouts', label: 'Payouts' },
-            ...(profile?.organization_id && teamLedger?.per_member?.length > 1 ? [{ id: 'team', label: 'Team' }] : []),
-            { id: 'folder', label: 'My Folder' },
-          ].map(tab => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  padding: '12px 4px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: `2px solid ${isActive ? colors.inkPlum : 'transparent'}`,
-                  color: isActive ? colors.inkPlum : colors.lovelabMuted,
-                  fontSize: 14,
-                  fontWeight: isActive ? 700 : 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  marginBottom: -1
-                }}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        {/* Inner Tabs — hidden when a defaultTab is set (portal page controls navigation) */}
+        {!defaultTab && (
+          <div style={{ display: 'flex', gap: 24, borderBottom: `1px solid ${colors.lineGray}`, marginBottom: 24, overflowX: 'auto' }}>
+            {[
+              { id: 'overview', label: 'Overview' },
+              { id: 'orders', label: 'My Orders' },
+              { id: 'history', label: 'Commission History' },
+              { id: 'payouts', label: 'Payouts' },
+              ...(profile?.organization_id && teamLedger?.per_member?.length > 1 ? [{ id: 'team', label: 'Team' }] : []),
+              { id: 'folder', label: 'My Folder' },
+            ].map(tab => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '12px 4px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: `2px solid ${isActive ? colors.inkPlum : 'transparent'}`,
+                    color: isActive ? colors.inkPlum : colors.lovelabMuted,
+                    fontSize: 14,
+                    fontWeight: isActive ? 700 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    marginBottom: -1
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (

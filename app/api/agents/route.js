@@ -251,7 +251,7 @@ export async function POST(request) {
       agent_specialty: agent_specialty?.trim() || null,
       agent_conditions: agent_conditions?.trim() || null,
       agent_notes: agent_notes?.trim() || null,
-      ...(requestedOrgId ? { organization_id: requestedOrgId } : {}),
+      organization_id: requestedOrgId || null,
     };
 
     let agentProfile;
@@ -289,7 +289,21 @@ export async function POST(request) {
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
       let magicLinkUrl = null;
 
+      // Check if an auth user already exists for this email (e.g. via Google OAuth)
+      // to prevent creating a duplicate auth user with a different ID.
       let authUser = null;
+      try {
+        const { data: existingUsers } = await adminSupabase.auth.admin.listUsers({
+          filter: `email.eq.${emailLower}`,
+          perPage: 1,
+        });
+        const match = (existingUsers?.users || []).find(
+          u => u.email?.toLowerCase() === emailLower
+        );
+        if (match) authUser = match;
+      } catch (lookupErr) {
+        console.warn('[Agents POST] Auth user lookup warning:', lookupErr.message);
+      }
 
       if (send_invite) {
         const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
@@ -306,14 +320,15 @@ export async function POST(request) {
           if (magicData?.properties?.action_link) {
             magicLinkUrl = magicData.properties.action_link;
           }
-          if (magicData?.user) {
+          // Only use the generateLink user if we haven't found an existing one
+          if (!authUser && magicData?.user) {
             authUser = magicData.user;
           }
         }
       }
 
       if (!authUser) {
-        // generateLink creates the auth user; if send_invite was false, create one now
+        // No existing auth user found; create one now
         const { data: createData, error: createErr } = await adminSupabase.auth.admin.createUser({
           email: emailLower,
           email_confirm: true,
@@ -331,6 +346,7 @@ export async function POST(request) {
             id: authUser.id,
             email: emailLower,
             full_name: full_name?.trim() || '',
+            has_password_set: false,
             ...agentFields,
           }, { onConflict: 'id' })
           .select()
@@ -354,10 +370,14 @@ export async function POST(request) {
     }
 
     if (existingProfile && send_invite) {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-      const agentName = full_name?.trim() || existingProfile.email;
-      const { subject, html } = upgradeAgentEmail(agentName, siteUrl);
-      await sendEmail({ to: existingProfile.email || emailLower, subject, html });
+      try {
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+        const agentName = full_name?.trim() || existingProfile.email;
+        const { subject, html } = upgradeAgentEmail(agentName, siteUrl);
+        await sendEmail({ to: existingProfile.email || emailLower, subject, html });
+      } catch (emailErr) {
+        console.error('[Agents POST] Upgrade email failed (non-blocking):', emailErr.message);
+      }
     }
 
     // Handle organization membership and folder provisioning

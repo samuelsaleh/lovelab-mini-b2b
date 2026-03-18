@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission } from '@/app/api/_lib/access';
 
 const VALID_TYPES = ['fair', 'agent', 'partner', 'other'];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function PUT(request, { params }) {
   try {
@@ -16,7 +17,7 @@ export async function PUT(request, { params }) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    if (!id) return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
+    if (!id || !UUID_REGEX.test(id)) return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
     const { allowed } = await requireEventPermission(adminSupabase, id, user.id, 'manage', isAdmin);
     if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -66,8 +67,8 @@ export async function DELETE(request, { params }) {
     }
 
     const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ error: 'Missing event ID' }, { status: 400 });
+    if (!id || !UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
     }
     const { allowed } = await requireEventPermission(adminSupabase, id, user.id, 'manage', isAdmin);
     if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

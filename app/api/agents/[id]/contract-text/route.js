@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 
 const BUCKET = 'documents';
 
@@ -56,10 +56,12 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Failed to download contract' }, { status: 500 });
     }
 
-    // Parse PDF to text
+    // Parse PDF to text (pdf-parse v2 class-based API)
     const arrayBuffer = await fileData.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const parsed = await pdfParse(buffer);
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const parsed = await parser.getText();
+    await parser.destroy();
     const text = parsed.text?.trim() || '';
 
     return NextResponse.json({

@@ -1,6 +1,7 @@
 'use client'
 
 import { colors, fonts } from '@/lib/styles'
+import { useI18n } from '@/lib/i18n'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
 
@@ -25,10 +26,18 @@ const CATALOGUES = [
   },
 ]
 
+// Canva embed URLs by portal language (append ?embed for the embeddable version).
+// Italian and any other language fall back to English.
+const CANVA_EMBED_BY_LANG = {
+  fr: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
+  en: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
+  de: 'https://www.canva.com/design/DAG_PqDSDhQ/K2FvRij-94kg6L0eD9oCgQ/view?embed',
+}
+
 function LinkButton({ href, children, variant = 'outline' }) {
   const base = {
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
     cursor: 'pointer', textDecoration: 'none', fontFamily: fonts.body,
     transition: 'opacity .12s',
   }
@@ -43,6 +52,9 @@ function LinkButton({ href, children, variant = 'outline' }) {
 }
 
 export default function ResourcesCard() {
+  const { lang } = useI18n()
+  const embedUrl = CANVA_EMBED_BY_LANG[lang] || CANVA_EMBED_BY_LANG.en
+
   return (
     <div style={{
       background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`,
@@ -61,59 +73,76 @@ export default function ResourcesCard() {
         Resources & Quick Links
       </div>
 
-      <div style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+      <div style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
         {/* Marketing Photos */}
         <div style={{
-          flex: '1 1 220px', background: '#faf8fc', borderRadius: 10,
-          padding: '16px 18px', border: `1px solid ${colors.lineGray}`,
+          flex: '1 1 260px', background: '#faf8fc', borderRadius: 12,
+          padding: '20px 22px', border: `1px solid ${colors.lineGray}`,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 20 }}>📁</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 26 }}>📁</span>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>Marketing Photos</div>
-              <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 1 }}>All campaign & product images</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>Marketing Photos</div>
+              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2 }}>All campaign & product images</div>
             </div>
           </div>
-          <LinkButton href={DRIVE_URL} variant="solid">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Open Google Drive
-          </LinkButton>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <LinkButton href={DRIVE_URL} variant="solid">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Open Google Drive
+            </LinkButton>
+            <LinkButton href="https://www.lovelab.be" variant="outline">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/>
+              </svg>
+              lovelab.be
+            </LinkButton>
+            <LinkButton href="https://www.instagram.com/lovelab_antwerp" variant="outline">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="20" rx="5"/>
+                <circle cx="12" cy="12" r="4"/>
+                <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+              </svg>
+              @lovelab_antwerp
+            </LinkButton>
+          </div>
         </div>
 
         {/* Catalogues */}
         <div style={{
-          flex: '2 1 340px', background: '#faf8fc', borderRadius: 10,
-          padding: '16px 18px', border: `1px solid ${colors.lineGray}`,
+          flex: '2 1 400px', background: '#faf8fc', borderRadius: 12,
+          padding: '20px 22px', border: `1px solid ${colors.lineGray}`,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 20 }}>📄</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 26 }}>📄</span>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>B2B Catalogues</div>
-              <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 1 }}>View online or download PDF</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>B2B Catalogues</div>
+              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2 }}>View online or download PDF</div>
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {CATALOGUES.map((cat) => (
               <div key={cat.lang} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: 10, padding: '8px 12px', background: '#fff', borderRadius: 8,
+                gap: 10, padding: '10px 14px', background: '#fff', borderRadius: 9,
                 border: `1px solid ${colors.lineGray}`,
               }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: colors.charcoal, minWidth: 80 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: colors.charcoal, minWidth: 90 }}>
                   {cat.lang} — {cat.label}
                 </span>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <LinkButton href={cat.canva}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
                     View
                   </LinkButton>
                   <LinkButton href={cat.pdf} variant="solid">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                     </svg>
@@ -123,6 +152,39 @@ export default function ResourcesCard() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Catalogue preview — language-aware Canva embed */}
+      <div style={{ borderTop: `1px solid ${colors.lineGray}`, padding: '0 24px 24px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '16px 0 14px',
+          fontSize: 11, fontWeight: 700, color: colors.lovelabMuted,
+          textTransform: 'uppercase', letterSpacing: '0.06em',
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+          </svg>
+          Catalogue Preview
+        </div>
+        <div style={{
+          position: 'relative', width: '100%', paddingTop: '70%',
+          borderRadius: 10, overflow: 'hidden',
+          border: `1px solid ${colors.lineGray}`,
+          background: '#f5f5f5',
+        }}>
+          <iframe
+            src={embedUrl}
+            style={{
+              position: 'absolute', top: 0, left: 0,
+              width: '100%', height: '100%',
+              border: 'none',
+            }}
+            loading="lazy"
+            allowFullScreen
+            title="B2B Catalogue"
+          />
         </div>
       </div>
     </div>

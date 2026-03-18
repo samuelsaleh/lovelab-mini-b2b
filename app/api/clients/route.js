@@ -99,6 +99,7 @@ export async function POST(request) {
       .eq('id', user.id)
       .single();
     const isAdmin = profile?.role === 'admin';
+    const adminSupabase = createAdminClient();
     const sourcePayload = {};
     if (isAdmin && (source || source_comment || source_imported_at)) {
       sourcePayload.source = source === 'salesforce' ? 'salesforce' : 'manual';

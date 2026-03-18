@@ -61,33 +61,42 @@ export async function GET(request) {
     // Send rejection email to the requester
     const resendApiKey = process.env.RESEND_API_KEY;
     if (resendApiKey) {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: getSenderFrom(),
-          to: [signup.email],
-          subject: 'Your LoveLab B2B access request',
-          html: `
-            <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-              <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-              <h2 style="color: #1a1a1a; margin: 0 0 8px;">Hi ${signup.full_name},</h2>
-              <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                Unfortunately your request to access LoveLab B2B could not be approved at this time.
-              </p>
-              <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                If you think this is a mistake, please contact the LoveLab team directly.
-              </p>
-              <p style="color: #aaa; font-size: 11px; margin-top: 32px;">
-                LoveLab B2B · This email was sent automatically.
-              </p>
-            </div>
-          `,
-        }),
-      }).catch(err => console.error('[reject-signup] Rejection email error:', err));
+      const emailController = new AbortController();
+      const emailTimeout = setTimeout(() => emailController.abort(), 10_000);
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          signal: emailController.signal,
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: getSenderFrom(),
+            to: [signup.email],
+            subject: 'Your LoveLab B2B access request',
+            html: `
+              <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
+                <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
+                <h2 style="color: #1a1a1a; margin: 0 0 8px;">Hi ${signup.full_name},</h2>
+                <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
+                  Unfortunately your request to access LoveLab B2B could not be approved at this time.
+                </p>
+                <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
+                  If you think this is a mistake, please contact the LoveLab team directly.
+                </p>
+                <p style="color: #aaa; font-size: 11px; margin-top: 32px;">
+                  LoveLab B2B · This email was sent automatically.
+                </p>
+              </div>
+            `,
+          }),
+        });
+      } catch (err) {
+        console.error('[reject-signup] Rejection email error:', err.message);
+      } finally {
+        clearTimeout(emailTimeout);
+      }
     }
 
     return NextResponse.redirect(`${siteUrl}/approve-result?status=rejected&name=${encodeURIComponent(signup.full_name)}`);
