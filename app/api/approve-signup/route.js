@@ -59,15 +59,20 @@ export async function GET(request) {
       .from('allowed_emails')
       .upsert({ email: signup.email }, { onConflict: 'email' });
 
-    // 2. Invite the user via Supabase (creates auth account + sends set-password email)
-    const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(signup.email, {
-      data: { full_name: signup.full_name },
-      redirectTo: `${siteUrl}/auth/callback`,
+    // 2. Generate a magic link (creates a confirmed auth account if new, or reuses existing)
+    let signInUrl = `${siteUrl}/login`;
+    const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: signup.email,
+      options: {
+        data: { full_name: signup.full_name },
+        redirectTo: `${siteUrl}/auth/callback`,
+      },
     });
-
-    if (inviteError) {
-      // If user already exists in auth (e.g. had Google account), that's fine — just add to allowed_emails
-      console.warn('[approve-signup] Invite warning (may already exist):', inviteError.message);
+    if (magicError) {
+      console.warn('[approve-signup] Magic link warning (may already exist):', magicError.message);
+    } else if (magicData?.properties?.action_link) {
+      signInUrl = magicData.properties.action_link;
     }
 
     // 3. Mark as approved
@@ -76,7 +81,7 @@ export async function GET(request) {
       .update({ status: 'approved' })
       .eq('id', signup.id);
 
-    const { subject, html } = approvedSignupEmail(signup.full_name, siteUrl);
+    const { subject, html } = approvedSignupEmail(signup.full_name, signInUrl, siteUrl);
     await sendEmail({ to: signup.email, subject, html });
 
     return NextResponse.redirect(`${siteUrl}/approve-result?status=approved&name=${encodeURIComponent(signup.full_name)}`);
