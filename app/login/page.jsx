@@ -30,10 +30,6 @@ function LoginContent() {
   // Magic link field
   const [magicEmail, setMagicEmail] = useState('');
 
-  // Request access fields
-  const [reqName, setReqName] = useState('');
-  const [reqEmail, setReqEmail] = useState('');
-
   useEffect(() => {
     const errorParam = searchParams.get('error');
     if (errorParam === 'access_denied') {
@@ -110,31 +106,6 @@ function LoginContent() {
     }
   };
 
-  const handleRequestAccess = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const res = await fetch('/api/signup-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: reqEmail.trim(), full_name: reqName.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to submit request.');
-      } else {
-        setSuccessMsg('Request sent! You\'ll receive an email once your access is approved.');
-        setReqName('');
-        setReqEmail('');
-      }
-    } catch (err) {
-      setError('Unexpected error. Please try again.');
-    }
-    setLoading(false);
-  };
-
   const inkPlum = '#5D3A5E';
 
   return (
@@ -150,7 +121,6 @@ function LoginContent() {
             { id: 'google', label: 'Google' },
             { id: 'signin', label: 'Password' },
             { id: 'magic', label: 'Magic Link' },
-            { id: 'request', label: 'Request Access' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -192,12 +162,6 @@ function LoginContent() {
               </svg>
               {loading ? 'Signing in…' : 'Sign in with Google'}
             </button>
-            <p style={{ marginTop: 16, fontSize: 12, color: '#aaa', textAlign: 'center' }}>
-              Don't have a Gmail?{' '}
-              <button onClick={() => setMode('request')} style={{ background: 'none', border: 'none', color: inkPlum, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
-                Request access →
-              </button>
-            </p>
           </>
         )}
 
@@ -223,12 +187,6 @@ function LoginContent() {
             <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
-            <p style={{ fontSize: 12, color: '#aaa', textAlign: 'center', marginTop: 4 }}>
-              No account yet?{' '}
-              <button onClick={() => setMode('request')} style={{ background: 'none', border: 'none', color: inkPlum, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
-                Request access →
-              </button>
-            </p>
           </form>
         )}
 
@@ -257,37 +215,6 @@ function LoginContent() {
             <p style={{ fontSize: 14, color: '#333', fontWeight: 600 }}>{successMsg}</p>
             <p style={{ fontSize: 12, color: '#999', marginTop: 8 }}>The link expires in 1 hour.</p>
           </div>
-        )}
-
-        {/* ── Request access ── */}
-        {mode === 'request' && !successMsg && (
-          <form onSubmit={handleRequestAccess} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input
-              type="text"
-              placeholder="Your full name"
-              value={reqName}
-              onChange={e => setReqName(e.target.value)}
-              required
-              style={styles.input}
-            />
-            <input
-              type="email"
-              placeholder="Your email address"
-              value={reqEmail}
-              onChange={e => setReqEmail(e.target.value)}
-              required
-              style={styles.input}
-            />
-            <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Sending…' : 'Send access request'}
-            </button>
-            <p style={{ fontSize: 12, color: '#aaa', textAlign: 'center', marginTop: 4 }}>
-              Already have access?{' '}
-              <button onClick={() => setMode('signin')} style={{ background: 'none', border: 'none', color: inkPlum, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
-                Sign in →
-              </button>
-            </p>
-          </form>
         )}
 
         <p style={styles.footer}>Reserved for LoveLab team members</p>
