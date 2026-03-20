@@ -213,14 +213,14 @@ function MiniStat({ label, items, maxItems = 5 }) {
 // Main Dashboard Component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function AnalyticsDashboard() {
+export default function AnalyticsDashboard({ initialEventId = null }) {
   const mobile = useIsMobile()
 
   const [documents, setDocuments] = useState([])
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
-  const [selectedEventId, setSelectedEventId] = useState('')
+  const [selectedEventId, setSelectedEventId] = useState(initialEventId ?? '')
   const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
 

@@ -33,6 +33,8 @@ export default function AdminAgentsPage() {
   const [showTrash, setShowTrash] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [trashedAgents, setTrashedAgents] = useState([]);
+  const [repairingId, setRepairingId] = useState(null);
+  const [repairResult, setRepairResult] = useState(null);
 
   const fetchAgents = async () => {
     setLoading(true);
@@ -134,6 +136,22 @@ export default function AdminAgentsPage() {
     if (!deletedAt) return 7;
     const days = 7 - (Date.now() - new Date(deletedAt).getTime()) / (1000 * 60 * 60 * 24);
     return Math.max(0, Math.ceil(days));
+  };
+
+  const handleRepair = async (agent) => {
+    setRepairingId(agent.id);
+    setRepairResult(null);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/repair`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Repair failed');
+      setRepairResult({ agentId: agent.id, ...data });
+      fetchAgents();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRepairingId(null);
+    }
   };
 
   const handleAddAgent = () => {
@@ -381,6 +399,11 @@ export default function AdminAgentsPage() {
                               <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 8px', borderRadius: 6, background: statusColors[agent.agent_status] || colors.lovelabMuted, color: '#fff' }}>
                                 {agent.agent_status || '—'}
                               </span>
+                              {!agent.organization_id && (
+                                <span title="Missing organization / folders — click Repair to fix" style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', cursor: 'default' }}>
+                                  ⚠ Setup incomplete
+                                </span>
+                              )}
                               {!hasOrg && agent.organization_name && (
                                 <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#f4f0f5', padding: '3px 8px', borderRadius: 5 }}>
                                   {agent.organization_name}
@@ -424,10 +447,27 @@ export default function AdminAgentsPage() {
                               <button onClick={() => handleAddBonus(agent)} style={{ padding: '6px 14px', fontSize: 12, border: 'none', background: colors.inkPlum, color: '#fff', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
                                 Add Bonus
                               </button>
+                              {(!agent.organization_id || agent.agent_status === 'invited') && (
+                                <button
+                                  onClick={() => handleRepair(agent)}
+                                  disabled={repairingId === agent.id}
+                                  style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fde68a', background: '#fffbeb', color: '#b45309', borderRadius: 8, fontWeight: 600, cursor: repairingId === agent.id ? 'not-allowed' : 'pointer', fontFamily: fonts.body, opacity: repairingId === agent.id ? 0.6 : 1 }}
+                                >
+                                  {repairingId === agent.id ? 'Repairing…' : 'Repair'}
+                                </button>
+                              )}
                               <button onClick={() => setConfirmDelete(agent)} style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
                                 Delete
                               </button>
                             </div>
+                            {repairResult?.agentId === agent.id && (
+                              <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, fontSize: 12, color: '#166534' }}>
+                                {repairResult.message}
+                                {repairResult.fixes?.length > 0 && (
+                                  <span style={{ marginLeft: 8, color: '#065f46' }}>Fixed: {repairResult.fixes.map(f => f.item).join(', ')}</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

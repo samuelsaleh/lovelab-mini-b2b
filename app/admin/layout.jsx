@@ -32,6 +32,7 @@ export default function AdminLayout({ children }) {
     pathname === '/admin'                        ? 'dashboard'
     : pathname.startsWith('/admin/agents')       ? 'agents'
     : pathname.startsWith('/admin/fairs')        ? 'fairs'
+    : pathname.startsWith('/analytics')          ? 'analytics'
     : pathname.startsWith('/admin/reports')      ? 'reports'
     : 'dashboard'
 

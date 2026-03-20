@@ -360,7 +360,8 @@ export async function POST(request) {
         }
         agentProfile = data;
       } else {
-        agentProfile = { email: emailLower, ...agentFields, full_name: full_name?.trim() || '', _pending: true };
+        console.error('[Agents POST] Could not create auth user for:', emailLower);
+        return NextResponse.json({ error: 'Failed to create account. Please try again or check if the email already exists.' }, { status: 500 });
       }
 
       if (send_invite) {

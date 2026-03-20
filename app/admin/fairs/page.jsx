@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 
 const fmt = (n) => {
@@ -180,12 +181,18 @@ export default function AdminFairsPage() {
 function FairCard({ event }) {
   const e = event
   const s = e.stats || {}
+  const router = useRouter()
   const dateStr = e.start_date
     ? `${new Date(e.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}${e.end_date ? ` — ${new Date(e.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`
     : null
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div
+      onClick={() => router.push(`/analytics?event=${e.id}`)}
+      style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'box-shadow 0.15s', }}
+      onMouseEnter={ev => ev.currentTarget.style.boxShadow = '0 4px 16px rgba(93,58,94,0.10)'}
+      onMouseLeave={ev => ev.currentTarget.style.boxShadow = 'none'}
+    >
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>{e.name}</div>
         <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>

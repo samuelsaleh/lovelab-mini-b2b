@@ -1,29 +1,24 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '../components/AuthProvider'
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import AnalyticsDashboard from '@/app/components/AnalyticsDashboard'
 import { colors, fonts } from '@/lib/styles'
 
-/** Analytics has moved into role-specific portals. Redirect based on role. */
-export default function AnalyticsRedirect() {
-  const router = useRouter()
-  const { profile, loading } = useAuth()
+function AnalyticsPage() {
+  const searchParams = useSearchParams()
+  const initialEventId = searchParams.get('event') || null
+  return <AnalyticsDashboard initialEventId={initialEventId} />
+}
 
-  useEffect(() => {
-    if (loading) return
-    if (profile?.role === 'admin') {
-      router.replace('/admin/reports')
-    } else if (profile?.is_agent) {
-      router.replace('/agent/reports')
-    } else {
-      router.replace('/')
-    }
-  }, [loading, profile, router])
-
+export default function Analytics() {
   return (
-    <div style={{ fontFamily: fonts.body, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-      Redirecting…
-    </div>
+    <Suspense fallback={
+      <div style={{ fontFamily: fonts.body, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
+        Loading Analytics...
+      </div>
+    }>
+      <AnalyticsPage />
+    </Suspense>
   )
 }
