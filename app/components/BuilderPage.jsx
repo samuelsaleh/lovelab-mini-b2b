@@ -41,6 +41,11 @@ export function mkLine() {
     collectionId: null,
     colorConfigs: [],
     expanded: true,
+    sameForAll: false,
+    sharedSettings: {
+      caratIdx: null, housing: null, housingType: null,
+      multiAttached: null, shape: null, size: null, cordType: null, thickness: null, qty: null,
+    },
   }
 }
 
@@ -131,8 +136,9 @@ function computePackTotal(pack) {
     const col = COLLECTIONS.find(c => c.id === line.collectionId)
     if (!col) return sum
     const colorCount = (CORD_COLORS[col.cord] || []).length
+    const minQty = col.minC || 1
     const lineTotal = line.caratIndices.reduce((s, ci) => s + (col.prices[ci] || 0), 0)
-    return sum + lineTotal * colorCount
+    return sum + lineTotal * colorCount * minQty
   }, 0)
 }
 
@@ -204,13 +210,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   
   // Selection state for multi-select feature
   const [selectedConfigs, setSelectedConfigs] = useState(new Set())
-  const [showDuplicateVariations, setShowDuplicateVariations] = useState(false)
-  const [bulkDuplicateSettings, setBulkDuplicateSettings] = useState({
-    carat: { enabled: false, value: null },
-    housing: { enabled: false, value: null },
-    size: { enabled: false, value: null },
-    qty: { enabled: false, value: 1 },
-  })
   // Track recently duplicated configs for highlight effect
   const [recentlyDuplicated, setRecentlyDuplicated] = useState(new Set())
 
@@ -278,19 +277,22 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Remove a line
   const removeLine = useCallback((uid) => {
+    let removedConfigIds = new Set()
     setLines(prev => {
+      const lineToRemove = prev.find(l => l.uid === uid)
+      if (lineToRemove) {
+        removedConfigIds = new Set(lineToRemove.colorConfigs.map(c => c.id))
+      }
       const next = prev.filter(l => l.uid !== uid)
       return next.length > 0 ? next : [mkLine()]
     })
-    // Clear any selected configs from this line
+    // Clear any selected configs from the removed line
     setSelectedConfigs(prev => {
-      const lineToRemove = lines.find(l => l.uid === uid)
-      if (!lineToRemove) return prev
-      const configIds = new Set(lineToRemove.colorConfigs.map(c => c.id))
-      const next = new Set([...prev].filter(id => !configIds.has(id)))
+      if (removedConfigIds.size === 0) return prev
+      const next = new Set([...prev].filter(id => !removedConfigIds.has(id)))
       return next.size === prev.size ? prev : next
     })
-  }, [setLines, lines])
+  }, [setLines])
 
   // Toggle selection of a single config
   const toggleConfigSelection = useCallback((configId) => {
@@ -327,8 +329,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     setSelectedConfigs(new Set())
   }, [])
 
-  // Duplicate all selected configs (with optional variations)
-  const duplicateSelected = useCallback((withVariations = false) => {
+  // Duplicate all selected configs
+  const duplicateSelected = useCallback(() => {
     if (selectedConfigs.size === 0) return
     const newIds = new Set()
     setLines(prev => prev.map(line => {
@@ -337,38 +339,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       const copies = selectedInLine.map(cfg => {
         const newId = uniqueId()
         newIds.add(newId)
-        const copy = { ...cfg, id: newId }
-        if (withVariations) {
-          if (bulkDuplicateSettings.carat.enabled && bulkDuplicateSettings.carat.value !== null) {
-            copy.caratIdx = bulkDuplicateSettings.carat.value
-          }
-          if (bulkDuplicateSettings.housing.enabled && bulkDuplicateSettings.housing.value) {
-            copy.housing = bulkDuplicateSettings.housing.value
-          }
-          if (bulkDuplicateSettings.size.enabled && bulkDuplicateSettings.size.value) {
-            copy.size = bulkDuplicateSettings.size.value
-          }
-          if (bulkDuplicateSettings.qty.enabled) {
-            copy.qty = Math.max(1, bulkDuplicateSettings.qty.value || 1)
-          }
-        }
-        return copy
+        return { ...cfg, id: newId }
       })
       return { ...line, colorConfigs: [...line.colorConfigs, ...copies] }
     }))
     // Highlight newly duplicated rows
     setRecentlyDuplicated(newIds)
     setTimeout(() => setRecentlyDuplicated(new Set()), 15000) // Clear after 15 seconds
-    
     clearSelection()
-    setShowDuplicateVariations(false)
-    setBulkDuplicateSettings({
-      carat: { enabled: false, value: null },
-      housing: { enabled: false, value: null },
-      size: { enabled: false, value: null },
-      qty: { enabled: false, value: 1 },
-    })
-  }, [selectedConfigs, setLines, clearSelection, bulkDuplicateSettings])
+  }, [selectedConfigs, setLines, clearSelection])
 
   // Get count of selected configs
   const selectedCount = selectedConfigs.size
@@ -533,14 +512,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       return updated.length > 0 ? updated : [mkLine()]
     })
 
-    // Update selected collections outside of setLines to avoid React warning
     if (newCollectionIds.size > 0) {
-      setTimeout(() => {
-        setSelectedCollections(prev => {
-          const newSet = new Set([...prev, ...newCollectionIds])
-          return [...newSet]
-        })
-      }, 0)
+      setSelectedCollections(prev => {
+        const newSet = new Set([...prev, ...newCollectionIds])
+        return [...newSet]
+      })
     }
 
     // Highlight newly added rows (the NEW ones, not the old selected ones)
@@ -679,7 +655,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum; e.currentTarget.style.background = '#fdf7fa' }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#ddd'; e.currentTarget.style.background = '#fafafa' }}
               >
-                <span style={{ fontSize: 14 }}>$</span>
+                <span style={{ fontSize: 14 }}>€</span>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>Set a budget</div>
                   <div style={{ fontSize: 10, color: '#aaa' }}>Optional -- track spending & get AI recommendations</div>
@@ -929,8 +905,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       t('builder.selectAtLeastOne')
                     ) : (
                       <span>
-                        <strong style={{ color: colors.inkPlum }}>{selectedCollections.length}</strong>
-                        {' '}{t('builder.collectionsSelected').replace('{count}', selectedCollections.length)}
+                        <strong style={{ color: colors.inkPlum }}>
+                          {t('builder.collectionsSelected').replace('{count}', selectedCollections.length)}
+                        </strong>
                       </span>
                     )}
                   </div>
@@ -1086,7 +1063,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           {t('common.clear')}
                         </button>
                         <button
-                          onClick={() => duplicateSelected(false)}
+                          onClick={() => duplicateSelected()}
                           style={{
                             padding: '8px 16px', borderRadius: 8,
                             border: `1px solid ${colors.inkPlum}`, background: '#fff',
@@ -1096,174 +1073,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         >
                           {t('builder.duplicateSelected')}
                         </button>
-                        <button
-                          onClick={() => setShowDuplicateVariations(!showDuplicateVariations)}
-                          style={{
-                            padding: '8px 16px', borderRadius: 8,
-                            border: 'none', background: showDuplicateVariations ? `${colors.inkPlum}15` : colors.inkPlum,
-                            color: showDuplicateVariations ? colors.inkPlum : '#fff', fontSize: 12, fontWeight: 600,
-                            cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          {t('builder.duplicateWithChanges')} {showDuplicateVariations ? '▲' : '▼'}
-                        </button>
                       </div>
                     </div>
-
-                    {/* Variations panel */}
-                    {showDuplicateVariations && (
-                      <div style={{
-                        padding: '12px 16px', borderTop: '1px solid #eee',
-                        background: '#fafafa',
-                      }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 10 }}>
-                          {t('builder.changeBeforeDuplicate')}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                          {/* Carat */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={bulkDuplicateSettings.carat.enabled}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, carat: { ...prev.carat, enabled: e.target.checked }
-                                }))}
-                                style={{ accentColor: colors.inkPlum }}
-                              />
-                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.carat')}</span>
-                            </label>
-                            {bulkDuplicateSettings.carat.enabled && (
-                              <select
-                                value={bulkDuplicateSettings.carat.value ?? ''}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, carat: { ...prev.carat, value: e.target.value === '' ? null : parseInt(e.target.value) }
-                                }))}
-                                style={{
-                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
-                                  fontSize: 11, fontFamily: 'inherit',
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="0">0.05 ct</option>
-                                <option value="1">0.10 ct</option>
-                                <option value="2">0.20 ct</option>
-                                <option value="3">0.30 ct</option>
-                              </select>
-                            )}
-                          </div>
-
-                          {/* Housing */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={bulkDuplicateSettings.housing.enabled}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, housing: { ...prev.housing, enabled: e.target.checked }
-                                }))}
-                                style={{ accentColor: colors.inkPlum }}
-                              />
-                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.housing')}</span>
-                            </label>
-                            {bulkDuplicateSettings.housing.enabled && (
-                              <select
-                                value={bulkDuplicateSettings.housing.value ?? ''}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, housing: { ...prev.housing, value: e.target.value || null }
-                                }))}
-                                style={{
-                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
-                                  fontSize: 11, fontFamily: 'inherit',
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="White">White</option>
-                                <option value="Yellow">Yellow</option>
-                                <option value="Pink">Pink</option>
-                              </select>
-                            )}
-                          </div>
-
-                          {/* Size */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={bulkDuplicateSettings.size.enabled}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, size: { ...prev.size, enabled: e.target.checked }
-                                }))}
-                                style={{ accentColor: colors.inkPlum }}
-                              />
-                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.size')}</span>
-                            </label>
-                            {bulkDuplicateSettings.size.enabled && (
-                              <select
-                                value={bulkDuplicateSettings.size.value ?? ''}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, size: { ...prev.size, value: e.target.value || null }
-                                }))}
-                                style={{
-                                  padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
-                                  fontSize: 11, fontFamily: 'inherit',
-                                }}
-                              >
-                                <option value="">--</option>
-                                <option value="S">S</option>
-                                <option value="M">M</option>
-                                <option value="S/M">S/M</option>
-                                <option value="M/L">M/L</option>
-                                <option value="L">L</option>
-                              </select>
-                            )}
-                          </div>
-
-                          {/* Qty */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={bulkDuplicateSettings.qty.enabled}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, qty: { ...prev.qty, enabled: e.target.checked }
-                                }))}
-                                style={{ accentColor: colors.inkPlum }}
-                              />
-                              <span style={{ fontSize: 12, fontWeight: 500 }}>{t('quote.qty')}</span>
-                            </label>
-                            {bulkDuplicateSettings.qty.enabled && (
-                              <input
-                                type="number"
-                                min="1"
-                                value={bulkDuplicateSettings.qty.value}
-                                onChange={(e) => setBulkDuplicateSettings(prev => ({
-                                  ...prev, qty: { ...prev.qty, value: Math.max(1, parseInt(e.target.value) || 1) }
-                                }))}
-                                style={{
-                                  width: 50, padding: '4px 8px', borderRadius: 6, border: '1px solid #ddd',
-                                  fontSize: 11, fontFamily: 'inherit', textAlign: 'center',
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => duplicateSelected(true)}
-                          disabled={!bulkDuplicateSettings.carat.enabled && !bulkDuplicateSettings.housing.enabled && !bulkDuplicateSettings.size.enabled && !bulkDuplicateSettings.qty.enabled}
-                          style={{
-                            width: '100%', padding: '10px 16px', borderRadius: 8,
-                            border: 'none', background: colors.inkPlum,
-                            color: '#fff', fontSize: 12, fontWeight: 600,
-                            cursor: 'pointer', fontFamily: 'inherit',
-                            opacity: (!bulkDuplicateSettings.carat.enabled && !bulkDuplicateSettings.housing.enabled && !bulkDuplicateSettings.size.enabled && !bulkDuplicateSettings.qty.enabled) ? 0.5 : 1,
-                          }}
-                        >
-                          {t('builder.duplicateWithChangesAction').replace('{count}', selectedCount)}
-                        </button>
-                      </div>
-                    )}
 
                   </div>
                 )}

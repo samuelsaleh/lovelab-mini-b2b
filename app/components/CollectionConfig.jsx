@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
@@ -10,7 +10,10 @@ import { useIsMobile } from '@/lib/useIsMobile'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
-// CSS for duplicate highlight animation and fill-down drag handle
+// CSS for duplicate highlight animation and fill-down drag handle.
+// Injected once per page using a singleton guard to avoid duplicate <style> blocks
+// when multiple CollectionConfig instances are mounted at the same time.
+let _stylesInjected = false
 const duplicateHighlightStyles = `
 @keyframes duplicateHighlight {
   0% { background-color: #f8bbd9; }
@@ -81,12 +84,12 @@ function ensureUniqueConfigIds(configs) {
 export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect, recentlyDuplicated = new Set() }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
-  const [expanded, setExpanded] = useState(true)
-  const [sameForAll, setSameForAll] = useState(false)
-  const [sharedSettings, setSharedSettings] = useState({
+  const expanded = line.expanded ?? true
+  const sameForAll = line.sameForAll ?? false
+  const sharedSettings = line.sharedSettings ?? {
     caratIdx: null, housing: null, housingType: null,
     multiAttached: null, shape: null, size: null, cordType: null, thickness: null, qty: null,
-  })
+  }
   const [showDuplicatePanel, setShowDuplicatePanel] = useState(false)
   const [duplicateSettings, setDuplicateSettings] = useState({
     carat: { keepSame: true, value: null },
@@ -126,6 +129,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const isConfigComplete = (cfg) => {
     if (cfg.caratIdx === null) return false
     if (col.housing && col.housing !== 'sparkleProng' && !cfg.housing) return false
+    if (col.housing === 'multiThree' && cfg.multiAttached === null) return false
     if (col.shapes && col.shapes.length > 0 && !cfg.shape) return false
     if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
     if (hasCordOptions && !cfg.cordType) return false
@@ -133,7 +137,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     return true
   }
 
-  const completeCount = line.colorConfigs.filter(c => isConfigComplete(c)).length
+  const completionMap = useMemo(
+    () => Object.fromEntries(line.colorConfigs.map(c => [c.id, isConfigComplete(c)])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [line.colorConfigs, col, hasCordOptions]
+  )
+  const completeCount = line.colorConfigs.filter(c => completionMap[c.id]).length
   const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
   const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
@@ -218,8 +227,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       })
     }
     
-    setSameForAll(next)
-    
+    set({ sameForAll: next })
+
     if (next && line.colorConfigs.length > 0) {
       // Turning ON: use first config's settings as shared base
       const first = line.colorConfigs.find(c => c.caratIdx !== null) || line.colorConfigs[0]
@@ -233,7 +242,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           size: first.size,
           qty: 1,
         }
-        setSharedSettings(s)
+        set({ sharedSettings: s })
       }
     }
   }
@@ -241,7 +250,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Update shared settings and propagate to all configs
   const updateShared = (updates) => {
     const next = { ...sharedSettings, ...updates }
-    setSharedSettings(next)
+    set({ sharedSettings: next })
     if (line.colorConfigs.length > 0) {
       set({
         colorConfigs: line.colorConfigs.map(cfg => ({ ...cfg, ...updates })),
@@ -255,6 +264,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Drag-fill state: { sourceIdx, column, targetIdx } or null
   const [dragFill, setDragFill] = useState(null)
   const dragFillRef = useRef(null)
+  const tableRef = useRef(null)
 
   // Excel-style drag fill: works on both mouse (desktop) and touch (iPad/tablet)
   const startDragFill = useCallback((e, sourceIdx, column, configs, selectedIds) => {
@@ -268,7 +278,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     // Snapshot row bounding rects at drag-start — more reliable than elementFromPoint
     // which fails over native <select> dropdowns and outside scroll containers.
     const rowRects = Array.from(
-      document.querySelectorAll('tr[data-row-idx]')
+      (tableRef.current || document).querySelectorAll('tr[data-row-idx]')
     ).map(el => ({
       idx: parseInt(el.getAttribute('data-row-idx')),
       top: el.getBoundingClientRect().top,
@@ -550,9 +560,16 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     return null
   }
 
+  // Inject styles once per page load
+  if (!_stylesInjected && typeof document !== 'undefined') {
+    const styleEl = document.createElement('style')
+    styleEl.textContent = duplicateHighlightStyles
+    document.head.appendChild(styleEl)
+    _stylesInjected = true
+  }
+
   return (
     <>
-      <style>{duplicateHighlightStyles}</style>
       <div style={{
         border: '1px solid #e8e8e8', borderRadius: 12, marginBottom: 12,
         overflow: 'hidden', background: '#fff',
@@ -587,7 +604,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             </button>
           )}
           <span 
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => set({ expanded: !expanded })}
             style={{
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
               color: line.colorConfigs.length > 0 ? colors.inkPlum : '#333',
@@ -595,7 +612,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             {col.label}
           </span>
           <span style={{ fontSize: 12, color: '#999' }}>
-            €{col.prices[0]}-€{col.prices[col.prices.length - 1]}
+            {fmt(col.prices[0])}-{fmt(col.prices[col.prices.length - 1])}
           </span>
           {line.colorConfigs.length > 0 && (
             <span style={{
@@ -617,7 +634,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             title="Remove collection"
           >x</button>
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => set({ expanded: !expanded })}
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 4,
               fontSize: 10, color: '#ccc',
@@ -1044,7 +1061,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           {/* ─── Config Table (desktop) / Card list (mobile) ─── */}
           {line.colorConfigs.length > 0 && !mobile && (
             <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table ref={tableRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #eee' }}>
                     {onToggleConfigSelect && <th style={{ ...thStyle, width: 32 }}></th>}
@@ -1206,8 +1223,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         )}
                         <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
-                            <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
-                            <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
+                            <button onClick={() => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
+                            <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
                             <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={qtyBtnStyle}>+</button>
                           </div>
                           {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
@@ -1332,7 +1349,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                 width: 52, textAlign: 'right', padding: '2px 4px',
                                 border: cfg.priceOverride != null ? `1px solid ${colors.inkPlum}` : '1px solid #e0e0e0',
                                 borderRadius: 4, fontSize: 13, fontWeight: 700,
-                                color: cfg.priceOverride != null ? colors.inkPlum : colors.inkPlum,
+                                color: cfg.priceOverride != null ? colors.inkPlum : '#333',
                                 background: cfg.priceOverride != null ? '#faf8fc' : 'transparent',
                                 outline: 'none', fontFamily: 'inherit',
                               }}
@@ -1398,7 +1415,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                         <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.qty')}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
-                          <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
+                          <button onClick={() => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
                           <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 44, height: 36, fontSize: 14 }} />
                           <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={mobileQtyBtnStyle}>+</button>
                         </div>
