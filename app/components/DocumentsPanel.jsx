@@ -822,55 +822,51 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       </div>
 
       {/* ── Confirm: move to internal ─────────────────────────────────────── */}
-      {confirmInternal && (
-        <ConfirmDialog
-          title="Move to Internal Orders?"
-          message={`"${confirmInternal.client_company || confirmInternal.client_name}" will be removed from All Documents and revenue analytics. This cannot be undone from the UI.`}
-          confirmLabel="Move to Internal"
-          cancelLabel="Cancel"
-          onConfirm={moveToInternal}
-          onCancel={() => setConfirmInternal(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={!!confirmInternal}
+        title="Move to Internal Orders?"
+        message={confirmInternal ? `"${confirmInternal.client_company || confirmInternal.client_name}" will be removed from All Documents and revenue analytics. This cannot be undone from the UI.` : ''}
+        confirmLabel="Move to Internal"
+        cancelLabel="Cancel"
+        onConfirm={moveToInternal}
+        onCancel={() => setConfirmInternal(null)}
+      />
 
       {/* ── Confirm: delete document ──────────────────────────────────────── */}
-      {confirmDelete && (
-        <ConfirmDialog
-          title={t('docs.confirmDelete') || 'Delete document?'}
-          message={`"${confirmDelete.file_name}" will be moved to Trash. You have 7 days to recover it.`}
-          confirmLabel={t('docs.delete') || 'Delete'}
-          cancelLabel="Cancel"
-          onConfirm={executeDelete}
-          onCancel={() => setConfirmDelete(null)}
-          dangerous
-        />
-      )}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title={t('docs.confirmDelete') || 'Delete document?'}
+        message={confirmDelete ? `"${confirmDelete.file_name}" will be moved to Trash. You have 7 days to recover it.` : ''}
+        confirmLabel={t('docs.delete') || 'Delete'}
+        cancelLabel="Cancel"
+        onConfirm={executeDelete}
+        onCancel={() => setConfirmDelete(null)}
+        variant="danger"
+      />
 
       {/* ── Confirm: delete event ─────────────────────────────────────────── */}
-      {confirmDeleteEvent && (
-        <ConfirmDialog
-          title="Delete folder?"
-          message={`"${confirmDeleteEvent.name}" will be deleted. Documents in this folder will move to "No event".`}
-          confirmLabel="Delete folder"
-          cancelLabel="Cancel"
-          onConfirm={executeDeleteEvent}
-          onCancel={() => setConfirmDeleteEvent(null)}
-          dangerous
-        />
-      )}
+      <ConfirmDialog
+        isOpen={!!confirmDeleteEvent}
+        title="Delete folder?"
+        message={confirmDeleteEvent ? `"${confirmDeleteEvent.name}" will be deleted. Documents in this folder will move to "No event".` : ''}
+        confirmLabel="Delete folder"
+        cancelLabel="Cancel"
+        onConfirm={executeDeleteEvent}
+        onCancel={() => setConfirmDeleteEvent(null)}
+        variant="danger"
+      />
 
       {/* ── Confirm: purge from trash ─────────────────────────────────────── */}
-      {confirmPurge && (
-        <ConfirmDialog
-          title="Delete permanently?"
-          message={`"${confirmPurge.file_name}" will be permanently deleted and cannot be recovered.`}
-          confirmLabel="Delete forever"
-          cancelLabel="Cancel"
-          onConfirm={() => purgeDoc(confirmPurge)}
-          onCancel={() => setConfirmPurge(null)}
-          dangerous
-        />
-      )}
+      <ConfirmDialog
+        isOpen={!!confirmPurge}
+        title="Delete permanently?"
+        message={confirmPurge ? `"${confirmPurge.file_name}" will be permanently deleted and cannot be recovered.` : ''}
+        confirmLabel="Delete forever"
+        cancelLabel="Cancel"
+        onConfirm={() => purgeDoc(confirmPurge)}
+        onCancel={() => setConfirmPurge(null)}
+        variant="danger"
+      />
 
       {/* ── Error message ─────────────────────────────────────────────────── */}
       {errorMsg && (
