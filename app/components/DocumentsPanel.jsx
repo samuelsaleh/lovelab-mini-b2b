@@ -406,6 +406,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete')
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
+      setInternalDocs(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
       setErrorMsg(t('docs.deleteFailed') + ': ' + err.message)
     }
