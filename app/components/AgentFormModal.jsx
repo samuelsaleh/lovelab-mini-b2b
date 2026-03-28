@@ -17,6 +17,8 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   const [agentSpecialty, setAgentSpecialty] = useState('');
   const [agentConditions, setAgentConditions] = useState('');
   const [agentNotes, setAgentNotes] = useState('');
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -82,7 +84,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         fetch(`/api/agents/${agent.id}/contract`)
           .then(r => r.json())
           .then(d => { setContractUrl(d.url || null); setContractName(d.name || null); })
-          .catch(() => {});
+          .catch(() => { });
       } else {
         setContractUrl(null);
         setContractName(null);
@@ -90,6 +92,24 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
       setContractFile(null);
       setContractMsg(null);
       setContractUploading(false);
+
+      // Fetch existing discount info from Laravel API via proxy
+      if (agent?.email) {
+        fetch(`/api/agent-discount?email=${encodeURIComponent(agent.email)}`)
+          .then(r => r.json())
+          .then(d => {
+            if (d.success && d.data) {
+              setDiscountCode(d.data.code || '');
+              setDiscountPercent(String(d.data.percent || ''));
+            }
+          })
+          .catch(err => {
+            console.warn('Failed to fetch discount:', err);
+          });
+      } else {
+        setDiscountCode('');
+        setDiscountPercent('');
+      }
     }
   }, [isOpen, agent]);
 
@@ -140,6 +160,23 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to update agent');
+
+        // Save discount to Laravel API via proxy
+        try {
+          await fetch('/api/agent-discount', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: discountCode,
+              percent: Number(discountPercent) || 0,
+              agent_email: agent.email,
+              agent_commission: rate
+            }),
+          });
+        } catch (err) {
+          console.error('Failed to sync discount:', err);
+        }
+
         onSaved?.();
         onClose?.();
       } else {
@@ -155,6 +192,23 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to create agent');
+
+        // Save discount to Laravel API for new agent via proxy
+        try {
+          await fetch('/api/agent-discount', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: discountCode,
+              percent: Number(discountPercent) || 0,
+              agent_email: email.trim().toLowerCase(),
+              agent_commission: rate
+            }),
+          });
+        } catch (err) {
+          console.error('Failed to sync discount:', err);
+        }
+
         if (data?.agent?.id) {
           setCreatedAgentId(data.agent.id);
           setContractUrl(null);
@@ -183,8 +237,8 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
       {contractUrl && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5D3A5E" strokeWidth="2">
-            <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
-            <polyline points="14 2 14 8 20 8"/>
+            <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" />
+            <polyline points="14 2 14 8 20 8" />
           </svg>
           <span style={{ fontSize: 13, color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractName}</span>
           <a href={contractUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: colors.inkPlum, fontWeight: 600, textDecoration: 'none' }}>Download</a>
@@ -429,6 +483,31 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
               style={{ ...inp, width: '100%', minHeight: 60, resize: 'vertical' }}
               placeholder="Special conditions"
             />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={lbl}>Discount Code</label>
+              <input
+                type="text"
+                value={discountCode}
+                onChange={(e) => setDiscountCode(e.target.value)}
+                style={{ ...inp, width: '100%' }}
+                placeholder="PROMO2026"
+              />
+            </div>
+            <div>
+              <label style={lbl}>Discount Percent (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(e.target.value)}
+                style={{ ...inp, width: '100%' }}
+                placeholder="10"
+              />
+            </div>
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={lbl}>Notes</label>
