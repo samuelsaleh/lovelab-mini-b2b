@@ -28,7 +28,10 @@ export async function GET(request) {
     const orderChannelFilter = searchParams.get('order_channel'); // e.g. 'internal' or 'consignment'
     const summaryOnly = searchParams.get('summary') === 'true'; // strips heavy metadata.formState
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const perPage = Math.min(200, Math.max(1, parseInt(searchParams.get('per_page') || '50', 10)));
+    // Raise per_page cap to 500 for consignment admin views (only admins can hit this with
+    // order_channel=consignment; the default cap is 200 for regular document lists).
+    const maxPerPage = orderChannelFilter === 'consignment' ? 500 : 200;
+    const perPage = Math.min(maxPerPage, Math.max(1, parseInt(searchParams.get('per_page') || '50', 10)));
     const offset = (page - 1) * perPage;
 
     // For summary/dashboard views strip the heavy formState from the metadata payload.
@@ -200,7 +203,12 @@ export async function POST(request) {
       consignment_agent_id,
     } = body;
 
-    if (!client_name || !document_type || !file_path || !file_name) {
+    // file_path is optional for admin-created auto-generated records (e.g. invoices
+    // auto-created from consignment reconciliation). Non-admin users must supply it.
+    if (!client_name || !document_type || !file_name) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    if (!isAdmin && !file_path) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -230,14 +238,16 @@ export async function POST(request) {
       }
     }
 
-    // Sanitize file_path to prevent path traversal
-    const safePath = String(file_path)
-      .replace(/\.\./g, '')
-      .replace(/^\/+/, '')
-      .replace(/[^a-zA-Z0-9\-_./]/g, '_');
-
-    if (!safePath || safePath.length < 3) {
-      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    // Sanitize file_path to prevent path traversal (skip when null/undefined)
+    let safePath = null;
+    if (file_path) {
+      safePath = String(file_path)
+        .replace(/\.\./g, '')
+        .replace(/^\/+/, '')
+        .replace(/[^a-zA-Z0-9\-_./]/g, '_');
+      if (!safePath || safePath.length < 3) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
     }
 
     // Limit metadata size to prevent abuse (max 100KB)
@@ -253,7 +263,7 @@ export async function POST(request) {
         client_name,
         client_company: client_company || null,
         document_type,
-        file_path: safePath,
+        file_path: safePath || null,
         file_name,
         file_size: file_size || null,
         total_amount: total_amount || null,
@@ -266,8 +276,8 @@ export async function POST(request) {
       .single();
 
     if (error) {
-      console.error('[Documents POST] Error:', error.message);
-      return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
+      console.error('[Documents POST] Error:', error.message, error.code, error.details, error.hint);
+      return NextResponse.json({ error: 'Failed to save document', detail: error.message }, { status: 500 });
     }
 
     // Agent commission hook: auto-create commission for active agents.

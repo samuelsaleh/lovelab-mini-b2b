@@ -41,10 +41,10 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
 
   return (
     <div style={{
-      background: colors.inkPlumLight,
+      background: colors.inkPlum,
       flexShrink: 0,
       zIndex: 100,
-      borderBottom: `2px solid ${colors.luxeGold}`,
+      borderBottom: `2px solid ${colors.lovelabDark}`,
     }}>
       {/* Main row */}
       <div style={{
@@ -80,7 +80,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
           )}
 
           {/* Logo — always visible in TopNav */}
-          <img src="/logo.png" alt="LoveLab" style={{ height: 80, width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
+          <img src="/logo.png" alt="LoveLab" style={{ height: 128, marginTop: -32, marginBottom: -32, filter: 'brightness(0) invert(1)' }} />
 
           {/* Back button — desktop only, shown when not at root */}
           {!mobile && canGoBack && (

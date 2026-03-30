@@ -90,13 +90,23 @@ export default function EditConsignmentDetailsModal({ order, onClose, onSaved })
         throw new Error(d.detail || d.error || 'Failed to save')
       }
 
-      const result = await res.json()
+      // PATCH response does not embed the profiles join, so we reconstruct
+      // consignment_agent from the existing order or by fetching the profile.
+      let resolvedAgent = agentId ? (order.consignment_agent || null) : null
+      if (agentId && agentId !== order.consignment_agent_id) {
+        // Agent changed — fetch minimal profile to keep UI in sync
+        try {
+          const ar = await fetch(`/api/agents/${agentId}`)
+          const ad = await ar.json()
+          if (ad.agent) resolvedAgent = { full_name: ad.agent.full_name, email: ad.agent.email }
+        } catch { /* non-blocking — UI will still show correct data on next full refresh */ }
+      }
+
       onSaved({
         ...order,
         metadata: { ...(order.metadata || {}), consignment: newConsignment },
         consignment_agent_id: agentId,
-        // preserve the aliased agent embed for immediate UI refresh
-        consignment_agent: result.document?.consignment_agent || null,
+        consignment_agent: resolvedAgent,
       })
     } catch (err) {
       setError(err.message || 'Failed to save changes')

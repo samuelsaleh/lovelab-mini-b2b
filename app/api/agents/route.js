@@ -78,6 +78,28 @@ export async function GET(request) {
       console.error('[Agents GET] commission query error (non-blocking):', e?.message);
     }
 
+    // Fourth fallback: query documents directly, grouped by created_by.
+    // This covers agents who have real B2B orders but no agent_commissions rows
+    // (e.g. orders created before the commission hook existed, or orders saved
+    // by a non-agent user on behalf of an agent).
+    const docStatsByAgent = {};
+    try {
+      const { data: docRows } = await adminSupabase
+        .from('documents')
+        .select('created_by, total_amount, order_channel')
+        .eq('document_type', 'order')
+        .not('order_channel', 'in', '("internal","consignment")')
+        .is('deleted_at', null);
+      for (const d of docRows || []) {
+        if (!d.created_by) continue;
+        if (!docStatsByAgent[d.created_by]) docStatsByAgent[d.created_by] = { orders: 0, revenue: 0 };
+        docStatsByAgent[d.created_by].orders++;
+        docStatsByAgent[d.created_by].revenue += Number(d.total_amount) || 0;
+      }
+    } catch (e) {
+      console.error('[Agents GET] doc stats fallback query error (non-blocking):', e?.message);
+    }
+
     // Reconcile legacy user IDs by email so stats stick to the same person.
     const currentAgentIdByEmail = new Map(
       (agents || [])
@@ -127,22 +149,34 @@ export async function GET(request) {
         pending_commission: 0, paid_commission: 0, total_docs: 0, total_order_docs: 0, total_doc_revenue: 0,
       };
       const fb = commByAgent[agentId];
+      // Fourth fallback: actual documents created by this agent
+      const ds = docStatsByAgent[agentId];
+      const rate = Number(commissionRate) || 0;
 
       const effective_orders = (base.total_orders || 0) > 0 ? base.total_orders
-        : fb ? fb.orders : (base.total_order_docs || 0);
+        : fb ? fb.orders
+        : (base.total_order_docs || 0) > 0 ? base.total_order_docs
+        : (ds ? ds.orders : 0);
+
       const effective_revenue = (base.total_revenue || 0) > 0 ? base.total_revenue
-        : fb ? fb.revenue : (base.total_doc_revenue || 0);
+        : fb ? fb.revenue
+        : (base.total_doc_revenue || 0) > 0 ? base.total_doc_revenue
+        : (ds ? ds.revenue : 0);
+
       const effective_total_commission = (base.total_commission || 0) > 0 ? base.total_commission
-        : fb ? fb.commission : 0;
+        : fb ? fb.commission
+        : (rate > 0 && effective_revenue > 0 ? Math.round(effective_revenue * rate / 100 * 100) / 100 : 0);
+
       const effective_pending_commission = (base.pending_commission || 0) > 0 ? base.pending_commission
-        : fb ? fb.pending : 0;
+        : fb ? fb.pending
+        : effective_total_commission - (base.paid_commission || (fb?.paid ?? 0));
 
       return {
         ...base,
         effective_orders: Math.round((effective_orders || 0) * 100) / 100,
         effective_revenue: Math.round((effective_revenue || 0) * 100) / 100,
         effective_total_commission: Math.round((effective_total_commission || 0) * 100) / 100,
-        effective_pending_commission: Math.round((effective_pending_commission || 0) * 100) / 100,
+        effective_pending_commission: Math.round(Math.max(0, effective_pending_commission || 0) * 100) / 100,
       };
     };
 

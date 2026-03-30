@@ -5,23 +5,10 @@ import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
+import ReconcileConsignmentModal from './ReconcileConsignmentModal'
+import { isReturned, isOverdue, daysUntil, patchConsignmentOrder } from '@/lib/consignment'
 
 const BUCKET = 'documents'
-
-function isReturned(doc) {
-  return !!doc?.metadata?.consignment?.returned_at
-}
-
-function isOverdue(doc) {
-  const rd = doc?.metadata?.consignment?.return_date
-  if (!rd || isReturned(doc)) return false
-  return new Date(rd) < new Date()
-}
-
-function daysUntil(dateStr) {
-  if (!dateStr) return null
-  return Math.ceil((new Date(dateStr) - new Date()) / (1000 * 60 * 60 * 24))
-}
 
 function fmtDate(str) {
   if (!str) return '—'
@@ -73,7 +60,11 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState('active') // 'active' | 'returned'
   const [markingId, setMarkingId] = useState(null)
+  const [rowErrors, setRowErrors] = useState({})
   const [editingOrder, setEditingOrder] = useState(null)
+  const [reconcilingOrder, setReconcilingOrder] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [deletingInFlight, setDeletingInFlight] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -119,30 +110,44 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     } catch { /* non-blocking */ }
   }
 
-  const patchConsignment = async (order, patch) => {
-    const newConsignment = { ...(order.metadata?.consignment || {}), ...patch }
-    const res = await fetch(`/api/documents/${order.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ metadata: { consignment: newConsignment } }),
-    })
-    if (!res.ok) throw new Error('Failed')
-    setOrders(prev => prev.map(o => o.id === order.id
-      ? { ...o, metadata: { ...(o.metadata || {}), consignment: newConsignment } }
-      : o
-    ))
-  }
-
-  const markReturned = async (order) => {
-    setMarkingId(order.id)
-    try { await patchConsignment(order, { returned_at: new Date().toISOString() }) } catch { /* non-blocking */ }
-    setMarkingId(null)
+  const applyUpdate = (orderId, patch) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...patch } : o))
   }
 
   const undoReturned = async (order) => {
     setMarkingId(order.id)
-    try { await patchConsignment(order, { returned_at: null }) } catch { /* non-blocking */ }
+    setRowErrors(e => ({ ...e, [order.id]: null }))
+    try {
+      await patchConsignmentOrder(order.id, order.metadata?.consignment || {}, { returned_at: null })
+      applyUpdate(order.id, {
+        metadata: { ...(order.metadata || {}), consignment: { ...(order.metadata?.consignment || {}), returned_at: null } },
+      })
+    } catch (err) {
+      setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to undo' }))
+    }
     setMarkingId(null)
+  }
+
+  const handleReconcileConfirmed = ({ updatedOrder, invoiceId }) => {
+    applyUpdate(updatedOrder.id, updatedOrder)
+    setReconcilingOrder(null)
+    if (invoiceId) {
+      setRowErrors(e => ({ ...e, [updatedOrder.id]: `✓ Invoice created` }))
+      setTimeout(() => setRowErrors(e => ({ ...e, [updatedOrder.id]: null })), 5000)
+    }
+  }
+
+  const handleDelete = async (order) => {
+    setDeletingInFlight(order.id)
+    try {
+      const res = await fetch(`/api/documents/${order.id}`, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || d.error || 'Failed to delete') }
+      setOrders(prev => prev.filter(o => o.id !== order.id))
+    } catch (err) {
+      setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to delete' }))
+    }
+    setDeletingId(null)
+    setDeletingInFlight(null)
   }
 
   const thStyle = {
@@ -167,6 +172,27 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
             setEditingOrder(null)
           }}
         />
+      )}
+      {reconcilingOrder && (
+        <ReconcileConsignmentModal
+          order={reconcilingOrder}
+          onClose={() => setReconcilingOrder(null)}
+          onConfirmed={handleReconcileConfirmed}
+        />
+      )}
+      {deletingId && (
+        <div onClick={() => setDeletingId(null)} style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', maxWidth: 360, width: '100%', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', fontFamily: fonts.body }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#111', marginBottom: 8 }}>Delete this consignment order?</div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 22 }}>This cannot be undone.</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeletingId(null)} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { const o = orders.find(x => x.id === deletingId); if (o) handleDelete(o) }} disabled={!!deletingInFlight} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 700, cursor: deletingInFlight ? 'wait' : 'pointer', fontFamily: fonts.body, opacity: deletingInFlight ? 0.6 : 1 }}>
+                {deletingInFlight ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
@@ -269,7 +295,7 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Date', 'Recipient', 'Via', 'Amount', tab === 'returned' ? 'Returned On' : 'Return Date', 'Status', 'Actions'].map(h => (
+                    {['IN/OUT', 'Date', 'Recipient', 'Via', 'Amount', tab === 'returned' ? 'Returned On' : 'Return Date', 'Status', 'Actions'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -283,8 +309,11 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                     const recipientName = c.recipient_name || o.client_name || '—'
                     const recipientCo = c.recipient_company || o.client_company || ''
                     const dateToShow = tab === 'returned' ? c.returned_at : c.return_date
-                    const days = !isReturned(o) ? daysUntil(c.return_date) : null
+                    const days = !isReturned(o) ? daysUntil(o) : null
                     const overdueRow = isOverdue(o)
+                    const returned = isReturned(o)
+                    const rowError = rowErrors[o.id]
+                    const isInvoiceNote = rowError && rowError.startsWith('✓')
 
                     return (
                       <tr
@@ -296,12 +325,22 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                         onMouseEnter={e => { e.currentTarget.style.background = `${colors.inkPlum}05` }}
                         onMouseLeave={e => { e.currentTarget.style.background = overdueRow ? '#fff8f8' : '#fff' }}
                       >
+                        {/* IN/OUT */}
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                          {returned
+                            ? <span style={{ fontSize: 10, fontWeight: 800, color: '#374151', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 7px' }}>IN</span>
+                            : <span style={{ fontSize: 10, fontWeight: 800, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '2px 7px' }}>OUT</span>
+                          }
+                        </td>
                         <td style={{ ...tdStyle, color: '#888', fontSize: 12 }}>
                           {o.created_at ? fmtDate(o.created_at) : '—'}
                         </td>
                         <td style={tdStyle}>
                           <div style={{ fontWeight: 700, color: '#222' }}>{recipientName}</div>
                           {recipientCo && <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{recipientCo}</div>}
+                          {rowError && (
+                            <div style={{ fontSize: 10, marginTop: 3, color: isInvoiceNote ? '#15803d' : '#dc2626', fontWeight: 600 }}>{rowError}</div>
+                          )}
                         </td>
                         <td style={tdStyle}>
                           {agentName ? <AgentChip name={agentName} /> : <span style={{ fontSize: 11, color: '#ccc' }}>Direct</span>}
@@ -325,64 +364,63 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                         </td>
                         <td style={tdStyle}><StatusBadge doc={o} /></td>
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {/* Edit — icon only */}
                             <button
                               onClick={() => setEditingOrder(o)}
-                              style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${colors.inkPlum}50`, background: `${colors.inkPlum}08`, color: colors.inkPlum, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body }}
+                              title="Edit details"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
-                              Edit
+                              ✎
                             </button>
+                            {/* PDF — icon only */}
                             {o.file_path && (
                               <button
                                 onClick={() => openPdf(o.file_path)}
-                                style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#faf8fc', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+                                title="View PDF"
+                                style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.inkPlum, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.body }}
                               >
                                 PDF
                               </button>
                             )}
-                            {onReEdit && o.metadata?.formState && (
+                            {/* Primary action */}
+                            {!returned ? (
                               <button
-                                onClick={() => onReEdit(o)}
-                                style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: '#fdf7fa', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {onDuplicate && o.metadata?.formState && (
-                              <button
-                                onClick={() => onDuplicate(o)}
-                                style={{ padding: '4px 9px', borderRadius: 6, border: '1px solid #e0e0e0', background: '#fff', color: '#555', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
-                              >
-                                Copy
-                              </button>
-                            )}
-                            {tab === 'active' && (
-                              <button
-                                onClick={() => markReturned(o)}
+                                onClick={() => setReconcilingOrder(o)}
                                 disabled={markingId === o.id}
+                                title="Mark as returned"
                                 style={{
-                                  padding: '4px 9px', borderRadius: 6, border: '1px solid #d1fae5',
-                                  background: '#f0fdf4', color: '#15803d', fontSize: 11, fontWeight: 700,
+                                  padding: '4px 12px', height: 28, borderRadius: 6, border: '1px solid #fecaca',
+                                  background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700,
                                   cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
-                                  opacity: markingId === o.id ? 0.5 : 1,
+                                  opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
                                 }}
                               >
-                                {markingId === o.id ? '…' : '✓ Returned'}
+                                Returned
                               </button>
-                            )}
-                            {tab === 'returned' && (
+                            ) : (
                               <button
                                 onClick={() => undoReturned(o)}
                                 disabled={markingId === o.id}
+                                title="Undo return"
                                 style={{
-                                  padding: '4px 9px', borderRadius: 6, border: `1px solid ${colors.lineGray}`,
-                                  background: '#fafafa', color: '#888', fontSize: 11, fontWeight: 600,
+                                  padding: '4px 10px', height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`,
+                                  background: '#fafafa', color: '#999', fontSize: 11,
                                   cursor: 'pointer', fontFamily: fonts.body, opacity: markingId === o.id ? 0.5 : 1,
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
                                 Undo
                               </button>
                             )}
+                            {/* Delete */}
+                            <button
+                              onClick={() => setDeletingId(o.id)}
+                              title="Delete"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              ✕
+                            </button>
                           </div>
                         </td>
                       </tr>

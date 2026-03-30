@@ -686,12 +686,31 @@ export default function AdminAgentDetailsPage() {
 
                     {organizationLedger?.organization_summary && (
                       <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 10 }}>Company Totals</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                          <Stat label="Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
-                          <Stat label="Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} />
-                          <Stat label="Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} />
-                        </div>
+                        {(() => {
+                          const ledger = organizationLedger.organization_summary
+                          const ledgerIsEmpty = !ledger.total_commission_earned && !ledger.total_paid_out && !ledger.pending_balance
+                          const usesDerived = ledgerIsEmpty && totalEarned > 0
+                          const displayEarned = usesDerived ? totalEarned : (ledger.total_commission_earned || 0)
+                          const displayPaid = usesDerived ? totalPaid : (ledger.total_paid_out || 0)
+                          const displayPending = usesDerived ? pendingBalance : (ledger.pending_balance || 0)
+                          return (
+                            <>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase' }}>Company Totals</div>
+                                {usesDerived && (
+                                  <span style={{ fontSize: 10, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
+                                    Estimated from orders
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+                                <Stat label="Earned" value={fmt(displayEarned)} />
+                                <Stat label="Paid" value={fmt(displayPaid)} />
+                                <Stat label="Pending" value={fmt(displayPending)} />
+                              </div>
+                            </>
+                          )
+                        })()}
                         {(organizationLedger.per_member || []).length > 0 && (
                           <>
                             <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 8 }}>Per Member</div>

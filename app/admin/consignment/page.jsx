@@ -3,28 +3,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
+
 import EditConsignmentDetailsModal from '@/app/components/EditConsignmentDetailsModal'
+import ReconcileConsignmentModal from '@/app/components/ReconcileConsignmentModal'
+import { isReturned, isOverdue, daysUntil, patchConsignmentOrder } from '@/lib/consignment'
 
-const BUCKET = 'documents'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-function isReturned(doc) {
-  return !!doc?.metadata?.consignment?.returned_at
-}
-
-function isOverdue(doc) {
-  const rd = doc?.metadata?.consignment?.return_date
-  if (!rd || isReturned(doc)) return false
-  return new Date(rd) < new Date()
-}
-
-function daysUntil(dateStr) {
-  if (!dateStr) return null
-  const diff = new Date(dateStr) - new Date()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
-}
 
 function fmtDate(str) {
   if (!str) return '—'
@@ -110,8 +94,13 @@ export default function AdminConsignmentPage() {
   const [search, setSearch] = useState('')
   const [agentFilter, setAgentFilter] = useState(null) // agentId to filter by
   const [markingId, setMarkingId] = useState(null)
+  const [rowErrors, setRowErrors] = useState({}) // orderId → error string
   const [expandAgents, setExpandAgents] = useState(true)
   const [editingOrder, setEditingOrder] = useState(null)
+  const [reconcilingOrder, setReconcilingOrder] = useState(null) // for ReconcileConsignmentModal
+  const [deletingId, setDeletingId] = useState(null) // orderId awaiting delete confirmation
+  const [deletingInFlight, setDeletingInFlight] = useState(null) // orderId being deleted
+  const [undoConfirmOrder, setUndoConfirmOrder] = useState(null) // order awaiting undo confirmation
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -191,41 +180,57 @@ export default function AdminConsignmentPage() {
   }, [tab, orders, active, overdue, returned, agentFilter, search])
 
   // ── Actions ──────────────────────────────────────────────────────────
-  const openPdf = async (filePath) => {
-    if (!filePath) return
+  const openPdf = async (docId) => {
+    if (!docId) return
     try {
-      const supabase = createClient()
-      const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath)
-      if (data?.publicUrl) window.open(data.publicUrl, '_blank')
+      const res = await fetch(`/api/documents/preview?id=${docId}`)
+      const data = await res.json()
+      if (data?.signedUrl) window.open(data.signedUrl, '_blank')
     } catch { /* non-blocking */ }
   }
 
-  const patchConsignment = async (order, patch) => {
-    const newConsignment = { ...(order.metadata?.consignment || {}), ...patch }
-    const res = await fetch(`/api/documents/${order.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ metadata: { consignment: newConsignment } }),
-    })
-    if (!res.ok) throw new Error('Failed to update')
-    const updated = await res.json()
-    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, metadata: updated.document?.metadata || { ...(o.metadata || {}), consignment: newConsignment } } : o))
-  }
-
-  const markReturned = async (order) => {
-    setMarkingId(order.id)
-    try {
-      await patchConsignment(order, { returned_at: new Date().toISOString() })
-    } catch { /* non-blocking */ }
-    setMarkingId(null)
+  const applyOrderUpdate = (orderId, updatedOrder) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedOrder } : o))
   }
 
   const undoReturned = async (order) => {
     setMarkingId(order.id)
+    setRowErrors(e => ({ ...e, [order.id]: null }))
     try {
-      await patchConsignment(order, { returned_at: null })
-    } catch { /* non-blocking */ }
+      await patchConsignmentOrder(order.id, order.metadata?.consignment || {}, { returned_at: null, reconciliation: undefined, invoice_document_id: undefined })
+      applyOrderUpdate(order.id, {
+        metadata: { ...(order.metadata || {}), consignment: { ...(order.metadata?.consignment || {}), returned_at: null } },
+      })
+    } catch (err) {
+      setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to undo' }))
+    }
     setMarkingId(null)
+  }
+
+  const handleReconcileConfirmed = ({ updatedOrder, invoiceId }) => {
+    applyOrderUpdate(updatedOrder.id, updatedOrder)
+    setReconcilingOrder(null)
+    if (invoiceId) {
+      // Show a brief toast-style notification
+      setRowErrors(e => ({ ...e, [updatedOrder.id]: `✓ Invoice created (${invoiceId.slice(0, 8)}…)` }))
+      setTimeout(() => setRowErrors(e => ({ ...e, [updatedOrder.id]: null })), 5000)
+    }
+  }
+
+  const handleDelete = async (order) => {
+    setDeletingInFlight(order.id)
+    try {
+      const res = await fetch(`/api/documents/${order.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.detail || d.error || 'Failed to delete')
+      }
+      setOrders(prev => prev.filter(o => o.id !== order.id))
+    } catch (err) {
+      setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to delete' }))
+    }
+    setDeletingId(null)
+    setDeletingInFlight(null)
   }
 
   // ── Styles ───────────────────────────────────────────────────────────
@@ -252,6 +257,71 @@ export default function AdminConsignmentPage() {
           }}
         />
       )}
+      {reconcilingOrder && (
+        <ReconcileConsignmentModal
+          order={reconcilingOrder}
+          onClose={() => setReconcilingOrder(null)}
+          onConfirmed={handleReconcileConfirmed}
+        />
+      )}
+      {/* Undo return confirmation overlay — shown when reconciliation data would be wiped */}
+      {undoConfirmOrder && (
+        <div
+          onClick={() => setUndoConfirmOrder(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', maxWidth: 400, width: '100%', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', fontFamily: fonts.body }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#111', marginBottom: 8 }}>Undo return reconciliation?</div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 6, lineHeight: 1.6 }}>
+              This order has already been reconciled. Undoing will permanently delete all reconciliation records and remove the link to any auto-created invoice.
+            </div>
+            <div style={{ fontSize: 12, color: '#d97706', background: '#fffbeb', borderRadius: 8, padding: '8px 12px', marginBottom: 22 }}>
+              The linked invoice itself will NOT be deleted — only the connection will be removed.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setUndoConfirmOrder(null)} style={{ padding: '9px 18px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { const o = undoConfirmOrder; setUndoConfirmOrder(null); undoReturned(o) }}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#d97706', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body }}
+              >
+                Yes, Undo Return
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete confirmation overlay */}
+      {deletingId && (
+        <div
+          onClick={() => setDeletingId(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', maxWidth: 380, width: '100%', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', fontFamily: fonts.body }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#111', marginBottom: 8 }}>Delete this consignment order?</div>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 22 }}>This cannot be undone. The PDF and all associated data will be removed.</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeletingId(null)} style={{ padding: '9px 18px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { const o = orders.find(x => x.id === deletingId); if (o) handleDelete(o) }}
+                disabled={!!deletingInFlight}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 700, cursor: deletingInFlight ? 'wait' : 'pointer', fontFamily: fonts.body, opacity: deletingInFlight ? 0.6 : 1 }}
+              >
+                {deletingInFlight ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ maxWidth: 1280, margin: '0 auto' }}>
 
         {/* ── Page header ──────────────────────────────────────────── */}
@@ -264,21 +334,33 @@ export default function AdminConsignmentPage() {
               Track all goods on consignment — who has them, their value, and return deadlines.
             </div>
           </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9,
-              border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666',
-              fontSize: 12, fontWeight: 600, cursor: loading ? 'wait' : 'pointer', fontFamily: fonts.body,
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity: loading ? 0.4 : 1 }}>
-              <path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-              <path d="M6 1.5L7.5 3 6 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
-            {loading ? 'Loading…' : 'Refresh'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => { window.location.href = '/?newConsignment=1' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9,
+                border: 'none', background: colors.inkPlum, color: '#fff',
+                fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body,
+              }}
+            >
+              + New Consignment Order
+            </button>
+            <button
+              onClick={load}
+              disabled={loading}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9,
+                border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666',
+                fontSize: 12, fontWeight: 600, cursor: loading ? 'wait' : 'pointer', fontFamily: fonts.body,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity: loading ? 0.4 : 1 }}>
+                <path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                <path d="M6 1.5L7.5 3 6 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+              {loading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* ── KPI row ──────────────────────────────────────────────── */}
@@ -513,7 +595,7 @@ export default function AdminConsignmentPage() {
                 <thead>
                   <tr>
                     {[
-                      'Date Sent', 'Recipient', 'Via', 'Amount',
+                      'IN/OUT', 'Date Sent', 'Recipient', 'Via', 'Amount',
                       tab === 'returned' ? 'Returned On' : 'Return Date',
                       'Status', 'Actions',
                     ].map(h => (
@@ -530,9 +612,12 @@ export default function AdminConsignmentPage() {
                     const recipientName = c.recipient_name || o.client_name || '—'
                     const recipientCo = c.recipient_company || o.client_company || ''
                     const returnDate = tab === 'returned' ? c.returned_at : c.return_date
-                    const days = !isReturned(o) ? daysUntil(c.return_date) : null
+                    const days = !isReturned(o) ? daysUntil(o) : null
                     const rowBg = idx % 2 === 0 ? '#fff' : '#fdfcff'
                     const overdueRow = isOverdue(o)
+                    const returned = isReturned(o)
+                    const rowError = rowErrors[o.id]
+                    const isInvoiceNote = rowError && rowError.startsWith('✓')
 
                     return (
                       <tr
@@ -545,6 +630,14 @@ export default function AdminConsignmentPage() {
                         onMouseEnter={e => { e.currentTarget.style.background = `${colors.inkPlum}05` }}
                         onMouseLeave={e => { e.currentTarget.style.background = overdueRow ? '#fff8f8' : rowBg }}
                       >
+                        {/* IN/OUT */}
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                          {returned
+                            ? <span style={{ fontSize: 10, fontWeight: 800, color: '#374151', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.05em' }}>IN</span>
+                            : <span style={{ fontSize: 10, fontWeight: 800, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '2px 7px', letterSpacing: '0.05em' }}>OUT</span>
+                          }
+                        </td>
+
                         {/* Date */}
                         <td style={{ ...tdStyle, color: '#888', fontSize: 12 }}>
                           {o.created_at ? fmtDate(o.created_at) : '—'}
@@ -554,6 +647,11 @@ export default function AdminConsignmentPage() {
                         <td style={tdStyle}>
                           <div style={{ fontWeight: 700, color: '#222' }}>{recipientName}</div>
                           {recipientCo && <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{recipientCo}</div>}
+                          {rowError && (
+                            <div style={{ fontSize: 10, marginTop: 3, color: isInvoiceNote ? '#15803d' : '#dc2626', fontWeight: 600 }}>
+                              {rowError}
+                            </div>
+                          )}
                         </td>
 
                         {/* Via (agent or direct) */}
@@ -573,10 +671,10 @@ export default function AdminConsignmentPage() {
                         <td style={{ ...tdStyle, minWidth: 120 }}>
                           {returnDate ? (
                             <div>
-                              <div style={{ fontWeight: 600, color: !isReturned(o) && overdueRow ? '#dc2626' : '#333' }}>
+                              <div style={{ fontWeight: 600, color: !returned && overdueRow ? '#dc2626' : '#333' }}>
                                 {fmtDate(returnDate)}
                               </div>
-                              {days !== null && !isReturned(o) && (
+                              {days !== null && !returned && (
                                 <div style={{ fontSize: 10, marginTop: 1, fontWeight: 700, color: days < 0 ? '#dc2626' : days <= 7 ? '#d97706' : '#aaa' }}>
                                   {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today!' : `${days}d left`}
                                 </div>
@@ -590,50 +688,90 @@ export default function AdminConsignmentPage() {
 
                         {/* Actions */}
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {/* Edit details — pencil icon */}
                             <button
                               onClick={() => setEditingOrder(o)}
-                              style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.inkPlum}50`, background: `${colors.inkPlum}08`, color: colors.inkPlum, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body }}
+                              title="Edit consignment details"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
-                              Edit
+                              ✎
                             </button>
+                            {/* Edit order in builder */}
+                            {o.metadata?.formState && (
+                              <button
+                                onClick={() => { window.location.href = `/?reEdit=${o.id}` }}
+                                title="Edit order in builder"
+                                style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.inkPlum}40`, background: `${colors.inkPlum}08`, color: colors.inkPlum, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.body }}
+                              >
+                                ✏
+                              </button>
+                            )}
+                            {/* PDF — only if file exists */}
                             {o.file_path && (
                               <button
-                                onClick={() => openPdf(o.file_path)}
-                                style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#faf8fc', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+                                onClick={() => openPdf(o.id)}
+                                title="View PDF"
+                                style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.inkPlum, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.body }}
                               >
                                 PDF
                               </button>
                             )}
-                            {!isReturned(o) ? (
+                            {/* Primary action */}
+                            {!returned ? (
                               <button
-                                onClick={() => markReturned(o)}
+                                onClick={() => setReconcilingOrder(o)}
                                 disabled={markingId === o.id}
-                                title="Mark as returned — moves to history"
+                                title="Mark as returned"
                                 style={{
-                                  padding: '4px 10px', borderRadius: 6, border: '1px solid #d1fae5',
-                                  background: '#f0fdf4', color: '#15803d', fontSize: 11, fontWeight: 700,
+                                  padding: '4px 12px', height: 28, borderRadius: 6, border: '1px solid #fecaca',
+                                  background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700,
                                   cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
-                                  opacity: markingId === o.id ? 0.5 : 1,
+                                  opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
                                 }}
                               >
-                                {markingId === o.id ? '…' : '✓ Returned'}
+                                Returned
                               </button>
                             ) : (
-                              <button
-                                onClick={() => undoReturned(o)}
-                                disabled={markingId === o.id}
-                                title="Undo return — moves back to active"
-                                style={{
-                                  padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`,
-                                  background: '#fafafa', color: '#888', fontSize: 11, fontWeight: 600,
-                                  cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
-                                  opacity: markingId === o.id ? 0.5 : 1,
-                                }}
-                              >
-                                Undo
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => {
+                                    if (c.reconciliation) {
+                                      setUndoConfirmOrder(o)
+                                    } else {
+                                      undoReturned(o)
+                                    }
+                                  }}
+                                  disabled={markingId === o.id}
+                                  title="Undo return"
+                                  style={{
+                                    padding: '4px 10px', height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`,
+                                    background: '#fafafa', color: '#999', fontSize: 11,
+                                    cursor: 'pointer', fontFamily: fonts.body,
+                                    opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  Undo
+                                </button>
+                                {c.invoice_document_id && (
+                                  <button
+                                    onClick={() => openPdf(c.invoice_document_id)}
+                                    title="View linked invoice"
+                                    style={{ padding: '4px 10px', height: 28, borderRadius: 6, border: `1px solid #bfdbfe`, background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                  >
+                                    Invoice →
+                                  </button>
+                                )}
+                              </>
                             )}
+                            {/* Delete */}
+                            <button
+                              onClick={() => setDeletingId(o.id)}
+                              title="Delete"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              ✕
+                            </button>
                           </div>
                         </td>
                       </tr>

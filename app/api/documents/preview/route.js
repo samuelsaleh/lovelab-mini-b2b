@@ -79,6 +79,9 @@ export async function GET(request) {
 
     // Try generating signed URL with the stored file_path
     const storedPath = doc.file_path;
+    if (!storedPath) {
+      return NextResponse.json({ error: 'No PDF file attached to this document' }, { status: 404 });
+    }
     let signedUrl = null;
 
     const { data: urlData, error: urlError } = await adminSupabase.storage

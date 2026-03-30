@@ -4,10 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
-import { createClient } from '@/lib/supabase/client'
 import ConsignmentRecipientForm from './ConsignmentRecipientForm'
-
-const BUCKET = 'documents'
 
 // ─── Move-to-Consignment Modal ──────────────────────────────────────────────
 
@@ -176,16 +173,13 @@ export default function InternalOrdersPanel({ onReEdit, onDuplicate }) {
     setOrders(prev => prev.filter(o => o.id !== id))
   }
 
-  const openPdf = async (filePath, fileName) => {
+  const openPdf = async (docId) => {
+    if (!docId) return
     try {
-      const supabase = createClient()
-      const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath)
-      if (data?.publicUrl) {
-        window.open(data.publicUrl, '_blank')
-      }
-    } catch {
-      // fallback: nothing
-    }
+      const res = await fetch(`/api/documents/preview?id=${docId}`)
+      const data = await res.json()
+      if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    } catch { /* non-blocking */ }
   }
 
   const thStyle = {
@@ -284,7 +278,7 @@ export default function InternalOrdersPanel({ onReEdit, onDuplicate }) {
                       </td>
                       <td style={tdStyle}>
                           <button
-                            onClick={() => openPdf(o.file_path, o.file_name)}
+                            onClick={() => openPdf(o.id)}
                             style={{
                               padding: '4px 10px', borderRadius: 6,
                               border: `1px solid ${colors.lineGray}`,

@@ -19,7 +19,7 @@ import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
-import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
+
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
 
@@ -240,6 +240,33 @@ export default function App() {
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
   }, [])
+
+  // ─── Deep-link: /?reEdit=<docId> from admin portal ───────────────────────
+  // The admin consignment page (and any other admin page) can link back here
+  // with this param to open a specific order for editing.
+  useEffect(() => {
+    if (authLoading || !user) return
+    const params = new URLSearchParams(window.location.search)
+    const reEditId = params.get('reEdit')
+    if (!reEditId) return
+    // Clear the param from URL immediately so a refresh doesn't re-trigger
+    window.history.replaceState({}, '', window.location.pathname)
+    fetch(`/api/documents/${reEditId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.document) handleReEdit(data.document) })
+      .catch(() => {})
+  }, [authLoading, user, handleReEdit])
+
+  // ─── Deep-link: /?newConsignment=1 from admin consignment page ──────────
+  // Opens a blank consignment order in the builder so admins can create one
+  // without leaving the portal manually.
+  useEffect(() => {
+    if (authLoading || !user) return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('newConsignment')) return
+    window.history.replaceState({}, '', window.location.pathname)
+    handleBlankOrderForm('consignment')
+  }, [authLoading, user, handleBlankOrderForm])
 
   // ─── Duplicate a saved document as a new order ───
   const handleDuplicate = useCallback((doc) => {
@@ -867,9 +894,7 @@ export default function App() {
           <InternalOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
 
-        {activeTab === 'consignment' && (
-          <ConsignmentOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
-        )}
+
       </main>
       </div>
     </div>

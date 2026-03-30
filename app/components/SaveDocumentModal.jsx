@@ -195,15 +195,17 @@ export default function SaveDocumentModal({
         }
       }
 
-      // Upload to Supabase Storage via server-side API (with retry)
+      // Upload to Supabase Storage via server-side API (with retry + timeout)
       const folder = selectedEventId && selectedEventId.trim() !== '' ? selectedEventId : 'no-event';
       const filePath = `${folder}/${filename}.pdf`;
       
-      const maxRetries = 3;
+      const maxRetries = 2;
       let uploadResult = null;
       let uploadRes = null;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s hard timeout
         try {
           const formData = new FormData();
           formData.append('file', pdfBlob, `${filename}.pdf`);
@@ -212,6 +214,7 @@ export default function SaveDocumentModal({
           uploadRes = await fetch('/api/documents/upload', {
             method: 'POST',
             body: formData,
+            signal: controller.signal,
           });
           
           uploadResult = await uploadRes.json();
@@ -221,13 +224,18 @@ export default function SaveDocumentModal({
           }
           
           if (attempt < maxRetries) {
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 1500));
           }
         } catch (fetchErr) {
+          const isTimeout = fetchErr.name === 'AbortError';
           if (attempt === maxRetries) {
-            throw new Error('Upload failed after ' + maxRetries + ' attempts: ' + fetchErr.message);
+            throw new Error(isTimeout
+              ? 'Upload timed out — check your internet connection and try again.'
+              : 'Upload failed: ' + fetchErr.message);
           }
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 1500));
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
       

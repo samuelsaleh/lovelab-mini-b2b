@@ -43,12 +43,16 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [selectedOrgId, setSelectedOrgId] = useState(null)
   const [showInternal, setShowInternal] = useState(false)
-  const [expandedOrgs, setExpandedOrgs] = useState(new Set())
+  const [showConsignment, setShowConsignment] = useState(false)
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const [internalDocs, setInternalDocs] = useState([])
   const [internalLoading, setInternalLoading] = useState(false)
   const [confirmInternal, setConfirmInternal] = useState(null)
+
+  // ── Consignment orders ────────────────────────────────────────────────────
+  const [consignmentDocs, setConsignmentDocs] = useState([])
+  const [consignmentLoading, setConsignmentLoading] = useState(false)
 
   // ── Trash ─────────────────────────────────────────────────────────────────
   const [showTrash, setShowTrash] = useState(false)
@@ -218,6 +222,25 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const handleSetShowInternal = (val) => {
     setShowInternal(val)
     if (val && internalDocs.length === 0) fetchInternalDocs()
+  }
+
+  const fetchConsignmentDocs = async () => {
+    setConsignmentLoading(true)
+    try {
+      const res = await safeFetch('/api/documents?order_channel=consignment&per_page=200')
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.documents) setConsignmentDocs(data.documents)
+      }
+    } catch {
+      setErrorMsg('Failed to load consignment orders')
+    }
+    setConsignmentLoading(false)
+  }
+
+  const handleSetShowConsignment = (val) => {
+    setShowConsignment(val)
+    if (val && consignmentDocs.length === 0) fetchConsignmentDocs()
   }
 
   const requestMoveToInternal = (doc) => setConfirmInternal(doc)
@@ -536,7 +559,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }, [selectedOrgId, orgFolders])
 
   const filteredDocs = useMemo(() => {
-    if (showInternal) return []
+    if (showInternal || showConsignment) return []
     return documents.filter(doc => {
       if (selectedOrgId) {
         const byMember = selectedOrgMemberIds?.has(doc.created_by)
@@ -558,17 +581,20 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(search.toLowerCase())
       )
     })
-  }, [documents, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal])
+  }, [documents, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment])
 
   const currentEventName = useMemo(() => {
     if (showInternal) return 'Internal Orders'
-    if (selectedOrgId)
-      return orgFolders.find(o => o.organization_id === selectedOrgId)?.organization_name || 'Company'
+    if (showConsignment) return 'Consignment Orders'
+    if (selectedOrgId) {
+      const org = orgFolders.find(o => o.organization_id === selectedOrgId)
+      return org?.members?.[0]?.full_name || org?.members?.[0]?.email || org?.organization_name || 'Agent'
+    }
     if (selectedEventId && selectedEventId !== 'none')
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showInternal, selectedOrgId, selectedEventId, orgFolders, events])
+  }, [showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -606,9 +632,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
   const emptyState = getEmptyState()
 
-  // ── Display list (normal or internal) ────────────────────────────────────
-  const displayDocs = showInternal ? internalDocs : filteredDocs
-  const displayLoading = showInternal ? internalLoading : loading
+  // ── Display list ──────────────────────────────────────────────────────────
+  const displayDocs = showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
+  const displayLoading = showInternal ? internalLoading : showConsignment ? consignmentLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -645,15 +671,14 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         events={events}
         documents={documents}
         orgFolders={orgFolders}
-        orgFoldersError={orgFoldersError}
         selectedEventId={selectedEventId}
         setSelectedEventId={setSelectedEventId}
         selectedOrgId={selectedOrgId}
         setSelectedOrgId={setSelectedOrgId}
         showInternal={showInternal}
         setShowInternal={handleSetShowInternal}
-        expandedOrgs={expandedOrgs}
-        setExpandedOrgs={setExpandedOrgs}
+        showConsignment={showConsignment}
+        setShowConsignment={handleSetShowConsignment}
         renamingEventId={renamingEventId}
         renameValue={renameValue}
         setRenameValue={setRenameValue}
@@ -716,8 +741,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
           >Analytics</button>
         </div>
 
-        {/* Analytics widget — hidden in internal view */}
-        {!displayLoading && !showInternal && (
+        {/* Analytics widget — hidden in internal/consignment view */}
+        {!displayLoading && !showInternal && !showConsignment && (
           <DocumentsAnalytics
             filteredDocs={filteredDocs}
             currentEventName={currentEventName}
@@ -753,6 +778,34 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
           </div>
         )}
 
+        {/* Consignment orders header */}
+        {showConsignment && (
+          <div style={{
+            marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+            background: '#f5f0fa', border: `1px solid ${colors.lineGray}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
+                📦 Consignment Orders
+              </div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                Orders sent on consignment to agents.
+              </div>
+            </div>
+            {!consignmentLoading && (
+              <button
+                onClick={fetchConsignmentDocs}
+                style={{
+                  padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.inkPlum}`,
+                  background: 'transparent', color: colors.inkPlum,
+                  fontSize: 11, cursor: 'pointer', fontFamily: fonts.body,
+                }}
+              >Refresh</button>
+            )}
+          </div>
+        )}
+
         {/* Document list */}
         {displayLoading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>Loading...</div>
@@ -768,6 +821,15 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 </div>
                 <div style={{ fontSize: 13, color: '#999' }}>
                   Documents marked as Internal will appear here.
+                </div>
+              </>
+            ) : showConsignment ? (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#555', marginBottom: 4 }}>
+                  No consignment orders
+                </div>
+                <div style={{ fontSize: 13, color: '#999' }}>
+                  Consignment orders assigned to agents will appear here.
                 </div>
               </>
             ) : (
@@ -802,7 +864,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 docRenameLoading={docRenameLoading}
               />
             ))}
-            {!showInternal && hasMoreDocs && (
+            {!showInternal && !showConsignment && hasMoreDocs && (
               <button
                 onClick={loadMoreDocs}
                 disabled={loadingMore}
