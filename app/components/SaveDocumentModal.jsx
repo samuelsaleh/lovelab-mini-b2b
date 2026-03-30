@@ -85,28 +85,60 @@ export default function SaveDocumentModal({
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('/api/events', { signal: controller.signal });
+      const [eventsRes, agentsRes] = await Promise.all([
+        fetch('/api/events', { signal: controller.signal }),
+        fetch('/api/agents?summary=true', { signal: controller.signal }).catch(() => null),
+      ]);
       clearTimeout(timeout);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to load events');
-      }
-      if (data.events) {
-        setEvents(data.events);
-        // Try to auto-select matching event by name
-        if (defaultEventName && !selectedEventId) {
-          const matchingEvent = data.events.find(e => 
-            e.name.toLowerCase().includes(defaultEventName.toLowerCase()) ||
-            defaultEventName.toLowerCase().includes(e.name.toLowerCase())
+      const data = await eventsRes.json();
+      if (!eventsRes.ok) throw new Error(data?.error || 'Failed to load events');
+
+      let allEvents = data.events || [];
+
+      // Auto-create missing agent folders so new agents always appear in the picker
+      if (isAdmin && agentsRes?.ok) {
+        const agentsData = await agentsRes.json();
+        const activeAgents = (agentsData.agents || []).filter(
+          a => a.agent_status === 'active' || a.agent_status === 'invited'
+        );
+        const existingAgentNames = new Set(
+          allEvents.filter(e => e.type === 'agent').map(e => e.name.toLowerCase().trim())
+        );
+        // Create folders for agents that don't have one yet (fire-and-forget)
+        const missing = activeAgents.filter(
+          a => a.full_name && !existingAgentNames.has(a.full_name.toLowerCase().trim())
+        );
+        if (missing.length > 0) {
+          const created = await Promise.all(
+            missing.map(a =>
+              fetch('/api/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: a.full_name, type: 'agent' }),
+              })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => d?.event || null)
+                .catch(() => null)
+            )
           );
-          if (matchingEvent) {
-            setSelectedEventId(matchingEvent.id);
-          } else if (data.events.length > 0) {
-            setSelectedEventId(data.events[0].id);
-          }
-        } else if (data.events.length > 0 && !selectedEventId) {
-          setSelectedEventId(data.events[0].id);
+          allEvents = [...allEvents, ...created.filter(Boolean)];
         }
+      }
+
+      setEvents(allEvents);
+      // Try to auto-select matching event by name
+      if (defaultEventName && !selectedEventId) {
+        const matchingEvent = allEvents.find(e =>
+          e.name.toLowerCase().includes(defaultEventName.toLowerCase()) ||
+          defaultEventName.toLowerCase().includes(e.name.toLowerCase())
+        );
+        if (matchingEvent) {
+          setSelectedEventId(matchingEvent.id);
+        } else if (allEvents.length > 0) {
+          setSelectedEventId(allEvents[0].id);
+        }
+      } else if (allEvents.length > 0 && !selectedEventId) {
+        setSelectedEventId(allEvents[0].id);
       }
     } catch (err) {
       setError(err?.message || 'Failed to load events');
