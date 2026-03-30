@@ -546,7 +546,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder, initialOrderChannel = 'b2b' }) {
   const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
@@ -640,7 +640,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   // Vitrine state
   const [hasVitrine, setHasVitrine] = useState(false)
-  const [vitrinePrice, setVitrinePrice] = useState(150)
+  const [vitrinePrice, setVitrinePrice] = useState(250)
   const [vitrineQty, setVitrineQty] = useState(1)
 
   // Table rows state with undo/redo support
@@ -1122,8 +1122,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const displayPages = isPrinting ? printPages : pages
 
   const pdfFilename = useCallback(() => {
-    return formatDocumentFilename(companyName || contactName || 'Order', 'order', new Date().toISOString().split('T')[0])
-  }, [companyName, contactName])
+    const fallback = initialOrderChannel === 'internal' ? 'Internal-Order'
+      : initialOrderChannel === 'consignment' ? 'Consignment-Order'
+      : 'Order'
+    return formatDocumentFilename(companyName || contactName || fallback, 'order', new Date().toISOString().split('T')[0])
+  }, [companyName, contactName, initialOrderChannel])
 
   const handleDownload = async () => {
     flushSync(() => setIsPrinting(true))
@@ -1496,6 +1499,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onAfterPrint={handleAfterPrint}
         editingDocumentId={editingDocumentId}
         onSaveSuccess={deleteDraft}
+        initialOrderChannel={initialOrderChannel}
         metadata={{
           formState: {
             rows: rows.filter(r => isRowFilled(r)),

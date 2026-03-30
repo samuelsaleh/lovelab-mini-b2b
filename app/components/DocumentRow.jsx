@@ -10,6 +10,7 @@ export default function DocumentRow({
   isAdmin,
   canEdit,
   onReEdit,
+  onDuplicate,
   onPreview,
   onDownload,
   onDelete,
@@ -122,6 +123,19 @@ export default function DocumentRow({
               minHeight: mobile ? 44 : 'auto',
             }}
           >{t('docs.reEdit')}</button>
+        )}
+        {onDuplicate && doc.metadata?.formState && (
+          <button
+            onClick={() => onDuplicate(doc)}
+            title={t('order.duplicate') || 'Copy'}
+            style={{
+              padding: mobile ? '10px 14px' : '7px 12px', borderRadius: 6,
+              border: '1px solid #e0e0e0',
+              background: '#fff', color: '#555',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+              minHeight: mobile ? 44 : 'auto',
+            }}
+          >{t('order.duplicate') || 'Copy'}</button>
         )}
         <button
           onClick={() => onPreview(doc)}

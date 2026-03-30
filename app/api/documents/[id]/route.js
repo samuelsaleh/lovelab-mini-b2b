@@ -70,8 +70,11 @@ export async function PUT(request, { params }) {
       total_amount: body.total_amount,
       metadata: body.metadata,
     };
-    if (['b2b', 'b2c', 'internal'].includes(body.order_channel)) {
+    if (['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)) {
       updatePayload.order_channel = body.order_channel;
+    }
+    if (body.order_channel === 'consignment') {
+      updatePayload.consignment_agent_id = body.consignment_agent_id || null;
     }
     const { data: doc, error: updateError } = await adminSupabase
       .from('documents')
@@ -88,9 +91,9 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
-    // Recalculate commission when total_amount changes (skip for internal orders)
+    // Recalculate commission when total_amount changes (skip for internal and consignment orders)
     try {
-      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal') {
+      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
         const { data: agentProfile } = await adminSupabase
           .from('profiles')
           .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
@@ -214,12 +217,15 @@ export async function PATCH(request, { params }) {
     const body = await request.json();
     const newName = body.file_name?.trim();
     const newChannel = body.order_channel;
+    const newMetadata = body.metadata; // optional partial metadata merge
+    const newConsignmentAgentId = body.consignment_agent_id; // optional
 
     // Must provide at least one updatable field
     const hasName = newName && newName.length <= 255;
-    const hasChannel = ['b2b', 'b2c', 'internal'].includes(newChannel);
-    if (!hasName && !hasChannel) {
-      return NextResponse.json({ error: 'Provide file_name or a valid order_channel' }, { status: 400 });
+    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(newChannel);
+    const hasMetadata = newMetadata !== undefined && newMetadata !== null;
+    if (!hasName && !hasChannel && !hasMetadata) {
+      return NextResponse.json({ error: 'Provide file_name, order_channel, or metadata' }, { status: 400 });
     }
     // Changing order_channel is admin-only
     if (hasChannel && !isAdmin) {
@@ -228,7 +234,7 @@ export async function PATCH(request, { params }) {
 
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, created_by, event_id')
+      .select('id, created_by, event_id, metadata')
       .eq('id', id)
       .single();
 
@@ -247,6 +253,13 @@ export async function PATCH(request, { params }) {
     const patchPayload = {};
     if (hasName) patchPayload.file_name = newName;
     if (hasChannel) patchPayload.order_channel = newChannel;
+    if (hasMetadata) {
+      // Deep-merge with existing metadata so we don't wipe formState etc.
+      patchPayload.metadata = { ...(doc.metadata || {}), ...newMetadata };
+    }
+    if (newConsignmentAgentId !== undefined) {
+      patchPayload.consignment_agent_id = newConsignmentAgentId || null;
+    }
 
     const { data: updated, error: updateError } = await adminSupabase
       .from('documents')
@@ -256,7 +269,8 @@ export async function PATCH(request, { params }) {
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: 'Failed to update document' }, { status: 500 });
+      console.error('[Documents PATCH] DB error:', updateError);
+      return NextResponse.json({ error: 'Failed to update document', detail: updateError.message }, { status: 500 });
     }
 
     return NextResponse.json({ document: updated });

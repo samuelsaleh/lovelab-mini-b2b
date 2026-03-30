@@ -1,30 +1,48 @@
 'use client'
 
+import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useAuth } from './AuthProvider'
 import { useI18n } from '@/lib/i18n'
 import ResourcesCard from './ResourcesCard'
+import OrderTypePicker from './OrderTypePicker'
 
 /**
  * HomeTab — the clean, client-safe home screen.
  *
- * Shows zero financial data. Private stats are accessible only
- * via UserMenu → "My Account".
- *
  * Props:
- *   onSwitchTab(tabId) — switches the active tab
+ *   onSwitchTab(tabId)   — switches the active tab
+ *   onCreateOrder(type)  — opens the order form with the given channel type
  */
-export default function HomeTab({ onSwitchTab }) {
+export default function HomeTab({ onSwitchTab, onCreateOrder }) {
   const { profile, user } = useAuth()
   const { t } = useI18n()
+  const [showTypePicker, setShowTypePicker] = useState(false)
 
+  const isAdmin = profile?.role === 'admin'
   const name = profile?.full_name || user?.email?.split('@')[0] || 'there'
+
+  const handleNewOrderClick = () => {
+    if (isAdmin) {
+      setShowTypePicker(true)
+    } else {
+      // Agents go straight to the builder (B2B only)
+      onCreateOrder?.('b2b')
+    }
+  }
 
   return (
     <div
       data-testid="home-tab"
       style={{ flex: 1, overflowY: 'auto', padding: '40px 24px' }}
     >
+      {showTypePicker && (
+        <OrderTypePicker
+          onSelect={(type) => { setShowTypePicker(false); onCreateOrder?.(type) }}
+          onClose={() => setShowTypePicker(false)}
+        />
+      )}
+
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         {/* Welcome heading */}
         <h1 style={{
@@ -41,7 +59,7 @@ export default function HomeTab({ onSwitchTab }) {
         {/* New Order button */}
         <button
           data-testid="new-order-button"
-          onClick={() => onSwitchTab?.('builder')}
+          onClick={handleNewOrderClick}
           style={{
             marginTop: 28,
             display: 'flex',

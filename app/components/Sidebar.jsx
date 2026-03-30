@@ -214,8 +214,8 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
         width: mobile ? 280 : collapsed ? 60 : 220,
         minWidth: mobile ? 280 : collapsed ? 60 : 220,
         height: '100%',
-        background: colors.inkPlumLight,
-        borderRight: '1px solid rgba(255,255,255,0.08)',
+        background: colors.inkPlum,
+        borderRight: `2px solid ${colors.lovelabDark}`,
         display: 'flex',
         flexDirection: 'column',
         transition: 'width .2s, min-width .2s',
@@ -265,7 +265,7 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
                 margin: '1px 6px',
                 width: 'calc(100% - 12px)',
                 background: isActive ? 'rgba(255,255,255,0.18)' : 'transparent',
-                color: isActive ? '#fff' : item.isBack ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.78)',
+                color: isActive ? '#fff' : item.isBack ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.88)',
                 fontWeight: isActive ? 700 : 500,
                 fontSize: 13,
                 cursor: 'pointer',
@@ -285,7 +285,7 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
               onMouseLeave={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = item.isBack ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.78)'
+                  e.currentTarget.style.color = item.isBack ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.88)'
                 }
               }}
             >

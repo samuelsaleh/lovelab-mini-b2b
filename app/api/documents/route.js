@@ -25,14 +25,22 @@ export async function GET(request) {
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
-    const orderChannelFilter = searchParams.get('order_channel'); // e.g. 'internal'
+    const orderChannelFilter = searchParams.get('order_channel'); // e.g. 'internal' or 'consignment'
+    const summaryOnly = searchParams.get('summary') === 'true'; // strips heavy metadata.formState
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const perPage = Math.min(200, Math.max(1, parseInt(searchParams.get('per_page') || '50', 10)));
     const offset = (page - 1) * perPage;
 
+    // For summary/dashboard views strip the heavy formState from the metadata payload.
+    // We must hint which FK to use for the profiles embed since documents now has two
+    // FK columns pointing at profiles (created_by and consignment_agent_id).
+    const selectFields = summaryOnly
+      ? 'id, created_at, client_name, client_company, total_amount, order_channel, file_path, file_name, consignment_agent_id, metadata, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)'
+      : '*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)';
+
     let query = adminSupabase
       .from('documents')
-      .select('*, events(name, organization_id), profiles(full_name, email)', { count: 'exact' })
+      .select(selectFields, { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + perPage - 1);
 
@@ -96,10 +104,10 @@ export async function GET(request) {
       query = query.is('deleted_at', null);
     }
 
-    // Exclude internal (supplier) orders from all default views.
-    // Only include them when the caller explicitly requests order_channel=internal.
+    // Exclude internal and consignment orders from all default views.
+    // Only include them when the caller explicitly requests that order_channel.
     if (!orderChannelFilter) {
-      query = query.neq('order_channel', 'internal');
+      query = query.not('order_channel', 'in', '("internal","consignment")');
     }
 
     if (eventId) {
@@ -135,9 +143,9 @@ export async function GET(request) {
       }
     }
 
-    // Filter by order_channel if specified (e.g. 'internal' for supplier orders)
+    // Filter by order_channel if specified (e.g. 'internal' or 'consignment')
     if (orderChannelFilter) {
-      const allowed = ['b2b', 'b2c', 'internal'];
+      const allowed = ['b2b', 'b2c', 'internal', 'consignment'];
       if (allowed.includes(orderChannelFilter)) {
         query = query.eq('order_channel', orderChannelFilter);
       }
@@ -189,6 +197,7 @@ export async function POST(request) {
       total_amount,
       metadata,
       order_channel,
+      consignment_agent_id,
     } = body;
 
     if (!client_name || !document_type || !file_path || !file_name) {
@@ -199,8 +208,20 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
     }
 
-    const safeOrderChannel = ['b2b', 'b2c', 'internal'].includes(order_channel) ? order_channel : 'b2b';
+    const safeOrderChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(order_channel) ? order_channel : 'b2b';
     const isInternalOrder = safeOrderChannel === 'internal';
+    const isConsignmentOrder = safeOrderChannel === 'consignment';
+
+    // Validate consignment-specific fields
+    if (isConsignmentOrder) {
+      const consignment = metadata?.consignment;
+      if (!consignment || !['agent', 'contact'].includes(consignment.recipient_type)) {
+        return NextResponse.json({ error: 'Consignment orders require metadata.consignment.recipient_type of "agent" or "contact"' }, { status: 400 });
+      }
+      if (consignment.return_date && !/^\d{4}-\d{2}-\d{2}$/.test(consignment.return_date)) {
+        return NextResponse.json({ error: 'Invalid return_date format — expected YYYY-MM-DD' }, { status: 400 });
+      }
+    }
 
     if (event_id) {
       const { allowed } = await requireEventPermission(adminSupabase, event_id, user.id, 'edit', isAdmin);
@@ -239,6 +260,7 @@ export async function POST(request) {
         created_by: user.id,
         metadata: metadata || {},
         order_channel: safeOrderChannel,
+        consignment_agent_id: isConsignmentOrder ? (consignment_agent_id || null) : null,
       })
       .select()
       .single();
@@ -249,10 +271,10 @@ export async function POST(request) {
     }
 
     // Agent commission hook: auto-create commission for active agents.
-    // Skipped for internal (supplier) orders — they carry no agent commission.
+    // Skipped for internal and consignment orders — they carry no agent commission.
     // Wrapped in try/catch so failures never block the document response.
     try {
-      if (document?.total_amount > 0 && !isInternalOrder) {
+      if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder) {
         const commSupabase = createAdminClient();
 
         const createCommissionFor = async (agentId, profile) => {
@@ -334,10 +356,11 @@ export async function POST(request) {
       console.error('[Documents POST] Commission hook error (non-blocking):', commErr.message);
     }
 
-    // Order notification: email alberto@ and dionne@ on every new document/order.
+    // Order notification: email on new documents/orders.
+    // Skipped for internal and consignment orders — not revenue-bearing.
     // Non-blocking — document is already saved at this point.
     try {
-      const resendApiKey = process.env.RESEND_API_KEY;
+      const resendApiKey = isInternalOrder || isConsignmentOrder ? null : process.env.RESEND_API_KEY;
       if (resendApiKey) {
         const adminSupabase2 = createAdminClient();
         const eventName = event_id

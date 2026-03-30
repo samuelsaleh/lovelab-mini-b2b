@@ -5,6 +5,7 @@ import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { useAuth } from './AuthProvider';
+import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 
 export default function SaveDocumentModal({
   isOpen,
@@ -20,6 +21,7 @@ export default function SaveDocumentModal({
   metadata = {},
   editingDocumentId = null, // ID of document being re-edited (for replacement)
   onSaveSuccess = null, // Callback when save completes successfully
+  initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment'
 }) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -33,7 +35,9 @@ export default function SaveDocumentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [isInternal, setIsInternal] = useState(false);
+  // orderChannel: 'b2b' | 'internal' | 'consignment'
+  const [orderChannel, setOrderChannel] = useState('b2b');
+  const [consignmentData, setConsignmentData] = useState(null);
   const closeTimerRef = useRef(null);
 
   // Clean up timeout on unmount to prevent memory leak
@@ -43,21 +47,38 @@ export default function SaveDocumentModal({
     };
   }, []);
 
-  // Fetch events on mount
+  // Fetch events on mount / initialize state when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedEventId('');
       setShowNewEvent(false);
       setSuccess(false);
       setError(null);
-      setIsInternal(false);
+      setOrderChannel(initialOrderChannel || 'b2b');
+      // Pre-fill consignment data from existing metadata when re-editing
+      const existingConsignment = metadata?.consignment;
+      setConsignmentData(existingConsignment
+        ? {
+            recipient_type: existingConsignment.recipient_type || 'agent',
+            agent_id: existingConsignment.agent_id || null,
+            contact_id: existingConsignment.contact_id || null,
+            saveAsContact: false,
+            recipient_name: existingConsignment.recipient_name || '',
+            recipient_company: existingConsignment.recipient_company || '',
+            recipient_phone: existingConsignment.recipient_phone || '',
+            recipient_email: existingConsignment.recipient_email || '',
+            recipient_address: existingConsignment.recipient_address || '',
+            return_date: existingConsignment.return_date || '',
+          }
+        : null
+      );
       // Pre-fill new event name if provided
       if (defaultEventName) {
         setNewEventName(defaultEventName);
       }
       fetchEvents();
     }
-  }, [isOpen]);
+  }, [isOpen, initialOrderChannel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -214,6 +235,46 @@ export default function SaveDocumentModal({
         throw new Error('Upload failed: ' + (uploadResult?.error || 'Unknown error'));
       }
 
+      // If consignment + saveAsContact: create the contact first to get a contact_id
+      let resolvedContactId = consignmentData?.contact_id || null;
+      if (orderChannel === 'consignment' && consignmentData?.saveAsContact && consignmentData?.recipient_name) {
+        try {
+          const contactRes = await fetch('/api/consignment-contacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              full_name: consignmentData.recipient_name,
+              company: consignmentData.recipient_company || null,
+              phone: consignmentData.recipient_phone || null,
+              email: consignmentData.recipient_email || null,
+              address: consignmentData.recipient_address || null,
+            }),
+          });
+          const contactData = await contactRes.json();
+          if (contactData.contact?.id) resolvedContactId = contactData.contact.id;
+        } catch { /* non-blocking — contact save failure doesn't block the document save */ }
+      }
+
+      // Build consignment metadata block
+      const consignmentMeta = orderChannel === 'consignment' ? {
+        recipient_type: consignmentData?.recipient_type || 'contact',
+        contact_id: resolvedContactId,
+        recipient_name: consignmentData?.recipient_name || '',
+        recipient_company: consignmentData?.recipient_company || '',
+        recipient_phone: consignmentData?.recipient_phone || '',
+        recipient_email: consignmentData?.recipient_email || '',
+        recipient_address: consignmentData?.recipient_address || '',
+        return_date: consignmentData?.return_date || null,
+        returned_at: metadata?.consignment?.returned_at || null,
+      } : undefined;
+
+      // Resolve client_name for display
+      const resolvedClientName = orderChannel === 'internal'
+        ? (clientName || clientCompany || 'Internal Order')
+        : orderChannel === 'consignment'
+          ? (consignmentData?.recipient_name || consignmentData?.recipient_company || 'Consignment Order')
+          : (clientName || 'Unknown');
+
       // Save document metadata (update if re-editing, create if new)
       const isUpdate = !!editingDocumentId;
       const apiUrl = isUpdate ? `/api/documents/${editingDocumentId}` : '/api/documents';
@@ -221,16 +282,19 @@ export default function SaveDocumentModal({
         method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_id: isInternal ? null : (selectedEventId || null),
-          client_name: clientName || 'Unknown',
+          event_id: (orderChannel === 'internal' || orderChannel === 'consignment') ? null : (selectedEventId || null),
+          client_name: resolvedClientName,
           client_company: clientCompany || null,
           document_type: documentType,
           file_path: uploadResult.filePath,
           file_name: `${filename}.pdf`,
           file_size: pdfBlob.size,
           total_amount: totalAmount || null,
-          metadata,
-          ...(isInternal ? { order_channel: 'internal' } : {}),
+          metadata: consignmentMeta ? { ...metadata, consignment: consignmentMeta } : metadata,
+          order_channel: orderChannel,
+          consignment_agent_id: orderChannel === 'consignment' && consignmentData?.recipient_type === 'agent'
+            ? (consignmentData?.agent_id || null)
+            : null,
         }),
       });
 
@@ -286,7 +350,7 @@ export default function SaveDocumentModal({
           marginBottom: 16,
           fontFamily: fonts.body,
         }}>
-          {editingDocumentId ? 'Update' : 'Save'} {documentType === 'quote' ? 'Quote' : 'Order'}
+          {editingDocumentId ? 'Update' : 'Save'} {documentType === 'quote' ? 'Quote' : orderChannel === 'consignment' ? 'Consignment Order' : 'Order'}
         </h2>
 
         {success ? (
@@ -310,9 +374,13 @@ export default function SaveDocumentModal({
               fontSize: 12,
             }}>
               <div style={{ fontWeight: 600, color: colors.charcoal }}>
-                {clientCompany || clientName || 'Unknown client'}
+                {orderChannel === 'internal'
+                  ? (clientCompany || clientName || 'Internal Order')
+                  : orderChannel === 'consignment'
+                    ? (consignmentData?.recipient_name || consignmentData?.recipient_company || 'Consignment Order')
+                    : (clientCompany || clientName || 'Unknown client')}
               </div>
-              {clientName && clientCompany && (
+              {orderChannel === 'b2b' && clientName && clientCompany && (
                 <div style={{ color: colors.lovelabMuted, marginTop: 2 }}>
                   {clientName}
                 </div>
@@ -324,30 +392,56 @@ export default function SaveDocumentModal({
               )}
             </div>
 
-            {/* Internal order toggle — admin only */}
+            {/* Order channel selector — admin + order type only */}
             {isAdmin && documentType === 'order' && (
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 12px', borderRadius: 8, marginBottom: 12,
-                background: isInternal ? `${colors.inkPlum}10` : '#f9f9f9',
-                border: `1px solid ${isInternal ? colors.inkPlum + '40' : colors.lineGray}`,
-                cursor: 'pointer', userSelect: 'none',
-              }}>
-                <input
-                  type="checkbox"
-                  checked={isInternal}
-                  onChange={e => setIsInternal(e.target.checked)}
-                  style={{ accentColor: colors.inkPlum, width: 16, height: 16, cursor: 'pointer' }}
-                />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: colors.inkPlum }}>Save as Internal Order</div>
-                  <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>Not counted in revenue or analytics</div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Order type
                 </div>
-              </label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { id: 'b2b', label: 'B2B' },
+                    { id: 'internal', label: 'Internal' },
+                    { id: 'consignment', label: 'Consignment' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setOrderChannel(opt.id)}
+                      style={{
+                        flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: fonts.body,
+                        border: orderChannel === opt.id ? `1.5px solid ${colors.inkPlum}` : `1px solid ${colors.lineGray}`,
+                        background: orderChannel === opt.id ? `${colors.inkPlum}10` : '#fafafa',
+                        color: orderChannel === opt.id ? colors.inkPlum : '#666',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {orderChannel === 'internal' && (
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Not counted in revenue or analytics.</div>
+                )}
+                {orderChannel === 'consignment' && (
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Goods sent on consignment — tracked separately, not revenue.</div>
+                )}
+              </div>
             )}
 
-            {/* Event selector — hidden for internal orders */}
-            {!isInternal && <div style={{ marginBottom: 16 }}>
+            {/* Consignment recipient form */}
+            {orderChannel === 'consignment' && (
+              <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 10, background: '#faf8fc', border: `1px solid ${colors.lineGray}` }}>
+                <ConsignmentRecipientForm
+                  value={consignmentData}
+                  onChange={setConsignmentData}
+                  isOpen={isOpen && orderChannel === 'consignment'}
+                />
+              </div>
+            )}
+
+            {/* Event selector — hidden for internal and consignment orders */}
+            {orderChannel === 'b2b' && <div style={{ marginBottom: 16 }}>
               <label style={{
                 display: 'block',
                 fontSize: 11,
@@ -495,6 +589,7 @@ export default function SaveDocumentModal({
             </div>}
 
             {/* Error message */}
+
             {error && (
               <div style={{
                 background: '#fee2e2',
@@ -549,9 +644,11 @@ export default function SaveDocumentModal({
               >
                 {saving
                   ? (editingDocumentId ? 'Updating...' : 'Saving...')
-                  : isInternal
+                  : orderChannel === 'internal'
                     ? 'Save as Internal Order'
-                    : (editingDocumentId ? 'Update Document' : 'Save Document')}
+                    : orderChannel === 'consignment'
+                      ? 'Save Consignment Order'
+                      : (editingDocumentId ? 'Update Document' : 'Save Document')}
               </button>
             </div>
           </>

@@ -29,11 +29,12 @@ export default function AdminLayout({ children }) {
   if (!user || profile?.role !== 'admin') return null
 
   const activeId =
-    pathname === '/admin'                        ? 'dashboard'
-    : pathname.startsWith('/admin/agents')       ? 'agents'
-    : pathname.startsWith('/admin/fairs')        ? 'fairs'
-    : pathname.startsWith('/analytics')          ? 'analytics'
-    : pathname.startsWith('/admin/reports')      ? 'reports'
+    pathname === '/admin'                          ? 'dashboard'
+    : pathname.startsWith('/admin/agents')         ? 'agents'
+    : pathname.startsWith('/admin/fairs')          ? 'fairs'
+    : pathname.startsWith('/admin/consignment')    ? 'consignment'
+    : pathname.startsWith('/analytics')            ? 'analytics'
+    : pathname.startsWith('/admin/reports')        ? 'reports'
     : 'dashboard'
 
   return (

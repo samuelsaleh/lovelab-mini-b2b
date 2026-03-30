@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { requireOrganizationAccess } from '@/lib/organizations/authz';
 import { checkRateLimit } from '@/lib/rateLimit';
 
@@ -17,10 +17,13 @@ export async function GET(request, { params }) {
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
 
+    // Use admin client for all data queries to bypass self-referential RLS on organization_memberships
+    const adminSupabase = createAdminClient();
+
     const { searchParams } = new URL(request.url);
     const includeOrders = searchParams.get('include_orders') === 'true';
 
-    const { data: members, error: memberErr } = await supabase
+    const { data: members, error: memberErr } = await adminSupabase
       .from('organization_memberships')
       .select('user_id, role, profiles:user_id(id, full_name, email)')
       .eq('organization_id', organizationId)
@@ -44,11 +47,11 @@ export async function GET(request, { params }) {
       : 'id, agent_id, commission_amount, status';
 
     const [{ data: commissions, error: commErr }, { data: payments, error: payErr }] = await Promise.all([
-      supabase
+      adminSupabase
         .from('agent_commissions')
         .select(commSelect)
         .in('agent_id', memberIds),
-      supabase
+      adminSupabase
         .from('agent_payments')
         .select('id, agent_id, amount')
         .in('agent_id', memberIds),

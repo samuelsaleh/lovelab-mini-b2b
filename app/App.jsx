@@ -19,6 +19,7 @@ import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
+import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
 
@@ -70,6 +71,7 @@ export default function App() {
   const [orderFormQuote, setOrderFormQuote] = useState(null)
   const [savedFormState, setSavedFormState] = useState(null)
   const [editingDocumentId, setEditingDocumentId] = useState(null) // ID of document being re-edited
+  const [initialOrderChannel, setInitialOrderChannel] = useState('b2b') // 'b2b' | 'internal' | 'consignment'
   const [docsRefreshKey, setDocsRefreshKey] = useState(0)
 
   // Client info
@@ -210,16 +212,23 @@ export default function App() {
     setOrderFormQuote(curQuote)
     setSavedFormState(null)
     setEditingDocumentId(null)
+    setInitialOrderChannel('b2b')
     setShowOrderForm(true)
   }, [curQuote])
 
-  // ─── Open blank order form ───
-  const handleBlankOrderForm = useCallback(() => {
+  // ─── Open blank order form (optionally with a specific channel type) ───
+  const handleBlankOrderForm = useCallback((channel = 'b2b') => {
     setOrderFormQuote(null)
     setSavedFormState(null)
-    setEditingDocumentId(null) // Clear any editing state
+    setEditingDocumentId(null)
+    setInitialOrderChannel(channel)
     setShowOrderForm(true)
   }, [])
+
+  // ─── Create new order of a specific type (from OrderTypePicker) ───
+  const handleCreateOrder = useCallback((type = 'b2b') => {
+    handleBlankOrderForm(type)
+  }, [handleBlankOrderForm])
 
   // ─── Re-edit a saved document ───
   const handleReEdit = useCallback((doc) => {
@@ -227,7 +236,19 @@ export default function App() {
     if (!formState) return
     setOrderFormQuote(null)
     setSavedFormState(formState)
-    setEditingDocumentId(doc.id) // Track which document we're editing
+    setEditingDocumentId(doc.id)
+    setInitialOrderChannel(doc?.order_channel || 'b2b')
+    setShowOrderForm(true)
+  }, [])
+
+  // ─── Duplicate a saved document as a new order ───
+  const handleDuplicate = useCallback((doc) => {
+    const formState = doc?.metadata?.formState
+    if (!formState) return
+    setOrderFormQuote(null)
+    setSavedFormState(formState)
+    setEditingDocumentId(null) // no replacement — creates a new document
+    setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
   }, [])
 
@@ -319,7 +340,7 @@ export default function App() {
   // ─── Tab change handler ───
   const handleTabChange = useCallback((tab) => {
     if (tab === 'orderform') {
-      handleBlankOrderForm()
+      handleBlankOrderForm('b2b')
       return
     }
     setActiveTab(tab)
@@ -572,7 +593,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} />}
 
       {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
       {accountPanelOpen && (
@@ -652,7 +673,7 @@ export default function App() {
       {/* ─── Main Content ─── */}
       <main role="main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {activeTab === 'home' && (
-          <HomeTab onSwitchTab={handleTabChange} />
+          <HomeTab onSwitchTab={handleTabChange} onCreateOrder={handleCreateOrder} />
         )}
 
         {activeTab === 'builder' && (
@@ -839,11 +860,15 @@ export default function App() {
         )}
 
         {activeTab === 'documents' && (
-          <DocumentsPanel onReEdit={handleReEdit} refreshKey={docsRefreshKey} />
+          <DocumentsPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} refreshKey={docsRefreshKey} />
         )}
 
         {activeTab === 'internal_orders' && (
-          <InternalOrdersPanel />
+          <InternalOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
+        )}
+
+        {activeTab === 'consignment' && (
+          <ConsignmentOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
       </main>
       </div>

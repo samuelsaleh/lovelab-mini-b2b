@@ -80,7 +80,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
           )}
 
           {/* Logo — always visible in TopNav */}
-          <img src="/logo.png" alt="LoveLab" style={{ height: 96, width: 'auto', display: 'block' }} />
+          <img src="/logo.png" alt="LoveLab" style={{ height: 80, width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }} />
 
           {/* Back button — desktop only, shown when not at root */}
           {!mobile && canGoBack && (

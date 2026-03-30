@@ -13,7 +13,7 @@ import DocumentsSidebar from './DocumentsSidebar'
 import DocumentRow from './DocumentRow'
 import DocumentsAnalytics from './DocumentsAnalytics'
 
-export default function DocumentsPanel({ onReEdit, refreshKey }) {
+export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const router = useRouter()
   const mobile = useIsMobile()
   const { t } = useI18n()
@@ -92,7 +92,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
   const canEditDoc = (doc) => {
     if (isAdmin) return true
     if (doc?.created_by && user?.id && doc.created_by === user.id) return true
-    const docOwnerEmail = String(doc?.profiles?.email || '').trim().toLowerCase()
+    const docOwnerEmail = String(doc?.creator?.email || doc?.profiles?.email || '').trim().toLowerCase()
     const currentEmail = String(user?.email || '').trim().toLowerCase()
     if (docOwnerEmail && currentEmail && docOwnerEmail === currentEmail) return true
     if (!doc?.event_id) return false
@@ -789,6 +789,7 @@ export default function DocumentsPanel({ onReEdit, refreshKey }) {
                 isAdmin={isAdmin}
                 canEdit={canEditDoc(doc)}
                 onReEdit={onReEdit}
+                onDuplicate={onDuplicate}
                 onPreview={previewDocument}
                 onDownload={downloadDocument}
                 onDelete={requestDelete}

@@ -42,6 +42,8 @@ export default function AdminAgentDetailsPage() {
 
   // Organization documents (orders/quotes linked via events)
   const [orgDocuments, setOrgDocuments] = useState([]);
+  // Consignment orders assigned to this agent
+  const [agentConsignmentOrders, setAgentConsignmentOrders] = useState([]);
 
   // Org editing
   const [orgData, setOrgData] = useState(null);
@@ -101,36 +103,45 @@ export default function AdminAgentDetailsPage() {
         setOrgData(null);
       }
 
+      // Fetch docs + consignment orders in parallel (reuse docs for derived rows — no double fetch)
+      let fetchedOrgDocs = [];
+      let fetchedConsignmentOrders = [];
       try {
-        const orgDocsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`);
+        const [orgDocsRes, consRes] = await Promise.all([
+          fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`),
+          fetch(`/api/documents?order_channel=consignment&per_page=200`),
+        ]);
         const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
-        setOrgDocuments(orgDocsJson.documents || []);
+        const consJson2 = await consRes.json().catch(() => ({}));
+        fetchedOrgDocs = orgDocsJson.documents || [];
+        // Filter consignment orders assigned to this specific agent
+        fetchedConsignmentOrders = (consJson2.documents || []).filter(
+          d => d.consignment_agent_id === agentId
+        );
+        setOrgDocuments(fetchedOrgDocs);
+        setAgentConsignmentOrders(fetchedConsignmentOrders);
       } catch {
         setOrgDocuments([]);
+        setAgentConsignmentOrders([]);
       }
 
+      // Always build derived commission rows from actual documents when no real records exist.
+      // This fixes agents who have orders but no agent_commissions table entries yet.
       const commList = commJson.commissions || [];
-      const stats = found.stats || {};
-      if (commList.filter(c => c.type === 'order').length === 0 && (stats.effective_orders || 0) > 0) {
-        try {
-          const docsRes = await fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}`);
-          const docsJson = await docsRes.json().catch(() => ({}));
-          const orderDocs = (docsJson.documents || []).filter(
-            (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
-          );
-          const rate = Number(found.commission_rate) || 0;
-          setDocDerivedRows(orderDocs.map((d) => ({
-            id: `doc-${d.id}`,
-            type: 'order',
-            created_at: d.created_at,
-            order_total: Number(d.total_amount) || 0,
-            commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
-            document: { client_company: d.client_company || d.client_name || 'Order', id: d.id },
-            _derived: true,
-          })));
-        } catch {
-          setDocDerivedRows([]);
-        }
+      if (commList.filter(c => c.type === 'order').length === 0) {
+        const orderDocs = fetchedOrgDocs.filter(
+          (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
+        );
+        const rate = Number(found.commission_rate) || 0;
+        setDocDerivedRows(orderDocs.map((d) => ({
+          id: `doc-${d.id}`,
+          type: 'order',
+          created_at: d.created_at,
+          order_total: Number(d.total_amount) || 0,
+          commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
+          document: { client_company: d.client_company || d.client_name || 'Order', id: d.id, order_channel: d.order_channel },
+          _derived: true,
+        })));
       } else {
         setDocDerivedRows([]);
       }
@@ -283,390 +294,489 @@ export default function AdminAgentDetailsPage() {
     [commissions]
   );
 
+  const [activeTab, setActiveTab] = useState('financials');
+
+  // ── derived financials ──────────────────────────────────────────────────────
+  const s = summary || {};
+  const st = agent?.stats || {};
+  const commRate = Number(agent?.commission_rate) || 0;
+  const orderDocsList = orgDocuments.filter(d => d.document_type === 'order' && !d.deleted_at);
+  const docRevenue = orderDocsList.reduce((acc, d) => acc + (Number(d.total_amount) || 0), 0);
+  const docCommission = Math.round(docRevenue * commRate / 100 * 100) / 100;
+  const totalEarned =
+    (s.total_earned || 0) > 0 ? s.total_earned
+    : (st.effective_total_commission || 0) > 0 ? st.effective_total_commission
+    : docCommission;
+  const totalPaid = s.total_paid_out || 0;
+  const pendingBalance = Math.max(0, totalEarned - totalPaid);
+  const orderRevenue = docRevenue > 0 ? docRevenue
+    : (s.order_count || 0) > 0
+      ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
+      : (st.effective_revenue || 0);
+  const activeConsignment = agentConsignmentOrders.filter(d => !d.metadata?.consignment?.returned_at);
+
+  // ── avatar initials ──────────────────────────────────────────────────────────
+  const initials = (agent?.full_name || agent?.email || '?')
+    .split(/[\s.@]+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('');
+
+  const TABS = [
+    { id: 'financials', label: 'Financials' },
+    { id: 'consignment', label: `Consignment (${agentConsignmentOrders.length})` },
+    { id: 'organisation', label: 'Organisation' },
+    { id: 'documents', label: 'Documents' },
+  ];
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', fontFamily: fonts.body }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>
-            Agent Performance & Ledger
-          </h1>
-          <button
-            onClick={() => router.push('/admin/agents')}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: `1px solid ${colors.lineGray}`,
-              background: '#fff',
-              color: colors.charcoal,
-              cursor: 'pointer',
-              fontFamily: fonts.body,
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            ← Back to Agents
-          </button>
-        </div>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', fontFamily: fonts.body, background: '#f8f7fb' }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+
+        {/* back */}
+        <button
+          onClick={() => router.push('/admin/agents')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 18, padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+        >
+          ← Back to Agents
+        </button>
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted }}>Loading details…</div>
+          <div style={{ padding: 60, textAlign: 'center', color: colors.lovelabMuted }}>Loading…</div>
         ) : error ? (
           <div style={{ padding: 14, borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13 }}>{error}</div>
         ) : (
           <>
-            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.charcoal }}>{agent?.full_name || agent?.email}</div>
-                  <div style={{ fontSize: 13, color: colors.lovelabMuted, marginTop: 4 }}>{agent?.email}</div>
-                  <div style={{ marginTop: 8, fontSize: 12, color: colors.charcoal }}>
-                    Rate: {agent?.commission_rate ?? '—'}% · Status: {agent?.agent_status || '—'}
-                  </div>
+            {/* ── Hero card ────────────────────────────────────────────────── */}
+            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 14, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {/* avatar */}
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 800, flexShrink: 0 }}>
+                  {initials}
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {agent?.agent_contract_url && (
-                    <button
-                      onClick={() => setContractChatOpen(true)}
-                      style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-                      Contract Q&A
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowPaymentModal(true)}
-                    style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 13, fontWeight: 700 }}
-                  >
-                    Record Payment
-                  </button>
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: colors.charcoal, marginBottom: 3 }}>
+                    {agent?.full_name || agent?.email}
+                  </div>
+                  <div style={{ fontSize: 12, color: colors.lovelabMuted }}>{agent?.email}</div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, background: '#f3f0f8', borderRadius: 20, padding: '2px 9px' }}>
+                      {commRate}% rate
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: agent?.agent_status === 'active' ? '#374151' : '#9ca3af', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f5f5f5', border: `1px solid ${agent?.agent_status === 'active' ? '#d1fae5' : '#e5e7eb'}`, borderRadius: 20, padding: '2px 9px' }}>
+                      {agent?.agent_status || 'unknown'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Commission config section */}
-              {agent?.agent_contract_url && (
-                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.lineGray}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ fontSize: 12, color: colors.lovelabMuted }}>
-                      {agent?.agent_commission_config
-                        ? <>Commission config: <strong style={{ color: colors.inkPlum }}>{agent.agent_commission_config.type}</strong> — {agent.agent_commission_config.description || JSON.stringify(agent.agent_commission_config).slice(0, 80)}</>
-                        : 'No AI commission config yet.'}
-                    </div>
-                    <button
-                      onClick={handleExtractCommission}
-                      disabled={extracting}
-                      style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: extracting ? 'wait' : 'pointer', fontFamily: fonts.body, fontSize: 11, fontWeight: 600, flexShrink: 0, opacity: extracting ? 0.6 : 1 }}
-                    >
-                      {extracting ? 'Extracting…' : (agent?.agent_commission_config ? 'Re-extract from Contract' : 'Extract from Contract')}
-                    </button>
-                  </div>
-
-                  {/* Proposed config confirmation banner */}
-                  {proposedConfig && (
-                    <div style={{ marginTop: 12, padding: 12, background: '#f0f7ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12 }}>
-                      <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6 }}>AI detected this compensation structure — confirm?</div>
-                      <div style={{ color: '#374151', marginBottom: 10 }}>
-                        <strong>Type:</strong> {proposedConfig.type}
-                        {proposedConfig.description && <> — {proposedConfig.description}</>}
-                        {proposedConfig.type === 'flat' && <> ({proposedConfig.rate}%)</>}
-                        {proposedConfig.type === 'tiered' && (
-                          <ul style={{ margin: '4px 0', paddingLeft: 16 }}>
-                            {(proposedConfig.tiers || []).map((t, i) => (
-                              <li key={i}>{t.upTo ? `Up to €${t.upTo.toLocaleString()}: ${t.rate}%` : `Above: ${t.rate}%`}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={handleConfirmConfig} disabled={savingConfig} style={{ padding: '6px 14px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: savingConfig ? 0.6 : 1 }}>
-                          {savingConfig ? 'Saving…' : 'Confirm & Save'}
-                        </button>
-                        <button onClick={() => setProposedConfig(null)} style={{ padding: '6px 12px', background: 'none', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#1d4ed8' }}>
-                          Dismiss
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {configMsg && (
-                    <div style={{ marginTop: 8, fontSize: 12, color: /saved|success/i.test(configMsg) ? colors.success : colors.danger }}>{configMsg}</div>
-                  )}
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {agent?.agent_contract_url && (
+                  <button
+                    onClick={() => setContractChatOpen(true)}
+                    style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Contract Q&A
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
+                >
+                  Record Payment
+                </button>
+              </div>
             </div>
 
-            {(() => {
-              const s = summary || {};
-              const st = agent?.stats || {};
-              const totalEarned = (s.total_earned || 0) > 0 ? s.total_earned : (st.effective_total_commission || 0);
-              const totalPaid = s.total_paid_out || 0;
-              const pendingBalance = totalEarned > 0 ? totalEarned - totalPaid : (st.effective_pending_commission || 0);
-              const orderRevenue = (s.order_count || 0) > 0
-                ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
-                : (st.effective_revenue || 0);
-              const orderCount = (s.order_count || 0) > 0 ? s.order_count : (st.effective_orders || 0);
-
-              // B2B / B2C split from orgDocuments
-              const b2bDocs = orgDocuments.filter(d => !d.order_channel || d.order_channel === 'b2b');
-              const b2cDocs = orgDocuments.filter(d => d.order_channel === 'b2c');
-
-              return (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-                  <KpiCard label="Total Earned" value={fmt(totalEarned)} />
-                  <KpiCard label="Total Paid" value={fmt(totalPaid)} accent={colors.success} />
-                  <KpiCard label="Pending Balance" value={fmt(pendingBalance)} accent={pendingBalance > 0 ? colors.warning : colors.inkPlum} />
-                  <KpiCard label="Order Revenue" value={fmt(orderRevenue)} />
-                  <KpiCard
-                    data-testid="b2b-orders-card"
-                    label="B2B Orders"
-                    value={b2bDocs.length || orderCount}
-                    sub="trade fair / manual"
-                  />
-                  <KpiCard
-                    data-testid="b2c-orders-card"
-                    label="B2C Orders"
-                    value={b2cDocs.length}
-                    sub="from website"
-                    accent={colors.luxeGold}
-                  />
+            {/* ── 4 KPI cards ──────────────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+              {[
+                { label: 'EARNED', value: fmt(totalEarned), sub: `est. ${commRate}%` },
+                { label: 'PENDING', value: fmt(pendingBalance), sub: 'to pay out' },
+                { label: 'REVENUE', value: fmt(orderRevenue), sub: 'total' },
+                { label: 'ORDERS', value: orderDocsList.length, sub: 'B2B / B2C' },
+              ].map(k => (
+                <div key={k.label} style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: '16px 18px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: colors.lovelabMuted, marginBottom: 6, textTransform: 'uppercase' }}>{k.label}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: colors.charcoal, lineHeight: 1 }}>{k.value}</div>
+                  <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>{k.sub}</div>
                 </div>
-              );
-            })()}
+              ))}
+            </div>
 
-            {agent?.organization_id && orgData && (
-              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
-                    Organization — {orgData.name}
+            {/* ── AI contract config banner ────────────────────────────────── */}
+            {agent?.agent_contract_url && (
+              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: '12px 18px', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                    {agent?.agent_commission_config
+                      ? <><strong style={{ color: colors.inkPlum }}>Commission config:</strong> {agent.agent_commission_config.type}{agent.agent_commission_config.description ? ` — ${agent.agent_commission_config.description}` : ''}</>
+                      : 'No AI commission config extracted yet.'}
                   </div>
                   <button
-                    onClick={() => { setEditingOrg(!editingOrg); setOrgMsg(null); }}
-                    style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: editingOrg ? '#fef2f2' : '#fff', color: editingOrg ? '#dc2626' : colors.charcoal, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                    onClick={handleExtractCommission}
+                    disabled={extracting}
+                    style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: extracting ? 'wait' : 'pointer', fontFamily: fonts.body, fontSize: 11, fontWeight: 600, flexShrink: 0, opacity: extracting ? 0.6 : 1 }}
                   >
-                    {editingOrg ? 'Cancel' : 'Edit Org'}
+                    {extracting ? 'Extracting…' : (agent?.agent_commission_config ? 'Re-extract' : 'Extract from Contract')}
                   </button>
                 </div>
-                {editingOrg ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Name</label>
-                        <input value={orgForm.name} onChange={(e) => setOrgForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Territory</label>
-                        <input value={orgForm.territory} onChange={(e) => setOrgForm(f => ({ ...f, territory: e.target.value }))} style={inputStyle} />
-                      </div>
+                {proposedConfig && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6 }}>AI detected this structure — confirm?</div>
+                    <div style={{ color: '#374151', marginBottom: 8 }}>
+                      <strong>Type:</strong> {proposedConfig.type}
+                      {proposedConfig.description && <> — {proposedConfig.description}</>}
+                      {proposedConfig.type === 'tiered' && (
+                        <ul style={{ margin: '4px 0', paddingLeft: 16 }}>
+                          {(proposedConfig.tiers || []).map((t, i) => (
+                            <li key={i}>{t.upTo ? `Up to €${t.upTo.toLocaleString()}: ${t.rate}%` : `Above: ${t.rate}%`}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Rate (%)</label>
-                        <input type="number" min="0" max="100" step="0.5" value={orgForm.commission_rate} onChange={(e) => setOrgForm(f => ({ ...f, commission_rate: e.target.value }))} placeholder="e.g. 15" style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Conditions</label>
-                        <input value={orgForm.conditions} onChange={(e) => setOrgForm(f => ({ ...f, conditions: e.target.value }))} placeholder="Special conditions" style={inputStyle} />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <button onClick={handleSaveOrg} disabled={savingOrg || !orgForm.name.trim()} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingOrg ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: savingOrg ? 0.6 : 1 }}>
-                        {savingOrg ? 'Saving...' : 'Save Organization'}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={handleConfirmConfig} disabled={savingConfig} style={{ padding: '6px 14px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, opacity: savingConfig ? 0.6 : 1 }}>
+                        {savingConfig ? 'Saving…' : 'Confirm & Save'}
                       </button>
-                      {orgMsg && <span style={{ fontSize: 12, color: /fail|error/i.test(orgMsg) ? '#dc2626' : '#059669' }}>{orgMsg}</span>}
+                      <button onClick={() => setProposedConfig(null)} style={{ padding: '6px 12px', background: 'none', border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#1d4ed8' }}>
+                        Dismiss
+                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                    {orgData.territory && <span>Territory: <strong>{orgData.territory}</strong></span>}
-                    {orgData.commission_rate != null && <span>Org Rate: <strong>{orgData.commission_rate}%</strong></span>}
-                    {orgData.conditions && <span>Conditions: <strong>{orgData.conditions}</strong></span>}
-                    {!orgData.territory && orgData.commission_rate == null && !orgData.conditions && <span style={{ color: colors.lovelabMuted }}>No org-level settings configured yet</span>}
                   </div>
                 )}
-                {organizationLedger?.organization_summary && (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
-                      <Stat label="Company Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
-                      <Stat label="Company Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} color={colors.success} />
-                      <Stat label="Company Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} color={colors.warning} />
-                    </div>
-                    {(organizationLedger.per_member || []).length > 0 && (
+                {configMsg && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: /saved|success/i.test(configMsg) ? '#059669' : '#dc2626' }}>{configMsg}</div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tabs ─────────────────────────────────────────────────────── */}
+            <div style={{ display: 'flex', gap: 0, borderBottom: `2px solid ${colors.lineGray}`, marginBottom: 20 }}>
+              {TABS.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  style={{
+                    padding: '10px 18px',
+                    border: 'none',
+                    borderBottom: activeTab === t.id ? `2px solid ${colors.inkPlum}` : '2px solid transparent',
+                    marginBottom: -2,
+                    background: 'none',
+                    cursor: 'pointer',
+                    fontFamily: fonts.body,
+                    fontSize: 13,
+                    fontWeight: activeTab === t.id ? 700 : 500,
+                    color: activeTab === t.id ? colors.inkPlum : colors.lovelabMuted,
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Tab: Financials ───────────────────────────────────────────── */}
+            {activeTab === 'financials' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+                {/* Commission */}
+                <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
+                    Commission History
+                  </div>
+                  {(() => {
+                    const allRows = commissions.length > 0 ? commissions : docDerivedRows;
+                    const isDerived = commissions.length === 0 && docDerivedRows.length > 0;
+                    if (allRows.length === 0) return (
+                      <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions yet.</div>
+                    );
+                    return (
                       <>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 8, textTransform: 'uppercase' }}>
-                          Per Member Totals
-                        </div>
+                        {isDerived && (
+                          <div style={{ padding: '7px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
+                            Estimated from order documents
+                          </div>
+                        )}
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
-                              <th style={th}>Member</th>
-                              <th style={{ ...th, textAlign: 'right' }}>Earned</th>
-                              <th style={{ ...th, textAlign: 'right' }}>Paid</th>
-                              <th style={{ ...th, textAlign: 'right' }}>Pending</th>
+                              <th style={th}>Date</th>
+                              <th style={th}>Client</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Total</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Comm.</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {(organizationLedger.per_member || []).map((m) => (
-                              <tr key={m.user_id}>
-                                <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
-                                <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
-                                <td style={{ ...td, textAlign: 'right', color: colors.success }}>{fmt(m.total_paid_out || 0)}</td>
-                                <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
+                            {allRows.map((row) => (
+                              <tr key={row.id}>
+                                <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                                <td style={{ ...td, fontSize: 12 }}>
+                                  {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
+                                  {row.document?.order_channel === 'b2c' && (
+                                    <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
+                                  )}
+                                </td>
+                                <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{row.type === 'order' ? fmt(row.order_total) : '—'}</td>
+                                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.commission_amount)}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {agent?.organization_id && (
-              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 10 }}>
-                  Company Team Members
+                    );
+                  })()}
                 </div>
-                <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <input
-                    type="email"
-                    placeholder="colleague@company.com"
-                    value={memberEmail}
-                    onChange={(e) => setMemberEmail(e.target.value)}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={addingMember || !memberEmail.trim()}
-                    style={{
-                      padding: '8px 14px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background: colors.inkPlum,
-                      color: '#fff',
-                      cursor: addingMember ? 'default' : 'pointer',
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {addingMember ? 'Adding...' : 'Add Member'}
-                  </button>
-                </form>
-                {organizationMembers.length > 0 && (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#faf8fc' }}>
-                        <th style={th}>Name</th>
-                        <th style={th}>Email</th>
-                        <th style={th}>Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {organizationMembers.map((m) => (
-                        <tr key={m.id}>
-                          <td style={td}>{m.profiles?.full_name || '—'}</td>
-                          <td style={td}>{m.profiles?.email || '—'}</td>
-                          <td style={td}>{m.role}</td>
+
+                {/* Payments */}
+                <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
+                    Payments Ledger
+                  </div>
+                  {payments.length === 0 ? (
+                    <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No payments recorded yet.</div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#faf8fc' }}>
+                          <th style={th}>Date</th>
+                          <th style={{ ...th, textAlign: 'right' }}>Amount</th>
+                          <th style={th}>Notes</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                      </thead>
+                      <tbody>
+                        {payments.map((row) => (
+                          <tr key={row.id}>
+                            <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.amount)}</td>
+                            <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 24, alignItems: 'start' }}>
-              {/* Payments History */}
+            {/* ── Tab: Consignment ──────────────────────────────────────────── */}
+            {activeTab === 'consignment' && (
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
-                  Payments Ledger (Payouts)
+                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>Consignment Orders</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {activeConsignment.length > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', background: '#f3f4f6', borderRadius: 20, padding: '2px 9px' }}>
+                        {activeConsignment.length} active
+                      </span>
+                    )}
+                    {agentConsignmentOrders.filter(d => {
+                      const rd = d.metadata?.consignment?.return_date;
+                      return rd && !d.metadata?.consignment?.returned_at && new Date(rd) < new Date();
+                    }).length > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fee2e2', borderRadius: 20, padding: '2px 9px' }}>overdue</span>
+                    )}
+                  </div>
                 </div>
-                {payments.length === 0 ? (
-                  <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No payments recorded yet.</div>
+                {agentConsignmentOrders.length === 0 ? (
+                  <div style={{ padding: 24, fontSize: 13, color: colors.lovelabMuted }}>No consignment orders assigned to this agent.</div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#faf8fc' }}>
-                        <th style={th}>Date</th>
-                        <th style={{ ...th, textAlign: 'right' }}>Amount Paid</th>
-                        <th style={th}>Notes</th>
+                        {['Date', 'Recipient', 'Amount', 'Return Date', 'Status'].map(h => (
+                          <th key={h} style={th}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {payments.map((row) => (
-                        <tr key={row.id}>
-                          <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB')}</td>
-                          <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.success }}>{fmt(row.amount)}</td>
-                          <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
-                        </tr>
-                      ))}
+                      {agentConsignmentOrders.map(o => {
+                        const c = o.metadata?.consignment || {};
+                        const isRet = !!c.returned_at;
+                        const isOvd = !isRet && c.return_date && new Date(c.return_date) < new Date();
+                        const days = c.return_date && !isRet
+                          ? Math.ceil((new Date(c.return_date) - new Date()) / 86400000)
+                          : null;
+                        return (
+                          <tr key={o.id}>
+                            <td style={td}>{o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td style={td}>
+                              <div style={{ fontWeight: 600 }}>{c.recipient_name || o.client_name || '—'}</div>
+                              {(c.recipient_company || o.client_company) && <div style={{ fontSize: 11, color: '#aaa' }}>{c.recipient_company || o.client_company}</div>}
+                            </td>
+                            <td style={{ ...td, fontWeight: 700 }}>{o.total_amount != null ? fmt(o.total_amount) : '—'}</td>
+                            <td style={td}>
+                              {c.return_date ? (
+                                <>
+                                  <div style={{ fontWeight: 600, color: isOvd ? '#dc2626' : '#333' }}>
+                                    {new Date(c.return_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </div>
+                                  {days !== null && (
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: days < 0 ? '#dc2626' : days <= 7 ? '#d97706' : '#aaa' }}>
+                                      {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}
+                                    </div>
+                                  )}
+                                </>
+                              ) : '—'}
+                            </td>
+                            <td style={td}>
+                              {isRet
+                                ? <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: 20, padding: '2px 8px' }}>Returned</span>
+                                : isOvd
+                                  ? <span style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fee2e2', borderRadius: 20, padding: '2px 8px' }}>Overdue</span>
+                                  : <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', background: '#f0fdf4', borderRadius: 20, padding: '2px 8px' }}>Active</span>
+                              }
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
               </div>
+            )}
 
-              {/* Commission Details */}
-              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 14px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
-                  Commission History (Earned)
-                </div>
-                {(() => {
-                  const allRows = commissions.length > 0 ? commissions : docDerivedRows;
-                  const isDerived = commissions.length === 0 && docDerivedRows.length > 0;
-                  if (allRows.length === 0) {
-                    return <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions yet.</div>;
-                  }
-                  return (
-                    <>
-                      {isDerived && (
-                        <div style={{ padding: '8px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
-                          Estimated from order documents (no commission records found)
+            {/* ── Tab: Organisation ─────────────────────────────────────────── */}
+            {activeTab === 'organisation' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {agent?.organization_id && orgData ? (
+                  <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{orgData.name}</div>
+                      <button
+                        onClick={() => { setEditingOrg(!editingOrg); setOrgMsg(null); }}
+                        style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: editingOrg ? '#fef2f2' : '#fff', color: editingOrg ? '#dc2626' : colors.charcoal, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                      >
+                        {editingOrg ? 'Cancel' : 'Edit'}
+                      </button>
+                    </div>
+                    {editingOrg ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Name</label>
+                            <input value={orgForm.name} onChange={(e) => setOrgForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Territory</label>
+                            <input value={orgForm.territory} onChange={(e) => setOrgForm(f => ({ ...f, territory: e.target.value }))} style={inputStyle} />
+                          </div>
                         </div>
-                      )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Rate (%)</label>
+                            <input type="number" min="0" max="100" step="0.5" value={orgForm.commission_rate} onChange={(e) => setOrgForm(f => ({ ...f, commission_rate: e.target.value }))} style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Conditions</label>
+                            <input value={orgForm.conditions} onChange={(e) => setOrgForm(f => ({ ...f, conditions: e.target.value }))} style={inputStyle} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <button onClick={handleSaveOrg} disabled={savingOrg || !orgForm.name.trim()} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingOrg ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: savingOrg ? 0.6 : 1 }}>
+                            {savingOrg ? 'Saving...' : 'Save'}
+                          </button>
+                          {orgMsg && <span style={{ fontSize: 12, color: /fail|error/i.test(orgMsg) ? '#dc2626' : '#059669' }}>{orgMsg}</span>}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 20, fontSize: 13, color: colors.charcoal, flexWrap: 'wrap' }}>
+                        {orgData.territory && <span>Territory: <strong>{orgData.territory}</strong></span>}
+                        {orgData.commission_rate != null && <span>Rate: <strong>{orgData.commission_rate}%</strong></span>}
+                        {orgData.conditions && <span>Conditions: <strong>{orgData.conditions}</strong></span>}
+                        {!orgData.territory && orgData.commission_rate == null && !orgData.conditions && <span style={{ color: colors.lovelabMuted }}>No settings yet</span>}
+                      </div>
+                    )}
+
+                    {organizationLedger?.organization_summary && (
+                      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 10 }}>Company Totals</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+                          <Stat label="Earned" value={fmt(organizationLedger.organization_summary.total_commission_earned || 0)} />
+                          <Stat label="Paid" value={fmt(organizationLedger.organization_summary.total_paid_out || 0)} />
+                          <Stat label="Pending" value={fmt(organizationLedger.organization_summary.pending_balance || 0)} />
+                        </div>
+                        {(organizationLedger.per_member || []).length > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 8 }}>Per Member</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ background: '#faf8fc' }}>
+                                  <th style={th}>Member</th>
+                                  <th style={{ ...th, textAlign: 'right' }}>Earned</th>
+                                  <th style={{ ...th, textAlign: 'right' }}>Paid</th>
+                                  <th style={{ ...th, textAlign: 'right' }}>Pending</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(organizationLedger.per_member || []).map((m) => (
+                                  <tr key={m.user_id}>
+                                    <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_paid_out || 0)}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: 24, background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, fontSize: 13, color: colors.lovelabMuted }}>
+                    No organisation linked to this agent.
+                  </div>
+                )}
+
+                {/* Team members */}
+                {agent?.organization_id && (
+                  <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 18 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 12 }}>Team Members</div>
+                    <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                      <input
+                        type="email"
+                        placeholder="colleague@company.com"
+                        value={memberEmail}
+                        onChange={(e) => setMemberEmail(e.target.value)}
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <button type="submit" disabled={addingMember || !memberEmail.trim()} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: addingMember ? 'default' : 'pointer', fontSize: 12, fontWeight: 700 }}>
+                        {addingMember ? 'Adding...' : 'Add'}
+                      </button>
+                    </form>
+                    {organizationMembers.length > 0 && (
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: '#faf8fc' }}>
-                            <th style={th}>Date</th>
-                            <th style={th}>Details</th>
-                            <th style={{ ...th, textAlign: 'right' }}>Order Total</th>
-                            <th style={{ ...th, textAlign: 'right' }}>Commission</th>
+                            <th style={th}>Name</th><th style={th}>Email</th><th style={th}>Role</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {allRows.map((row) => (
-                            <tr key={row.id}>
-                              <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB')}</td>
-                              <td style={{ ...td, fontSize: 11 }}>
-                                {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
-                                {row.document?.order_channel === 'b2c' && (
-                                  <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
-                                )}
-                              </td>
-                              <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>
-                                {row.type === 'order' ? fmt(row.order_total) : '—'}
-                              </td>
-                              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(row.commission_amount)}</td>
+                          {organizationMembers.map((m) => (
+                            <tr key={m.id}>
+                              <td style={td}>{m.profiles?.full_name || '—'}</td>
+                              <td style={td}>{m.profiles?.email || '—'}</td>
+                              <td style={td}>{m.role}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                    </>
-                  );
-                })()}
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Agent Documents – unified folder + orders */}
-            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 16, marginBottom: 24 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Documents Folder
+            {/* ── Tab: Documents ────────────────────────────────────────────── */}
+            {activeTab === 'documents' && (
+              <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 20 }}>
+                <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} orderDocuments={orgDocuments} />
               </div>
-              <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} orderDocuments={orgDocuments} />
-            </div>
+            )}
 
-            {/* Payment Modal */}
+            {/* ── Payment Modal ─────────────────────────────────────────────── */}
             {showPaymentModal && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                <div style={{ background: '#fff', padding: 24, borderRadius: 12, width: 400, boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: 18, color: colors.inkPlum }}>Record Payment to Agent</h3>
+                <div style={{ background: '#fff', padding: 24, borderRadius: 14, width: 400, boxShadow: '0 10px 40px rgba(0,0,0,0.15)', fontFamily: fonts.body }}>
+                  <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 800, color: colors.inkPlum }}>Record Payment</h3>
                   <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Date</label>
@@ -677,12 +787,12 @@ export default function AdminAgentDetailsPage() {
                       <input type="number" step="0.01" min="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" required style={inputStyle} />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Notes (Optional)</label>
-                      <input type="text" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="e.g. Bank transfer ID" style={inputStyle} />
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Notes (optional)</label>
+                      <input type="text" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="e.g. bank transfer" style={inputStyle} />
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button type="button" onClick={() => setShowPaymentModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                      <button type="submit" disabled={savingPayment} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingPayment ? 'default' : 'pointer', fontWeight: 600 }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button type="button" onClick={() => setShowPaymentModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: fonts.body }}>Cancel</button>
+                      <button type="submit" disabled={savingPayment} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingPayment ? 'default' : 'pointer', fontWeight: 700, fontFamily: fonts.body }}>
                         {savingPayment ? 'Saving...' : 'Save Payment'}
                       </button>
                     </div>

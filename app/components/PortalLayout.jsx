@@ -25,15 +25,19 @@ export default function PortalLayout({ navItems, activeId, portalLabel, rootPath
 
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Slim top bar */}
-      <div style={{ background: colors.inkPlumLight, flexShrink: 0, zIndex: 100, borderBottom: `2px solid ${colors.luxeGold}` }}>
+      {/* Slim top bar — same purple as sidebar */}
+      <div style={{ background: colors.inkPlum, flexShrink: 0, zIndex: 100, borderBottom: `2px solid ${colors.lovelabDark}` }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 20px', width: '100%', boxSizing: 'border-box',
+          padding: '6px 20px', width: '100%', boxSizing: 'border-box',
         }}>
           {/* Left: logo + badge + optional back */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="/logo.png" alt="LoveLab" style={{ height: 128, marginTop: -32, marginBottom: -32 }} />
+            <img
+              src="/logo.png"
+              alt="LoveLab"
+              style={{ height: 128, marginTop: -32, marginBottom: -32, filter: 'brightness(0) invert(1)' }}
+            />
             <span style={{
               fontSize: 12, fontWeight: 700, color: '#fff',
               background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: 6,
@@ -68,7 +72,7 @@ export default function PortalLayout({ navItems, activeId, portalLabel, rootPath
           {/* Right: user display + UserMenu */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              fontSize: 11, color: 'rgba(255,255,255,0.85)',
+              fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 600,
               padding: '4px 10px', borderRadius: 8,
               border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)',
             }}>

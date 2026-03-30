@@ -117,7 +117,7 @@ export default function AdminDashboard() {
                       <div style={{ fontSize: 11, color: colors.lovelabMuted }}>
                         {d.events?.name && <span>{d.events.name} · </span>}
                         {new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                        {d.profiles?.full_name && <span> · by {d.profiles.full_name}</span>}
+                        {d.creator?.full_name && <span> · by {d.creator.full_name}</span>}
                       </div>
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{d.total_amount != null ? fmt(d.total_amount) : '—'}</div>

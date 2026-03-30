@@ -12,8 +12,9 @@ import {
 import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
 import { checkRateLimit } from '@/lib/rateLimit';
 
-async function getMembershipRole(supabase, organizationId, userId) {
-  const { data, error } = await supabase
+async function getMembershipRole(adminSupabase, organizationId, userId) {
+  // Always use admin client to avoid the self-referential RLS policy
+  const { data, error } = await adminSupabase
     .from('organization_memberships')
     .select('role')
     .eq('organization_id', organizationId)
@@ -34,7 +35,9 @@ export async function GET(request, { params }) {
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
 
-    const { data, error } = await supabase
+    // Use admin client to bypass the self-referential RLS policy on organization_memberships
+    const adminSupabase = createAdminClient();
+    const { data, error } = await adminSupabase
       .from('organization_memberships')
       .select('id, role, created_at, user_id, profiles:user_id(id, full_name, email)')
       .eq('organization_id', organizationId)
@@ -59,18 +62,18 @@ export async function POST(request, { params }) {
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
 
-    const callerRole = await getMembershipRole(supabase, organizationId, session.user.id);
-    const canManage = isAdmin(session.profile) || callerRole === 'owner';
-    if (!canManage) {
-      return NextResponse.json({ error: 'Only organization owners can add members' }, { status: 403 });
-    }
-
     const body = await request.json();
     const role = body?.role === 'owner' ? 'owner' : 'member';
     const userId = body?.user_id || null;
     const email = normalizeEmail(body?.email);
 
     const adminSupabase = createAdminClient();
+    const callerRole = await getMembershipRole(adminSupabase, organizationId, session.user.id);
+    const canManage = isAdmin(session.profile) || callerRole === 'owner';
+    if (!canManage) {
+      return NextResponse.json({ error: 'Only organization owners can add members' }, { status: 403 });
+    }
+
     let targetUserId = userId;
 
     if (!targetUserId && email) {
