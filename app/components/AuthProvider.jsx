@@ -21,9 +21,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  const fetchFromServer = useCallback(async () => {
+  const fetchFromServer = useCallback(async (signal) => {
     try {
-      const res = await fetch('/api/me');
+      const res = await fetch('/api/me', signal ? { signal } : undefined);
       if (!res.ok) {
         setProfileError('failed_to_load_profile');
         return false;
@@ -43,17 +43,18 @@ export function AuthProvider({ children }) {
         return true;
       }
     } catch (e) {
+      if (e?.name === 'AbortError') return false; // React StrictMode cleanup — not an error
       setProfileError('failed_to_load_profile');
     }
     return false;
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     const init = async () => {
-      const ok = await fetchFromServer();
-      if (cancelled) return;
+      const ok = await fetchFromServer(controller.signal);
+      if (controller.signal.aborted) return;
 
       if (!ok) {
         setUser(null);
@@ -68,7 +69,7 @@ export function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         if (session?.user) {
           await fetchFromServer();
         } else {
@@ -82,7 +83,7 @@ export function AuthProvider({ children }) {
     );
 
     return () => {
-      cancelled = true;
+      controller.abort();
       subscription.unsubscribe();
     };
   }, []);

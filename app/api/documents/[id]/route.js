@@ -7,6 +7,50 @@ import { calculateCommission } from '@/lib/commission';
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// GET - Fetch a single document by ID
+export async function GET(request, { params }) {
+  try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'docs-get' });
+    if (rateLimitRes) return rateLimitRes;
+
+    const supabase = await createClient();
+    const adminSupabase = createAdminClient();
+    const { user, isAdmin } = await getUserContext(supabase);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id } = await params;
+    if (!id || !UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
+    }
+
+    const { data: doc, error } = await adminSupabase
+      .from('documents')
+      .select('*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)')
+      .eq('id', id)
+      .single();
+
+    if (error || !doc) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+
+    // Access check: admin can see everything; others can only see their own or event-shared docs
+    const isOwner = doc.created_by === user.id;
+    const eventAccess = doc.event_id
+      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'read', isAdmin).catch(() => ({ allowed: false }))
+      : { allowed: false };
+    if (!isAdmin && !isOwner && !eventAccess.allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    return NextResponse.json({ document: doc });
+  } catch (error) {
+    console.error('[Documents GET/:id] Error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // PUT - Update a document (replace when re-editing)
 export async function PUT(request, { params }) {
   try {

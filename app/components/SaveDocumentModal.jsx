@@ -82,14 +82,13 @@ export default function SaveDocumentModal({
 
   const fetchEvents = async () => {
     setLoading(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000); // 20s — generous for slow connections
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
       const [eventsRes, agentsRes] = await Promise.all([
         fetch('/api/events', { signal: controller.signal }),
         fetch('/api/agents?summary=true', { signal: controller.signal }).catch(() => null),
       ]);
-      clearTimeout(timeout);
       const data = await eventsRes.json();
       if (!eventsRes.ok) throw new Error(data?.error || 'Failed to load events');
 
@@ -141,9 +140,14 @@ export default function SaveDocumentModal({
         setSelectedEventId(allEvents[0].id);
       }
     } catch (err) {
-      setError(err?.message || 'Failed to load events');
+      const msg = err?.name === 'AbortError'
+        ? 'Loading timed out — check your connection and try again.'
+        : (err?.message || 'Failed to load events');
+      setError(msg);
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const createEvent = async () => {

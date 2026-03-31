@@ -252,9 +252,31 @@ export default function App() {
     // Clear the param from URL immediately so a refresh doesn't re-trigger
     window.history.replaceState({}, '', window.location.pathname)
     fetch(`/api/documents/${reEditId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.document) handleReEdit(data.document) })
-      .catch(() => {})
+      .then(async r => {
+        if (!r.ok) {
+          console.error('[reEdit] fetch failed with status', r.status)
+          return null
+        }
+        return r.json()
+      })
+      .then(data => {
+        if (!data?.document) {
+          console.error('[reEdit] no document in response', data)
+          return
+        }
+        if (!data.document.metadata?.formState) {
+          console.warn('[reEdit] document has no formState — opening blank form with order channel', data.document.order_channel)
+          // Still open the form, just without pre-filled rows
+          setOrderFormQuote(null)
+          setSavedFormState(null)
+          setEditingDocumentId(data.document.id)
+          setInitialOrderChannel(data.document.order_channel || 'b2b')
+          setShowOrderForm(true)
+          return
+        }
+        handleReEdit(data.document)
+      })
+      .catch(err => console.error('[reEdit] fetch error:', err))
   }, [authLoading, user, handleReEdit])
 
   // ─── Deep-link: /?newConsignment=1 from admin consignment page ──────────
