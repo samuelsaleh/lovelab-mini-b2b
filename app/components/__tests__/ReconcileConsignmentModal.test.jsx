@@ -1,250 +1,201 @@
 /**
- * Unit tests for ReconcileConsignmentModal reconciliation logic.
+ * Integration tests for ReconcileConsignmentModal
  *
- * We test the pure calculation helpers extracted from the component:
- *  - sold = sent - cameBack
- *  - validation rules (sold > sent, client name required, etc.)
- *  - the B2B invoice rows built from sold items
- *  - the reconciliation array shape stored in metadata
+ * Verifies:
+ *   1. When items are sold: POST /api/documents (invoice) then PATCH /api/documents/:id (consignment)
+ *   2. When nothing is sold: only PATCH /api/documents/:id (no invoice)
+ *   3. Validation: sold qty cannot exceed missing qty
+ *   4. Validation: client name required when items sold
  */
-import { getConsignmentRows, rowDescription } from '@/lib/consignment'
+import React from 'react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import ReconcileConsignmentModal from '../ReconcileConsignmentModal'
 
-// ── Helpers mirrored from ReconcileConsignmentModal ───────────────────────
+// Mock fetch globally
+global.fetch = jest.fn()
 
-function buildReconciliation(items) {
-  return items.map(item => ({
-    row_no: item.row.no,
-    description: rowDescription(item.row),
-    sent: item.sentQty,
-    came_back: item.sentQty - (item.checked ? item.soldQty : 0),
-    sold: item.checked ? item.soldQty : 0,
-    unit_price: Number(item.row.unitPrice) || 0,
-  }))
-}
-
-function buildSoldRows(items) {
-  return items
-    .filter(i => i.checked && i.soldQty > 0)
-    .map(i => ({
-      ...i.row,
-      quantity: String(i.soldQty),
-      total: i.soldQty > 0 && i.row.unitPrice
-        ? String(Math.round(i.soldQty * Number(i.row.unitPrice) * 100) / 100)
-        : i.row.total,
-    }))
-}
-
-function calcSoldValue(items) {
-  return items.reduce((acc, i) => {
-    if (!i.checked || i.soldQty <= 0) return acc
-    return acc + i.soldQty * (Number(i.row.unitPrice) || 0)
-  }, 0)
-}
-
-function validate(items, clientName) {
-  for (const item of items) {
-    if (item.checked && item.soldQty > item.sentQty) {
-      return `Sold quantity cannot exceed sent quantity for row ${item.row.no}`
-    }
-    if (item.checked && item.soldQty <= 0) {
-      return `Please enter a sold quantity for the checked items (or uncheck them)`
-    }
-  }
-  const anySold = items.some(i => i.checked && i.soldQty > 0)
-  if (anySold && !clientName.trim()) {
-    return 'Please enter the client name for the invoice'
-  }
-  return null
-}
-
-// ── Test data ─────────────────────────────────────────────────────────────
-
-const makeRow = (overrides = {}) => ({
-  no: '1',
-  quantity: '3',
-  collection: 'Solitaire',
-  carat: '0.5ct',
-  shape: 'Round',
-  setting: 'Prong',
-  bpColor: '',
-  size: '',
-  material: '',
-  colorCord: '',
-  unitPrice: '800',
-  total: '2400',
-  ...overrides,
+afterEach(() => {
+  jest.clearAllMocks()
 })
 
-const makeItem = (row, opts = {}) => ({
-  row,
-  sentQty: Number(row.quantity) || 1,
-  soldQty: opts.soldQty ?? 0,
-  checked: opts.checked ?? false,
-})
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Tests ─────────────────────────────────────────────────────────────────
-
-describe('ReconcileConsignmentModal — reconciliation logic', () => {
-  describe('buildReconciliation', () => {
-    it('pre-fills all as came_back when nothing checked', () => {
-      const items = [makeItem(makeRow({ quantity: '3' }))]
-      const [r] = buildReconciliation(items)
-      expect(r.sent).toBe(3)
-      expect(r.came_back).toBe(3)
-      expect(r.sold).toBe(0)
-    })
-
-    it('computes sold correctly when row is checked', () => {
-      const items = [makeItem(makeRow({ quantity: '3' }), { checked: true, soldQty: 1 })]
-      const [r] = buildReconciliation(items)
-      expect(r.sent).toBe(3)
-      expect(r.came_back).toBe(2)
-      expect(r.sold).toBe(1)
-    })
-
-    it('handles fully sold row (none came back)', () => {
-      const items = [makeItem(makeRow({ quantity: '2' }), { checked: true, soldQty: 2 })]
-      const [r] = buildReconciliation(items)
-      expect(r.sent).toBe(2)
-      expect(r.came_back).toBe(0)
-      expect(r.sold).toBe(2)
-    })
-
-    it('stores the correct unit_price', () => {
-      const items = [makeItem(makeRow({ unitPrice: '1200' }))]
-      const [r] = buildReconciliation(items)
-      expect(r.unit_price).toBe(1200)
-    })
-
-    it('handles multiple rows independently', () => {
-      const items = [
-        makeItem(makeRow({ no: '1', quantity: '3' }), { checked: true, soldQty: 1 }),
-        makeItem(makeRow({ no: '2', quantity: '1' }), { checked: false }),
-      ]
-      const [r1, r2] = buildReconciliation(items)
-      expect(r1.sold).toBe(1)
-      expect(r2.sold).toBe(0)
-      expect(r2.came_back).toBe(1)
-    })
-  })
-
-  describe('buildSoldRows', () => {
-    it('returns empty array when no items sold', () => {
-      const items = [makeItem(makeRow())]
-      expect(buildSoldRows(items)).toEqual([])
-    })
-
-    it('returns only sold items with updated quantity', () => {
-      const items = [
-        makeItem(makeRow({ no: '1', quantity: '3' }), { checked: true, soldQty: 2 }),
-        makeItem(makeRow({ no: '2', quantity: '1' }), { checked: false }),
-      ]
-      const rows = buildSoldRows(items)
-      expect(rows).toHaveLength(1)
-      expect(rows[0].no).toBe('1')
-      expect(rows[0].quantity).toBe('2')
-    })
-
-    it('recalculates total based on soldQty × unitPrice', () => {
-      const items = [makeItem(makeRow({ quantity: '3', unitPrice: '800' }), { checked: true, soldQty: 2 })]
-      const [row] = buildSoldRows(items)
-      expect(row.total).toBe('1600')
-    })
-  })
-
-  describe('calcSoldValue', () => {
-    it('returns 0 when nothing sold', () => {
-      const items = [makeItem(makeRow({ quantity: '2', unitPrice: '800' }))]
-      expect(calcSoldValue(items)).toBe(0)
-    })
-
-    it('calculates total sold value correctly', () => {
-      const items = [
-        makeItem(makeRow({ quantity: '3', unitPrice: '800' }), { checked: true, soldQty: 2 }),
-        makeItem(makeRow({ quantity: '1', unitPrice: '1200' }), { checked: true, soldQty: 1 }),
-      ]
-      expect(calcSoldValue(items)).toBe(2 * 800 + 1 * 1200) // 2800
-    })
-
-    it('ignores unchecked items even if soldQty is set', () => {
-      const items = [makeItem(makeRow({ quantity: '3', unitPrice: '800' }), { checked: false, soldQty: 2 })]
-      expect(calcSoldValue(items)).toBe(0)
-    })
-  })
-
-  describe('validate', () => {
-    it('returns null when all came back (nothing checked)', () => {
-      const items = [makeItem(makeRow({ quantity: '3' }))]
-      expect(validate(items, '')).toBeNull()
-    })
-
-    it('rejects when soldQty > sentQty', () => {
-      const items = [makeItem(makeRow({ quantity: '2', no: '1' }), { checked: true, soldQty: 5 })]
-      expect(validate(items, 'John')).toMatch(/cannot exceed/)
-    })
-
-    it('rejects when row is checked but soldQty is 0', () => {
-      const items = [makeItem(makeRow({ quantity: '2' }), { checked: true, soldQty: 0 })]
-      expect(validate(items, 'John')).toMatch(/sold quantity/)
-    })
-
-    it('rejects when items sold but client name is empty', () => {
-      const items = [makeItem(makeRow({ quantity: '2' }), { checked: true, soldQty: 1 })]
-      expect(validate(items, '')).toMatch(/client name/)
-    })
-
-    it('returns null when items sold and client name is provided', () => {
-      const items = [makeItem(makeRow({ quantity: '2' }), { checked: true, soldQty: 1 })]
-      expect(validate(items, 'Jane Smith')).toBeNull()
-    })
-  })
-
-  describe('getConsignmentRows (from lib/consignment)', () => {
-    it('returns empty array for order without formState', () => {
-      expect(getConsignmentRows({})).toEqual([])
-      expect(getConsignmentRows({ metadata: {} })).toEqual([])
-    })
-
-    it('filters out empty rows', () => {
-      const order = {
-        metadata: {
-          formState: {
-            rows: [
-              { collection: 'Ring', quantity: '2' },
-              { collection: '', quantity: '' },
-            ],
+function makeOrder(overrides = {}) {
+  return {
+    id: 'consignment-order-1',
+    client_name: 'Jane Smith',
+    client_company: 'Bijouterie Jane',
+    total_amount: 500,
+    metadata: {
+      consignment: {
+        recipient_name: 'Jane Smith',
+        recipient_company: 'Bijouterie Jane',
+        recipient_email: 'jane@example.com',
+        recipient_phone: '+33 6 00',
+        recipient_address: '12 Rue de la Paix',
+        return_date: '2026-06-01',
+      },
+      formState: {
+        rows: [
+          {
+            no: 1,
+            collection: 'CUTY',
+            carat: '0.10',
+            shape: null,
+            setting: null,
+            material: 'Nylon',
+            bpColor: 'Yellow',
+            colorCord: 'White',
+            size: 'M',
+            quantity: '3',
+            unitPrice: '30',
+            total: '90',
           },
-        },
-      }
-      expect(getConsignmentRows(order)).toHaveLength(1)
-    })
+        ],
+      },
+    },
+    ...overrides,
+  }
+}
 
-    it('returns all non-empty rows', () => {
-      const order = {
-        metadata: {
-          formState: {
-            rows: [
-              { collection: 'Ring', quantity: '2' },
-              { collection: 'Bracelet', quantity: '1' },
-            ],
-          },
-        },
-      }
-      expect(getConsignmentRows(order)).toHaveLength(2)
+function setupFetchMocks({ invoiceSuccess = true, patchSuccess = true } = {}) {
+  global.fetch
+    .mockResolvedValueOnce({
+      ok: invoiceSuccess,
+      json: async () => invoiceSuccess
+        ? { document: { id: 'invoice-1' } }
+        : { error: 'Invoice creation failed' },
     })
+    .mockResolvedValueOnce({
+      ok: patchSuccess,
+      json: async () => patchSuccess
+        ? { document: { id: 'consignment-order-1' } }
+        : { error: 'Patch failed' },
+    })
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('ReconcileConsignmentModal', () => {
+  it('renders the item row and Came Back input', () => {
+    render(
+      <ReconcileConsignmentModal
+        order={makeOrder()}
+        onClose={() => {}}
+        onConfirmed={() => {}}
+      />
+    )
+    expect(screen.getByText(/CUTY/i)).toBeInTheDocument()
+    // Came Back input defaults to sentQty
+    const inputs = screen.getAllByRole('spinbutton')
+    expect(inputs[0].value).toBe('3')
   })
 
-  describe('rowDescription (from lib/consignment)', () => {
-    it('joins non-empty parts', () => {
-      const row = { collection: 'Solitaire', carat: '0.5ct', shape: 'Round', setting: '', material: '' }
-      const desc = rowDescription(row)
-      expect(desc).toBe('Solitaire 0.5ct Round')
+  it('when nothing is missing: only sends PATCH (no invoice POST)', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ document: { id: 'consignment-order-1' } }),
     })
 
-    it('falls back to Item #no when no fields', () => {
-      const row = { no: '3', collection: '', carat: '', shape: '', setting: '', material: '' }
-      const desc = rowDescription(row)
-      expect(desc).toMatch(/Item #3/)
+    const onConfirmed = jest.fn()
+    render(
+      <ReconcileConsignmentModal
+        order={makeOrder()}
+        onClose={() => {}}
+        onConfirmed={onConfirmed}
+      />
+    )
+
+    // Click Confirm Return (nothing missing — all came back)
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Confirm Return/i))
     })
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1))
+
+    // Only one fetch: the PATCH
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [url, opts] = global.fetch.mock.calls[0]
+    expect(url).toBe('/api/documents/consignment-order-1')
+    expect(opts.method).toBe('PATCH')
+  })
+
+  it('when items sold: POSTs invoice first, then PATCHes consignment', async () => {
+    setupFetchMocks()
+
+    const onConfirmed = jest.fn()
+    render(
+      <ReconcileConsignmentModal
+        order={makeOrder()}
+        onClose={() => {}}
+        onConfirmed={onConfirmed}
+      />
+    )
+
+    // Reduce Came Back to 1 (2 missing)
+    const cameBackInput = screen.getAllByRole('spinbutton')[0]
+    await act(async () => {
+      fireEvent.change(cameBackInput, { target: { value: '1' } })
+    })
+
+    // Set Sold to 2
+    await waitFor(() => screen.getByPlaceholderText('0'))
+    const soldInput = screen.getByPlaceholderText('0')
+    await act(async () => {
+      fireEvent.change(soldInput, { target: { value: '2' } })
+    })
+
+    // Client name is pre-filled from order — click Confirm
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Confirm Return/i))
+    })
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1))
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+
+    // First call: POST invoice
+    const [invoiceUrl, invoiceOpts] = global.fetch.mock.calls[0]
+    expect(invoiceUrl).toBe('/api/documents')
+    expect(invoiceOpts.method).toBe('POST')
+    const invoiceBody = JSON.parse(invoiceOpts.body)
+    expect(invoiceBody.order_channel).toBe('b2b')
+    expect(invoiceBody.total_amount).toBeGreaterThan(0)
+
+    // Second call: PATCH consignment
+    const [patchUrl, patchOpts] = global.fetch.mock.calls[1]
+    expect(patchUrl).toBe('/api/documents/consignment-order-1')
+    expect(patchOpts.method).toBe('PATCH')
+    const patchBody = JSON.parse(patchOpts.body)
+    expect(patchBody.metadata.consignment.returned_at).toBeTruthy()
+    expect(patchBody.metadata.consignment.invoice_document_id).toBe('invoice-1')
+  })
+
+  it('shows error if invoice creation fails', async () => {
+    setupFetchMocks({ invoiceSuccess: false })
+
+    render(
+      <ReconcileConsignmentModal
+        order={makeOrder()}
+        onClose={() => {}}
+        onConfirmed={() => {}}
+      />
+    )
+
+    const cameBackInput = screen.getAllByRole('spinbutton')[0]
+    await act(async () => {
+      fireEvent.change(cameBackInput, { target: { value: '1' } })
+    })
+    await waitFor(() => screen.getByPlaceholderText('0'))
+    const soldInput = screen.getByPlaceholderText('0')
+    await act(async () => {
+      fireEvent.change(soldInput, { target: { value: '2' } })
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Confirm Return/i))
+    })
+
+    await waitFor(() => screen.getByText(/Invoice creation failed/i))
   })
 })

@@ -6,7 +6,7 @@ import { fmt } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
-import { isReturned, isOverdue, daysUntil, patchConsignmentOrder } from '@/lib/consignment'
+import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned } from '@/lib/consignment'
 
 const BUCKET = 'documents'
 
@@ -135,6 +135,25 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
       setRowErrors(e => ({ ...e, [updatedOrder.id]: `✓ Invoice created` }))
       setTimeout(() => setRowErrors(e => ({ ...e, [updatedOrder.id]: null })), 5000)
     }
+  }
+
+  // Direct return — no sales, no reconciliation
+  const handleDirectReturn = async (order) => {
+    if (!window.confirm(`Mark "${order.client_name || order.file_name || 'this order'}" as fully returned? No invoice will be created.`)) return
+    setMarkingId(order.id)
+    setRowErrors(e => ({ ...e, [order.id]: null }))
+    try {
+      await closeConsignmentAsReturned(order.id, order.metadata?.consignment || {})
+      applyUpdate(order.id, {
+        metadata: {
+          ...(order.metadata || {}),
+          consignment: { ...(order.metadata?.consignment || {}), returned_at: new Date().toISOString() },
+        },
+      })
+    } catch (err) {
+      setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to mark as returned' }))
+    }
+    setMarkingId(null)
   }
 
   const handleDelete = async (order) => {
@@ -383,21 +402,38 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                                 PDF
                               </button>
                             )}
-                            {/* Primary action */}
+                            {/* Primary actions — only for active (non-returned) orders */}
                             {!returned ? (
-                              <button
-                                onClick={() => setReconcilingOrder(o)}
-                                disabled={markingId === o.id}
-                                title="Mark as returned"
-                                style={{
-                                  padding: '4px 12px', height: 28, borderRadius: 6, border: '1px solid #fecaca',
-                                  background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700,
-                                  cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
-                                  opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
-                                }}
-                              >
-                                Returned
-                              </button>
+                              <>
+                                {/* Sold: opens reconciliation modal */}
+                                <button
+                                  onClick={() => setReconcilingOrder(o)}
+                                  disabled={markingId === o.id}
+                                  title="Some items were sold — create invoice"
+                                  style={{
+                                    padding: '4px 10px', height: 28, borderRadius: 6, border: '1px solid #d97706',
+                                    background: '#fffbeb', color: '#d97706', fontSize: 11, fontWeight: 700,
+                                    cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
+                                    opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  Sold
+                                </button>
+                                {/* Returned: direct close, no invoice */}
+                                <button
+                                  onClick={() => handleDirectReturn(o)}
+                                  disabled={markingId === o.id}
+                                  title="Everything came back — no sales"
+                                  style={{
+                                    padding: '4px 10px', height: 28, borderRadius: 6, border: '1px solid #fecaca',
+                                    background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700,
+                                    cursor: markingId === o.id ? 'wait' : 'pointer', fontFamily: fonts.body,
+                                    opacity: markingId === o.id ? 0.5 : 1, whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  Returned
+                                </button>
+                              </>
                             ) : (
                               <button
                                 onClick={() => undoReturned(o)}

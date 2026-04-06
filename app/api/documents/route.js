@@ -107,10 +107,10 @@ export async function GET(request) {
       query = query.is('deleted_at', null);
     }
 
-    // Exclude internal and consignment orders from all default views.
+    // Exclude internal, consignment, and delete_from_stock orders from all default views.
     // Only include them when the caller explicitly requests that order_channel.
     if (!orderChannelFilter) {
-      query = query.not('order_channel', 'in', '("internal","consignment")');
+      query = query.not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
     }
 
     if (eventId) {
@@ -146,9 +146,9 @@ export async function GET(request) {
       }
     }
 
-    // Filter by order_channel if specified (e.g. 'internal' or 'consignment')
+    // Filter by order_channel if specified (e.g. 'internal', 'consignment', 'delete_from_stock')
     if (orderChannelFilter) {
-      const allowed = ['b2b', 'b2c', 'internal', 'consignment'];
+      const allowed = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'];
       if (allowed.includes(orderChannelFilter)) {
         query = query.eq('order_channel', orderChannelFilter);
       }
@@ -216,9 +216,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
     }
 
-    const safeOrderChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(order_channel) ? order_channel : 'b2b';
+    const safeOrderChannel = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'].includes(order_channel) ? order_channel : 'b2b';
     const isInternalOrder = safeOrderChannel === 'internal';
     const isConsignmentOrder = safeOrderChannel === 'consignment';
+    const isWriteOffOrder = safeOrderChannel === 'delete_from_stock';
 
     // Validate consignment-specific fields
     if (isConsignmentOrder) {
@@ -284,7 +285,7 @@ export async function POST(request) {
     // Skipped for internal and consignment orders — they carry no agent commission.
     // Wrapped in try/catch so failures never block the document response.
     try {
-      if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder) {
+      if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
         const commSupabase = createAdminClient();
 
         const createCommissionFor = async (agentId, profile) => {
@@ -370,7 +371,7 @@ export async function POST(request) {
     // Skipped for internal and consignment orders — not revenue-bearing.
     // Non-blocking — document is already saved at this point.
     try {
-      const resendApiKey = isInternalOrder || isConsignmentOrder ? null : process.env.RESEND_API_KEY;
+      const resendApiKey = isInternalOrder || isConsignmentOrder || isWriteOffOrder ? null : process.env.RESEND_API_KEY;
       if (resendApiKey) {
         const adminSupabase2 = createAdminClient();
         const eventName = event_id

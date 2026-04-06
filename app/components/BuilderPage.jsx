@@ -189,7 +189,13 @@ function WarningsSummary({ warnings }) {
   )
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations }) {
+const CHANNEL_BANNER = {
+  internal:   { label: 'Internal Order', color: '#4f46e5', bg: '#eef2ff' },
+  consignment:{ label: 'Consignment',    color: '#0891b2', bg: '#ecfeff' },
+  delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
+}
+
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel }) {
   const mobile = useIsMobile()
   const tablet = useIsTablet()
   const { t } = useI18n()
@@ -608,8 +614,22 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     }
   }, [setLines, setSelectedCollections])
 
+  const channelBanner = CHANNEL_BANNER[orderChannel]
+
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+    <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      {/* Order channel context banner — shown for non-B2B orders */}
+      {channelBanner && (
+        <div style={{
+          padding: '6px 16px', fontSize: 12, fontWeight: 600,
+          color: channelBanner.color, background: channelBanner.bg,
+          borderBottom: `1px solid ${channelBanner.color}22`,
+          flexShrink: 0,
+        }}>
+          Building: {channelBanner.label}
+        </div>
+      )}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Mobile Summary Toggle Button */}
       {mobile && (
         <button
@@ -1496,6 +1516,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </>
       )}
 
+      </div>
     </div>
   )
 }

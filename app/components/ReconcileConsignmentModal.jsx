@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { patchConsignmentOrder, getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
 
@@ -29,11 +29,11 @@ import { patchConsignmentOrder, getConsignmentRows, rowDescription, rowSpecs } f
  */
 export default function ReconcileConsignmentModal({ order, onClose, onConfirmed }) {
   const existingConsignment = order?.metadata?.consignment || {}
-  const sourceRows = useMemo(() => getConsignmentRows(order), [order])
 
   // Each entry: { row, sentQty, cameBack, soldQty }
+  // getConsignmentRows is inlined here — sourceRows only seeds the initial state once
   const [items, setItems] = useState(() =>
-    sourceRows.map(row => ({
+    getConsignmentRows(order).map(row => ({
       row,
       sentQty: Math.max(1, Number(row.quantity) || 1),
       cameBack: Math.max(1, Number(row.quantity) || 1), // default: everything returned
@@ -165,7 +165,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
             client_company: client.company || null,
             document_type: 'order',
             file_name: `Invoice — ${client.name || order.client_name || 'Client'} ${dateStr}`,
-            file_path: `auto-invoices/consignment-${order.id}.pdf`,
+            file_path: `auto-invoices/consignment-${order.id}-${Date.now()}.pdf`,
             total_amount: soldValue,
             metadata: invoiceMetadata,
             order_channel: 'b2b',
@@ -261,7 +261,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: colors.inkPlum }}>
-                Mark as Returned
+                Reconcile / Mark as Sold
               </h2>
               <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>
                 {order.client_name || order.file_name || 'Consignment order'}{' '}—{' '}
@@ -280,7 +280,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
         {/* ── Scrollable body ─────────────────────────────────────────── */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
 
-          {sourceRows.length === 0 ? (
+          {items.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>📦</div>
               No item rows found on this order.

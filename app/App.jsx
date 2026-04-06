@@ -19,6 +19,7 @@ import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
+import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
 
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
@@ -216,6 +217,9 @@ export default function App() {
     setShowOrderForm(true)
   }, [curQuote])
 
+  // Tracks which order channel is being built in the builder (for context banner + save modal pre-selection)
+  const pendingOrderChannel = useRef('b2b')
+
   // ─── Open blank order form (optionally with a specific channel type) ───
   const handleBlankOrderForm = useCallback((channel = 'b2b') => {
     setOrderFormQuote(null)
@@ -226,8 +230,17 @@ export default function App() {
   }, [])
 
   // ─── Create new order of a specific type (from OrderTypePicker) ───
+  // B2B → open the OrderForm overlay directly (client info, event selection)
+  // All other types → go straight to the builder so the user picks products first
   const handleCreateOrder = useCallback((type = 'b2b') => {
-    handleBlankOrderForm(type)
+    if (type === 'b2b') {
+      handleBlankOrderForm('b2b')
+    } else {
+      pendingOrderChannel.current = type
+      setLines([mkLine()])
+      setInitialOrderChannel(type)
+      setActiveTab('builder')
+    }
   }, [handleBlankOrderForm])
 
   // ─── Re-edit a saved document ───
@@ -241,54 +254,70 @@ export default function App() {
     setShowOrderForm(true)
   }, [])
 
-  // ─── Deep-link: /?reEdit=<docId> from admin portal ───────────────────────
-  // The admin consignment page (and any other admin page) can link back here
-  // with this param to open a specific order for editing.
+  // ─── Deep-link handler — handles all URL params in one place ────────────
+  //
+  //  /?reEdit=<id>        → open document in OrderForm for re-editing
+  //  /?newConsignment=1   → open blank consignment order in builder
+  //  /?editInBuilder=<id> → load document rows into builder and switch to builder tab
+  //
   useEffect(() => {
     if (authLoading || !user) return
     const params = new URLSearchParams(window.location.search)
-    const reEditId = params.get('reEdit')
-    if (!reEditId) return
-    // Clear the param from URL immediately so a refresh doesn't re-trigger
+    // Clear all params immediately so a refresh doesn't re-trigger
     window.history.replaceState({}, '', window.location.pathname)
-    fetch(`/api/documents/${reEditId}`)
-      .then(async r => {
-        if (!r.ok) {
-          console.error('[reEdit] fetch failed with status', r.status)
-          return null
-        }
-        return r.json()
-      })
-      .then(data => {
-        if (!data?.document) {
-          console.error('[reEdit] no document in response', data)
-          return
-        }
-        if (!data.document.metadata?.formState) {
-          console.warn('[reEdit] document has no formState — opening blank form with order channel', data.document.order_channel)
-          // Still open the form, just without pre-filled rows
-          setOrderFormQuote(null)
-          setSavedFormState(null)
-          setEditingDocumentId(data.document.id)
-          setInitialOrderChannel(data.document.order_channel || 'b2b')
-          setShowOrderForm(true)
-          return
-        }
-        handleReEdit(data.document)
-      })
-      .catch(err => console.error('[reEdit] fetch error:', err))
-  }, [authLoading, user, handleReEdit])
 
-  // ─── Deep-link: /?newConsignment=1 from admin consignment page ──────────
-  // Opens a blank consignment order in the builder so admins can create one
-  // without leaving the portal manually.
-  useEffect(() => {
-    if (authLoading || !user) return
-    const params = new URLSearchParams(window.location.search)
-    if (!params.has('newConsignment')) return
-    window.history.replaceState({}, '', window.location.pathname)
-    handleBlankOrderForm('consignment')
-  }, [authLoading, user, handleBlankOrderForm])
+    const reEditId = params.get('reEdit')
+    const editInBuilderId = params.get('editInBuilder')
+    const isNewConsignment = params.has('newConsignment')
+
+    if (reEditId) {
+      fetch(`/api/documents/${reEditId}`)
+        .then(async r => {
+          if (!r.ok) { console.error('[reEdit] fetch failed', r.status); return null }
+          return r.json()
+        })
+        .then(data => {
+          if (!data?.document) { console.error('[reEdit] no document', data); return }
+          if (!data.document.metadata?.formState) {
+            setOrderFormQuote(null)
+            setSavedFormState(null)
+            setEditingDocumentId(data.document.id)
+            setInitialOrderChannel(data.document.order_channel || 'b2b')
+            setShowOrderForm(true)
+            return
+          }
+          handleReEdit(data.document)
+        })
+        .catch(err => console.error('[reEdit] error:', err))
+
+    } else if (editInBuilderId) {
+      fetch(`/api/documents/${editInBuilderId}`)
+        .then(async r => {
+          if (!r.ok) { console.error('[editInBuilder] fetch failed', r.status); return null }
+          return r.json()
+        })
+        .then(data => {
+          if (!data?.document) { console.error('[editInBuilder] no document', data); return }
+          const channel = data.document.order_channel || 'b2b'
+          pendingOrderChannel.current = channel
+          setInitialOrderChannel(channel)
+          setEditingDocumentId(data.document.id)
+          // Load formState rows into builder if available
+          if (data.document.metadata?.formState) {
+            setSavedFormState(data.document.metadata.formState)
+          }
+          setActiveTab('builder')
+        })
+        .catch(err => console.error('[editInBuilder] error:', err))
+
+    } else if (isNewConsignment) {
+      // Go directly to builder for new consignment (not the OrderForm overlay)
+      pendingOrderChannel.current = 'consignment'
+      setLines([mkLine()])
+      setInitialOrderChannel('consignment')
+      setActiveTab('builder')
+    }
+  }, [authLoading, user, handleReEdit])
 
   // ─── Duplicate a saved document as a new order ───
   const handleDuplicate = useCallback((doc) => {
@@ -380,6 +409,13 @@ export default function App() {
     setShowOrderForm(false)
     setActiveTab('builder')
   }, [])
+
+  // ─── Admin always bypasses the client gate ───
+  useEffect(() => {
+    if (profile?.role === 'admin' && !clientReady) {
+      setClientReady(true)
+    }
+  }, [profile, clientReady])
 
   // ─── Persist sidebar collapse preference ───
   useEffect(() => {
@@ -630,8 +666,9 @@ export default function App() {
     )
   }
 
-  // ─── Client Gate ───
-  if (!clientReady) {
+  // ─── Client Gate — admins bypass it entirely ───
+  const isAdminUser = profile?.role === 'admin'
+  if (!clientReady && !isAdminUser) {
     return (
       <ClientGate client={client} setClient={setClient} onComplete={handleClientComplete} />
     )
@@ -736,6 +773,7 @@ export default function App() {
             showRecommendations={showRecommendations}
             setShowRecommendations={setShowRecommendations}
             onRequestRecommendations={handleBudgetRecommendations}
+            orderChannel={initialOrderChannel}
           />
         )}
 
@@ -916,6 +954,9 @@ export default function App() {
           <InternalOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
 
+        {activeTab === 'consignment' && (
+          <ConsignmentOrdersPanel />
+        )}
 
       </main>
       </div>

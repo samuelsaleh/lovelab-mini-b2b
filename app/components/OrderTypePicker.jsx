@@ -2,33 +2,13 @@
 
 import { useEffect } from 'react'
 import { colors, fonts } from '@/lib/styles'
-
-const ORDER_TYPES = [
-  {
-    id: 'b2b',
-    label: 'B2B Order',
-    description: 'Standard client order — counted in revenue and analytics.',
-    icon: '🧾',
-  },
-  {
-    id: 'internal',
-    label: 'Internal Order',
-    description: 'Supplier or manufacturing order — not counted in revenue.',
-    icon: '🏭',
-  },
-  {
-    id: 'consignment',
-    label: 'Consignment',
-    description: 'Goods sent on consignment — tracked separately, not revenue.',
-    icon: '📦',
-  },
-]
+import { ORDER_TYPES } from '@/lib/orderTypes'
 
 /**
  * OrderTypePicker — modal overlay for admins to choose the type of new order.
  *
  * Props:
- *   onSelect(type)  — called with 'b2b' | 'internal' | 'consignment'
+ *   onSelect(type)  — called with 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
  *   onClose()       — called when dismissed without selection
  */
 export default function OrderTypePicker({ onSelect, onClose }) {

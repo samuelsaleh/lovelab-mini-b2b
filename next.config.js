@@ -5,6 +5,7 @@ const nextConfig = {
   experimental: {
     proxyClientMaxBodySize: '25mb',
   },
+  turbopack: {},
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

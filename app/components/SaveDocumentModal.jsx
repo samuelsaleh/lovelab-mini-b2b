@@ -7,6 +7,15 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { useAuth } from './AuthProvider';
 import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 
+// Per-channel UI config — drives all conditional rendering in the modal.
+// Adding a new channel: add one entry here; no inline ternaries needed elsewhere.
+const CHANNEL_CONFIG = {
+  b2b:              { showEvent: true,  showConsignment: false, showComment: false, autoClientName: null },
+  internal:         { showEvent: false, showConsignment: false, showComment: false, autoClientName: 'Antwerp Office' },
+  consignment:      { showEvent: false, showConsignment: true,  showComment: false, autoClientName: null },
+  delete_from_stock:{ showEvent: false, showConsignment: false, showComment: true,  autoClientName: 'Write-off' },
+}
+
 export default function SaveDocumentModal({
   isOpen,
   onClose,
@@ -21,7 +30,7 @@ export default function SaveDocumentModal({
   metadata = {},
   editingDocumentId = null, // ID of document being re-edited (for replacement)
   onSaveSuccess = null, // Callback when save completes successfully
-  initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment'
+  initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
 }) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -35,9 +44,10 @@ export default function SaveDocumentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  // orderChannel: 'b2b' | 'internal' | 'consignment'
+  // orderChannel: 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
   const [orderChannel, setOrderChannel] = useState('b2b');
   const [consignmentData, setConsignmentData] = useState(null);
+  const [writeOffComment, setWriteOffComment] = useState('');
   const closeTimerRef = useRef(null);
 
   // Clean up timeout on unmount to prevent memory leak
@@ -55,6 +65,7 @@ export default function SaveDocumentModal({
       setSuccess(false);
       setError(null);
       setOrderChannel(initialOrderChannel || 'b2b');
+      setWriteOffComment(metadata?.writeOffComment || '');
       // Pre-fill consignment data from existing metadata when re-editing
       const existingConsignment = metadata?.consignment;
       setConsignmentData(existingConsignment
@@ -76,7 +87,10 @@ export default function SaveDocumentModal({
       if (defaultEventName) {
         setNewEventName(defaultEventName);
       }
-      fetchEvents();
+      // Only fetch events for B2B orders — other channels don't use the event selector
+      if ((initialOrderChannel || 'b2b') === 'b2b') {
+        fetchEvents();
+      }
     }
   }, [isOpen, initialOrderChannel]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -312,9 +326,10 @@ export default function SaveDocumentModal({
         returned_at: metadata?.consignment?.returned_at || null,
       } : undefined;
 
-      // Resolve client_name for display
-      const resolvedClientName = orderChannel === 'internal'
-        ? (clientName || clientCompany || 'Internal Order')
+      // Resolve client_name for display — use channel auto-name when set
+      const channelCfg = CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b
+      const resolvedClientName = channelCfg.autoClientName
+        ? channelCfg.autoClientName
         : orderChannel === 'consignment'
           ? (consignmentData?.recipient_name || consignmentData?.recipient_company || 'Consignment Order')
           : (clientName || 'Unknown');
@@ -325,8 +340,8 @@ export default function SaveDocumentModal({
       const res = await fetch(apiUrl, {
         method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_id: (orderChannel === 'internal' || orderChannel === 'consignment') ? null : (selectedEventId || null),
+          body: JSON.stringify({
+            event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
           client_name: resolvedClientName,
           client_company: clientCompany || null,
           document_type: documentType,
@@ -334,7 +349,11 @@ export default function SaveDocumentModal({
           file_name: `${filename}.pdf`,
           file_size: pdfBlob.size,
           total_amount: totalAmount || null,
-          metadata: consignmentMeta ? { ...metadata, consignment: consignmentMeta } : metadata,
+          metadata: {
+            ...metadata,
+            ...(consignmentMeta ? { consignment: consignmentMeta } : {}),
+            ...(orderChannel === 'delete_from_stock' ? { writeOffComment: writeOffComment.trim() } : {}),
+          },
           order_channel: orderChannel,
           consignment_agent_id: orderChannel === 'consignment' && consignmentData?.recipient_type === 'agent'
             ? (consignmentData?.agent_id || null)
@@ -418,8 +437,8 @@ export default function SaveDocumentModal({
               fontSize: 12,
             }}>
               <div style={{ fontWeight: 600, color: colors.charcoal }}>
-                {orderChannel === 'internal'
-                  ? (clientCompany || clientName || 'Internal Order')
+                {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).autoClientName
+                  ? (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).autoClientName
                   : orderChannel === 'consignment'
                     ? (consignmentData?.recipient_name || consignmentData?.recipient_company || 'Consignment Order')
                     : (clientCompany || clientName || 'Unknown client')}
@@ -442,39 +461,44 @@ export default function SaveDocumentModal({
                 <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Order type
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[
-                    { id: 'b2b', label: 'B2B' },
-                    { id: 'internal', label: 'Internal' },
-                    { id: 'consignment', label: 'Consignment' },
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setOrderChannel(opt.id)}
-                      style={{
-                        flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                        cursor: 'pointer', fontFamily: fonts.body,
-                        border: orderChannel === opt.id ? `1.5px solid ${colors.inkPlum}` : `1px solid ${colors.lineGray}`,
-                        background: orderChannel === opt.id ? `${colors.inkPlum}10` : '#fafafa',
-                        color: orderChannel === opt.id ? colors.inkPlum : '#666',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Object.entries(CHANNEL_CONFIG).map(([id, cfg]) => {
+                    const labels = { b2b: 'B2B', internal: 'Internal', consignment: 'Consignment', delete_from_stock: 'Write-off' }
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setOrderChannel(id)
+                          if (id === 'b2b' && events.length === 0) fetchEvents()
+                        }}
+                        style={{
+                          flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: fonts.body,
+                          border: orderChannel === id ? `1.5px solid ${colors.inkPlum}` : `1px solid ${colors.lineGray}`,
+                          background: orderChannel === id ? `${colors.inkPlum}10` : '#fafafa',
+                          color: orderChannel === id ? colors.inkPlum : '#666',
+                        }}
+                      >
+                        {labels[id]}
+                      </button>
+                    )
+                  })}
                 </div>
                 {orderChannel === 'internal' && (
-                  <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Not counted in revenue or analytics.</div>
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Not counted in revenue or analytics. Saved as Antwerp Office order.</div>
                 )}
                 {orderChannel === 'consignment' && (
                   <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Goods sent on consignment — tracked separately, not revenue.</div>
+                )}
+                {orderChannel === 'delete_from_stock' && (
+                  <div style={{ fontSize: 11, color: '#dc2626', marginTop: 5 }}>Removes items from stock — for gifted or lost goods. No revenue recorded.</div>
                 )}
               </div>
             )}
 
             {/* Consignment recipient form */}
-            {orderChannel === 'consignment' && (
+            {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showConsignment && (
               <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 10, background: '#faf8fc', border: `1px solid ${colors.lineGray}` }}>
                 <ConsignmentRecipientForm
                   value={consignmentData}
@@ -484,8 +508,36 @@ export default function SaveDocumentModal({
               </div>
             )}
 
-            {/* Event selector — hidden for internal and consignment orders */}
-            {orderChannel === 'b2b' && <div style={{ marginBottom: 16 }}>
+            {/* Write-off comment — required for delete_from_stock orders */}
+            {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showComment && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{
+                  display: 'block', fontSize: 11, fontWeight: 700,
+                  color: colors.lovelabMuted, marginBottom: 6,
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  Reason for write-off *
+                </label>
+                <textarea
+                  value={writeOffComment}
+                  onChange={e => setWriteOffComment(e.target.value)}
+                  placeholder="e.g. Gifted to influencer, Lost at fair, Damaged in transit…"
+                  rows={3}
+                  style={{
+                    width: '100%', padding: '10px 12px', borderRadius: 8,
+                    border: `1px solid ${writeOffComment.trim() ? colors.lineGray : '#f87171'}`,
+                    fontSize: 13, fontFamily: fonts.body, resize: 'vertical',
+                    outline: 'none', boxSizing: 'border-box', color: colors.charcoal,
+                  }}
+                />
+                {!writeOffComment.trim() && (
+                  <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>A reason is required to save this write-off.</div>
+                )}
+              </div>
+            )}
+
+            {/* Event selector — shown only for channels where showEvent is true */}
+            {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && <div style={{ marginBottom: 16 }}>
               <label style={{
                 display: 'block',
                 fontSize: 11,
@@ -670,7 +722,7 @@ export default function SaveDocumentModal({
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || (orderChannel === 'delete_from_stock' && !writeOffComment.trim())}
                 style={{
                   padding: mobile ? '12px 24px' : '10px 24px',
                   borderRadius: 8,
@@ -679,9 +731,9 @@ export default function SaveDocumentModal({
                   color: '#fff',
                   fontSize: 13,
                   fontWeight: 700,
-                  cursor: saving ? 'not-allowed' : 'pointer',
+                  cursor: (saving || (orderChannel === 'delete_from_stock' && !writeOffComment.trim())) ? 'not-allowed' : 'pointer',
                   fontFamily: fonts.body,
-                  opacity: saving ? 0.7 : 1,
+                  opacity: (saving || (orderChannel === 'delete_from_stock' && !writeOffComment.trim())) ? 0.5 : 1,
                   minHeight: mobile ? 48 : 'auto',
                   width: mobile ? '100%' : 'auto',
                 }}
@@ -692,7 +744,9 @@ export default function SaveDocumentModal({
                     ? 'Save as Internal Order'
                     : orderChannel === 'consignment'
                       ? 'Save Consignment Order'
-                      : (editingDocumentId ? 'Update Document' : 'Save Document')}
+                      : orderChannel === 'delete_from_stock'
+                        ? 'Save Write-off'
+                        : (editingDocumentId ? 'Update Document' : 'Save Document')}
               </button>
             </div>
           </>

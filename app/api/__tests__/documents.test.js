@@ -69,20 +69,25 @@ beforeEach(() => {
 })
 
 describe('GET /api/documents', () => {
-  test('excludes internal orders by default (neq called with order_channel, internal)', async () => {
+  test('excludes internal, consignment, and delete_from_stock by default (not called with in clause)', async () => {
     await GET(makeRequest())
-    expect(mockQuery.neq).toHaveBeenCalledWith('order_channel', 'internal')
+    expect(mockQuery.not).toHaveBeenCalledWith(
+      'order_channel', 'in', '("internal","consignment","delete_from_stock")'
+    )
   })
 
-  test('does NOT call neq when order_channel=internal is requested', async () => {
+  test('does NOT call the exclusion filter when order_channel=internal is requested', async () => {
     await GET(makeRequest({ order_channel: 'internal' }))
-    expect(mockQuery.neq).not.toHaveBeenCalledWith('order_channel', 'internal')
+    expect(mockQuery.not).not.toHaveBeenCalledWith(
+      'order_channel', 'in', expect.stringContaining('internal')
+    )
   })
 
-  test('does NOT call neq when order_channel=b2b is requested', async () => {
+  test('does NOT call the exclusion filter when order_channel=b2b is requested', async () => {
     await GET(makeRequest({ order_channel: 'b2b' }))
-    // neq should not be called since an explicit channel filter was provided
-    expect(mockQuery.neq).not.toHaveBeenCalledWith('order_channel', 'internal')
+    expect(mockQuery.not).not.toHaveBeenCalledWith(
+      'order_channel', 'in', expect.stringContaining('internal')
+    )
   })
 
   test('applies eq(order_channel, internal) when explicitly requested', async () => {
