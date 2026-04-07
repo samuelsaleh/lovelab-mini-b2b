@@ -410,12 +410,16 @@ export default function App() {
     setActiveTab('builder')
   }, [])
 
-  // ─── Admin always bypasses the client gate ───
+  // ─── Admin: bypass the client gate on initial load only ───
+  // Use a ref so this only fires once when the profile first loads.
+  // This prevents the effect from cancelling explicit "Select Client" / "+ New" clicks.
+  const adminInitRef = useRef(false)
   useEffect(() => {
-    if (profile?.role === 'admin' && !clientReady) {
-      setClientReady(true)
+    if (profile?.role === 'admin' && !adminInitRef.current) {
+      adminInitRef.current = true
+      setClientReady(true) // reset in case localStorage had clientReady: false
     }
-  }, [profile, clientReady])
+  }, [profile])
 
   // ─── Persist sidebar collapse preference ───
   useEffect(() => {
@@ -666,9 +670,8 @@ export default function App() {
     )
   }
 
-  // ─── Client Gate — admins bypass it entirely ───
-  const isAdminUser = profile?.role === 'admin'
-  if (!clientReady && !isAdminUser) {
+  // ─── Client Gate ───
+  if (!clientReady) {
     return (
       <ClientGate client={client} setClient={setClient} onComplete={handleClientComplete} />
     )
