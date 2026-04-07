@@ -955,7 +955,7 @@ export default function App() {
         )}
 
         {activeTab === 'consignment' && (
-          <ConsignmentOrdersPanel />
+          <ConsignmentOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
 
       </main>

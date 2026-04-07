@@ -271,16 +271,23 @@ export default function DashboardPage() {
 
   const previewDocument = async (doc) => {
     setActionLoading(doc.id);
+    // Open the tab immediately while still in the user-gesture context,
+    // otherwise browsers block window.open called after an await.
+    const tab = window.open('', '_blank');
     try {
-      // Use server-side API to generate signed URL (avoids client-side permission issues)
       const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`);
       const data = await res.json();
       
       if (!res.ok || data.error) {
+        tab?.close();
         throw new Error(data.error || 'Failed to get preview URL');
       }
       
-      window.open(data.signedUrl, '_blank');
+      if (tab) {
+        tab.location.href = data.signedUrl;
+      } else {
+        window.open(data.signedUrl, '_blank');
+      }
     } catch (err) {
       setErrorMsg('Failed to preview document: ' + err.message);
     }

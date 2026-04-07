@@ -3,12 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
 import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned } from '@/lib/consignment'
-
-const BUCKET = 'documents'
 
 function fmtDate(str) {
   if (!str) return '—'
@@ -101,13 +98,21 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     })
   }, [tab, active, returned, search])
 
-  const openPdf = async (filePath) => {
-    if (!filePath) return
+  const openPdf = async (doc) => {
+    if (!doc?.id) return
+    // Open tab immediately inside the user-gesture context so popup blockers
+    // don't swallow it after the async fetch resolves.
+    const tab = window.open('', '_blank')
     try {
-      const supabase = createClient()
-      const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath)
-      if (data?.publicUrl) window.open(data.publicUrl, '_blank')
-    } catch { /* non-blocking */ }
+      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`)
+      const data = await res.json()
+      if (!res.ok || data.error) { tab?.close(); return }
+      if (tab) {
+        tab.location.href = data.signedUrl
+      } else {
+        window.open(data.signedUrl, '_blank')
+      }
+    } catch { tab?.close() }
   }
 
   const applyUpdate = (orderId, patch) => {
@@ -384,10 +389,20 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                         <td style={tdStyle}><StatusBadge doc={o} /></td>
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            {/* Edit — icon only */}
+                            {/* Re-edit in order form */}
+                            {o.metadata?.formState && onReEdit && (
+                              <button
+                                onClick={() => onReEdit(o)}
+                                title="Re-edit order"
+                                style={{ padding: '4px 9px', height: 28, borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: '#fdf7fa', color: colors.inkPlum, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                              >
+                                Re-edit
+                              </button>
+                            )}
+                            {/* Edit details — icon only */}
                             <button
                               onClick={() => setEditingOrder(o)}
-                              title="Edit details"
+                              title="Edit consignment details"
                               style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
                               ✎
@@ -395,7 +410,7 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
                             {/* PDF — icon only */}
                             {o.file_path && (
                               <button
-                                onClick={() => openPdf(o.file_path)}
+                                onClick={() => openPdf(o)}
                                 title="View PDF"
                                 style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.inkPlum, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fonts.body }}
                               >
