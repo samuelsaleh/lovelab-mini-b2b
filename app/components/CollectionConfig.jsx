@@ -102,6 +102,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   })
 
   const [hoveredColor, setHoveredColor] = useState(null)
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
   const longPressTimer = useRef(null)
 
   const packshotOpts = useCallback((cfg) => {
@@ -738,7 +739,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       title={c.n}
                       onClick={() => addColor(c.n)}
                       disabled={(col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness}
-                      onMouseEnter={mobile ? undefined : () => setHoveredColor(c.n)}
+                      onMouseEnter={mobile ? undefined : (e) => {
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setHoverPos({ x: r.left + r.width / 2, y: r.top })
+                        setHoveredColor(c.n)
+                      }}
                       onMouseLeave={mobile ? undefined : () => setHoveredColor(null)}
                       onTouchStart={mobile ? () => { longPressTimer.current = setTimeout(() => setHoveredColor(c.n), 300) } : undefined}
                       onTouchEnd={mobile ? () => { clearTimeout(longPressTimer.current); setHoveredColor(null) } : undefined}
@@ -765,16 +770,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     )}
                     {hoveredColor === c.n && packshotUrl && (
                       <div style={{
-                        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-                        marginBottom: 8, zIndex: 50, pointerEvents: 'none',
-                        background: '#fff', borderRadius: 10, padding: 8,
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '1px solid #eee',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                        position: 'fixed',
+                        left: hoverPos.x,
+                        top: hoverPos.y - 8,
+                        transform: 'translate(-50%, -100%)',
+                        zIndex: 9999, pointerEvents: 'none',
+                        background: '#fff', borderRadius: 10, padding: 10,
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.18)', border: '1px solid #e5e5e5',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                       }}>
                         <img
                           src={packshotUrl}
                           alt={c.n}
-                          style={{ width: 140, height: 140, objectFit: 'contain', borderRadius: 6, background: '#faf8fc' }}
+                          style={{ width: 150, height: 150, objectFit: 'contain', borderRadius: 8, background: '#f3eef5', border: '1px solid #e8e0ec' }}
                         />
                         <span style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, whiteSpace: 'nowrap' }}>{c.n}</span>
                       </div>
