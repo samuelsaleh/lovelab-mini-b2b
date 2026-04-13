@@ -104,6 +104,17 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const [hoveredColor, setHoveredColor] = useState(null)
   const longPressTimer = useRef(null)
 
+  const packshotOpts = useCallback((cfg) => {
+    const opts = {}
+    if (cfg.colorName || cfg.color) opts.color = cfg.colorName || cfg.color
+    if (cfg.housing) opts.housing = cfg.housing
+    if (cfg.shape) opts.shape = cfg.shape
+    if (cfg.housingType) opts.subgroup = cfg.housingType === 'bezel' ? 'Bezel' : 'Prong'
+    if (cfg.multiAttached === true) opts.subgroup = 'Attached'
+    else if (cfg.multiAttached === false) opts.subgroup = 'Detached'
+    return opts
+  }, [])
+
   const hasCordOptions = !!CORD_OPTIONS[col.cord]
   const [selectedCordType, setSelectedCordType] = useState(
     hasCordOptions ? CORD_OPTIONS[col.cord][0] : null
@@ -1150,6 +1161,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 14, height: 14, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
+                            {(() => {
+                              const url = findPackshot(col.id, packshotOpts(cfg))
+                              return url ? <img src={url} alt={cfg.colorName} style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 4, background: '#faf8fc', flexShrink: 0 }} /> : null
+                            })()}
                             <select value={cfg.colorName} onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })} style={{ ...selectStyle, fontWeight: 500, minWidth: 90 }}>
                               {palette.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
                             </select>
@@ -1354,6 +1369,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           </button>
                         )}
                         <span style={{ width: 20, height: 20, borderRadius: '50%', background: colorDef.h, border: isLight(colorDef.h) ? '1px solid #ddd' : 'none', flexShrink: 0 }} />
+                        {(() => {
+                          const url = findPackshot(col.id, packshotOpts(cfg))
+                          return url ? <img src={url} alt={cfg.colorName} style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 4, background: '#faf8fc', flexShrink: 0 }} /> : null
+                        })()}
                         <select value={cfg.colorName} onChange={(e) => updateConfig(cfg.id, { colorName: e.target.value })} style={{ ...selectStyle, ...mobileSelectOverride, fontWeight: 600 }}>
                           {palette.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
                         </select>

@@ -13,7 +13,7 @@ const OUTPUT = path.join(__dirname, '..', 'lib', 'packshot-manifest.json')
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
 const EXCLUDED_FOLDERS = new Set(['Earings', '.DS_Store'])
 
-const MULTI_ALLOWED_COLORS = ['Red', 'Bordeaux', 'Gold', 'Silver_Grey', 'Black', 'Navy_Blue']
+const MULTI_ALLOWED_COLORS = ['Red', 'Bordeaux', 'Gold', 'Silver Grey', 'Black', 'Navy Blue']
 
 const COLLECTION_MAP = {
   'Cuty':           'CUTY',
@@ -36,16 +36,60 @@ const HOUSING_MAP = {
   'rose_gold':   'RG',
 }
 
+// Normalize color aliases to canonical names
+const COLOR_NORMALIZE = {
+  'darkblue':    'Navy Blue',
+  'dark blue':   'Navy Blue',
+  'navy blue':   'Navy Blue',
+  'navy_blue':   'Navy Blue',
+  'navy':        'Navy Blue',
+  'silver':      'Silver Grey',
+  'silver grey': 'Silver Grey',
+  'silver gray': 'Silver Grey',
+  'silver_grey': 'Silver Grey',
+  'silver_gray': 'Silver Grey',
+  'gold':        'Gold',
+  'black':       'Black',
+  'red':         'Red',
+  'bordeaux':    'Bordeaux',
+}
+
+function normalizeColorName(raw) {
+  if (!raw) return null
+  const lower = raw.toLowerCase().replace(/_/g, ' ').trim()
+  if (COLOR_NORMALIZE[lower]) return COLOR_NORMALIZE[lower]
+  // Title-case with space replacement
+  const spaced = raw.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
 function parseFilename(filename) {
-  const name = filename.replace(/\.[^.]+$/, '')
-  const match = name.match(/^(.+?)_(white_gold|yellow_gold|rose_gold)_(\d+_\d+)ct_(\w+)-/)
-  if (!match) return null
-  return {
-    color: match[1].replace(/_/g, ' '),
-    housing: HOUSING_MAP[match[2]] || match[2],
-    carat: match[3].replace('_', '.'),
-    cord: match[4],
+  // Strip double extension (e.g. Foo.png.png → Foo.png → then parse Foo)
+  let name = filename.replace(/\.[^.]+$/, '')
+  const innerExt = path.extname(name).toLowerCase()
+  if (IMAGE_EXTS.has(innerExt)) {
+    name = name.replace(/\.[^.]+$/, '') // strip second extension
   }
+
+  // Full format: Color_housing_caratct_cord-id
+  const match = name.match(/^(.+?)_(white_gold|yellow_gold|rose_gold)_(\d+_\d+)ct_(\w+)-/)
+  if (match) {
+    return {
+      color: normalizeColorName(match[1]),
+      housing: HOUSING_MAP[match[2]] || match[2],
+      carat: match[3].replace('_', '.'),
+      cord: match[4],
+    }
+  }
+
+  // Fallback: simple color-only filename (e.g. "black.png", "gold.png")
+  // Only apply if no underscores and no hyphens — pure color names
+  if (!name.includes('_') && !name.includes('-')) {
+    const normalized = normalizeColorName(name)
+    if (normalized) return { color: normalized, housing: null, carat: null, cord: null }
+  }
+
+  return null
 }
 
 function housingFromPath(dirPath) {
@@ -60,15 +104,8 @@ function housingFromPath(dirPath) {
   return null
 }
 
-function isMultiCollection(collectionId) {
-  return collectionId === 'M3' || collectionId === 'M4' || collectionId === 'M5'
-}
-
 function isAllowedMultiColor(color) {
-  return MULTI_ALLOWED_COLORS.some(ac => {
-    const normalized = ac.replace(/_/g, ' ')
-    return color === normalized
-  })
+  return MULTI_ALLOWED_COLORS.some(ac => ac.toLowerCase() === color.toLowerCase())
 }
 
 function walkDir(dir) {
@@ -134,7 +171,9 @@ function processCollection(collectionId, dirPath, manifest, isMulti) {
     const dirParts = path.dirname(relToCollection).split(path.sep).map(s => s.trim())
 
     let color = parsed?.color || null
-    let housing = parsed?.housing || housingFromPath(path.dirname(imgPath))
+    // If the folder path explicitly says MIX, trust the path over the filename
+    const pathHousing = housingFromPath(path.dirname(imgPath))
+    let housing = pathHousing === 'MIX' ? 'MIX' : (parsed?.housing || pathHousing)
     let carat = parsed?.carat || null
     let shape = null
     let subgroup = null
@@ -155,16 +194,18 @@ function processCollection(collectionId, dirPath, manifest, isMulti) {
     // Derive subgroup for Multi Three (Attached/Detached)
     if (collectionId === 'M3') {
       const pathStr = relToCollection
-      if (/attached/i.test(pathStr) && !/detached/i.test(pathStr.replace(/not\s*attached/i, ''))) {
-        if (/detached/i.test(pathStr)) subgroup = 'Detached'
-        else subgroup = 'Attached'
-      }
       if (/detached/i.test(pathStr)) subgroup = 'Detached'
-      if (/attached/i.test(pathStr) && !/detached/i.test(pathStr)) subgroup = 'Attached'
+      else if (/attached/i.test(pathStr)) subgroup = 'Attached'
     }
 
-    // Filter Multi colors
-    if (isMulti && color && !isAllowedMultiColor(color)) continue
+    // Skip Multi images without a recognized color
+    if (isMulti && !color) continue
+
+    // Filter Multi to allowed colors only
+    if (isMulti && color && !isAllowedMultiColor(color)) {
+      console.log(`  Skipping ${collectionId} color "${color}" (not in allowed list)`)
+      continue
+    }
 
     processed.push({
       url,
