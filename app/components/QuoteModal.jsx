@@ -4,6 +4,23 @@ import { fmt, today } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
+import { COLLECTIONS } from '@/lib/catalog'
+import { findPackshot } from '@/lib/packshot-lookup'
+import PackshotThumb from './PackshotThumb'
+
+const LABEL_TO_ID = Object.fromEntries(COLLECTIONS.map(c => [c.label, c.id]))
+
+function quoteLinePackshotOpts(ln) {
+  const opts = {}
+  if (ln.colorName) opts.color = ln.colorName
+  if (ln.housing) opts.housing = ln.housing
+  if (ln.shape) opts.shape = ln.shape
+  if (ln.multiAttached === true) opts.subgroup = 'Attached'
+  else if (ln.multiAttached === false) opts.subgroup = 'Detached'
+  else if (ln.housing?.startsWith('Bezel ')) opts.subgroup = 'Bezel'
+  else if (ln.housing?.startsWith('Prong ') || ln.housing === 'Prong') opts.subgroup = 'Prong'
+  return opts
+}
 
 // Check if client is Belgian (for 21% VAT)
 function isBelgian(client) {
@@ -105,42 +122,73 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             </div>
           </div>
 
-          {/* Table */}
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: mobile ? 11 : 12 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
-                  {[t('quote.product'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
-                    <th key={h} style={{ 
-                      padding: mobile ? '8px 4px' : '7px 4px', 
-                      textAlign: 'left', 
-                      fontSize: mobile ? 9 : 8, 
-                      fontWeight: 700, 
-                      letterSpacing: '0.08em', 
-                      textTransform: 'uppercase',
-                      color: colors.inkPlum,
-                      whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(q.lines || []).map((ln, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: mobile ? 10 : 12, whiteSpace: 'nowrap' }}>{ln.product}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{ln.carat}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.housing || '—'}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.colorName || '—'}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.shape || '—'}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontSize: mobile ? 10 : 10, color: colors.charcoal }}>{ln.size || '—'}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{ln.qty}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', color: colors.charcoal, fontSize: mobile ? 10 : 12 }}>{fmt(ln.unitB2B)}</td>
-                    <td style={{ padding: mobile ? '8px 4px' : '7px 4px', fontWeight: 700, color: colors.inkPlum, fontSize: mobile ? 10 : 12 }}>{fmt(ln.lineTotal)}</td>
+          {/* Lines */}
+          {mobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(q.lines || []).map((ln, i) => (
+                <div key={i} style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 8, padding: '10px 10px 8px', background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <PackshotThumb
+                        src={findPackshot(LABEL_TO_ID[ln.product] || ln.product, quoteLinePackshotOpts(ln))}
+                        size={36}
+                      />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: colors.charcoal }}>{ln.product}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>{fmt(ln.lineTotal)}</div>
+                  </div>
+                  <div style={{ fontSize: 10, color: colors.lovelabMuted, lineHeight: 1.5 }}>
+                    {[ln.carat, ln.housing, ln.colorName, ln.shape, ln.size].filter(Boolean).join(' · ')}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: colors.charcoal }}>
+                    {t('quote.qty')}: <strong>{ln.qty}</strong> · {t('quote.unitPrice')}: <strong>{fmt(ln.unitB2B)}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
+                    {['Photo', t('quote.product'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
+                      <th key={h} style={{ 
+                        padding: '7px 4px', 
+                        textAlign: 'left', 
+                        fontSize: 8, 
+                        fontWeight: 700, 
+                        letterSpacing: '0.08em', 
+                        textTransform: 'uppercase',
+                        color: colors.inkPlum,
+                        whiteSpace: 'nowrap',
+                      }}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {(q.lines || []).map((ln, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
+                      <td style={{ padding: '7px 4px' }}>
+                        <PackshotThumb
+                          src={findPackshot(LABEL_TO_ID[ln.product] || ln.product, quoteLinePackshotOpts(ln))}
+                          size={32}
+                        />
+                      </td>
+                      <td style={{ padding: '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: 12, whiteSpace: 'nowrap' }}>{ln.product}</td>
+                      <td style={{ padding: '7px 4px', color: colors.charcoal, fontSize: 12 }}>{ln.carat}</td>
+                      <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal }}>{ln.housing || '—'}</td>
+                      <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal }}>{ln.colorName || '—'}</td>
+                      <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal }}>{ln.shape || '—'}</td>
+                      <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal }}>{ln.size || '—'}</td>
+                      <td style={{ padding: '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: 12 }}>{ln.qty}</td>
+                      <td style={{ padding: '7px 4px', color: colors.charcoal, fontSize: 12 }}>{fmt(ln.unitB2B)}</td>
+                      <td style={{ padding: '7px 4px', fontWeight: 700, color: colors.inkPlum, fontSize: 12 }}>{fmt(ln.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Totals */}
           <div style={{ 
@@ -235,7 +283,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
         {/* Sticky bottom buttons */}
         <div style={{
           flexShrink: 0,
-          padding: mobile ? '12px 16px 16px' : '12px 22px 18px',
+          padding: mobile ? '12px 16px calc(env(safe-area-inset-bottom, 0px) + 14px)' : '12px 22px 18px',
           borderTop: `1px solid ${colors.lineGray}`,
           background: colors.porcelain,
         }}>

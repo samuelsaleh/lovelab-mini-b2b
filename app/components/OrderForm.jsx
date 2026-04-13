@@ -10,6 +10,8 @@ import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
+import { findPackshot } from '@/lib/packshot-lookup'
+import PackshotThumb from './PackshotThumb'
 
 const ROWS_PER_PAGE = 10
 const PRINT_ROWS_PER_PAGE = 14
@@ -17,6 +19,7 @@ const PRINT_ROWS_LAST_PAGE = 9 // Fewer rows on last page to leave room for foot
 
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
+  { key: 'photo', labelKey: 'order.columns.photo', width: 52 },
   { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
   { key: 'collection', labelKey: 'order.columns.collection', width: 118 },
   { key: 'carat', labelKey: 'order.columns.carat', width: 58 },
@@ -84,6 +87,18 @@ function splitHousing(housing) {
   if (housing.startsWith('Prong ')) return { setting: 'Prong', color: housing.slice(6) }
   if (housing === 'Prong') return { setting: 'Prong', color: '' }
   return { setting: '', color: housing }
+}
+
+function rowPackshotOpts(row) {
+  const opts = {}
+  if (row.colorCord) opts.color = row.colorCord
+  if (row.bpColor) opts.housing = row.bpColor
+  if (row.shape) opts.shape = row.shape
+  if (row.setting === 'F') opts.subgroup = 'Attached'
+  else if (row.setting === 'LO') opts.subgroup = 'Detached'
+  else if (row.setting === 'Bezel') opts.subgroup = 'Bezel'
+  else if (row.setting === 'Prong') opts.subgroup = 'Prong'
+  return opts
 }
 
 function findCollection(productName) {
@@ -1701,7 +1716,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       {/* Toolbar (hidden in print) */}
       <div className="order-form-toolbar" style={{
         background: '#fff', borderBottom: `1px solid ${colors.lineGray}`,
-        padding: mobile ? '10px 12px' : '10px 20px', display: 'flex', alignItems: 'center', gap: mobile ? 8 : 12, flexShrink: 0,
+        padding: mobile ? '10px 12px' : '10px 20px',
+        paddingTop: mobile ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : '10px',
+        display: 'flex', alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 8 : 12, flexShrink: 0,
         flexWrap: mobile ? 'wrap' : 'nowrap',
       }}>
         <button
@@ -1710,12 +1727,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             padding: mobile ? '8px 12px' : '6px 16px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
             background: '#fff', color: colors.charcoal, fontSize: 12, fontWeight: 600,
             cursor: 'pointer', fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
+            flex: mobile ? '1 1 auto' : '0 0 auto',
           }}
         >
           &larr; {t('common.back')}
         </button>
         {/* Undo/Redo buttons */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flex: mobile ? '0 0 auto' : '0 0 auto' }}>
           <button
             onClick={handleUndo}
             disabled={!canUndo}
@@ -1760,6 +1778,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               padding: mobile ? '8px 12px' : '6px 16px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
               background: colors.ice, color: colors.inkPlum, fontSize: 12, fontWeight: 600,
               cursor: 'pointer', fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto',
+              flex: mobile ? '1 1 auto' : '0 0 auto',
             }}
           >
             {t('order.editInBuilder') || 'Edit in Builder'}
@@ -1772,12 +1791,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               padding: '8px 12px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
               background: mobileCardView ? colors.ice : '#fff', color: colors.charcoal, fontSize: 11, fontWeight: 600,
               cursor: 'pointer', fontFamily: fonts.body, minHeight: 44,
+              flex: '1 1 auto',
             }}
           >
             {mobileCardView ? t('order.tableView') : t('order.cardView')}
           </button>
         )}
-        <div style={{ flex: 1, textAlign: 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
+        <div style={{ flex: mobile ? '1 1 100%' : 1, textAlign: mobile ? 'left' : 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
           {t('nav.orderform')}
         </div>
         <button
@@ -1786,6 +1806,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
             cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
+            flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
           onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
@@ -1798,6 +1819,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
             cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
+            flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
           onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
@@ -1810,6 +1832,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
             cursor: 'pointer', fontFamily: fonts.body, transition: 'opacity .15s', minHeight: mobile ? 44 : 'auto',
+            flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
@@ -1824,7 +1847,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         overflow: isPrinting ? 'visible' : 'auto', 
         WebkitOverflowScrolling: 'touch',
         overscrollBehavior: 'contain',
-        padding: isPrinting ? 0 : (mobile ? 12 : 20), 
+        padding: isPrinting ? 0 : (mobile ? '12px 12px calc(env(safe-area-inset-bottom, 0px) + 20px)' : 20), 
         display: isPrinting ? 'block' : 'flex', 
         flexDirection: mobile ? 'column' : 'row',
         gap: isPrinting ? 0 : (mobile ? 16 : 20), 
@@ -2101,9 +2124,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             {row.total || '—'}
                           </span>
                         </div>
+                        {/* Card photo */}
+                        {(() => {
+                          const thumbUrl = findPackshot(row.collection, rowPackshotOpts(row))
+                          return thumbUrl ? (
+                            <div style={{ marginBottom: 8 }}>
+                              <PackshotThumb src={thumbUrl} size={56} />
+                            </div>
+                          ) : null
+                        })()}
                         {/* Card fields */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {COLUMNS.filter(col => col.key !== 'no' && col.key !== 'total').map(col => (
+                          {COLUMNS.filter(col => col.key !== 'no' && col.key !== 'total' && col.key !== 'photo').map(col => (
                             <div key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ fontSize: 10, fontWeight: 600, color: '#999', width: 70, textTransform: 'uppercase', flexShrink: 0 }}>
                                 {t(col.labelKey)}
@@ -2160,6 +2192,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               ) : (
                 /* ─── Table Layout (Desktop or when toggled) ─── */
                 <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              {mobile && !mobileCardView && !isPrinting && (
+                <div style={{ marginBottom: 8, fontSize: 11, color: colors.lovelabMuted }}>
+                  {t('order.tableScrollHint') || 'Swipe horizontally to review all columns.'}
+                </div>
+              )}
               <table style={{ width: '100%', minWidth: compact ? 700 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <colgroup>
                   {COLUMNS.map((col) => (
@@ -2184,6 +2221,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                     return (
                       <tr key={globalIdx}>
                         {COLUMNS.map((col) => {
+                          const isPhotoCol = col.key === 'photo'
                           const isCollectionCol = col.key === 'collection'
                           const isCaratCol = col.key === 'carat'
                           const isShapeCol = col.key === 'shape'
@@ -2241,7 +2279,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               ...(col.key === 'total' ? { borderRight: `1px solid ${colors.lineGray}` } : {}),
                               ...(isNA ? { background: '#f8f7f6' } : {}),
                             }}>
-                              {isNA ? (
+                              {isPhotoCol ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 40 }}>
+                                  <PackshotThumb
+                                    src={findPackshot(row.collection, rowPackshotOpts(row))}
+                                    size={38}
+                                  />
+                                </div>
+                              ) : isNA ? (
                                 <div style={{ textAlign: 'center', color: '#c5bfb8', fontSize: 11, userSelect: 'none', letterSpacing: 1 }}>—</div>
                               ) : isCollectionCol ? (
                                 <CellSelect

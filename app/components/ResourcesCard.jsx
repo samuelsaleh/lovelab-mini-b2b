@@ -73,21 +73,21 @@ export default function ResourcesCard() {
         Resources & Quick Links
       </div>
 
-      <div style={{ padding: '20px 24px', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-        {/* Marketing Photos */}
+      <div style={{ padding: '20px 24px' }}>
+        {/* Relevant Links */}
         <div style={{
-          flex: '1 1 260px', background: '#faf8fc', borderRadius: 12,
+          background: '#faf8fc', borderRadius: 12,
           padding: '20px 22px', border: `1px solid ${colors.lineGray}`,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 26 }}>📁</span>
+            <span style={{ fontSize: 26 }}>🔗</span>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>Marketing Photos</div>
-              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2 }}>All campaign & product images</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>Relevant Links</div>
+              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2 }}>Photos, tools, and quick access</div>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <LinkButton href={DRIVE_URL} variant="solid">
+            <LinkButton href={DRIVE_URL} variant="outline">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -109,64 +109,42 @@ export default function ResourcesCard() {
               </svg>
               @lovelab_antwerp
             </LinkButton>
+            <LinkButton href="https://software.love-lab.com/login" variant="outline">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8M12 17v4"/>
+              </svg>
+              Internal Software
+            </LinkButton>
           </div>
         </div>
 
-        {/* Catalogues */}
-        <div style={{
-          flex: '2 1 400px', background: '#faf8fc', borderRadius: 12,
-          padding: '20px 22px', border: `1px solid ${colors.lineGray}`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 26 }}>📄</span>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>B2B Catalogues</div>
-              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2 }}>View online or download PDF</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {CATALOGUES.map((cat) => (
-              <div key={cat.lang} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: 10, padding: '10px 14px', background: '#fff', borderRadius: 9,
-                border: `1px solid ${colors.lineGray}`,
-              }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: colors.charcoal, minWidth: 90 }}>
-                  {cat.lang} — {cat.label}
-                </span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <LinkButton href={cat.canva}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                    View
-                  </LinkButton>
-                  <LinkButton href={cat.pdf} variant="solid">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    PDF
-                  </LinkButton>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Catalogue preview — language-aware Canva embed */}
       <div style={{ borderTop: `1px solid ${colors.lineGray}`, padding: '0 24px 24px' }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
           padding: '16px 0 14px',
-          fontSize: 11, fontWeight: 700, color: colors.lovelabMuted,
-          textTransform: 'uppercase', letterSpacing: '0.06em',
         }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-          </svg>
-          Catalogue Preview
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontSize: 11, fontWeight: 700, color: colors.lovelabMuted,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+            </svg>
+            Catalogue Preview
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: '#aaa', fontWeight: 500 }}>Download PDF:</span>
+            {CATALOGUES.map((cat) => (
+              <a key={cat.lang} href={cat.pdf} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none', padding: '3px 8px', borderRadius: 5, border: `1px solid ${colors.inkPlum}25`, background: '#faf8fc', fontFamily: fonts.body, lineHeight: 1 }}>
+                {cat.lang}
+              </a>
+            ))}
+          </div>
         </div>
         <div style={{
           position: 'relative', width: '100%', paddingTop: '70%',

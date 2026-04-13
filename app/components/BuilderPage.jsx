@@ -8,6 +8,7 @@ import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 import { sendBuilderChat } from '@/lib/api'
+import { findPackshot } from '@/lib/packshot-lookup'
 
 let _uidCounter = 0
 export function uniqueId() {
@@ -67,71 +68,98 @@ const btnGhost = {
 }
 
 // ─── Standard Packs ───
-// Each pack defines one or more collection lines that get fully prefilled (all palette colors).
+// Pre-built order templates based on curated consignment selections.
+// Each pack stores formRows (order-form row format) that get converted to builder lines on apply.
+const PACK1_ROWS = [
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: '', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: '', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
+  { collection: 'MULTI FIVE', carat: '0.25', bpColor: 'White', setting: '', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '85', shape: '' },
+  { collection: 'MULTI FIVE', carat: '0.50', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '120', shape: '' },
+  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '75', shape: '' },
+  { collection: 'MULTI FOUR', carat: '0.40', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '100', shape: '' },
+]
+
+const PACK2_ROWS = [
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Marquise', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '90' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Pear', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '90' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Oval', bpColor: 'Yellow', setting: 'Prong', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '90' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '145' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '90' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '145' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '90' },
+  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Emerald', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '180' },
+  { collection: 'MATCHY FANCY', carat: '1.00', shape: 'Pear', bpColor: 'YY', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '290' },
+  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Heart', bpColor: 'WY', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '180' },
+]
+
+const _p3Colors8a = ['Red', 'Bordeaux', 'Dark Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey']
+const _p3Colors8b = ['Bordeaux', 'Dark Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey', 'Red']
+const _p3Colors8c = ['Bordeaux', 'Light Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey', 'Red']
+const PACK3_ROWS = [
+  ...CORD_COLORS.nylon.map(c => ({ collection: 'CUTY', carat: '0.05', bpColor: 'White', size: 'M', colorCord: c.n, quantity: '1', unitPrice: '20', shape: '', setting: '' })),
+  ..._p3Colors8a.map(c => ({ collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', size: 'M', colorCord: c, quantity: '1', unitPrice: '30', shape: '', setting: '' })),
+  ..._p3Colors8b.map(c => ({ collection: 'CUBIX', carat: '0.05', bpColor: 'White', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '24', shape: '', setting: '' })),
+  ..._p3Colors8c.map(c => ({ collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '34', shape: '', setting: '' })),
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'PPP', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '55', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '85', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '85', shape: '' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '' },
+]
+
 const PACKS = [
   {
     id: 'pack-1',
-    label: 'Lovelab Pack 1',
-    description: ['CUTY — White housing, size M, 0.05 ct'],
-    budget: '€20/bracelet',
-    lines: [
-      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0] },
+    label: 'Pack 1',
+    fixedTotal: 880,
+    description: [
+      'SHAPY SHINE FANCY — 0.10 ct, Bezel, 5 shapes',
+      'MULTI FIVE — 0.25 & 0.50 ct',
+      'MULTI FOUR — 0.20 & 0.40 ct',
     ],
+    budget: '€50 – €120/bracelet',
+    formRows: PACK1_ROWS,
   },
   {
     id: 'pack-2',
-    label: 'Lovelab Pack 2',
+    label: 'Pack 2',
+    fixedTotal: 1390,
     description: [
-      'CUTY — White housing, size M, 0.05 & 0.10 ct',
-      'CUBIX — White housing, size S/M, 0.05 & 0.10 ct',
+      'SHAPY SHINE FANCY — 0.30 & 0.50 ct, 5 shapes',
+      'MATCHY FANCY — 0.60 & 1.00 ct, 3 shapes',
     ],
-    budget: '€20 – €34/bracelet',
-    lines: [
-      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
-      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
-    ],
+    budget: '€90 – €290/bracelet',
+    formRows: PACK2_ROWS,
   },
   {
     id: 'pack-3',
-    label: 'Lovelab Pack 3',
+    label: 'Pack 3',
+    fixedTotal: 1664,
     description: [
-      'CUTY — White housing, size M, 0.05 & 0.10 ct',
-      'CUBIX — White housing, size S/M, 0.05 & 0.10 ct',
-      'MULTI THREE — WWW housing, size M, 0.15 ct',
+      'CUTY — 0.05 & 0.10 ct, size M',
+      'CUBIX — 0.05 & 0.10 ct, size S/M',
+      'MULTI THREE — 0.15 & 0.30 ct, mixed housing, size M',
     ],
-    budget: '€20 – €55/bracelet',
-    lines: [
-      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [0, 1] },
-      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [0, 1] },
-      { collectionId: 'M3', housing: 'WWW', size: 'M', caratIndices: [0] },
-    ],
-  },
-  {
-    id: 'pack-cuty',
-    label: 'Lovelab Pack Cuty',
-    description: ['CUTY — White housing, size M, 0.10 ct'],
-    budget: '€30/bracelet',
-    lines: [
-      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [1] },
-    ],
-  },
-  {
-    id: 'pack-cuty-cubix',
-    label: 'Lovelab Cuty-Cubix',
-    description: [
-      'CUTY — White housing, size M, 0.10 ct',
-      'CUBIX — White housing, size S/M, 0.10 ct',
-    ],
-    budget: '€30 – €34/bracelet',
-    lines: [
-      { collectionId: 'CUTY', housing: 'White', size: 'M', caratIndices: [1] },
-      { collectionId: 'CUBIX', housing: 'White', size: 'S/M', caratIndices: [1] },
-    ],
+    budget: '€20 – €85/bracelet',
+    formRows: PACK3_ROWS,
   },
 ]
 
 // ─── Compute total order estimate for a pack ───
 function computePackTotal(pack) {
+  if (pack.fixedTotal != null) return pack.fixedTotal
+  if (!pack.lines) return 0
   return pack.lines.reduce((sum, line) => {
     const col = COLLECTIONS.find(c => c.id === line.collectionId)
     if (!col) return sum
@@ -200,6 +228,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const tablet = useIsTablet()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
+  const mobileSafeBottom = mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)' : 0
   
   // Step: 'select' (collection grid) or 'configure' (config view)
   const [step, setStep] = useState(() => {
@@ -589,6 +618,59 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Apply a standard pack (fully replaces current lines with editable prefilled configs)
   const applyPack = useCallback((pack) => {
+    if (pack.formRows) {
+      const byCollection = new Map()
+      for (const row of pack.formRows) {
+        if (!row.collection) continue
+        const col = COLLECTIONS.find(c => c.label === row.collection)
+        if (!col) continue
+        if (!byCollection.has(col.id)) byCollection.set(col.id, [])
+        byCollection.get(col.id).push(row)
+      }
+      const newLines = Array.from(byCollection.entries()).map(([colId, rows]) => {
+        const col = COLLECTIONS.find(c => c.id === colId)
+        const colorConfigs = rows.map(row => {
+          const caratIdx = col.carats.findIndex(c => c === row.carat)
+          let housing = row.bpColor || null
+          let housingType = row.setting ? row.setting.toLowerCase() : null
+          if (housingType && housing && (col.housing === 'shapyShine' || col.housing === 'matchy')) {
+            housing = `${row.setting} ${housing}`
+          }
+          if (!housingType && housing) {
+            if (housing.startsWith('Bezel ')) housingType = 'bezel'
+            else if (housing.startsWith('Prong ')) housingType = 'prong'
+          }
+          let multiAttached = null
+          if (col.housing === 'multiThree') {
+            if (row.setting === 'F') multiAttached = true
+            else if (row.setting === 'LO') multiAttached = false
+            else if (housing) multiAttached = HOUSING.multiThree.attached.includes(housing)
+          }
+          return {
+            id: uniqueId(),
+            colorName: row.colorCord || '',
+            qty: parseInt(row.quantity) || 1,
+            caratIdx: caratIdx >= 0 ? caratIdx : null,
+            housing,
+            housingType: housingType || null,
+            shape: row.shape || null,
+            size: row.size || null,
+            multiAttached,
+            cordType: null,
+            thickness: null,
+            priceOverride: null,
+          }
+        })
+        return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
+      })
+      if (newLines.length > 0) {
+        setLines(newLines)
+        setSelectedCollections(newLines.map(l => l.collectionId))
+        setStep('configure')
+      }
+      return
+    }
+
     const newLines = pack.lines.map(packLine => {
       const col = COLLECTIONS.find(c => c.id === packLine.collectionId)
       if (!col) return null
@@ -635,7 +717,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         <button
           onClick={() => setShowSidebar(!showSidebar)}
           style={{
-            position: 'fixed', bottom: 16, right: 16, zIndex: 150,
+            position: 'fixed', bottom: mobileSafeBottom, right: 16, zIndex: 150,
             padding: '12px 20px', borderRadius: 25, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(93,58,94,0.3)',
@@ -683,9 +765,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               </button>
             ) : (
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: hasBudget && hasSpending ? 8 : 0 }}>
-                  <span style={{ fontSize: 11, color: '#888', fontWeight: 600, whiteSpace: 'nowrap' }}>Budget</span>
-                  <div style={{ position: 'relative', width: 110 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: mobile ? 'wrap' : 'nowrap', marginBottom: hasBudget && hasSpending ? 8 : 0 }}>
+                  <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>Budget</span>
+                  <div style={{ position: 'relative', width: mobile ? 'min(160px, 60vw)' : 110, minWidth: 96 }}>
                     <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#aaa', fontWeight: 600 }}>€</span>
                     <input
                       ref={budgetInputRef}
@@ -715,7 +797,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </>
                   )}
                   {hasBudget && !hasSpending && (
-                    <span style={{ fontSize: 10, color: '#aaa' }}>Start building to track spending</span>
+                    <span style={{ fontSize: 10, color: '#aaa', flex: mobile ? '1 1 100%' : '0 1 auto' }}>Start building to track spending</span>
                   )}
                   {hasBudget && (
                     <button
@@ -740,7 +822,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
 
         {/* ─── Step Content ─── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 32px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? '16px 16px calc(env(safe-area-inset-bottom, 0px) + 98px)' : '20px 20px 32px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
             {/* ─── Packs Collapsible ─── */}
@@ -792,7 +874,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             {pack.budget}
                           </div>
                           <div style={{ fontSize: 10, color: '#bbb', marginTop: 2 }}>
-                            Total order: ~€{computePackTotal(pack).toLocaleString('fr-FR')}
+                            Total order: {pack.fixedTotal != null ? '' : '~'}€{computePackTotal(pack).toLocaleString('fr-FR')}
                           </div>
                         </div>
                       )}
@@ -884,6 +966,24 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           {isSelected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
                         </div>
 
+                        {/* Product photo */}
+                        {(() => {
+                          const thumbUrl = findPackshot(col.id)
+                          return thumbUrl ? (
+                            <img
+                              src={thumbUrl}
+                              alt={col.label}
+                              loading="lazy"
+                              style={{
+                                width: '100%', height: 60,
+                                objectFit: 'contain',
+                                marginBottom: 8,
+                                borderRadius: 4,
+                              }}
+                            />
+                          ) : null
+                        })()}
+
                         {/* Collection name */}
                         <div style={{
                           fontSize: 14, fontWeight: 700,
@@ -947,8 +1047,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             ) : (
               /* ═══ STEP 2: Configuration View ═══ */
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <div>
+                <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 10 : 0, marginBottom: 14 }}>
+                  <div style={{ minWidth: 0 }}>
                     <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
                       {t('builder.configureOrder')}
                     </h2>
@@ -956,7 +1056,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       {t('builder.configureOrderHelp')}
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: mobile ? 'flex-start' : 'flex-end' }}>
                     {/* Collapse / Expand all */}
                     {(() => {
                       const allExpanded = lines.filter(l => l.collectionId).every(l => l.expanded !== false)
@@ -983,21 +1083,16 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       style={{
                         padding: '8px 14px', fontSize: 12, fontWeight: 700,
                         borderRadius: 10,
-                        border: 'none',
-                        background: showAiChat 
-                          ? colors.inkPlum 
-                          : `linear-gradient(135deg, ${colors.inkPlum} 0%, #7c3aed 100%)`,
-                        color: '#fff',
+                        border: showAiChat ? 'none' : `1.5px solid ${colors.inkPlum}`,
+                        background: showAiChat ? colors.inkPlum : '#fff',
+                        color: showAiChat ? '#fff' : colors.inkPlum,
                         cursor: 'pointer',
                         fontFamily: 'inherit',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        boxShadow: '0 2px 8px rgba(93,58,94,0.25)',
                         transition: 'all .15s',
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(93,58,94,0.35)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(93,58,94,0.25)' }}
                     >
                       ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
                     </button>
@@ -1274,7 +1369,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           {showAiChat && (
             <div style={{
               position: 'fixed',
-              bottom: mobile ? 70 : 24,
+              bottom: mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 74px)' : 24,
               right: 24,
               width: mobile ? 'calc(100% - 48px)' : 380,
               maxWidth: 420,

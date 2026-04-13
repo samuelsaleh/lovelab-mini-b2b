@@ -5,8 +5,22 @@ import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING } fro
 import { isLight } from '@/lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
+import { findPackshot } from '@/lib/packshot-lookup'
+import PackshotThumb from './PackshotThumb'
+import PackshotLightbox from './PackshotLightbox'
 
 const QTY_PRESETS = [1, 3, 5, 10]
+
+function cfgPackshotOpts(cfg) {
+  const opts = {}
+  if (cfg.colorName) opts.color = cfg.colorName
+  if (cfg.housing) opts.housing = cfg.housing
+  if (cfg.shape) opts.shape = cfg.shape
+  if (cfg.housingType) opts.subgroup = cfg.housingType === 'bezel' ? 'Bezel' : 'Prong'
+  if (cfg.multiAttached === true) opts.subgroup = 'Attached'
+  else if (cfg.multiAttached === false) opts.subgroup = 'Detached'
+  return opts
+}
 
 function createConfigId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -68,6 +82,7 @@ const AccordionSection = ({ label, value, isOpen, onToggle, children, isComplete
 // ─── ColorConfigCard: one per-color config with carat, housing, shape, size, qty ───
 const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, defaultExpanded, simplified }) => {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const [showLightbox, setShowLightbox] = useState(false)
 
   const patch = (updates) => onUpdate(cfg.id, updates)
 
@@ -350,6 +365,32 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
               </div>
             </div>
           </div>
+
+          {/* Product photo */}
+          {col && (() => {
+            const thumbUrl = findPackshot(col.id, cfgPackshotOpts(cfg))
+            if (!thumbUrl) return null
+            return (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <PackshotThumb src={thumbUrl} size={48} onClick={() => setShowLightbox(true)} />
+                <span style={{ fontSize: 10, color: '#999' }}>
+                  {[cfg.colorName, cfg.housing].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+            )
+          })()}
+          {showLightbox && (() => {
+            const lbUrl = findPackshot(col.id, cfgPackshotOpts(cfg))
+            if (!lbUrl) return null
+            return (
+              <PackshotLightbox
+                images={[{ url: lbUrl, color: cfg.colorName }]}
+                currentIndex={0}
+                onClose={() => setShowLightbox(false)}
+                onNavigate={() => {}}
+              />
+            )
+          })()}
         </div>
       )}
     </div>

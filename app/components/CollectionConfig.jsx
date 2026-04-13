@@ -710,12 +710,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${mobile ? 8 : 10}, 1fr)`,
-              gap: mobile ? 8 : 6,
+              gridTemplateColumns: mobile ? 'repeat(auto-fit, minmax(32px, 1fr))' : 'repeat(10, 1fr)',
+              gap: mobile ? 6 : 6,
             }}>
               {palette.map(c => {
                 const count = colorCounts[c.n] || 0
-                const btnSize = mobile ? 38 : 30
+                const btnSize = mobile ? 32 : 30
                 return (
                   <div key={c.n} style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
                     <button
@@ -756,11 +756,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           {/* ─── Same for all toggle ─── */}
           {line.colorConfigs.length >= 1 && (
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
+              gap: 8,
               padding: '8px 12px', borderRadius: 8, background: '#f8f8f8',
               marginBottom: 12,
             }}>
-              <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>{t('collection.sameSettingsForAllColors')}</span>
+              <span style={{ fontSize: 12, color: '#555', fontWeight: 500, flex: '1 1 160px', minWidth: 0 }}>{t('collection.sameSettingsForAllColors')}</span>
               <button
                 onClick={handleSameForAllToggle}
                 style={{
@@ -787,11 +788,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 style={{
                   width: '100%', padding: '10px 12px', background: '#fafafa',
                   border: 'none', cursor: 'pointer', display: 'flex',
-                  alignItems: 'center', justifyContent: 'space-between',
+                  alignItems: 'center', justifyContent: 'space-between', gap: 8,
                   fontFamily: 'inherit',
                 }}
               >
-                <span style={{ fontSize: 12, color: '#555', fontWeight: 500 }}>
+                <span style={{ fontSize: 12, color: '#555', fontWeight: 500, textAlign: 'left', minWidth: 0 }}>
                   {t('collection.duplicateWithVariations')}
                 </span>
                 <span style={{
