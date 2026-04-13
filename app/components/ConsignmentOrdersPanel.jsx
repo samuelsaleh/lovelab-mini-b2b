@@ -6,6 +6,7 @@ import { fmt } from '@/lib/utils'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
 import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned } from '@/lib/consignment'
+import { undoConsignmentReturnToLovelab } from '@/lib/lovelab-sync'
 
 function fmtDate(str) {
   if (!str) return '—'
@@ -123,6 +124,10 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     setMarkingId(order.id)
     setRowErrors(e => ({ ...e, [order.id]: null }))
     try {
+      // Sync with Lovelab backend first
+      await undoConsignmentReturnToLovelab(order)
+
+      // Update local storage/Supabase metadata
       await patchConsignmentOrder(order.id, order.metadata?.consignment || {}, { returned_at: null })
       applyUpdate(order.id, {
         metadata: { ...(order.metadata || {}), consignment: { ...(order.metadata?.consignment || {}), returned_at: null } },

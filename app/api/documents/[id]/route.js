@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
 import { calculateCommission } from '@/lib/commission';
+import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -315,6 +316,12 @@ export async function PATCH(request, { params }) {
     if (updateError) {
       console.error('[Documents PATCH] DB error:', updateError);
       return NextResponse.json({ error: 'Failed to update document', detail: updateError.message }, { status: 500 });
+    }
+
+    // Lovelab Sync: Sync returned consignment orders
+    if (updated.order_channel === 'consignment' && updated.metadata?.consignment?.returned_at) {
+      // Non-blocking
+      syncConsignmentToLovelab(updated, true).catch(err => console.error('[Lovelab Sync PATCH] error:', err));
     }
 
     return NextResponse.json({ document: updated });

@@ -10,10 +10,10 @@ import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 // Per-channel UI config — drives all conditional rendering in the modal.
 // Adding a new channel: add one entry here; no inline ternaries needed elsewhere.
 const CHANNEL_CONFIG = {
-  b2b:              { showEvent: true,  showConsignment: false, showComment: false, autoClientName: null },
-  internal:         { showEvent: false, showConsignment: false, showComment: false, autoClientName: 'Antwerp Office' },
-  consignment:      { showEvent: false, showConsignment: true,  showComment: false, autoClientName: null },
-  delete_from_stock:{ showEvent: false, showConsignment: false, showComment: true,  autoClientName: 'Write-off' },
+  b2b: { showEvent: true, showConsignment: false, showComment: false, autoClientName: null },
+  internal: { showEvent: false, showConsignment: false, showComment: false, autoClientName: 'Antwerp Office' },
+  consignment: { showEvent: false, showConsignment: true, showComment: false, autoClientName: null },
+  delete_from_stock: { showEvent: false, showConsignment: false, showComment: true, autoClientName: 'Write-off' },
 }
 
 export default function SaveDocumentModal({
@@ -70,17 +70,17 @@ export default function SaveDocumentModal({
       const existingConsignment = metadata?.consignment;
       setConsignmentData(existingConsignment
         ? {
-            recipient_type: existingConsignment.recipient_type || 'agent',
-            agent_id: existingConsignment.agent_id || null,
-            contact_id: existingConsignment.contact_id || null,
-            saveAsContact: false,
-            recipient_name: existingConsignment.recipient_name || '',
-            recipient_company: existingConsignment.recipient_company || '',
-            recipient_phone: existingConsignment.recipient_phone || '',
-            recipient_email: existingConsignment.recipient_email || '',
-            recipient_address: existingConsignment.recipient_address || '',
-            return_date: existingConsignment.return_date || '',
-          }
+          recipient_type: existingConsignment.recipient_type || 'agent',
+          agent_id: existingConsignment.agent_id || null,
+          contact_id: existingConsignment.contact_id || null,
+          saveAsContact: false,
+          recipient_name: existingConsignment.recipient_name || '',
+          recipient_company: existingConsignment.recipient_company || '',
+          recipient_phone: existingConsignment.recipient_phone || '',
+          recipient_email: existingConsignment.recipient_email || '',
+          recipient_address: existingConsignment.recipient_address || '',
+          return_date: existingConsignment.return_date || '',
+        }
         : null
       );
       // Pre-fill new event name if provided
@@ -166,7 +166,7 @@ export default function SaveDocumentModal({
 
   const createEvent = async () => {
     if (!newEventName.trim()) return;
-    
+
     setLoading(true);
     try {
       const res = await fetch('/api/events', {
@@ -211,7 +211,7 @@ export default function SaveDocumentModal({
       const baseFilename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const filename = `${baseFilename}_${uniqueSuffix}`;
-      
+
       let pdfBlob;
       try {
         const MAX_UPLOAD_BYTES = 24 * 1024 * 1024; // Keep under 25MB request cap
@@ -248,11 +248,11 @@ export default function SaveDocumentModal({
       // Upload to Supabase Storage via server-side API (with retry + timeout)
       const folder = selectedEventId && selectedEventId.trim() !== '' ? selectedEventId : 'no-event';
       const filePath = `${folder}/${filename}.pdf`;
-      
+
       const maxRetries = 2;
       let uploadResult = null;
       let uploadRes = null;
-      
+      // open
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s hard timeout
@@ -260,19 +260,19 @@ export default function SaveDocumentModal({
           const formData = new FormData();
           formData.append('file', pdfBlob, `${filename}.pdf`);
           formData.append('filePath', filePath);
-          
+
           uploadRes = await fetch('/api/documents/upload', {
             method: 'POST',
             body: formData,
             signal: controller.signal,
           });
-          
+
           uploadResult = await uploadRes.json();
-          
+
           if (uploadRes.ok && !uploadResult.error) {
             break; // Success
           }
-          
+
           if (attempt < maxRetries) {
             await new Promise(r => setTimeout(r, 1500));
           }
@@ -288,7 +288,7 @@ export default function SaveDocumentModal({
           clearTimeout(timeoutId);
         }
       }
-      
+
       if (!uploadRes?.ok || uploadResult?.error) {
         throw new Error('Upload failed: ' + (uploadResult?.error || 'Unknown error'));
       }
@@ -340,11 +340,12 @@ export default function SaveDocumentModal({
       const res = await fetch(apiUrl, {
         method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
+        body: JSON.stringify({
+          event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
           client_name: resolvedClientName,
           client_company: clientCompany || null,
           document_type: documentType,
+          // open
           file_path: uploadResult.filePath,
           file_name: `${filename}.pdf`,
           file_size: pdfBlob.size,
@@ -388,14 +389,14 @@ export default function SaveDocumentModal({
       aria-label={documentType === 'order' ? 'Save order' : 'Save quote'}
       onKeyDown={(e) => { if (e.key === 'Escape' && !saving) onClose() }}
       style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 400,
-      display: 'flex',
-      alignItems: mobile ? 'flex-end' : 'center',
-      justifyContent: 'center',
-      background: 'rgba(0,0,0,0.5)',
-    }}>
+        position: 'fixed',
+        inset: 0,
+        zIndex: 400,
+        display: 'flex',
+        alignItems: mobile ? 'flex-end' : 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.5)',
+      }}>
       <div style={{
         background: '#fff',
         borderRadius: mobile ? '16px 16px 0 0' : 16,
@@ -549,7 +550,7 @@ export default function SaveDocumentModal({
               }}>
                 Select Event / Folder
               </label>
-              
+
               {loading ? (
                 <div style={{ fontSize: 12, color: '#888', padding: '8px 0' }}>Loading events...</div>
               ) : (
@@ -646,37 +647,37 @@ export default function SaveDocumentModal({
                         </select>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        onClick={createEvent}
-                        disabled={!newEventName.trim() || loading}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 6,
-                          border: 'none',
-                          background: colors.inkPlum,
-                          color: '#fff',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: newEventName.trim() && !loading ? 'pointer' : 'not-allowed',
-                          opacity: newEventName.trim() && !loading ? 1 : 0.5,
-                        }}
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => { setShowNewEvent(false); setNewEventName(''); }}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 6,
-                          border: `1px solid ${colors.lineGray}`,
-                          background: '#fff',
-                          color: '#666',
-                          fontSize: 11,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
+                        <button
+                          onClick={createEvent}
+                          disabled={!newEventName.trim() || loading}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: colors.inkPlum,
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: newEventName.trim() && !loading ? 'pointer' : 'not-allowed',
+                            opacity: newEventName.trim() && !loading ? 1 : 0.5,
+                          }}
+                        >
+                          Add
+                        </button>
+                        <button
+                          onClick={() => { setShowNewEvent(false); setNewEventName(''); }}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: 6,
+                            border: `1px solid ${colors.lineGray}`,
+                            background: '#fff',
+                            color: '#666',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   )}

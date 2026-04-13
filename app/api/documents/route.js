@@ -4,6 +4,7 @@ import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { calculateCommission } from '@/lib/commission';
+import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
 
 // GET - List documents (optionally filtered by event_id)
@@ -402,6 +403,15 @@ export async function POST(request) {
       }
     } catch (emailErr) {
       console.error('[Documents POST] Notification email error (non-blocking):', emailErr.message);
+    }
+
+    // Lovelab Sync: Sync consignment orders to main system
+    if (isConsignmentOrder) {
+      // Non-blocking
+      syncConsignmentToLovelab(document).catch(err => console.error('[Lovelab Sync POST] error:', err));
+    }
+    if (isWriteOffOrder) {
+      syncGiftLostToLovelab(document).catch(err => console.error('[Lovelab Sync POST] gift lost error:', err));
     }
 
     return NextResponse.json({ document });
