@@ -7,6 +7,7 @@ import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
 import { useI18n } from '@/lib/i18n'
 import { useIsMobile } from '@/lib/useIsMobile'
+import { findPackshot } from '@/lib/packshot-lookup'
 
 const QTY_PRESETS = [1, 3, 5, 10]
 
@@ -99,6 +100,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     shape: { keepSame: true, value: null },
     qty: { keepSame: true, value: 1 },
   })
+
+  const [hoveredColor, setHoveredColor] = useState(null)
+  const longPressTimer = useRef(null)
 
   const hasCordOptions = !!CORD_OPTIONS[col.cord]
   const [selectedCordType, setSelectedCordType] = useState(
@@ -716,12 +720,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               {palette.map(c => {
                 const count = colorCounts[c.n] || 0
                 const btnSize = mobile ? 32 : 30
+                const packshotUrl = hoveredColor === c.n ? findPackshot(col.id, { color: c.n }) : null
                 return (
                   <div key={c.n} style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
                     <button
                       title={c.n}
                       onClick={() => addColor(c.n)}
                       disabled={(col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness}
+                      onMouseEnter={mobile ? undefined : () => setHoveredColor(c.n)}
+                      onMouseLeave={mobile ? undefined : () => setHoveredColor(null)}
+                      onTouchStart={mobile ? () => { longPressTimer.current = setTimeout(() => setHoveredColor(c.n), 300) } : undefined}
+                      onTouchEnd={mobile ? () => { clearTimeout(longPressTimer.current); setHoveredColor(null) } : undefined}
+                      onTouchCancel={mobile ? () => { clearTimeout(longPressTimer.current); setHoveredColor(null) } : undefined}
                       style={{
                         width: btnSize, height: btnSize, borderRadius: '50%', background: c.h, padding: 0,
                         border: count > 0 ? `2.5px solid ${colors.inkPlum}` : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
@@ -741,6 +751,22 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       }}>
                         {count}
                       </span>
+                    )}
+                    {hoveredColor === c.n && packshotUrl && (
+                      <div style={{
+                        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                        marginBottom: 8, zIndex: 50, pointerEvents: 'none',
+                        background: '#fff', borderRadius: 10, padding: 8,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '1px solid #eee',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      }}>
+                        <img
+                          src={packshotUrl}
+                          alt={c.n}
+                          style={{ width: 140, height: 140, objectFit: 'contain', borderRadius: 6, background: '#faf8fc' }}
+                        />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, whiteSpace: 'nowrap' }}>{c.n}</span>
+                      </div>
                     )}
                   </div>
                 )

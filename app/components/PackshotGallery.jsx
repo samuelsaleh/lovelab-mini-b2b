@@ -7,7 +7,7 @@ import PackshotLightbox from './PackshotLightbox'
 
 const COLLECTION_ORDER = ['CUTY', 'CUBIX', 'M3', 'M4', 'M5', 'MF', 'SSF', 'SSPF']
 
-export default function PackshotGallery({ onClose }) {
+export default function PackshotGallery({ onClose, inline = false }) {
   const availableIds = getAllCollectionIds()
   const orderedIds = COLLECTION_ORDER.filter(id => availableIds.includes(id))
 
@@ -39,33 +39,28 @@ export default function PackshotGallery({ onClose }) {
     setSubgroupFilter(null)
   }
 
-  return (
+  const panelContent = (
     <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 300,
-        background: 'rgba(74, 37, 69, 0.6)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
+      style={inline ? {
+        background: '#fff', display: 'flex', flexDirection: 'column',
+        width: '100%', height: '100%', overflow: 'hidden',
+      } : {
+        background: '#fff', borderRadius: 16,
+        width: '100%', maxWidth: 1100,
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
       }}
-      onClick={onClose}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16,
-          width: '100%', maxWidth: 1100,
-          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          padding: '18px 24px', borderBottom: `1px solid ${colors.lineGray}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, fontFamily: fonts.body }}>
-            Product Packshots
-          </div>
+      {/* Header */}
+      <div style={{
+        padding: '18px 24px', borderBottom: `1px solid ${colors.lineGray}`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexShrink: 0,
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, fontFamily: fonts.body }}>
+          Product Packshots
+        </div>
+        {!inline && (
           <button
             onClick={onClose}
             style={{
@@ -75,7 +70,8 @@ export default function PackshotGallery({ onClose }) {
           >
             ×
           </button>
-        </div>
+        )}
+      </div>
 
         {/* Collection Tabs */}
         <div style={{
@@ -195,11 +191,30 @@ export default function PackshotGallery({ onClose }) {
         <div style={{
           padding: '10px 24px', borderTop: `1px solid ${colors.lineGray}`,
           fontSize: 11, color: colors.lovelabMuted, textAlign: 'center',
+          flexShrink: 0,
         }}>
           {images.length} photo{images.length !== 1 ? 's' : ''}
         </div>
       </div>
+  )
 
+  return (
+    <>
+      {inline ? panelContent : (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 300,
+            background: 'rgba(74, 37, 69, 0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={onClose}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1100, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            {panelContent}
+          </div>
+        </div>
+      )}
       {lightboxIdx !== null && (
         <PackshotLightbox
           images={images}
@@ -208,7 +223,7 @@ export default function PackshotGallery({ onClose }) {
           onNavigate={setLightboxIdx}
         />
       )}
-    </div>
+    </>
   )
 }
 

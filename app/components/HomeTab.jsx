@@ -97,37 +97,39 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
             {t('home.newOrder')}
           </button>
 
-          <button
-            onClick={() => setShowGallery(true)}
-            style={{
-              flex: '1 1 160px',
-              maxWidth: 240,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '14px 20px',
-              borderRadius: 12,
-              border: 'none',
-              background: colors.inkPlum,
-              color: '#fff',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontFamily: fonts.body,
-              transition: 'opacity .15s, transform .1s',
-              boxShadow: '0 4px 14px rgba(93,58,94,0.25)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.92'; e.currentTarget.style.transform = 'translateY(-1px)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <path d="M21 15l-5-5L5 21"/>
-            </svg>
-            View Product Photos
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowGallery(true)}
+              style={{
+                flex: '1 1 160px',
+                maxWidth: 240,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '14px 20px',
+                borderRadius: 12,
+                border: 'none',
+                background: colors.inkPlum,
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: fonts.body,
+                transition: 'opacity .15s, transform .1s',
+                boxShadow: '0 4px 14px rgba(93,58,94,0.25)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.92'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="M21 15l-5-5L5 21"/>
+              </svg>
+              View Product Photos
+            </button>
+          )}
 
           {isAdmin && (
             <a
@@ -168,7 +170,7 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
 
         {/* Resources card */}
         <div style={{ marginTop: 36 }}>
-          <ResourcesCard />
+          <ResourcesCard isAdmin={isAdmin} />
         </div>
       </div>
     </div>

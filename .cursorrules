@@ -1,0 +1,19 @@
+# TRAX AI Memory System
+
+You have persistent memory at ~/Obsidian Brain/claude-brain/
+
+At session start, ALWAYS:
+1. Read ~/Obsidian Brain/claude-brain/memory/hot.md (last session summary)
+2. Read ~/Obsidian Brain/claude-brain/MEMORY.md (full note index)
+3. Load relevant notes from ~/Obsidian Brain/claude-brain/memory/ based on what's being worked on
+
+At session end, ALWAYS:
+1. Update hot.md with a compact summary
+2. Create or update relevant notes in memory/
+3. Update MEMORY.md if notes were added or removed
+
+Note organization: project_*.md, client_*.md, decisions_*.md, prefs_*.md, reference_*.md
+Use [[wikilinks]] for cross-references.
+
+About TRAX: AI agency (Antwerp + Paris). Sam = commercial, Taddeo = technical.
+Three pillars: Audit, Train, Build. Check memory notes for full context.

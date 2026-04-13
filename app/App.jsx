@@ -20,6 +20,7 @@ import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
 import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
+import PackshotGallery from './components/PackshotGallery'
 
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
@@ -959,6 +960,10 @@ export default function App() {
 
         {activeTab === 'consignment' && (
           <ConsignmentOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
+        )}
+
+        {activeTab === 'photos' && (
+          <PackshotGallery inline />
         )}
 
       </main>

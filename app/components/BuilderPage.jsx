@@ -975,10 +975,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                               alt={col.label}
                               loading="lazy"
                               style={{
-                                width: '100%', height: 60,
+                                width: '100%', height: 120,
                                 objectFit: 'contain',
                                 marginBottom: 8,
-                                borderRadius: 4,
+                                borderRadius: 6,
+                                background: '#faf8fc',
                               }}
                             />
                           ) : null

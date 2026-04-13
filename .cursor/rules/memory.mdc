@@ -1,0 +1,10 @@
+---
+description: TRAX AI persistent memory system
+globs: **/*
+alwaysApply: true
+---
+
+You have persistent memory at ~/Obsidian Brain/claude-brain/
+At session start: read memory/hot.md then MEMORY.md.
+At session end: update hot.md and relevant notes.
+Full instructions are in ~/Obsidian Brain/claude-brain/CLAUDE.md
