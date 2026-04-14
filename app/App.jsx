@@ -674,7 +674,12 @@ export default function App() {
   // ─── Client Gate ───
   if (!clientReady) {
     return (
-      <ClientGate client={client} setClient={setClient} onComplete={handleClientComplete} />
+      <ClientGate
+        client={client}
+        setClient={setClient}
+        onComplete={handleClientComplete}
+        onGoHome={() => { setClientReady(true); setActiveTab('home') }}
+      />
     )
   }
 

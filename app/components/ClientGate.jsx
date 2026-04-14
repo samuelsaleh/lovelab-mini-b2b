@@ -14,7 +14,7 @@ import UserMenu from './UserMenu'
  * Full-screen client identification gate.
  * User can search for saved clients or enter new ones.
  */
-export default function ClientGate({ client, setClient, onComplete }) {
+export default function ClientGate({ client, setClient, onComplete, onGoHome }) {
   const { t } = useI18n()
   const [loading, setLoading] = useState(false)
   const [viesLoading, setViesLoading] = useState(false)
@@ -237,6 +237,28 @@ export default function ClientGate({ client, setClient, onComplete }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       padding: mobile ? 16 : 24, fontFamily: fonts.body, position: 'relative',
     }}>
+      {/* Home button — top-left */}
+      {onGoHome && (
+        <button
+          onClick={onGoHome}
+          style={{
+            position: 'absolute', top: 16, left: 16,
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 13px', borderRadius: 8,
+            border: `1px solid ${colors.lineGray}`, background: '#fff',
+            color: colors.inkPlum, fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', fontFamily: fonts.body,
+            boxShadow: '0 1px 4px rgba(93,58,94,0.07)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M2 8L8 2L14 8" stroke={colors.inkPlum} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3.5 6.5V13.5H6.5V10H9.5V13.5H12.5V6.5" stroke={colors.inkPlum} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Home
+        </button>
+      )}
+
       <div style={{ position: 'absolute', top: 16, right: 16 }}>
         <UserMenu />
       </div>
