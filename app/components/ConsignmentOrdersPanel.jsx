@@ -5,7 +5,7 @@ import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
-import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned } from '@/lib/consignment'
+import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned, getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
 import { undoConsignmentReturnToLovelab } from '@/lib/lovelab-sync'
 
 function fmtDate(str) {
@@ -63,6 +63,7 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
   const [reconcilingOrder, setReconcilingOrder] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [deletingInFlight, setDeletingInFlight] = useState(null)
+  const [returningOrder, setReturningOrder] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -147,9 +148,15 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     }
   }
 
-  // Direct return — no sales, no reconciliation
-  const handleDirectReturn = async (order) => {
-    if (!window.confirm(`Mark "${order.client_name || order.file_name || 'this order'}" as fully returned? No invoice will be created.`)) return
+  // Direct return — opens preview modal first, then confirms
+  const handleDirectReturn = (order) => {
+    setReturningOrder(order)
+  }
+
+  const confirmDirectReturn = async () => {
+    const order = returningOrder
+    if (!order) return
+    setReturningOrder(null)
     setMarkingId(order.id)
     setRowErrors(e => ({ ...e, [order.id]: null }))
     try {
@@ -223,6 +230,96 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
           </div>
         </div>
       )}
+
+      {/* Return confirmation modal — shows item list before confirming */}
+      {returningOrder && (() => {
+        const ro = returningOrder
+        const c = ro.metadata?.consignment || {}
+        const recipientName = c.recipient_name || ro.client_name || '—'
+        const recipientCo = c.recipient_company || ro.client_company || ''
+        const rows = getConsignmentRows(ro)
+        const totalQty = rows.reduce((s, r) => s + Math.max(1, Number(r.quantity) || 1), 0)
+        return (
+          <div onClick={() => setReturningOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 0, maxWidth: 520, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', fontFamily: fonts.body }}>
+              {/* Header */}
+              <div style={{ padding: '22px 24px 16px', borderBottom: `1px solid ${colors.lineGray}` }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: colors.inkPlum }}>Confirm Return</div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>
+                      Everything came back — no sales. No invoice will be created.
+                    </div>
+                  </div>
+                  <button onClick={() => setReturningOrder(null)} style={{ background: 'none', border: 'none', fontSize: 20, color: '#aaa', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                </div>
+                <div style={{ marginTop: 14, padding: '10px 12px', background: '#faf8fc', borderRadius: 8, border: `1px solid ${colors.lineGray}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#222' }}>{recipientName}</div>
+                  {recipientCo && <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{recipientCo}</div>}
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                    {totalQty} piece{totalQty !== 1 ? 's' : ''} · {fmt(ro.total_amount || 0)} total value
+                  </div>
+                </div>
+              </div>
+
+              {/* Item list */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
+                {rows.length === 0 ? (
+                  <div style={{ padding: '20px 0', textAlign: 'center', color: '#aaa', fontSize: 13 }}>
+                    No item details available.
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${colors.lineGray}` }}>
+                        <th style={{ padding: '6px 8px 6px 0', fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'left' }}>Item</th>
+                        <th style={{ padding: '6px 0', fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right', whiteSpace: 'nowrap' }}>Qty</th>
+                        <th style={{ padding: '6px 0 6px 12px', fontSize: 10, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right', whiteSpace: 'nowrap' }}>Unit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => {
+                        const desc = rowDescription(row)
+                        const specs = rowSpecs(row)
+                        const qty = Math.max(1, Number(row.quantity) || 1)
+                        const unit = Number(row.unitPrice) || 0
+                        return (
+                          <tr key={i} style={{ borderBottom: `1px solid #f5f5f5` }}>
+                            <td style={{ padding: '9px 8px 9px 0', verticalAlign: 'top' }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: '#222' }}>{desc}</div>
+                              {specs && <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{specs}</div>}
+                            </td>
+                            <td style={{ padding: '9px 0', verticalAlign: 'top', textAlign: 'right', fontSize: 13, color: '#444', fontWeight: 600 }}>{qty}</td>
+                            <td style={{ padding: '9px 0 9px 12px', verticalAlign: 'top', textAlign: 'right', fontSize: 13, color: '#888', whiteSpace: 'nowrap' }}>
+                              {unit > 0 ? fmt(unit) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '16px 24px', borderTop: `1px solid ${colors.lineGray}`, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setReturningOrder(null)}
+                  style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDirectReturn}
+                  style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body }}
+                >
+                  Confirm — All Returned
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
         {/* Header */}
