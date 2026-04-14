@@ -231,17 +231,9 @@ export default function App() {
   }, [])
 
   // ─── Create new order of a specific type (from OrderTypePicker) ───
-  // B2B → open the OrderForm overlay directly (client info, event selection)
-  // All other types → go straight to the builder so the user picks products first
+  // All types → open the OrderForm overlay directly with the selected channel
   const handleCreateOrder = useCallback((type = 'b2b') => {
-    if (type === 'b2b') {
-      handleBlankOrderForm('b2b')
-    } else {
-      pendingOrderChannel.current = type
-      setLines([mkLine()])
-      setInitialOrderChannel(type)
-      setActiveTab('builder')
-    }
+    handleBlankOrderForm(type)
   }, [handleBlankOrderForm])
 
   // ─── Re-edit a saved document ───
