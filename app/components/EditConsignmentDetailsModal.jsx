@@ -36,22 +36,32 @@ export default function EditConsignmentDetailsModal({ order, onClose, onSaved })
   const [error, setError] = useState(null)
 
   const handleSave = async () => {
+    // Validate required fields
+    if (consignmentData.recipient_type === 'contact' && !consignmentData.recipient_name?.trim()) {
+      setError('Full name is required for a contact recipient.')
+      return
+    }
+    if (consignmentData.recipient_type === 'agent' && !consignmentData.agent_id) {
+      setError('Please select an agent.')
+      return
+    }
+
     setSaving(true)
     setError(null)
     try {
       // Save as new contact if requested
       let resolvedContactId = consignmentData.contact_id || null
-      if (consignmentData.saveAsContact && consignmentData.recipient_name && !resolvedContactId) {
+      if (consignmentData.saveAsContact && consignmentData.recipient_name?.trim() && !resolvedContactId) {
         try {
           const cr = await fetch('/api/consignment-contacts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              full_name: consignmentData.recipient_name,
-              company: consignmentData.recipient_company || null,
-              phone: consignmentData.recipient_phone || null,
-              email: consignmentData.recipient_email || null,
-              address: consignmentData.recipient_address || null,
+              full_name: consignmentData.recipient_name.trim(),
+              company: consignmentData.recipient_company?.trim() || null,
+              phone: consignmentData.recipient_phone?.trim() || null,
+              email: consignmentData.recipient_email?.trim() || null,
+              address: consignmentData.recipient_address?.trim() || null,
             }),
           })
           const cd = await cr.json()
@@ -64,11 +74,11 @@ export default function EditConsignmentDetailsModal({ order, onClose, onSaved })
         ...existing,
         recipient_type: consignmentData.recipient_type,
         contact_id: resolvedContactId,
-        recipient_name: consignmentData.recipient_name || '',
-        recipient_company: consignmentData.recipient_company || '',
-        recipient_phone: consignmentData.recipient_phone || '',
-        recipient_email: consignmentData.recipient_email || '',
-        recipient_address: consignmentData.recipient_address || '',
+        recipient_name: consignmentData.recipient_name?.trim() || '',
+        recipient_company: consignmentData.recipient_company?.trim() || '',
+        recipient_phone: consignmentData.recipient_phone?.trim() || '',
+        recipient_email: consignmentData.recipient_email?.trim() || '',
+        recipient_address: consignmentData.recipient_address?.trim() || '',
         return_date: consignmentData.return_date || null,
       }
 
@@ -85,9 +95,13 @@ export default function EditConsignmentDetailsModal({ order, onClose, onSaved })
         }),
       })
 
+      const resBody = await res.json()
+
       if (!res.ok) {
-        const d = await res.json()
-        throw new Error(d.detail || d.error || 'Failed to save')
+        throw new Error(resBody.detail || resBody.error || 'Failed to save')
+      }
+      if (!resBody.document) {
+        throw new Error('Save failed — document not found or no changes were applied.')
       }
 
       // PATCH response does not embed the profiles join, so we reconstruct
@@ -102,9 +116,13 @@ export default function EditConsignmentDetailsModal({ order, onClose, onSaved })
         } catch { /* non-blocking — UI will still show correct data on next full refresh */ }
       }
 
+      // Use the saved metadata from the DB response to ensure UI is in sync
+      const savedConsignment = resBody.document.metadata?.consignment || newConsignment
+
       onSaved({
         ...order,
-        metadata: { ...(order.metadata || {}), consignment: newConsignment },
+        ...resBody.document,
+        metadata: { ...(order.metadata || {}), ...resBody.document.metadata, consignment: savedConsignment },
         consignment_agent_id: agentId,
         consignment_agent: resolvedAgent,
       })
