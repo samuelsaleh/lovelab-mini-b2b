@@ -50,6 +50,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
     address: existingConsignment.recipient_address || '',
   })
 
+  const [step, setStep] = useState(1) // 1 = quantities, 2 = client details
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -85,17 +86,32 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
-  const validate = () => {
+  const validateQuantities = () => {
     for (const item of items) {
       const missing = item.sentQty - item.cameBack
       if (item.soldQty > missing) {
         return `Sold qty cannot exceed missing qty for row ${item.row.no}`
       }
     }
+    return null
+  }
+
+  const validateClient = () => {
     if (anySold && !client.name.trim()) {
       return 'Please enter the client name for the invoice'
     }
     return null
+  }
+
+  const handleNextStep = () => {
+    const err = validateQuantities()
+    if (err) { setError(err); return }
+    setError(null)
+    if (anySold) {
+      setStep(2)
+    } else {
+      handleConfirm()
+    }
   }
 
   // ── Format ────────────────────────────────────────────────────────────────
@@ -106,7 +122,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleConfirm = async () => {
-    const validationError = validate()
+    const validationError = validateClient()
     if (validationError) { setError(validationError); return }
 
     setSaving(true)
@@ -260,12 +276,29 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${colors.lineGray}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: colors.inkPlum }}>
-                Reconcile / Mark as Sold
-              </h2>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>
-                {order.client_name || order.file_name || 'Consignment order'}{' '}—{' '}
-                confirm what came back, what was sold, and what was lost
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: colors.inkPlum }}>
+                  {step === 1 ? 'Reconcile / Mark as Sold' : 'Confirm Customer Details'}
+                </h2>
+                {anySold && (
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[1, 2].map(n => (
+                      <div key={n} style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: step >= n ? colors.inkPlum : '#e5e5e5',
+                        color: step >= n ? '#fff' : '#aaa',
+                        fontSize: 10, fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>{n}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#888' }}>
+                {step === 1
+                  ? `${order.client_name || order.file_name || 'Consignment order'} — confirm what came back, what was sold, and what was lost`
+                  : 'Review and confirm the customer details for the B2B invoice before it is created.'
+                }
               </div>
             </div>
             <button
@@ -280,14 +313,51 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
         {/* ── Scrollable body ─────────────────────────────────────────── */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
 
-          {items.length === 0 ? (
+          {/* ── Step 2: Client details ── */}
+          {step === 2 && (
+            <div>
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: '#faf5ff', border: `1px solid ${colors.inkPlum}25`, borderRadius: 10, fontSize: 12, color: '#555' }}>
+                <strong style={{ color: colors.inkPlum }}>Invoice summary:</strong>
+                {' '}{items.reduce((a, i) => a + i.soldQty, 0)} item{items.reduce((a, i) => a + i.soldQty, 0) !== 1 ? 's' : ''} sold · <strong>{fmt(soldValue)}</strong>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={lbl}>Full name *</label>
+                  <input style={inputText} value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))} placeholder="Jane Smith" autoFocus />
+                </div>
+                <div>
+                  <label style={lbl}>Company</label>
+                  <input style={inputText} value={client.company} onChange={e => setClient(c => ({ ...c, company: e.target.value }))} placeholder="Bijouterie Martin" />
+                </div>
+                <div>
+                  <label style={lbl}>Email</label>
+                  <input type="email" style={inputText} value={client.email} onChange={e => setClient(c => ({ ...c, email: e.target.value }))} placeholder="jane@example.com" />
+                </div>
+                <div>
+                  <label style={lbl}>Phone</label>
+                  <input style={inputText} value={client.phone} onChange={e => setClient(c => ({ ...c, phone: e.target.value }))} placeholder="+33 6 00 00 00 00" />
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label style={lbl}>Address</label>
+                <input style={inputText} value={client.address} onChange={e => setClient(c => ({ ...c, address: e.target.value }))} placeholder="12 Rue de la Paix, Paris" />
+              </div>
+              {error && (
+                <div style={{ marginTop: 14, padding: '9px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 1 && items.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>📦</div>
               No item rows found on this order.
               <br />
               Click <strong>Confirm Return</strong> to mark it as returned.
             </div>
-          ) : (
+          ) : step === 1 ? (
             <>
               {/* Legend */}
               <div style={{ marginBottom: 14, fontSize: 12, color: '#888', background: '#faf8fc', borderRadius: 8, padding: '8px 12px', lineHeight: 1.5 }}>
@@ -417,41 +487,10 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
                 </div>
               )}
 
-              {/* Client info — only shown when something was sold */}
-              {anySold && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, marginBottom: 12 }}>
-                    Client for the B2B invoice
-                    <span style={{ fontSize: 11, fontWeight: 400, color: '#999', marginLeft: 8 }}>pre-filled from the order</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div>
-                      <label style={lbl}>Full name *</label>
-                      <input style={inputText} value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))} placeholder="Jane Smith" />
-                    </div>
-                    <div>
-                      <label style={lbl}>Company</label>
-                      <input style={inputText} value={client.company} onChange={e => setClient(c => ({ ...c, company: e.target.value }))} placeholder="Bijouterie Martin" />
-                    </div>
-                    <div>
-                      <label style={lbl}>Email</label>
-                      <input type="email" style={inputText} value={client.email} onChange={e => setClient(c => ({ ...c, email: e.target.value }))} placeholder="jane@example.com" />
-                    </div>
-                    <div>
-                      <label style={lbl}>Phone</label>
-                      <input style={inputText} value={client.phone} onChange={e => setClient(c => ({ ...c, phone: e.target.value }))} placeholder="+33 6 00 00 00 00" />
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    <label style={lbl}>Address</label>
-                    <input style={inputText} value={client.address} onChange={e => setClient(c => ({ ...c, address: e.target.value }))} placeholder="12 Rue de la Paix, Paris" />
-                  </div>
-                </div>
-              )}
             </>
-          )}
+          ) : null}
 
-          {error && (
+          {step === 1 && error && (
             <div style={{ marginTop: 14, padding: '9px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>
               {error}
             </div>
@@ -464,6 +503,19 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
           display: 'flex', gap: 10, justifyContent: 'flex-end',
           flexShrink: 0, background: '#faf8fc',
         }}>
+          {step === 2 && (
+            <button
+              onClick={() => { setStep(1); setError(null) }}
+              disabled={saving}
+              style={{
+                padding: '10px 18px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
+                background: '#fff', color: '#555', fontSize: 13, cursor: 'pointer',
+                fontFamily: fonts.body, fontWeight: 600, marginRight: 'auto',
+              }}
+            >
+              ← Back
+            </button>
+          )}
           <button
             onClick={onClose}
             disabled={saving}
@@ -475,19 +527,35 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
           >
             Cancel
           </button>
-          <button
-            onClick={handleConfirm}
-            disabled={saving}
-            style={{
-              padding: '10px 24px', borderRadius: 8, border: 'none',
-              background: saving ? '#aaa' : '#dc2626',
-              color: '#fff', fontSize: 13, fontWeight: 700,
-              cursor: saving ? 'wait' : 'pointer', fontFamily: fonts.body,
-              display: 'flex', alignItems: 'center', gap: 7,
-            }}
-          >
-            {saving ? 'Saving…' : anySold ? `✓ Confirm Return + Invoice (${fmt(soldValue)})` : '✓ Confirm Return'}
-          </button>
+          {step === 1 ? (
+            <button
+              onClick={handleNextStep}
+              disabled={saving}
+              style={{
+                padding: '10px 24px', borderRadius: 8, border: 'none',
+                background: colors.inkPlum,
+                color: '#fff', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', fontFamily: fonts.body,
+                display: 'flex', alignItems: 'center', gap: 7,
+              }}
+            >
+              {anySold ? `Next — Review Customer →` : '✓ Confirm Return'}
+            </button>
+          ) : (
+            <button
+              onClick={handleConfirm}
+              disabled={saving}
+              style={{
+                padding: '10px 24px', borderRadius: 8, border: 'none',
+                background: saving ? '#aaa' : '#dc2626',
+                color: '#fff', fontSize: 13, fontWeight: 700,
+                cursor: saving ? 'wait' : 'pointer', fontFamily: fonts.body,
+                display: 'flex', alignItems: 'center', gap: 7,
+              }}
+            >
+              {saving ? 'Saving…' : `✓ Confirm & Create Invoice (${fmt(soldValue)})`}
+            </button>
+          )}
         </div>
       </div>
     </div>
