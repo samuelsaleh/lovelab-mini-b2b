@@ -216,14 +216,22 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
           });
           if (insertErr) {
             console.error('[auth/callback] Profile migration insert error:', insertErr.message);
-          }
-
-          // Also update organization_memberships to point to the new user ID
-          if (emailProfile.organization_id) {
-            await adminSupabase
-              .from('organization_memberships')
-              .update({ user_id: user.id })
-              .eq('user_id', oldId);
+            // Restore the old profile so it isn't permanently lost
+            const { error: restoreErr } = await adminSupabase.from('profiles').insert({
+              id: oldId,
+              ...fullRow,
+            });
+            if (restoreErr) {
+              console.error('[auth/callback] CRITICAL: Could not restore old profile:', restoreErr.message);
+            }
+          } else {
+            // Only update org memberships if the new profile was created successfully
+            if (emailProfile.organization_id) {
+              await adminSupabase
+                .from('organization_memberships')
+                .update({ user_id: user.id })
+                .eq('user_id', oldId);
+            }
           }
         } catch (migrateErr) {
           console.error('[auth/callback] Profile migration error:', migrateErr.message);

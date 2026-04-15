@@ -6,7 +6,6 @@ import { fmt } from '@/lib/utils'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
 import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned, getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
-import { undoConsignmentReturnToLovelab } from '@/lib/lovelab-sync'
 
 function fmtDate(str) {
   if (!str) return '—'
@@ -125,14 +124,25 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     setMarkingId(order.id)
     setRowErrors(e => ({ ...e, [order.id]: null }))
     try {
-      // Sync with Lovelab backend first
-      await undoConsignmentReturnToLovelab(order)
-
-      // Update local storage/Supabase metadata
-      await patchConsignmentOrder(order.id, order.metadata?.consignment || {}, { returned_at: null })
-      applyUpdate(order.id, {
-        metadata: { ...(order.metadata || {}), consignment: { ...(order.metadata?.consignment || {}), returned_at: null } },
+      const syncRes = await fetch('/api/lovelab-sync/undo-return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_id: order.id }),
       })
+      if (!syncRes.ok) {
+        const body = await syncRes.json().catch(() => ({}))
+        throw new Error(body.error || `Undo failed (${syncRes.status})`)
+      }
+
+      const result = await patchConsignmentOrder(order.id, order.metadata?.consignment || {}, { returned_at: null })
+      const serverDoc = result?.document
+      if (serverDoc) {
+        applyUpdate(order.id, serverDoc)
+      } else {
+        applyUpdate(order.id, {
+          metadata: { ...(order.metadata || {}), consignment: { ...(order.metadata?.consignment || {}), returned_at: null } },
+        })
+      }
     } catch (err) {
       setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to undo' }))
     }
@@ -160,13 +170,18 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
     setMarkingId(order.id)
     setRowErrors(e => ({ ...e, [order.id]: null }))
     try {
-      await closeConsignmentAsReturned(order.id, order.metadata?.consignment || {})
-      applyUpdate(order.id, {
-        metadata: {
-          ...(order.metadata || {}),
-          consignment: { ...(order.metadata?.consignment || {}), returned_at: new Date().toISOString() },
-        },
-      })
+      const result = await closeConsignmentAsReturned(order.id, order.metadata?.consignment || {})
+      const serverDoc = result?.document
+      if (serverDoc) {
+        applyUpdate(order.id, serverDoc)
+      } else {
+        applyUpdate(order.id, {
+          metadata: {
+            ...(order.metadata || {}),
+            consignment: { ...(order.metadata?.consignment || {}), returned_at: new Date().toISOString() },
+          },
+        })
+      }
     } catch (err) {
       setRowErrors(e => ({ ...e, [order.id]: err.message || 'Failed to mark as returned' }))
     }

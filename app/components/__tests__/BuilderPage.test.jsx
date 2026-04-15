@@ -29,7 +29,7 @@ jest.mock('@/lib/api', () => ({
 
 const BuilderPage = require('../BuilderPage').default
 const { mkLine, mkColorConfig } = require('../BuilderPage')
-const { COLLECTIONS } = require('@/lib/catalog')
+const { COLLECTIONS, getPrice, getDefaultCert } = require('@/lib/catalog')
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -153,15 +153,14 @@ describe('BuilderPage — computePackTotal with minC', () => {
   // Test the exported function via the module
   it('computePackTotal multiplies by minC for M3', () => {
     // We test this indirectly by checking pack card display
-    // M3: minC=2, prices[0]=55, nylon palette has 20 colors
-    // Expected total = 55 * 20 * 2 = 2200
-    // This is a unit test of the logic; we verify the formula
+    // M3: minC=2, prices.igi[0]=65, nylon palette has 20 colors
+    // Expected total = 65 * 20 * 2 = 2600
     const col = M3
     const colorCount = 20
     const minQty = col.minC || 1
-    const lineTotal = col.prices[0]
+    const lineTotal = getPrice(col, 0, getDefaultCert(col))
     const expected = lineTotal * colorCount * minQty
-    expect(expected).toBe(2200)
+    expect(expected).toBe(2600)
   })
 })
 

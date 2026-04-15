@@ -299,8 +299,15 @@ export async function PATCH(request, { params }) {
     if (hasName) patchPayload.file_name = newName;
     if (hasChannel) patchPayload.order_channel = newChannel;
     if (hasMetadata) {
-      // Deep-merge with existing metadata so we don't wipe formState etc.
-      patchPayload.metadata = { ...(doc.metadata || {}), ...newMetadata };
+      const existing = doc.metadata || {};
+      const merged = { ...existing, ...newMetadata };
+      // Deep-merge known nested objects so a partial patch doesn't clobber sibling keys
+      for (const key of ['consignment', 'formState']) {
+        if (existing[key] && newMetadata[key] && typeof existing[key] === 'object' && typeof newMetadata[key] === 'object') {
+          merged[key] = { ...existing[key], ...newMetadata[key] };
+        }
+      }
+      patchPayload.metadata = merged;
     }
     if (newConsignmentAgentId !== undefined) {
       patchPayload.consignment_agent_id = newConsignmentAgentId || null;

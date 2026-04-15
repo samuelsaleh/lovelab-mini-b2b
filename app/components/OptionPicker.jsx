@@ -2,6 +2,32 @@
 
 import { useState, useCallback } from 'react'
 import { colors } from '@/lib/styles'
+import { CORD_COLORS } from '@/lib/catalog'
+import { isLight } from '@/lib/utils'
+
+const COLOR_SWATCH_BY_NAME = (() => {
+  const map = {}
+  Object.values(CORD_COLORS || {}).forEach((palette) => {
+    if (!Array.isArray(palette)) return
+    palette.forEach((entry) => {
+      if (!entry?.n || !entry?.h) return
+      map[entry.n.toLowerCase()] = entry.h
+    })
+  })
+  return map
+})()
+
+function getColorHex(choice) {
+  if (!choice) return null
+  const hex = COLOR_SWATCH_BY_NAME[String(choice).trim().toLowerCase()]
+  return typeof hex === 'string' ? hex : null
+}
+
+function isColorOption(opt) {
+  const key = String(opt?.key || '').toLowerCase()
+  const label = String(opt?.label || '').toLowerCase()
+  return key.includes('color') || label.includes('color')
+}
 
 /**
  * OptionPicker — renders interactive option chips from AI "options" data.
@@ -14,27 +40,34 @@ import { colors } from '@/lib/styles'
  *  - disabled?: boolean  (true while waiting for AI response)
  */
 export default function OptionPicker({ options, onSend, disabled }) {
-  // selections keyed by option.key → string (single) or string[] (multi)
+  const getMultiLimit = useCallback((opt) => {
+    const numericMulti = Number(opt?.multi)
+    if (Number.isFinite(numericMulti) && numericMulti > 1) return numericMulti
+    if (isColorOption(opt)) return Infinity
+    return 1
+  }, [])
+
+  // selections keyed by option.key -> string (single) or string[] (multi)
   const [selections, setSelections] = useState(() => {
     const init = {}
     for (const opt of options) {
-      init[opt.key] = (opt.multi && opt.multi > 1) ? [] : null
+      init[opt.key] = getMultiLimit(opt) > 1 ? [] : null
     }
     return init
   })
 
-  const toggle = useCallback((key, value, multi) => {
+  const toggle = useCallback((key, value, limit) => {
     setSelections((prev) => {
       const copy = { ...prev }
-      if (multi && multi > 1) {
+      if (limit > 1) {
         // Multi-select: toggle in/out of array
         const arr = Array.isArray(copy[key]) ? [...copy[key]] : []
         const idx = arr.indexOf(value)
         if (idx >= 0) {
           arr.splice(idx, 1)
         } else {
-          // Only add if under limit
-          if (arr.length < multi) {
+          // Only add if under limit (Infinity means unrestricted)
+          if (arr.length < limit) {
             arr.push(value)
           }
         }
@@ -50,8 +83,13 @@ export default function OptionPicker({ options, onSend, disabled }) {
   // Check if all categories have selections
   const allSelected = options.every((opt) => {
     const val = selections[opt.key]
-    if (opt.multi && opt.multi > 1) {
-      return Array.isArray(val) && val.length === opt.multi
+    const multiLimit = getMultiLimit(opt)
+    if (multiLimit > 1) {
+      // Unrestricted multi-select (colors): require at least one pick.
+      if (!Number.isFinite(multiLimit)) {
+        return Array.isArray(val) && val.length > 0
+      }
+      return Array.isArray(val) && val.length === multiLimit
     }
     return val !== null && val !== undefined
   })
@@ -74,9 +112,11 @@ export default function OptionPicker({ options, onSend, disabled }) {
   return (
     <div style={{ marginTop: 10 }}>
       {options.map((opt) => {
-        const isMulti = opt.multi && opt.multi > 1
+        const multiLimit = getMultiLimit(opt)
+        const isMulti = multiLimit > 1
         const currentArr = isMulti ? (Array.isArray(selections[opt.key]) ? selections[opt.key] : []) : null
         const currentSingle = !isMulti ? selections[opt.key] : null
+        const isUnrestrictedMulti = isMulti && !Number.isFinite(multiLimit)
 
         return (
           <div key={opt.key} style={{ marginBottom: 12 }}>
@@ -97,11 +137,13 @@ export default function OptionPicker({ options, onSend, disabled }) {
                 <span style={{
                   fontSize: 9,
                   fontWeight: 500,
-                  color: currentArr.length === opt.multi ? '#27ae60' : colors.inkPlum,
+                  color: isUnrestrictedMulti
+                    ? (currentArr.length > 0 ? '#27ae60' : colors.inkPlum)
+                    : (currentArr.length === multiLimit ? '#27ae60' : colors.inkPlum),
                   textTransform: 'none',
                   letterSpacing: 0,
                 }}>
-                  ({currentArr.length}/{opt.multi})
+                  {isUnrestrictedMulti ? `(${currentArr.length} selected)` : `(${currentArr.length}/${multiLimit})`}
                 </span>
               )}
             </div>
@@ -112,12 +154,13 @@ export default function OptionPicker({ options, onSend, disabled }) {
                 const active = isMulti
                   ? currentArr.includes(choice)
                   : currentSingle === choice
-                const atLimit = isMulti && currentArr.length >= opt.multi && !active
+                const atLimit = isMulti && Number.isFinite(multiLimit) && currentArr.length >= multiLimit && !active
+                const swatchHex = isColorOption(opt) ? getColorHex(choice) : null
 
                 return (
                   <button
                     key={choice}
-                    onClick={() => !atLimit && toggle(opt.key, choice, opt.multi)}
+                    onClick={() => !atLimit && toggle(opt.key, choice, multiLimit)}
                     disabled={disabled}
                     style={{
                       padding: '6px 12px',
@@ -143,7 +186,22 @@ export default function OptionPicker({ options, onSend, disabled }) {
                       opacity: disabled ? 0.5 : 1,
                     }}
                   >
-                    {active && '✓ '}{choice}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: swatchHex ? 6 : 0 }}>
+                      {swatchHex && (
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: swatchHex,
+                            border: isLight(swatchHex) ? '1px solid rgba(0,0,0,.25)' : '1px solid rgba(0,0,0,.08)',
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      <span>{active && '✓ '}{choice}</span>
+                    </span>
                   </button>
                 )
               })}

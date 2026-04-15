@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
-import { patchConsignmentOrder, getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
+import { getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
 
 /**
  * ReconcileConsignmentModal
@@ -29,6 +29,7 @@ import { patchConsignmentOrder, getConsignmentRows, rowDescription, rowSpecs } f
  */
 export default function ReconcileConsignmentModal({ order, onClose, onConfirmed }) {
   const existingConsignment = order?.metadata?.consignment || {}
+  const existingFormState = order?.metadata?.formState || {}
 
   // Each entry: { row, sentQty, cameBack, soldQty }
   // getConsignmentRows is inlined here — sourceRows only seeds the initial state once
@@ -43,11 +44,14 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
 
   // Client info for the auto-created B2B invoice (pre-filled from order)
   const [client, setClient] = useState({
-    name: order.client_name || existingConsignment.recipient_name || '',
-    company: order.client_company || existingConsignment.recipient_company || '',
-    email: existingConsignment.recipient_email || '',
-    phone: existingConsignment.recipient_phone || '',
-    address: existingConsignment.recipient_address || '',
+    contactName: existingFormState.contactName || order.client_name || existingConsignment.recipient_name || '',
+    companyName: existingFormState.companyName || order.client_company || existingConsignment.recipient_company || '',
+    email: existingFormState.email || existingConsignment.recipient_email || '',
+    phone: existingFormState.phone || existingConsignment.recipient_phone || '',
+    addressLine1: existingFormState.addressLine1 || existingConsignment.recipient_address || '',
+    addressLine2: existingFormState.addressLine2 || '',
+    country: existingFormState.country || '',
+    vatNumber: existingFormState.vatNumber || '',
   })
 
   const [step, setStep] = useState(1) // 1 = quantities, 2 = client details
@@ -97,8 +101,21 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
   }
 
   const validateClient = () => {
-    if (anySold && !client.name.trim()) {
-      return 'Please enter the client name for the invoice'
+    if (!anySold) return null
+    if (!client.contactName.trim()) {
+      return 'Please enter the contact name for the B2B invoice'
+    }
+    if (!client.companyName.trim()) {
+      return 'Please enter the company name for the B2B invoice'
+    }
+    if (!client.addressLine1.trim()) {
+      return 'Please enter the billing street address for the B2B invoice'
+    }
+    if (!client.addressLine2.trim()) {
+      return 'Please enter city / ZIP for the B2B invoice'
+    }
+    if (!client.country.trim()) {
+      return 'Please enter the billing country for the B2B invoice'
     }
     return null
   }
@@ -144,73 +161,34 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
         }
       })
 
-      let invoiceId = null
+      const res = await fetch('/api/consignment/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          reconciliation,
+          client: anySold ? client : null,
+          sold_value: soldValue,
+        }),
+      })
 
-      // Step 1: create B2B invoice for sold items
-      if (anySold) {
-        const soldRows = items
-          .filter(i => i.soldQty > 0)
-          .map(i => ({
-            ...i.row,
-            quantity: String(i.soldQty),
-            total: i.soldQty > 0 && i.row.unitPrice
-              ? String(Math.round(i.soldQty * Number(i.row.unitPrice) * 100) / 100)
-              : i.row.total,
-          }))
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.detail || data?.error || 'Reconciliation failed')
 
-        const invoiceMetadata = {
-          formState: {
-            ...(order.metadata?.formState || {}),
-            rows: soldRows,
-            companyName: client.company,
-            contactName: client.name,
-            email: client.email,
-            phone: client.phone,
-            addressLine1: client.address,
-          },
-          consignment_source_id: order.id,
-          auto_created: true,
-        }
-
-        const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        const invoiceRes = await fetch('/api/documents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            client_name: client.name || order.client_name || 'Client',
-            client_company: client.company || null,
-            document_type: 'order',
-            file_name: `Invoice — ${client.name || order.client_name || 'Client'} ${dateStr}`,
-            file_path: `auto-invoices/consignment-${order.id}-${Date.now()}.pdf`,
-            total_amount: soldValue,
-            metadata: invoiceMetadata,
-            order_channel: 'b2b',
-          }),
-        })
-
-        const invoiceData = await invoiceRes.json()
-        if (!invoiceRes.ok) throw new Error(invoiceData?.detail || invoiceData?.error || 'Failed to create invoice')
-        invoiceId = invoiceData.document?.id || null
-      }
-
-      // Step 2: PATCH consignment order as returned
-      const consignmentPatch = {
-        returned_at: new Date().toISOString(),
-        reconciliation,
-        ...(invoiceId ? { invoice_document_id: invoiceId } : {}),
-      }
-
-      await patchConsignmentOrder(order.id, existingConsignment, consignmentPatch)
-
-      const updatedOrder = {
+      const updatedOrder = data.document || {
         ...order,
         metadata: {
           ...(order.metadata || {}),
-          consignment: { ...existingConsignment, ...consignmentPatch },
+          consignment: {
+            ...existingConsignment,
+            returned_at: new Date().toISOString(),
+            reconciliation,
+            ...(data.invoice_id ? { invoice_document_id: data.invoice_id } : {}),
+          },
         },
       }
 
-      onConfirmed({ updatedOrder, invoiceId })
+      onConfirmed({ updatedOrder, invoiceId: data.invoice_id })
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
     }
@@ -322,12 +300,12 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={lbl}>Full name *</label>
-                  <input style={inputText} value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))} placeholder="Jane Smith" autoFocus />
+                  <label style={lbl}>Contact name *</label>
+                  <input style={inputText} value={client.contactName} onChange={e => setClient(c => ({ ...c, contactName: e.target.value }))} placeholder="Jane Smith" autoFocus />
                 </div>
                 <div>
-                  <label style={lbl}>Company</label>
-                  <input style={inputText} value={client.company} onChange={e => setClient(c => ({ ...c, company: e.target.value }))} placeholder="Bijouterie Martin" />
+                  <label style={lbl}>Company name *</label>
+                  <input style={inputText} value={client.companyName} onChange={e => setClient(c => ({ ...c, companyName: e.target.value }))} placeholder="Bijouterie Martin" />
                 </div>
                 <div>
                   <label style={lbl}>Email</label>
@@ -337,10 +315,22 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
                   <label style={lbl}>Phone</label>
                   <input style={inputText} value={client.phone} onChange={e => setClient(c => ({ ...c, phone: e.target.value }))} placeholder="+33 6 00 00 00 00" />
                 </div>
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <label style={lbl}>Address</label>
-                <input style={inputText} value={client.address} onChange={e => setClient(c => ({ ...c, address: e.target.value }))} placeholder="12 Rue de la Paix, Paris" />
+                <div>
+                  <label style={lbl}>Street address *</label>
+                  <input style={inputText} value={client.addressLine1} onChange={e => setClient(c => ({ ...c, addressLine1: e.target.value }))} placeholder="12 Rue de la Paix" />
+                </div>
+                <div>
+                  <label style={lbl}>City / ZIP *</label>
+                  <input style={inputText} value={client.addressLine2} onChange={e => setClient(c => ({ ...c, addressLine2: e.target.value }))} placeholder="75002 Paris" />
+                </div>
+                <div>
+                  <label style={lbl}>Country *</label>
+                  <input style={inputText} value={client.country} onChange={e => setClient(c => ({ ...c, country: e.target.value }))} placeholder="France" />
+                </div>
+                <div>
+                  <label style={lbl}>VAT number</label>
+                  <input style={inputText} value={client.vatNumber} onChange={e => setClient(c => ({ ...c, vatNumber: e.target.value }))} placeholder="FR12345678901" />
+                </div>
               </div>
               {error && (
                 <div style={{ marginTop: 14, padding: '9px 12px', background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>

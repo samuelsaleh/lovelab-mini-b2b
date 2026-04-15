@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -33,6 +33,7 @@ export function mkColorConfig(colorName, minC = 1) {
     thickness: null,
     qty: minC,
     priceOverride: null,
+    certType: null,
   }
 }
 
@@ -71,87 +72,87 @@ const btnGhost = {
 // Pre-built order templates based on curated consignment selections.
 // Each pack stores formRows (order-form row format) that get converted to builder lines on apply.
 const PACK1_ROWS = [
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: '', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: '', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '50' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '50' },
-  { collection: 'MULTI FIVE', carat: '0.25', bpColor: 'White', setting: '', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '85', shape: '' },
-  { collection: 'MULTI FIVE', carat: '0.50', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '120', shape: '' },
-  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '75', shape: '' },
-  { collection: 'MULTI FOUR', carat: '0.40', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '100', shape: '' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: '', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: '', colorCord: 'Gold', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'MULTI FIVE', carat: '0.25', bpColor: 'White', setting: '', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI FIVE', carat: '0.50', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '130', shape: '', cert: 'IGI' },
+  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '', cert: 'IGI' },
+  { collection: 'MULTI FOUR', carat: '0.40', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '110', shape: '', cert: 'IGI' },
 ]
 
 const PACK2_ROWS = [
-  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Marquise', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '90' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Pear', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '90' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Oval', bpColor: 'Yellow', setting: 'Prong', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '90' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '145' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '90' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '145' },
-  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '90' },
-  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Emerald', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '180' },
-  { collection: 'MATCHY FANCY', carat: '1.00', shape: 'Pear', bpColor: 'YY', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '290' },
-  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Heart', bpColor: 'WY', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '180' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Marquise', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Pear', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Oval', bpColor: 'Yellow', setting: 'Prong', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '155', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Heart', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '155', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Emerald', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '200', cert: 'IGI' },
+  { collection: 'MATCHY FANCY', carat: '1.00', shape: 'Pear', bpColor: 'YY', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '310', cert: 'IGI' },
+  { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Heart', bpColor: 'WY', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '200', cert: 'IGI' },
 ]
 
 const _p3Colors8a = ['Red', 'Bordeaux', 'Dark Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey']
 const _p3Colors8b = ['Bordeaux', 'Dark Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey', 'Red']
 const _p3Colors8c = ['Bordeaux', 'Light Pink', 'Gold', 'Navy Blue', 'Lilac', 'Black', 'Silver Grey', 'Red']
 const PACK3_ROWS = [
-  ...CORD_COLORS.nylon.map(c => ({ collection: 'CUTY', carat: '0.05', bpColor: 'White', size: 'M', colorCord: c.n, quantity: '1', unitPrice: '20', shape: '', setting: '' })),
-  ..._p3Colors8a.map(c => ({ collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', size: 'M', colorCord: c, quantity: '1', unitPrice: '30', shape: '', setting: '' })),
-  ..._p3Colors8b.map(c => ({ collection: 'CUBIX', carat: '0.05', bpColor: 'White', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '24', shape: '', setting: '' })),
-  ..._p3Colors8c.map(c => ({ collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '34', shape: '', setting: '' })),
-  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'PPP', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '55', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '55', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '85', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '85', shape: '' },
-  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '' },
+  ...CORD_COLORS.nylon.map(c => ({ collection: 'CUTY', carat: '0.05', bpColor: 'White', size: 'M', colorCord: c.n, quantity: '1', unitPrice: '24', shape: '', setting: '', cert: 'In-house' })),
+  ..._p3Colors8a.map(c => ({ collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', size: 'M', colorCord: c, quantity: '1', unitPrice: '34', shape: '', setting: '', cert: 'In-house' })),
+  ..._p3Colors8b.map(c => ({ collection: 'CUBIX', carat: '0.05', bpColor: 'White', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '24', shape: '', setting: '', cert: 'In-house' })),
+  ..._p3Colors8c.map(c => ({ collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', size: 'S/M', colorCord: c, quantity: '1', unitPrice: '34', shape: '', setting: '', cert: 'In-house' })),
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'PPP', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
 ]
 
 const PACKS = [
   {
     id: 'pack-1',
     label: 'Pack 1',
-    fixedTotal: 880,
+    fixedTotal: 970,
     description: [
       'SHAPY SHINE FANCY — 0.10 ct, Bezel, 5 shapes',
       'MULTI FIVE — 0.25 & 0.50 ct',
       'MULTI FOUR — 0.20 & 0.40 ct',
     ],
-    budget: '€50 – €120/bracelet',
+    budget: '€55 – €130/bracelet',
     formRows: PACK1_ROWS,
   },
   {
     id: 'pack-2',
     label: 'Pack 2',
-    fixedTotal: 1390,
+    fixedTotal: 1520,
     description: [
       'SHAPY SHINE FANCY — 0.30 & 0.50 ct, 5 shapes',
       'MATCHY FANCY — 0.60 & 1.00 ct, 3 shapes',
     ],
-    budget: '€90 – €290/bracelet',
+    budget: '€100 – €310/bracelet',
     formRows: PACK2_ROWS,
   },
   {
     id: 'pack-3',
     label: 'Pack 3',
-    fixedTotal: 1664,
+    fixedTotal: 1856,
     description: [
-      'CUTY — 0.05 & 0.10 ct, size M',
-      'CUBIX — 0.05 & 0.10 ct, size S/M',
-      'MULTI THREE — 0.15 & 0.30 ct, mixed housing, size M',
+      'CUTY — 0.05 & 0.10 ct, size M (In-house)',
+      'CUBIX — 0.05 & 0.10 ct, size S/M (In-house)',
+      'MULTI THREE — 0.15 & 0.30 ct, mixed housing, size M (IGI)',
     ],
-    budget: '€20 – €85/bracelet',
+    budget: '€24 – €95/bracelet',
     formRows: PACK3_ROWS,
   },
 ]
@@ -165,7 +166,8 @@ function computePackTotal(pack) {
     if (!col) return sum
     const colorCount = (CORD_COLORS[col.cord] || []).length
     const minQty = col.minC || 1
-    const lineTotal = line.caratIndices.reduce((s, ci) => s + (col.prices[ci] || 0), 0)
+    const cert = getDefaultCert(col)
+    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, cert), 0)
     return sum + lineTotal * colorCount * minQty
   }, 0)
 }
@@ -405,7 +407,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       } else {
         line.colorConfigs.forEach((cfg, idx) => {
           const caratLabel = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] + 'ct' : 'no carat'
-          const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+          const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType) : 0
           parts.push(`  ${idx + 1}. ${cfg.colorName} | ${caratLabel} | ${cfg.housing || 'no housing'} | ${cfg.size || 'no size'} | qty:${cfg.qty} | €${price * cfg.qty}`)
         })
       }
@@ -921,8 +923,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     ...COLLECTIONS.filter(c => !selectedCollections.includes(c.id)),
                   ].map(col => {
                     const isSelected = selectedCollections.includes(col.id)
-                    const priceMin = `€${col.prices[0]}`
-                    const priceMax = col.prices.length > 1 ? ` – €${col.prices[col.prices.length - 1]}` : ''
+                    const defaultCert = getDefaultCert(col)
+                    const priceMin = `€${getPrice(col, 0, defaultCert)}`
+                    const priceMax = col.carats.length > 1 ? ` – €${getPrice(col, col.carats.length - 1, defaultCert)}` : ''
                     const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
 
                     return (
@@ -1278,7 +1281,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             const col = COLLECTIONS.find(c => c.id === line.collectionId)
             if (!col) return null
             const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
-              const price = cfg.caratIdx !== null ? col.prices[cfg.caratIdx] : 0
+              const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType) : 0
               return sum + (cfg.qty * price)
             }, 0)
             const pieces = line.colorConfigs.reduce((sum, cfg) => sum + cfg.qty, 0)

@@ -21,6 +21,7 @@ import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
 import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
 import PackshotGallery from './components/PackshotGallery'
+import { findPackshot } from '@/lib/packshot-lookup'
 
 import { useAuth } from './components/AuthProvider'
 import { useIsMobile } from '@/lib/useIsMobile'
@@ -378,6 +379,7 @@ export default function App() {
           }
         }
         const priceOverride = row.unitOverride != null ? row.unitOverride : null
+        const certType = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : null
         return {
           id: uniqueId(),
           colorName: row.colorCord || '',
@@ -391,6 +393,7 @@ export default function App() {
           cordType,
           thickness,
           priceOverride,
+          certType,
         }
       })
       return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
@@ -446,9 +449,13 @@ export default function App() {
       let expandedQuote = null
       if (parsed.quote && parsed.quote.lines && parsed.quote.lines.length > 0) {
         const linesByCollection = new Map()
+        const unmappedProducts = []
         for (const ql of parsed.quote.lines) {
           const colId = findCollectionId(ql.product)
-          if (!colId) continue
+          if (!colId) {
+            unmappedProducts.push(ql.product || 'Unknown')
+            continue
+          }
           if (!linesByCollection.has(colId)) linesByCollection.set(colId, [])
           linesByCollection.get(colId).push(ql)
         }
@@ -474,6 +481,9 @@ export default function App() {
         setLines(newLines)
         expandedQuote = calculateQuote(newLines)
         setCurQuote(expandedQuote)
+        if (unmappedProducts.length > 0) {
+          parsed.message = (parsed.message || '') + `\n\n⚠️ Could not map ${unmappedProducts.length} product(s) to the catalog: ${unmappedProducts.join(', ')}. These were skipped.`
+        }
       } else if (parsed.quote) {
         setCurQuote(parsed.quote)
         expandedQuote = parsed.quote
@@ -828,6 +838,44 @@ export default function App() {
                         {m.quote && (
                           <div style={{ marginTop: 8 }}>
                             <MiniQuote q={m.quote} onView={() => { setCurQuote(m.quote); setShowQuote(true) }} />
+                            {Array.isArray(m.quote.lines) && m.quote.lines.length > 0 && (
+                              <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+                                {m.quote.lines.slice(0, 6).map((ln, idx) => {
+                                  const color = ln.colorName || ln.color || (Array.isArray(ln.colors) ? ln.colors[0] : null)
+                                  const colId = findCollectionId(ln.product)
+                                  const imageUrl = colId ? findPackshot(colId, { color, housing: ln.housing, shape: ln.shape }) : null
+                                  if (!imageUrl) return null
+                                  return (
+                                    <div key={`${ln.product}-${ln.carat || 'na'}-${color || 'na'}-${idx}`} style={{
+                                      border: '1px solid #ece6ef',
+                                      background: '#fff',
+                                      borderRadius: 8,
+                                      padding: 6,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: 4,
+                                    }}>
+                                      <img
+                                        src={imageUrl}
+                                        alt={`${ln.product || 'Product'} ${color || ''}`.trim()}
+                                        style={{
+                                          width: '100%',
+                                          height: 88,
+                                          objectFit: 'contain',
+                                          borderRadius: 6,
+                                          background: '#faf8fc',
+                                        }}
+                                      />
+                                      <div style={{ fontSize: 10, color: '#666', lineHeight: 1.3 }}>
+                                        <strong style={{ color: '#4b3750' }}>{ln.product || 'Item'}</strong>
+                                        {ln.carat ? ` · ${ln.carat}ct` : ''}
+                                        {color ? ` · ${color}` : ''}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                               <button onClick={handleSuggestFillOrder} disabled={descLoading} style={{ width: '100%', padding: mobile ? 12 : 8, borderRadius: 8, border: `1px solid ${colors.luxeGold}`, background: '#fff', fontSize: mobile ? 12 : 11, fontWeight: 600, cursor: descLoading ? 'default' : 'pointer', color: colors.luxeGold, fontFamily: 'inherit', opacity: descLoading ? 0.6 : 1, minHeight: mobile ? 44 : 'auto' }}>
                                 {t('ai.suggestFill')}
@@ -939,7 +987,38 @@ export default function App() {
                     <span style={{ fontSize: mobile ? 10 : 9, color: '#aaa', marginRight: 2 }}>{t('ai.context')}</span>
                     {aiBudget && <span style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>€{aiBudget}</span>}
                     {aiCollections.map((id) => { const col = COLLECTIONS.find((c) => c.id === id); return col ? <span key={id} style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{col.label}</span> : null })}
-                    {aiColors.length > 0 && <span style={{ fontSize: mobile ? 10 : 9, padding: mobile ? '4px 10px' : '2px 7px', borderRadius: 8, background: '#f0edf2', color: colors.inkPlum, fontWeight: 600 }}>{aiColors.length} color{aiColors.length !== 1 ? 's' : ''}</span>}
+                    {aiColors.map((colorName) => {
+                      const colorDef = aiAvailableColors.find((c) => c.n === colorName)
+                      return (
+                        <span
+                          key={colorName}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: mobile ? 10 : 9,
+                            padding: mobile ? '4px 10px' : '2px 7px',
+                            borderRadius: 8,
+                            background: '#f0edf2',
+                            color: colors.inkPlum,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span
+                            aria-hidden
+                            style={{
+                              width: mobile ? 9 : 8,
+                              height: mobile ? 9 : 8,
+                              borderRadius: '50%',
+                              background: colorDef?.h || '#bbb',
+                              border: '1px solid rgba(0,0,0,.14)',
+                              flexShrink: 0,
+                            }}
+                          />
+                          {colorName}
+                        </span>
+                      )
+                    })}
                   </div>
                 )}
               </div>

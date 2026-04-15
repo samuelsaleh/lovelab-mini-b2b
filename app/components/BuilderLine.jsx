@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef, useState } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, getPrice } from '@/lib/catalog'
 import { isLight } from '@/lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -179,7 +179,7 @@ const ColorConfigCard = ({ cfg, col, palette, onUpdate, onRemove, onDuplicate, d
                       })}
                       style={tag(cfg.caratIdx === ci)}
                     >
-                      {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
+                      {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{getPrice(col, ci, cfg?.certType)}
                     </button>
                   ))}
                 </div>
@@ -715,7 +715,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
                           })}
                           style={tag(sharedSettings.caratIdx === ci)}
                         >
-                          {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{col.prices[ci]}
+                          {ct}ct <span style={{ opacity: 0.4, margin: '0 3px' }}>|</span> €{getPrice(col, ci, null)}
                         </button>
                       ))}
                     </div>

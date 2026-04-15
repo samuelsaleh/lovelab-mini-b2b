@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -22,6 +22,7 @@ const COLUMNS = [
   { key: 'photo', labelKey: 'order.columns.photo', width: 52 },
   { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
   { key: 'collection', labelKey: 'order.columns.collection', width: 118 },
+  { key: 'cert', labelKey: 'order.columns.cert', width: 56 },
   { key: 'carat', labelKey: 'order.columns.carat', width: 58 },
   { key: 'shape', labelKey: 'order.columns.shape', width: 72 },
   { key: 'setting', labelKey: 'order.columns.setting', width: 60 },
@@ -33,7 +34,7 @@ const COLUMNS = [
   { key: 'total', labelKey: 'order.columns.total', width: 84 },
 ]
 
-const FILL_KEYS = ['quantity', 'collection', 'carat', 'shape', 'setting', 'bpColor', 'size', 'material', 'colorCord', 'unitPrice']
+const FILL_KEYS = ['quantity', 'collection', 'cert', 'carat', 'shape', 'setting', 'bpColor', 'size', 'material', 'colorCord', 'unitPrice']
 
 function isRowFilled(row) {
   // Show action buttons if any field has content (not just when ALL fields are filled)
@@ -49,6 +50,7 @@ function emptyRow(no) {
     no: String(no),
     quantity: '',
     collection: '',
+    cert: '',
     carat: '',
     shape: '',
     setting: '',
@@ -167,6 +169,7 @@ function prefillRows(quote) {
       no: String(rowNum++),
       quantity: qty ? String(qty) : '',
       collection: ln.product || '',
+      cert: ln.certType ? (CERT_LABELS[ln.certType] || ln.certType) : '',
       carat: ln.carat || '',
       shape: ln.shape || '',
       setting,
@@ -1016,6 +1019,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       }
       // When collection changes, reset all collection-specific fields
       if (key === 'collection') {
+        const newCol = findCollection(value)
+        next[rowIdx].cert = newCol ? (CERT_LABELS[getDefaultCert(newCol)] || '') : ''
         next[rowIdx].carat = ''
         next[rowIdx].unitPrice = ''
         next[rowIdx].total = ''
@@ -1033,16 +1038,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           next[rowIdx].bpColor = ''
         }
       }
-      // Auto-lookup unitPrice from catalog when collection or carat changes
-      if (key === 'collection' || key === 'carat') {
+      // Auto-lookup unitPrice from catalog when collection, carat, or cert changes
+      if (key === 'collection' || key === 'carat' || key === 'cert') {
         const row = next[rowIdx]
         const col = findCollection(row.collection)
         if (col) {
           const caratIdx = col.carats.findIndex(c => c === row.carat)
           if (caratIdx !== -1) {
-            next[rowIdx].unitPrice = String(col.prices[caratIdx])
+            const certKey = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : getDefaultCert(col)
+            const price = getPrice(col, caratIdx, certKey)
+            next[rowIdx].unitPrice = String(price)
             const qty = Number(row.quantity) || 0
-            if (qty) next[rowIdx].total = String(qty * col.prices[caratIdx])
+            if (qty) next[rowIdx].total = String(qty * price)
           }
         }
       }
@@ -2223,6 +2230,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         {COLUMNS.map((col) => {
                           const isPhotoCol = col.key === 'photo'
                           const isCollectionCol = col.key === 'collection'
+                          const isCertCol = col.key === 'cert'
                           const isCaratCol = col.key === 'carat'
                           const isShapeCol = col.key === 'shape'
                           const isSettingCol = col.key === 'setting'
@@ -2295,6 +2303,22 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   options={COLLECTIONS.map(c => ({ value: c.label, label: c.label }))}
                                   isPrinting={isPrinting}
                                 />
+                              ) : isCertCol && row.collection ? (
+                                (() => {
+                                  const certCol = findCollection(row.collection)
+                                  if (!certCol) return <PrintableInput value={row.cert} onChange={(e) => updateCell(globalIdx, 'cert', e.target.value)} style={inputStyle} isPrinting={isPrinting} />
+                                  const certOpts = certCol.certificate === 'both'
+                                    ? [{ value: 'IGI', label: 'IGI' }, { value: 'In-house', label: 'In-house' }]
+                                    : [{ value: CERT_LABELS[certCol.certificate], label: CERT_LABELS[certCol.certificate] }]
+                                  return (
+                                    <CellSelect
+                                      value={row.cert}
+                                      onChange={(val) => updateCell(globalIdx, 'cert', val)}
+                                      options={certOpts}
+                                      isPrinting={isPrinting}
+                                    />
+                                  )
+                                })()
                               ) : isCaratCol && rowCol ? (
                                 <CellSelect
                                   value={row.carat}
