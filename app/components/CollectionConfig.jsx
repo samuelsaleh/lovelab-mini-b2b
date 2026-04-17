@@ -185,8 +185,15 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     }
   }, [hasCordOptions, col.cord])
 
-  // Add a color
+  // Add or remove a color (toggle: clicking a selected color removes the last instance)
   const addColor = (colorName) => {
+    const existing = line.colorConfigs.filter(c => c.colorName === colorName)
+    if (existing.length > 0) {
+      // Remove the last added instance of this color
+      const lastId = existing[existing.length - 1].id
+      set({ colorConfigs: line.colorConfigs.filter(c => c.id !== lastId) })
+      return
+    }
     let newCfg = sameForAll
       ? { ...mkColorConfig(colorName, 1), ...sharedSettings }
       : mkColorConfig(colorName, 1)
@@ -1337,8 +1344,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         )}
                         <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
-                            <button onClick={() => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
-                            <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
+                            <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={qtyBtnStyle}>-</button>
+                            <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={qtyInputStyle} />
                             <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={qtyBtnStyle}>+</button>
                           </div>
                           {canFillQty && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'qty', line.colorConfigs, selectedConfigs)} />}
@@ -1576,7 +1583,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                         <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.qty')}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
-                          <button onClick={() => updateConfig(cfg.id, { qty: Math.max(col.minC || 1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
+                          <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
                           <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 44, height: 36, fontSize: 14 }} />
                           <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={mobileQtyBtnStyle}>+</button>
                         </div>
