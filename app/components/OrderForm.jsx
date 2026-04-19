@@ -15,7 +15,7 @@ import PackshotThumb from './PackshotThumb'
 
 const ROWS_PER_PAGE = 10
 const PRINT_ROWS_PER_PAGE = 14
-const PRINT_ROWS_LAST_PAGE = 9 // Fewer rows on last page to leave room for footer/signatures
+const PRINT_ROWS_LAST_PAGE = 7 // Fewer rows on last page to leave room for footer/signatures
 
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
@@ -2271,7 +2271,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           })() : null
                           const { cordType: parsedCord } = parseMaterial(row.material)
                           const effectiveCord = rowCol?.cord === 'silkBraided' ? (parsedCord || 'silk') : rowCol?.cord
-                          const cordOptions = isColorCordCol && rowCol?.cord ? (CORD_COLORS[effectiveCord] || CORD_COLORS.silk || []).map(c => ({ value: c.n, label: c.n })) : null
+                          const cordOptions = isColorCordCol && rowCol?.cord ? (CORD_COLORS[effectiveCord] || CORD_COLORS.silk || []).filter(c => !rowCol.allowedColors || rowCol.allowedColors.includes(c.n)).map(c => ({ value: c.n, label: c.n })) : null
 
                           const na = rowCol && row.collection
                           const isNA = na && (

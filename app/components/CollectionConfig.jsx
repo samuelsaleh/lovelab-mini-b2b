@@ -122,9 +122,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     hasCordOptions ? CORD_OPTIONS[col.cord][0] : null
   )
   const [selectedSilkThickness, setSelectedSilkThickness] = useState(null)
-  const palette = hasCordOptions
+  const fullPalette = hasCordOptions
     ? (CORD_COLORS[selectedCordType] || CORD_COLORS.nylon)
     : (CORD_COLORS[col.cord] || CORD_COLORS.nylon)
+  const palette = col.allowedColors
+    ? fullPalette.filter(c => col.allowedColors.includes(c.n))
+    : fullPalette
   const set = (patch) => onChange(line.uid, patch)
 
   // Defensive guard: guarantee unique ids for React keys and row actions.

@@ -40,5 +40,9 @@ coverage
 next-env.d.ts
 node_modules_corrupted/
 
+# Large image assets (served via API, not git)
+public/Packshot Folder/
+public/catalogues/
+
 # Database backups (contain production data)
 backups/

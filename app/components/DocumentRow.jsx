@@ -11,7 +11,6 @@ export default function DocumentRow({
   canEdit,
   onReEdit,
   onDuplicate,
-  onPreview,
   onDownload,
   onDelete,
   onRequestInternal,
@@ -137,16 +136,6 @@ export default function DocumentRow({
             }}
           >{t('order.duplicate') || 'Copy'}</button>
         )}
-        <button
-          onClick={() => onPreview(doc)}
-          title="Preview"
-          style={{
-            padding: mobile ? '10px 14px' : '7px 12px', borderRadius: 6,
-            border: '1px solid #e3e3e3', background: '#fff', color: '#555',
-            fontSize: 12, cursor: 'pointer', fontFamily: fonts.body,
-            minHeight: mobile ? 44 : 'auto',
-          }}
-        >View</button>
         <button
           onClick={() => onDownload(doc)}
           title="Download"

@@ -387,7 +387,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   // ── Document actions ──────────────────────────────────────────────────────
+  const downloadingRef = useRef(null)
   const downloadDocument = async (doc) => {
+    if (downloadingRef.current === doc.id) return
+    downloadingRef.current = doc.id
     try {
       const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`)
       const data = await res.json()
@@ -404,19 +407,11 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       URL.revokeObjectURL(url)
     } catch (err) {
       setErrorMsg(t('docs.downloadFailed') + ': ' + err.message)
+    } finally {
+      downloadingRef.current = null
     }
   }
 
-  const previewDocument = async (doc) => {
-    try {
-      const res = await fetch(`/api/documents/preview?id=${encodeURIComponent(doc.id)}`)
-      const data = await res.json()
-      if (!res.ok || data.error) throw new Error(data.error || 'Failed to get preview URL')
-      window.open(data.signedUrl, '_blank')
-    } catch (err) {
-      setErrorMsg(err.message)
-    }
-  }
 
   const requestDelete = (doc) => setConfirmDelete(doc)
 
@@ -852,7 +847,6 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 canEdit={canEditDoc(doc)}
                 onReEdit={onReEdit}
                 onDuplicate={onDuplicate}
-                onPreview={previewDocument}
                 onDownload={downloadDocument}
                 onDelete={requestDelete}
                 onRequestInternal={requestMoveToInternal}

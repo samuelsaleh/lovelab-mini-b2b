@@ -1602,122 +1602,111 @@
   ],
   "M3": [
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Bordeaux_rose_gold_0_3ct_nylon-x7uon3.png",
-      "color": "Bordeaux",
-      "housing": "RG",
-      "carat": "0.3",
-      "subgroup": "Attached"
-    },
-    {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/black.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Black_rose_gold_nylon.png",
       "color": "Black",
       "housing": "RG",
-      "carat": null,
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/gold.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Bordeaux_rose_gold_nylon.png",
+      "color": "Bordeaux",
+      "housing": "RG",
+      "subgroup": "Attached"
+    },
+    {
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Gold_rose_gold_nylon.png",
       "color": "Gold",
       "housing": "RG",
-      "carat": null,
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/red.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Navy_Blue_rose_gold_nylon.png",
+      "color": "Navy Blue",
+      "housing": "RG",
+      "subgroup": "Attached"
+    },
+    {
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Red_rose_gold_nylon.png",
       "color": "Red",
       "housing": "RG",
-      "carat": null,
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/silver.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/RG/Silver_Grey_rose_gold_nylon.png",
       "color": "Silver Grey",
       "housing": "RG",
-      "carat": null,
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Black_white_gold_0_3ct_nylon-fadnj0.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Black_white_gold_nylon.png",
       "color": "Black",
       "housing": "WG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Bordeaux_white_gold_0_3ct_nylon-fadnj0.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Bordeaux_white_gold_nylon.png",
       "color": "Bordeaux",
       "housing": "WG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Darkblue_white_gold_0_3ct_nylon-fadnj0.png.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Gold_white_gold_nylon.png",
+      "color": "Gold",
+      "housing": "WG",
+      "subgroup": "Attached"
+    },
+    {
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Navy_Blue_white_gold_nylon.png",
       "color": "Navy Blue",
       "housing": "WG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/GOLD_white_gold_0_3ct_nylon-fadnj0.png.png",
-      "color": "Gold",
-      "housing": "WG",
-      "carat": "0.3",
-      "subgroup": "Attached"
-    },
-    {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Red_white_gold_0_3ct_nylon-fadnj0.png.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Red_white_gold_nylon.png",
       "color": "Red",
       "housing": "WG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Silver_white_gold_0_3ct_nylon-fadnj0.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/WG/Silver_Grey_white_gold_nylon.png",
       "color": "Silver Grey",
       "housing": "WG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Black_yellow_gold_0_3ct_nylon-30h6pb.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Black_yellow_gold_nylon.png",
       "color": "Black",
       "housing": "YG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Bordeaux_yellow_gold_0_3ct_nylon-30h6pb.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Bordeaux_yellow_gold_nylon.png",
       "color": "Bordeaux",
       "housing": "YG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Gold_yellow_gold_0_3ct_nylon-30h6pb.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Gold_yellow_gold_nylon.png",
       "color": "Gold",
       "housing": "YG",
-      "carat": "0.3",
       "subgroup": "Attached"
     },
     {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Red_yellow_gold_0_3ct_nylon-30h6pb.png",
-      "color": "Red",
-      "housing": "YG",
-      "carat": "0.3",
-      "subgroup": "Attached"
-    },
-    {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Silver_yellow_gold_0_3ct_nylon-30h6pb.png",
-      "color": "Silver Grey",
-      "housing": "YG",
-      "carat": "0.3",
-      "subgroup": "Attached"
-    },
-    {
-      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/darkblue_yellow_gold_0_3ct_nylon-30h6pb.png",
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Navy_Blue_yellow_gold_nylon.png",
       "color": "Navy Blue",
       "housing": "YG",
-      "carat": "0.3",
+      "subgroup": "Attached"
+    },
+    {
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Red_yellow_gold_nylon.png",
+      "color": "Red",
+      "housing": "YG",
+      "subgroup": "Attached"
+    },
+    {
+      "url": "/Packshot%20Folder/Multi/Three/Three%20Attached/YG/Silver_Grey_yellow_gold_nylon.png",
+      "color": "Silver Grey",
+      "housing": "YG",
       "subgroup": "Attached"
     },
     {

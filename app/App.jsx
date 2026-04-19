@@ -314,12 +314,16 @@ export default function App() {
   }, [authLoading, user, handleReEdit])
 
   // ─── Duplicate a saved document as a new order ───
+  // Keeps product rows but clears contact info so the user fills in the new client
   const handleDuplicate = useCallback((doc) => {
     const formState = doc?.metadata?.formState
     if (!formState) return
+    const { companyName, contactName, addressLine1, addressLine2, country,
+      shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
+      vatNumber, email, phone, eventName, createdBy, ...rest } = formState
     setOrderFormQuote(null)
-    setSavedFormState(formState)
-    setEditingDocumentId(null) // no replacement — creates a new document
+    setSavedFormState(rest)
+    setEditingDocumentId(null)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
   }, [])

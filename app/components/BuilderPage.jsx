@@ -119,6 +119,47 @@ const PACK3_ROWS = [
   { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'LO', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
 ]
 
+const PACK4_ROWS = [
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Grey', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Oval', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Oval', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Emerald', bpColor: 'Yellow', setting: 'Prong', size: 'M', colorCord: 'Lilac', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Pear', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Light Pink', quantity: '1', unitPrice: '100', cert: 'IGI' },
+  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '85', shape: '', cert: 'IGI' },
+  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '85', shape: '', cert: 'IGI' },
+  { collection: 'MULTI FOUR', carat: '0.20', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '85', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: '', setting: 'LO', size: '', colorCord: 'Gold', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'WWW', setting: 'F', size: '', colorCord: 'Black', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YYY', setting: 'F', size: '', colorCord: 'Bordeaux', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Red', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Gold', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Black', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Silver Grey', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Red', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Gold', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Black', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Silver Grey', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Silver Grey', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'White', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'White', setting: '', size: 'M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '30', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'White', setting: '', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Silver Grey', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'White', setting: '', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'White', setting: '', size: 'M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
+]
+
 const PACKS = [
   {
     id: 'pack-1',
@@ -154,6 +195,20 @@ const PACKS = [
     ],
     budget: '€24 – €95/bracelet',
     formRows: PACK3_ROWS,
+  },
+  {
+    id: 'pack-4',
+    label: 'Pack 4',
+    fixedTotal: 1800,
+    description: [
+      'SHAPY SHINE FANCY — 0.10 ct Bezel + 0.30 ct Prong, 5 shapes',
+      'MULTI FOUR — 0.20 ct',
+      'MULTI THREE — 0.15 ct, mixed housing',
+      'CUBIX — 0.05 & 0.10 ct, size S/M',
+      'CUTY — 0.05 & 0.10 ct, size M',
+    ],
+    budget: '€30 – €100/bracelet',
+    formRows: PACK4_ROWS,
   },
 ]
 
