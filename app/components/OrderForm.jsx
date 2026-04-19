@@ -103,6 +103,12 @@ function rowPackshotOpts(row) {
   return opts
 }
 
+function rowCollectionId(row) {
+  if (!row?.collection) return null
+  const col = findCollection(row.collection)
+  return col?.id || null
+}
+
 function findCollection(productName) {
   if (!productName) return null
   const name = productName.toUpperCase()
@@ -2133,7 +2139,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         </div>
                         {/* Card photo */}
                         {(() => {
-                          const thumbUrl = findPackshot(row.collection, rowPackshotOpts(row))
+                          const thumbUrl = findPackshot(rowCollectionId(row), rowPackshotOpts(row))
                           return thumbUrl ? (
                             <div style={{ marginBottom: 8 }}>
                               <PackshotThumb src={thumbUrl} size={56} />
@@ -2290,7 +2296,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               {isPhotoCol ? (
                                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 40 }}>
                                   <PackshotThumb
-                                    src={findPackshot(row.collection, rowPackshotOpts(row))}
+                                    src={findPackshot(rowCollectionId(row), rowPackshotOpts(row))}
                                     size={38}
                                   />
                                 </div>
