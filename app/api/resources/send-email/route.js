@@ -1,11 +1,9 @@
-import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
-import path from 'node:path';
-import fs from 'node:fs/promises';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +40,22 @@ function sanitizeEmail(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return EMAIL_RE.test(trimmed) ? trimmed : null;
+}
+
+// Resolve the public origin we should use to fetch our own static assets.
+// We deliberately fetch over HTTP rather than `fs.readFile` so the serverless
+// function bundle never traces public/ contents — without this, Vercel pulls
+// the entire public/ folder (Packshots, etc.) into the function and blows
+// past the 2 GB function size limit.
+function resolveBaseUrl(request) {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  try {
+    const u = new URL(request.url);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return '';
+  }
 }
 
 export async function POST(request) {
@@ -82,6 +96,11 @@ export async function POST(request) {
 
     const langCode = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
 
+    const baseUrl = resolveBaseUrl(request);
+    if (!baseUrl) {
+      return NextResponse.json({ error: 'Server misconfigured: cannot resolve site origin' }, { status: 500 });
+    }
+
     const attachments = [];
     let totalBytes = 0;
     const fileNames = [];
@@ -92,20 +111,26 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
       }
 
-      // Strip the leading slash and resolve against public/. Reject anything
-      // that escapes the public directory after normalization.
-      const relPath = filePath.replace(/^\//, '');
-      const publicDir = path.join(process.cwd(), 'public');
-      const fullPath = path.normalize(path.join(publicDir, relPath));
-      if (!fullPath.startsWith(publicDir + path.sep)) {
-        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
-      }
+      // Each segment of the URL needs encoding because our public/ folders
+      // contain spaces ("LoveLab Excel Packs") and parentheses (the FR
+      // catalogue filename). Splitting on "/" and re-encoding per segment
+      // preserves the slashes while making the rest URL-safe.
+      const encodedPath = filePath
+        .split('/')
+        .map((seg, i) => (i === 0 ? seg : encodeURIComponent(seg)))
+        .join('/');
+
+      const fileUrl = `${baseUrl}${encodedPath}`;
 
       let buf;
       try {
-        buf = await fs.readFile(fullPath);
+        const res = await fetch(fileUrl);
+        if (!res.ok) {
+          return NextResponse.json({ error: `File not found: ${filePath}` }, { status: 404 });
+        }
+        buf = Buffer.from(await res.arrayBuffer());
       } catch {
-        return NextResponse.json({ error: `File not found: ${filePath}` }, { status: 404 });
+        return NextResponse.json({ error: `Failed to fetch: ${filePath}` }, { status: 502 });
       }
 
       totalBytes += buf.length;
@@ -114,12 +139,14 @@ export async function POST(request) {
         return NextResponse.json({ error: `Attachments exceed ${mb} MB total` }, { status: 413 });
       }
 
-      const baseName = path.basename(fullPath);
+      // Derive the on-disk basename from the original path (last segment,
+      // decoded) so the attachment in the email shows a clean filename.
+      const baseName = decodeURIComponent(filePath.split('/').pop() || 'file');
       attachments.push({ filename: baseName, content: buf.toString('base64') });
       fileNames.push(baseName);
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || baseUrl || 'https://lovelab-b2b.vercel.app';
     const { subject, html } = clientResourcesEmail({
       contactName: contactName || '',
       lang: langCode,
