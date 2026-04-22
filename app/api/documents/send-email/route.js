@@ -5,14 +5,14 @@ import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '
 import { getSenderFrom, getSenderEmail } from '@/lib/email';
 import { clientOrderEmail } from '@/lib/email-templates';
 
-// All client-facing order emails are CC'd to and reply-to'd to Alberto's
-// personal Gmail so every conversation funnels through one inbox he actually
-// reads. This is hardcoded on purpose — admins can't accidentally bypass it.
-const ALBERTO_INBOX = 'albertosaleh@gmail.com';
+// All client-facing order emails are CC'd to (and reply-to'd to) the LoveLab
+// office inboxes so every conversation funnels through inboxes someone
+// actually reads. Hardcoded on purpose — admins can't accidentally bypass it.
+const CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 
 // Address that gets pinged ONLY when an outbound order email fails to send.
 // Override via env so we can route alerts elsewhere without a code change.
-const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || ALBERTO_INBOX;
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || CC_RECIPIENTS[0];
 
 async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, reason, statusCode }) {
   if (!apiKey || !ADMIN_ALERT_EMAIL) return;
@@ -148,10 +148,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid recipient email' }, { status: 400 });
     }
 
-    // CC is hardcoded to Alberto's inbox — clients can't see this address, but
-    // it guarantees Alberto always has a copy of every send (his "sent
-    // folder" replacement, since Resend can't write to Outlook/Gmail Sent).
-    const ccEmail = ALBERTO_INBOX;
+    // CC is hardcoded to the LoveLab office inboxes — clients can't see these
+    // addresses, but it guarantees the team always has a copy of every send
+    // (their "sent folder" replacement, since Resend can't write to Outlook/
+    // Gmail Sent).
+    const ccEmails = CC_RECIPIENTS;
 
     const langCode = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
 
@@ -251,12 +252,13 @@ export async function POST(request) {
 
     // From-name is hardcoded to "LoveLab" so every client sees a consistent
     // sender label regardless of which admin triggered the email.
-    // Reply-to is Alberto's gmail so all client replies funnel into one inbox.
+    // Reply-to is the same office inboxes as the CC so all client replies
+    // funnel into the team inboxes (not the per-admin sender address).
     const payload = {
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: [ccEmail],
-      reply_to: ALBERTO_INBOX,
+      cc: ccEmails,
+      reply_to: ccEmails,
       subject,
       html,
       attachments,
@@ -277,7 +279,7 @@ export async function POST(request) {
       await sendAdminAlert({
         apiKey,
         recipient,
-        ccEmail,
+        ccEmail: ccEmails.join(', '),
         lang: langCode,
         documentId,
         reason: errBody || `Resend HTTP ${res.status}`,
