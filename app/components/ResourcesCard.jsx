@@ -3,8 +3,15 @@
 import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
+import SendResourcesModal from './SendResourcesModal'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
+
+const CATALOGUE_FILES = [
+  { name: 'FR — LoveLab B2B Catalogue.pdf', path: '/catalogues/_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' },
+  { name: 'EN — LoveLab B2B Catalogue.pdf', path: '/catalogues/EN_LoveLab_B2B_Catalogue.pdf' },
+  { name: 'DE — LoveLab B2B Catalogue.pdf', path: '/catalogues/DE_LoveLab_B2B_Catalogue.pdf' },
+]
 
 const PACKS_FILES = [
   { name: 'LoveLab_Order_Template_Pack1.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack1.xlsx' },
@@ -22,8 +29,11 @@ const PRICE_LIST_FILES = [
   { name: 'Pricelist_LoveLab_2026.pdf', path: '/Price Lists/Pricelist_LoveLab_2026.pdf' },
 ]
 
-function DownloadFolder({ label, files }) {
+// Controlled folder: selection state lives in the parent so a single email
+// can bundle picks from Catalogue + Packs + Price List together.
+function DownloadFolder({ label, files, selected, onToggle }) {
   const [open, setOpen] = useState(false)
+
   return (
     <div>
       <button
@@ -50,26 +60,43 @@ function DownloadFolder({ label, files }) {
       </button>
       {open && (
         <div style={{ marginTop: 6, marginLeft: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {files.map(f => (
-            <a
-              key={f.path}
-              href={f.path}
-              download={f.name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '6px 12px', borderRadius: 7, fontSize: 12,
-                fontWeight: 500, color: colors.inkPlum, fontFamily: fonts.body,
-                background: '#f3f0f8', textDecoration: 'none',
-                border: `1px solid ${colors.inkPlum}18`,
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              {f.name}
-            </a>
-          ))}
+          {files.map(f => {
+            const isChecked = selected.has(f.path)
+            return (
+              <div
+                key={f.path}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 10px', borderRadius: 7, fontSize: 12,
+                  fontWeight: 500, color: colors.inkPlum, fontFamily: fonts.body,
+                  background: isChecked ? '#ece4f3' : '#f3f0f8',
+                  border: `1px solid ${isChecked ? colors.inkPlum + '55' : colors.inkPlum + '18'}`,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggle(f.path)}
+                  aria-label={`Select ${f.name}`}
+                  style={{ accentColor: colors.inkPlum, cursor: 'pointer', flexShrink: 0 }}
+                />
+                <a
+                  href={f.path}
+                  download={f.name}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7, flex: 1,
+                    color: colors.inkPlum, textDecoration: 'none', minWidth: 0,
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                </a>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -123,8 +150,38 @@ function LinkButton({ href, children, variant = 'outline' }) {
 }
 
 export default function ResourcesCard({ isAdmin = false }) {
-  const { lang } = useI18n()
+  const { lang, t } = useI18n()
   const embedUrl = CANVA_EMBED_BY_LANG[lang] || CANVA_EMBED_BY_LANG.en
+
+  // Selection is lifted here so a single email can bundle picks from
+  // Catalogue + Packs + Price List together.
+  const [selected, setSelected] = useState(() => new Set())
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const toggle = (path) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  // Flatten all folders into a single lookup so we can resolve selected paths
+  // back to {name, path} regardless of which folder they came from.
+  const allFiles = [...CATALOGUE_FILES, ...PACKS_FILES, ...PRICE_LIST_FILES]
+  const selectedFiles = allFiles.filter(f => selected.has(f.path))
+  const count = selectedFiles.length
+  const sendLabel = count === 1
+    ? t('resources.sendByEmail', { count })
+    : t('resources.sendByEmailPlural', { count })
+
+  // Build a human-readable "where these came from" string for the modal subtitle.
+  const folderLabels = []
+  if (selectedFiles.some(f => CATALOGUE_FILES.includes(f))) folderLabels.push(t('resources.catalogue'))
+  if (selectedFiles.some(f => PACKS_FILES.includes(f)))     folderLabels.push(t('resources.packs'))
+  if (selectedFiles.some(f => PRICE_LIST_FILES.includes(f))) folderLabels.push(t('resources.priceList'))
+  const folderSummary = folderLabels.join(' · ')
 
   return (
     <div style={{
@@ -190,10 +247,52 @@ export default function ResourcesCard({ isAdmin = false }) {
               </LinkButton>
             )}
             {isAdmin && (
-              <DownloadFolder label="Packs" files={PACKS_FILES} />
-            )}
-            {isAdmin && (
-              <DownloadFolder label="Price List" files={PRICE_LIST_FILES} />
+              <div style={{
+                marginTop: 6, paddingTop: 12,
+                borderTop: `1px dashed ${colors.inkPlum}30`,
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: colors.lovelabMuted,
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                  display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2,
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  {t('resources.documents')}
+                </div>
+                <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.packs')}     files={PACKS_FILES}     selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
+
+                {count > 0 && (
+                  <button
+                    onClick={() => setModalOpen(true)}
+                    style={{
+                      marginTop: 8, padding: '10px 14px', borderRadius: 8,
+                      fontSize: 13, fontWeight: 700, fontFamily: fonts.body,
+                      background: colors.inkPlum, color: '#fff',
+                      border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                      <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                    {sendLabel}
+                  </button>
+                )}
+
+                <SendResourcesModal
+                  open={modalOpen}
+                  onClose={() => { setModalOpen(false); setSelected(new Set()) }}
+                  files={selectedFiles}
+                  folderLabel={folderSummary}
+                />
+              </div>
             )}
           </div>
         </div>
