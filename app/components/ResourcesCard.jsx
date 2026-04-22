@@ -1,9 +1,76 @@
 'use client'
 
+import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
+
+const EXCEL_PACKS_FILES = [
+  { name: 'LoveLab_Order_Template_Pack1.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack1.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack2.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack2.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack3.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack3.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack4.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack4.xlsx' },
+]
+
+const PRICE_LIST_FILES = [
+  { name: 'LoveLab_Pricelist_21APRIL2026.xlsx', path: '/Price Lists Excel/LoveLab_Pricelist_21APRIL2026.xlsx' },
+  { name: 'Pricelist_Lovelab_Lionel_Avril2026.pdf', path: '/Price Lists Excel/Pricelist_Lovelab_Lionel_Avril2026.pdf' },
+]
+
+function DownloadFolder({ label, files }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          width: '100%', padding: '7px 14px', borderRadius: 8,
+          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          fontFamily: fonts.body, background: '#fff',
+          color: colors.inkPlum, border: `1px solid ${colors.inkPlum}`,
+          textAlign: 'left', transition: 'opacity .12s',
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          {open
+            ? <><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></>
+            : <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+          }
+        </svg>
+        {label}
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, marginLeft: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {files.map(f => (
+            <a
+              key={f.path}
+              href={f.path}
+              download={f.name}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '6px 12px', borderRadius: 7, fontSize: 12,
+                fontWeight: 500, color: colors.inkPlum, fontFamily: fonts.body,
+                background: '#f3f0f8', textDecoration: 'none',
+                border: `1px solid ${colors.inkPlum}18`,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {f.name}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const CATALOGUES = [
   {
@@ -117,6 +184,12 @@ export default function ResourcesCard({ isAdmin = false }) {
                 </svg>
                 Internal Software
               </LinkButton>
+            )}
+            {isAdmin && (
+              <DownloadFolder label="LoveLab Excel Packs" files={EXCEL_PACKS_FILES} />
+            )}
+            {isAdmin && (
+              <DownloadFolder label="Price Lists Excel" files={PRICE_LIST_FILES} />
             )}
           </div>
         </div>

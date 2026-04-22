@@ -1026,7 +1026,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
                         {/* Product photo */}
                         {(() => {
-                          const thumbUrl = findPackshot(col.id)
+                          const thumbUrl = col.id === 'SSPF'
+                            ? findPackshot(col.id)
+                            : findPackshot(col.id, { color: 'Bordeaux' })
                           return thumbUrl ? (
                             <img
                               src={thumbUrl}

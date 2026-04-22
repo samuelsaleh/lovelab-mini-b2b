@@ -1522,6 +1522,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         elementRef={printRef}
         clientName={contactName || client?.name}
         clientCompany={companyName}
+        clientEmail={email}
         totalAmount={grandTotal}
         eventName={eventName}
         onBeforePrint={handleBeforePrint}
