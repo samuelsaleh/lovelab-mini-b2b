@@ -6,16 +6,20 @@ import { useI18n } from '@/lib/i18n'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
 
-const EXCEL_PACKS_FILES = [
+const PACKS_FILES = [
   { name: 'LoveLab_Order_Template_Pack1.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack1.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack1.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack1.pdf' },
   { name: 'LoveLab_Order_Template_Pack2.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack2.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack2.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack2.pdf' },
   { name: 'LoveLab_Order_Template_Pack3.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack3.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack3.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack3.pdf' },
   { name: 'LoveLab_Order_Template_Pack4.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack4.xlsx' },
+  { name: 'LoveLab_Order_Template_Pack4.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack4.pdf' },
 ]
 
 const PRICE_LIST_FILES = [
-  { name: 'LoveLab_Pricelist_21APRIL2026.xlsx', path: '/Price Lists Excel/LoveLab_Pricelist_21APRIL2026.xlsx' },
-  { name: 'Pricelist_Lovelab_Lionel_Avril2026.pdf', path: '/Price Lists Excel/Pricelist_Lovelab_Lionel_Avril2026.pdf' },
+  { name: 'Pricelist_LoveLab_2025.pdf', path: '/Price Lists/Pricelist_LoveLab_2025.pdf' },
+  { name: 'Pricelist_LoveLab_2026.pdf', path: '/Price Lists/Pricelist_LoveLab_2026.pdf' },
 ]
 
 function DownloadFolder({ label, files }) {
@@ -186,10 +190,10 @@ export default function ResourcesCard({ isAdmin = false }) {
               </LinkButton>
             )}
             {isAdmin && (
-              <DownloadFolder label="LoveLab Excel Packs" files={EXCEL_PACKS_FILES} />
+              <DownloadFolder label="Packs" files={PACKS_FILES} />
             )}
             {isAdmin && (
-              <DownloadFolder label="Price Lists Excel" files={PRICE_LIST_FILES} />
+              <DownloadFolder label="Price List" files={PRICE_LIST_FILES} />
             )}
           </div>
         </div>
