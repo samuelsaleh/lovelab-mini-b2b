@@ -8,9 +8,9 @@ import { clientResourcesEmail } from '@/lib/email-templates';
 export const runtime = 'nodejs';
 
 // Hardcoded CC — every resources email is silently copied to Alberto's
-// LoveLab inbox AND his personal Gmail so he has a record of every outbound
-// document send across both. Clients don't see these addresses.
-const CC_RECIPIENTS = ['alberto@love-lab.com', 'albertosaleh@gmail.com'];
+// personal Gmail so he has a record of every outbound document send.
+// Clients don't see this address.
+const CC_RECIPIENTS = ['albertosaleh@gmail.com'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
