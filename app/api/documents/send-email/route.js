@@ -5,10 +5,14 @@ import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '
 import { getSenderFrom, getSenderEmail } from '@/lib/email';
 import { clientOrderEmail } from '@/lib/email-templates';
 
-// All client-facing order emails are CC'd to (and reply-to'd to) the LoveLab
-// office inboxes so every conversation funnels through inboxes someone
-// actually reads. Hardcoded on purpose — admins can't accidentally bypass it.
-const CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
+// All client-facing order emails are CC'd to the LoveLab office inboxes plus
+// Alberto's personal Gmail so every conversation funnels through inboxes
+// someone actually reads. Reply-to only includes the office inboxes (Dionne +
+// Elie) so client replies don't bury Alberto's personal mailbox — he just
+// gets the read-only copies. Hardcoded on purpose — admins can't accidentally
+// bypass it.
+const CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com', 'albertosaleh@gmail.com'];
+const REPLY_TO_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 
 // Address that gets pinged ONLY when an outbound order email fails to send.
 // Override via env so we can route alerts elsewhere without a code change.
@@ -258,7 +262,7 @@ export async function POST(request) {
       from: getSenderFrom('LoveLab'),
       to: [recipient],
       cc: ccEmails,
-      reply_to: ccEmails,
+      reply_to: REPLY_TO_RECIPIENTS,
       subject,
       html,
       attachments,
