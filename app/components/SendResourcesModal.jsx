@@ -4,9 +4,17 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import { getClientResourcesLocale, clientResourcesEmail } from '@/lib/email-templates'
+import { RESOURCE_EMAIL_OVERRIDE_LIMITS } from '@/lib/resources-email-overrides'
 import { useIsMobile } from '@/lib/useIsMobile'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const EDITABLE_FIELDS = [
+  { key: 'subject', labelKey: 'email.subject', rows: 1 },
+  { key: 'greeting', labelKey: 'email.greeting', rows: 1 },
+  { key: 'body', labelKey: 'email.body', rows: 5 },
+  { key: 'signoff', labelKey: 'email.signoff', rows: 1 },
+]
 
 // Email-language picker — separate from the portal language so the admin can
 // type their UI in EN but send a Dutch email to a Belgian client.
@@ -114,6 +122,17 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
     return out
   }, [defaults, overrides])
 
+  const limitErrors = useMemo(() => {
+    const out = {}
+    for (const [key, limit] of Object.entries(RESOURCE_EMAIL_OVERRIDE_LIMITS)) {
+      const value = finalFields[key] || ''
+      if (value.length > limit) out[key] = `${value.length}/${limit}`
+    }
+    return out
+  }, [finalFields])
+
+  const hasLimitErrors = Object.keys(limitErrors).length > 0
+
   // Render the actual email HTML the same way the API will. Iframed in the
   // preview pane so its inline styles can't leak into the modal layout.
   const livePreviewHtml = useMemo(() => {
@@ -140,6 +159,10 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
     const trimmed = recipient.trim()
     if (!EMAIL_RE.test(trimmed)) {
       setError(t('resources.invalidEmail'))
+      return
+    }
+    if (hasLimitErrors) {
+      setError(t('resources.emailTooLong'))
       return
     }
     setLoading(true)
@@ -346,12 +369,11 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
             }}>
               {/* Editable fields */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                {[
-                  { key: 'subject', label: t('email.subject'), rows: 1 },
-                  { key: 'greeting', label: t('email.greeting'), rows: 1 },
-                  { key: 'body', label: t('email.body'), rows: 5 },
-                  { key: 'signoff', label: t('email.signoff'), rows: 1 },
-                ].map(({ key, label, rows }) => (
+                {EDITABLE_FIELDS.map(({ key, labelKey, rows }) => {
+                  const label = t(labelKey)
+                  const limit = RESOURCE_EMAIL_OVERRIDE_LIMITS[key]
+                  const overLimit = limitErrors[key]
+                  return (
                   <div key={key}>
                     <label style={{ ...labelStyle, fontSize: 10, marginBottom: 3 }}>{label}</label>
                     {rows > 1 ? (
@@ -363,6 +385,7 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
                         style={{
                           ...inputStyle, fontSize: 12, padding: '8px 10px',
                           resize: 'vertical', minHeight: 90, lineHeight: 1.45,
+                          border: `1.5px solid ${overLimit ? colors.danger : colors.lineGray}`,
                         }}
                       />
                     ) : (
@@ -371,11 +394,23 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
                         value={finalFields[key]}
                         onChange={(e) => updateOverride(key, e.target.value)}
                         disabled={loading}
-                        style={{ ...inputStyle, fontSize: 12, padding: '8px 10px' }}
+                        style={{
+                          ...inputStyle, fontSize: 12, padding: '8px 10px',
+                          border: `1.5px solid ${overLimit ? colors.danger : colors.lineGray}`,
+                        }}
                       />
                     )}
+                    <div style={{
+                      marginTop: 3,
+                      fontSize: 10,
+                      color: overLimit ? colors.danger : colors.lovelabMuted,
+                      textAlign: 'right',
+                    }}>
+                      {overLimit ? t('resources.fieldTooLong', { field: label, count: overLimit }) : `${(finalFields[key] || '').length}/${limit}`}
+                    </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Live preview pane (only when toggled) */}
@@ -487,13 +522,13 @@ export default function SendResourcesModal({ open, onClose, files, folderLabel }
           </button>
           <button
             onClick={handleSend}
-            disabled={loading || !!success}
+            disabled={loading || !!success || hasLimitErrors}
             style={{
               padding: '9px 22px', fontSize: 13, fontWeight: 600,
               background: colors.inkPlum, color: '#fff',
               border: 'none', borderRadius: 8,
-              cursor: (loading || success) ? 'not-allowed' : 'pointer',
-              fontFamily: fonts.body, opacity: (loading || success) ? 0.7 : 1,
+              cursor: (loading || success || hasLimitErrors) ? 'not-allowed' : 'pointer',
+              fontFamily: fonts.body, opacity: (loading || success || hasLimitErrors) ? 0.7 : 1,
             }}
           >
             {loading ? t('resources.sending') : t('resources.send')}

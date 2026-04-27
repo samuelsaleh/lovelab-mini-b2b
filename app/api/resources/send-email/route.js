@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
+import { validateResourceEmailOverrides } from '@/lib/resources-email-overrides';
 
 export const runtime = 'nodejs';
 
@@ -14,20 +15,6 @@ const CC_RECIPIENTS = ['albertosaleh@gmail.com'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
-
-// Hard caps to keep the modal preview honest — anything longer almost
-// certainly means a paste-mistake rather than a real customisation.
-const MAX_OVERRIDE_LEN = { subject: 200, greeting: 200, body: 4000, signoff: 200 };
-
-function pickOverrides(body) {
-  const raw = body && typeof body === 'object' ? body : {};
-  const out = {};
-  for (const key of Object.keys(MAX_OVERRIDE_LEN)) {
-    const v = raw[key];
-    if (typeof v === 'string') out[key] = v.slice(0, MAX_OVERRIDE_LEN[key]);
-  }
-  return out;
-}
 
 // Hard whitelist for outbound resource sends. Only files under these
 // public/ subfolders may be attached. Prevents path traversal or arbitrary
@@ -85,7 +72,11 @@ export async function POST(request) {
 
     const body = await request.json().catch(() => ({}));
     const { files, to, lang = 'en', contactName } = body || {};
-    const overrides = pickOverrides(body);
+    const overrideValidation = validateResourceEmailOverrides(body);
+    if (!overrideValidation.ok) {
+      return NextResponse.json({ error: overrideValidation.error }, { status: 400 });
+    }
+    const { overrides } = overrideValidation;
 
     const recipient = sanitizeEmail(to);
     if (!recipient) {
