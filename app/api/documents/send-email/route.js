@@ -4,21 +4,20 @@ import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
 import { getSenderFrom, getSenderEmail } from '@/lib/email';
 import { clientOrderEmail } from '@/lib/email-templates';
+import { ORDER_HIDDEN_COPY_RECIPIENTS, ORDER_REPLY_TO_RECIPIENTS, withHiddenCopyRecipients } from '@/lib/email-recipients';
 
-// All client-facing order emails are CC'd to the LoveLab office inboxes plus
-// Alberto's personal Gmail so every conversation funnels through inboxes
-// someone actually reads. Reply-to only includes the office inboxes (Dionne +
-// Elie) so client replies don't bury Alberto's personal mailbox — he just
-// gets the read-only copies. Hardcoded on purpose — admins can't accidentally
-// bypass it.
-const CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com', 'albertosaleh@gmail.com'];
-const REPLY_TO_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
+// All client-facing order emails get hidden audit copies for the LoveLab office
+// inboxes plus Alberto's personal Gmail. These must use BCC: CC is visible to
+// customers and reply-all would pull internal addresses into client threads.
+// Reply-to remains limited to the office inboxes.
+const HIDDEN_COPY_RECIPIENTS = ORDER_HIDDEN_COPY_RECIPIENTS;
+const REPLY_TO_RECIPIENTS = ORDER_REPLY_TO_RECIPIENTS;
 
 // Address that gets pinged ONLY when an outbound order email fails to send.
 // Override via env so we can route alerts elsewhere without a code change.
-const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || CC_RECIPIENTS[0];
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || HIDDEN_COPY_RECIPIENTS[0];
 
-async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, reason, statusCode }) {
+async function sendAdminAlert({ apiKey, recipient, hiddenCopyEmail, lang, documentId, reason, statusCode }) {
   if (!apiKey || !ADMIN_ALERT_EMAIL) return;
   try {
     const subject = `[LoveLab B2B] Order email FAILED — ${recipient || 'unknown recipient'}`;
@@ -29,7 +28,7 @@ async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, re
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr><td style="padding:4px 0;color:#666;width:140px">Document ID</td><td>${documentId || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">Recipient</td><td>${recipient || '—'}</td></tr>
-          <tr><td style="padding:4px 0;color:#666">CC</td><td>${ccEmail || '—'}</td></tr>
+          <tr><td style="padding:4px 0;color:#666">Hidden copies</td><td>${hiddenCopyEmail || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">Language</td><td>${lang || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">HTTP status</td><td>${statusCode || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666;vertical-align:top">Reason</td><td><pre style="margin:0;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px">${(reason || 'unknown').slice(0, 800)}</pre></td></tr>
@@ -152,11 +151,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid recipient email' }, { status: 400 });
     }
 
-    // CC is hardcoded to the LoveLab office inboxes — clients can't see these
-    // addresses, but it guarantees the team always has a copy of every send
-    // (their "sent folder" replacement, since Resend can't write to Outlook/
-    // Gmail Sent).
-    const ccEmails = CC_RECIPIENTS;
+    // Hidden copies are hardcoded to the LoveLab office inboxes — it guarantees
+    // the team always has a copy of every send without exposing addresses to the
+    // client (their "sent folder" replacement, since Resend can't write to Sent).
+    const hiddenCopyEmails = HIDDEN_COPY_RECIPIENTS;
 
     const langCode = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
 
@@ -256,17 +254,16 @@ export async function POST(request) {
 
     // From-name is hardcoded to "LoveLab" so every client sees a consistent
     // sender label regardless of which admin triggered the email.
-    // Reply-to is the same office inboxes as the CC so all client replies
-    // funnel into the team inboxes (not the per-admin sender address).
-    const payload = {
+    // Reply-to is the office inboxes so all client replies funnel into the team
+    // mailboxes (not the per-admin sender address).
+    const payload = withHiddenCopyRecipients({
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: ccEmails,
       reply_to: REPLY_TO_RECIPIENTS,
       subject,
       html,
       attachments,
-    };
+    }, hiddenCopyEmails);
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -283,7 +280,7 @@ export async function POST(request) {
       await sendAdminAlert({
         apiKey,
         recipient,
-        ccEmail: ccEmails.join(', '),
+        hiddenCopyEmail: hiddenCopyEmails.join(', '),
         lang: langCode,
         documentId,
         reason: errBody || `Resend HTTP ${res.status}`,
@@ -303,7 +300,7 @@ export async function POST(request) {
       await sendAdminAlert({
         apiKey: process.env.RESEND_API_KEY,
         recipient: null,
-        ccEmail: null,
+        hiddenCopyEmail: null,
         lang: null,
         documentId: null,
         reason: `${error?.message || 'unknown'}\n${error?.stack || ''}`,

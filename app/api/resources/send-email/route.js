@@ -4,13 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
+import { RESOURCES_HIDDEN_COPY_RECIPIENTS, withHiddenCopyRecipients } from '@/lib/email-recipients';
 
 export const runtime = 'nodejs';
-
-// Hardcoded CC — every resources email is silently copied to Alberto's
-// personal Gmail so he has a record of every outbound document send.
-// Clients don't see this address.
-const CC_RECIPIENTS = ['albertosaleh@gmail.com'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
@@ -159,14 +155,13 @@ export async function POST(request) {
       overrides,
     }, siteUrl);
 
-    const payload = {
+    const payload = withHiddenCopyRecipients({
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: CC_RECIPIENTS,
       subject,
       html,
       attachments,
-    };
+    }, RESOURCES_HIDDEN_COPY_RECIPIENTS);
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
