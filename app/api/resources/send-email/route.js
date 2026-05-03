@@ -7,10 +7,10 @@ import { clientResourcesEmail } from '@/lib/email-templates';
 
 export const runtime = 'nodejs';
 
-// Hardcoded CC — every resources email is silently copied to Alberto's
+// Hardcoded BCC — every resources email is silently copied to Alberto's
 // personal Gmail so he has a record of every outbound document send.
 // Clients don't see this address.
-const CC_RECIPIENTS = ['albertosaleh@gmail.com'];
+const BCC_RECIPIENTS = ['albertosaleh@gmail.com'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
@@ -162,7 +162,7 @@ export async function POST(request) {
     const payload = {
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: CC_RECIPIENTS,
+      bcc: BCC_RECIPIENTS,
       subject,
       html,
       attachments,
