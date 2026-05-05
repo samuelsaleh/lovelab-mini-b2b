@@ -6,13 +6,13 @@
 
 | | |
 |---|---|
-| **Housing** | Standard — Yellow, White |
+| **Housing** | Standard — Yellow, White, Pink |
 | **Carats** | 0.05 / 0.10 / 0.20 / 0.30 |
 | **2nd Biggest Carat** | 0.20 ct |
 | **Cord** | Nylon |
 | **Sizes** | XS, S, M, L, XL |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
 ---
 
@@ -20,13 +20,13 @@
 
 | | |
 |---|---|
-| **Housing** | Gold Metal — White, Yellow |
+| **Housing** | Gold Metal — White, Yellow, Pink |
 | **Carats** | 0.05 / 0.10 / 0.20 |
 | **2nd Biggest Carat** | 0.10 ct |
 | **Cord** | Nylon |
 | **Sizes** | S/M, L/XL |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
 ---
 
@@ -40,7 +40,7 @@
 | **Cord** | Nylon |
 | **Sizes** | XS, S, M, L, XL |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (7):** Bordeaux, Red, Gold, Silver Grey, Black, Navy Blue, Royal Blue
 
 ---
 
@@ -54,7 +54,7 @@
 | **Cord** | Nylon |
 | **Sizes** | XS, S, M, L, XL |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (7):** Bordeaux, Red, Gold, Silver Grey, Black, Navy Blue, Royal Blue
 
 ---
 
@@ -68,7 +68,7 @@
 | **Cord** | Nylon |
 | **Sizes** | XS, S, M, L, XL |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (7):** Bordeaux, Red, Gold, Silver Grey, Black, Navy Blue, Royal Blue
 
 ---
 
@@ -86,10 +86,10 @@
 
 | Setting | Options |
 |---|---|
-| **Bezel** | WW (White/White), YY (Yellow/Yellow), WY (White/Yellow) |
-| **Prong** | White, Yellow |
+| **Bezel** | WW (White/White), YY (Yellow/Yellow), PP (Pink/Pink), WY (White/Yellow), WP (White/Pink), YP (Yellow/Pink) |
+| **Prong** | White, Yellow, Pink |
 
-**Colors (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
 ---
 
@@ -107,11 +107,11 @@
 
 | Carat | Bezel | Prong |
 |---|---|---|
-| **0.10 ct** | Yellow, White | — not available |
-| **0.30 ct** | Yellow, White | Yellow, White |
-| **0.50 ct** | Yellow, White | Yellow, White |
+| **0.10 ct** | Yellow, White, Pink | — not available |
+| **0.30 ct** | Yellow, White, Pink | Yellow, White, Pink |
+| **0.50 ct** | Yellow, White, Pink | Yellow, White, Pink |
 
-**Colors (20):** Dark Pink, Light Pink, Lilac, Purple, Red, Bordeaux, Turq Blue, Navy Blue, Light Blue, Ivory, Black, Brown, Green, Yellow, Orange, Gold, Grey, Fluo Pink, Fluo Yellow, White
+**Colors (21):** Dark Pink, Light Pink, Lilac, Purple, Red, Bordeaux, Turq Blue, Royal Blue, Navy Blue, Light Blue, Ivory, Black, Brown, Green, Yellow, Orange, Gold, Grey, Fluo Pink, Fluo Yellow, White
 
 ---
 
@@ -145,7 +145,7 @@ Three products under this family, sharing the same shapes and housing type:
 
 **Colors — Silk (20):** Light Blue, Baby Pink, Champagne, Lavendel, Old Pink, Mint Green, Peach, Olive Green, Silver Grey, Gold, Lila, Pink, Red, Jeans Blue, Royal Blue, Navy Blue, Green, Grey, Brown, Black
 
-**Colors — Braided Nylon (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors — Braided Nylon (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
 ### SHAPY SPARKLE RND D VVS
 
@@ -157,7 +157,7 @@ Three products under this family, sharing the same shapes and housing type:
 
 **Colors — Silk (20):** Light Blue, Baby Pink, Champagne, Lavendel, Old Pink, Mint Green, Peach, Olive Green, Silver Grey, Gold, Lila, Pink, Red, Jeans Blue, Royal Blue, Navy Blue, Green, Grey, Brown, Black
 
-**Colors — Braided Nylon (20):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
+**Colors — Braided Nylon (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
 ---
 
@@ -165,7 +165,7 @@ Three products under this family, sharing the same shapes and housing type:
 
 | | |
 |---|---|
-| **Housing** | Standard — Yellow, White |
+| **Housing** | Standard — Yellow, White, Pink |
 | **Carats** | 0.50 / 0.70 / 1.00 |
 | **2nd Biggest Carat** | 0.70 ct |
 | **Cord** | Nylon (dedicated Holy palette) |

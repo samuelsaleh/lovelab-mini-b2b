@@ -751,7 +751,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: mobile ? 'repeat(auto-fit, minmax(32px, 1fr))' : 'repeat(10, 1fr)',
+              gridTemplateColumns: mobile ? 'repeat(auto-fit, minmax(32px, 1fr))' : 'repeat(7, 1fr)',
               gap: mobile ? 6 : 6,
             }}>
               {palette.map(c => {
