@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import AgentFormModal from '../../components/AgentFormModal';
+import AddBonusModal from '../../components/AddBonusModal';
 
 const fmt = (n) => {
   if (n == null) return '—';
@@ -27,9 +28,6 @@ export default function AdminAgentsPage() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [error, setError] = useState('');
   const [bonusAgent, setBonusAgent] = useState(null);
-  const [bonusAmount, setBonusAmount] = useState('');
-  const [bonusNotes, setBonusNotes] = useState('');
-  const [bonusLoading, setBonusLoading] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [trashedAgents, setTrashedAgents] = useState([]);
@@ -173,43 +171,11 @@ export default function AdminAgentsPage() {
     fetchAgents();
   };
 
-  const handleAddBonus = (agent) => {
-    setBonusAgent(agent);
-    setBonusAmount('');
-    setBonusNotes('');
-  };
-
-  const handleBonusClose = () => {
+  const handleAddBonus = (agent) => setBonusAgent(agent);
+  const handleBonusClose = () => setBonusAgent(null);
+  const handleBonusSuccess = () => {
     setBonusAgent(null);
-    setBonusAmount('');
-    setBonusNotes('');
-  };
-
-  const handleBonusSubmit = async (e) => {
-    e.preventDefault();
-    if (!bonusAgent) return;
-    const amt = Number(bonusAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setError('Enter a valid amount');
-      return;
-    }
-    setBonusLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/commissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: bonusAgent.id, amount: amt, notes: bonusNotes.trim() || null }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to add bonus');
-      handleBonusClose();
-      fetchAgents();
-    } catch (err) {
-      setError(err.message || 'Failed to add bonus');
-    } finally {
-      setBonusLoading(false);
-    }
+    fetchAgents();
   };
 
   const formatAgentSince = (d) => {
@@ -551,137 +517,11 @@ export default function AdminAgentsPage() {
       )}
 
       {bonusAgent && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 500,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.4)',
-            padding: 20,
-          }}
-          onClick={handleBonusClose}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              padding: 24,
-              maxWidth: 360,
-              width: '100%',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-              fontFamily: fonts.body,
-            }}
-          >
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, margin: '0 0 16px' }}>
-              Add Bonus — {bonusAgent.full_name || bonusAgent.email}
-            </h3>
-            <form onSubmit={handleBonusSubmit}>
-              <div style={{ marginBottom: 16 }}>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    color: colors.lovelabMuted,
-                    marginBottom: 6,
-                    display: 'block',
-                    fontWeight: 600,
-                  }}
-                >
-                  Amount (€)
-                </label>
-                <input
-                  type="number"
-                  min={0.01}
-                  step={0.01}
-                  value={bonusAmount}
-                  onChange={(e) => setBonusAmount(e.target.value)}
-                  placeholder="0.00"
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    border: `1px solid ${colors.lineGray}`,
-                    fontSize: 13,
-                    fontFamily: fonts.body,
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    color: colors.lovelabMuted,
-                    marginBottom: 6,
-                    display: 'block',
-                    fontWeight: 600,
-                  }}
-                >
-                  Notes
-                </label>
-                <textarea
-                  value={bonusNotes}
-                  onChange={(e) => setBonusNotes(e.target.value)}
-                  placeholder="Optional"
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    border: `1px solid ${colors.lineGray}`,
-                    fontSize: 13,
-                    fontFamily: fonts.body,
-                    boxSizing: 'border-box',
-                    resize: 'vertical',
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={handleBonusClose}
-                  style={{
-                    padding: '8px 16px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#888',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: fonts.body,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={bonusLoading}
-                  style={{
-                    padding: '10px 24px',
-                    border: 'none',
-                    background: colors.inkPlum,
-                    color: '#fff',
-                    borderRadius: 10,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: bonusLoading ? 'not-allowed' : 'pointer',
-                    fontFamily: fonts.body,
-                  }}
-                >
-                  {bonusLoading ? 'Adding...' : 'Add Bonus'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AddBonusModal
+          agent={bonusAgent}
+          onClose={handleBonusClose}
+          onSuccess={handleBonusSuccess}
+        />
       )}
     </div>
   );

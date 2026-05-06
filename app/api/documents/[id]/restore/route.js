@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
+import { recordHealthEvent } from '@/lib/healthEvent';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,6 +58,33 @@ export async function POST(request, { params }) {
     if (updateError) {
       console.error('[Documents RESTORE] Error:', updateError.message);
       return NextResponse.json({ error: 'Failed to restore document' }, { status: 500 });
+    }
+
+    // Cascade un-cancel: the matching DELETE handler set status='cancelled'
+    // when the doc was trashed. Flip it back to 'pending' here so the agent
+    // sees the commission again. Never touch 'paid' rows.
+    try {
+      const { error: cascadeErr } = await adminSupabase
+        .from('agent_commissions')
+        .update({ status: 'pending', notes: null })
+        .eq('document_id', id)
+        .eq('status', 'cancelled');
+
+      if (cascadeErr) {
+        await recordHealthEvent({
+          source: 'documents_restore_commission_uncascade',
+          severity: 'error',
+          message: cascadeErr.message || 'Failed to un-cancel linked commissions',
+          context: { documentId: id, code: cascadeErr.code || null },
+        });
+      }
+    } catch (cascadeThrew) {
+      await recordHealthEvent({
+        source: 'documents_restore_commission_uncascade',
+        severity: 'error',
+        message: cascadeThrew?.message || 'Cascade threw',
+        context: { documentId: id },
+      });
     }
 
     return NextResponse.json({ success: true });

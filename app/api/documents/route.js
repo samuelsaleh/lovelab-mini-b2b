@@ -3,9 +3,10 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
-import { calculateCommission } from '@/lib/commission';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
+import { recordHealthEvent } from '@/lib/healthEvent';
+import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
@@ -285,87 +286,38 @@ export async function POST(request) {
     // Agent commission hook: auto-create commission for active agents.
     // Skipped for internal and consignment orders — they carry no agent commission.
     // Wrapped in try/catch so failures never block the document response.
+    // Attribution logic lives in lib/commissionAttribution.js so PUT and POST
+    // resolve the same way.
     try {
       if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
         const commSupabase = createAdminClient();
-
-        const createCommissionFor = async (agentId, profile) => {
-          let effectiveRate = profile.commission_rate || 0;
-          if (!effectiveRate && profile.organization_id) {
-            const { data: org } = await commSupabase
-              .from('organizations')
-              .select('commission_rate')
-              .eq('id', profile.organization_id)
-              .single();
-            effectiveRate = org?.commission_rate || 0;
-          }
-          const { amount, rate } = calculateCommission(
-            document.total_amount,
-            profile.agent_commission_config || null,
-            effectiveRate,
-          );
-          if (amount > 0) {
-            await commSupabase.from('agent_commissions').upsert({
-              agent_id: agentId,
-              document_id: document.id,
-              type: 'order',
-              order_total: document.total_amount,
-              commission_rate: rate,
-              commission_amount: amount,
-              status: 'pending',
-            }, { onConflict: 'agent_id,document_id' });
-          }
-        };
-
-        const { data: creatorProfile } = await commSupabase
-          .from('profiles')
-          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-          .eq('id', user.id)
-          .single();
-
-        if (creatorProfile?.is_agent && creatorProfile.agent_status === 'active') {
-          await createCommissionFor(user.id, creatorProfile);
-        } else if (event_id) {
-          const { data: evt } = await commSupabase
-            .from('events')
-            .select('created_by, organization_id, type')
-            .eq('id', event_id)
-            .single();
-
-          if (evt) {
-            let targetAgent = null;
-
-            if (evt.organization_id) {
-              const { data: p } = await commSupabase
-                .from('profiles')
-                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-                .eq('organization_id', evt.organization_id)
-                .eq('is_agent', true)
-                .eq('agent_status', 'active')
-                .limit(1)
-                .maybeSingle();
-              if (p) targetAgent = p;
-            }
-
-            if (!targetAgent && evt.created_by && evt.created_by !== user.id) {
-              const { data: p } = await commSupabase
-                .from('profiles')
-                .select('id, is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-                .eq('id', evt.created_by)
-                .eq('is_agent', true)
-                .eq('agent_status', 'active')
-                .maybeSingle();
-              if (p) targetAgent = p;
-            }
-
-            if (targetAgent) {
-              await createCommissionFor(targetAgent.id, targetAgent);
-            }
-          }
+        const attribution = await resolveCommissionAgent(commSupabase, document);
+        if (attribution) {
+          await upsertCommissionForDocument(commSupabase, {
+            document,
+            profile: attribution.profile,
+            agentId: attribution.agentId,
+          });
         }
       }
     } catch (commErr) {
-      console.error('[Documents POST] Commission hook error (non-blocking):', commErr.message);
+      // Tier A — never silent. recordHealthEvent inserts a row and emails admins
+      // for severity ≥ 'error'. We still swallow upward so the document save
+      // returns 200 to the user; admins see the failure within minutes.
+      await recordHealthEvent({
+        source: 'documents_post_commission_hook',
+        severity: 'error',
+        message: commErr.message || 'Commission hook failed',
+        context: {
+          documentId: document?.id || null,
+          createdBy: user.id,
+          eventId: event_id || null,
+          orderChannel: safeOrderChannel,
+          totalAmount: document?.total_amount ?? null,
+          code: commErr.code || null,
+          details: commErr.details || null,
+        },
+      });
     }
 
     // Order notification: email on new documents/orders.

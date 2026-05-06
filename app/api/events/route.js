@@ -21,7 +21,7 @@ export async function GET(request) {
 
     const { data: rawEvents, error } = await adminSupabase
       .from('events')
-      .select('*, documents(count)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -54,6 +54,33 @@ export async function GET(request) {
     } else {
       events = raw.map((evt) => ({ ...evt, permission: 'manage' }));
     }
+
+    // Authoritative per-event document count for the sidebar.
+    // Applies the SAME filters as the default /api/documents view
+    // (deleted_at IS NULL, order_channel not in internal/consignment/delete_from_stock)
+    // so the count and the click-through always agree. Replaces the unfiltered
+    // `documents(count)` join we used to embed, which caused the
+    // "nicolas vial: 0 orders but folder has 5" bug from before pagination ran out.
+    const visibleEventIds = events.map((e) => e.id);
+    const docCountByEvent = new Map();
+    if (visibleEventIds.length > 0) {
+      const { data: docCountRows, error: countErr } = await adminSupabase
+        .from('documents')
+        .select('event_id')
+        .in('event_id', visibleEventIds)
+        .is('deleted_at', null)
+        .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+      if (countErr) {
+        console.error('[Events GET] doc count query failed:', countErr.message);
+      } else {
+        for (const row of docCountRows || []) {
+          if (row.event_id) {
+            docCountByEvent.set(row.event_id, (docCountByEvent.get(row.event_id) || 0) + 1);
+          }
+        }
+      }
+    }
+    events = events.map((e) => ({ ...e, doc_count: docCountByEvent.get(e.id) || 0 }));
 
     return NextResponse.json({ events });
   } catch (error) {
@@ -94,16 +121,44 @@ export async function POST(request) {
 
     const validTypes = ['fair', 'agent', 'partner', 'other'];
     const eventType = validTypes.includes(type) ? type : 'other';
+    const trimmedName = name.trim();
+    const targetOrgId = (eventType === 'agent' && organization_id) ? organization_id : null;
+
+    // Phase 13 dedup: when an agent-type event is created with the same name
+    // (case-insensitive, trimmed) within the same organization, return the
+    // existing one instead of inserting a duplicate. Sam saw two "Corinne"
+    // entries in the dropdown because two admins (or one admin twice) hit
+    // "+ New Event" with the same name; this makes the create idempotent.
+    if (eventType === 'agent') {
+      const dedupQuery = adminSupabase
+        .from('events')
+        .select('*')
+        .eq('type', 'agent')
+        .ilike('name', trimmedName);
+      const { data: dedupRows, error: dedupErr } = targetOrgId
+        ? await dedupQuery.eq('organization_id', targetOrgId)
+        : await dedupQuery.is('organization_id', null);
+      if (dedupErr) {
+        console.error('[Events POST] dedup probe failed:', dedupErr.message);
+      } else if ((dedupRows || []).length > 0) {
+        const existing = dedupRows.find(
+          (r) => (r.name || '').trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
+        if (existing) {
+          return NextResponse.json({ event: existing, deduplicated: true });
+        }
+      }
+    }
 
     const { data: event, error } = await adminSupabase
       .from('events')
       .insert({
-        name: name.trim(),
+        name: trimmedName,
         location: location?.trim() || null,
         start_date: start_date || null,
         end_date: end_date || null,
         type: eventType,
-        organization_id: (eventType === 'agent' && organization_id) ? organization_id : null,
+        organization_id: targetOrgId,
         created_by: user.id,
       })
       .select()

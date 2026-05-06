@@ -137,8 +137,85 @@ export async function GET(request) {
           name: sf.name,
           agent_id: sf.agent_id,
         })),
+        doc_count: 0,
       };
     });
+
+    // Phase 18b: server-authoritative doc_count per org folder.
+    // The Documents sidebar previously filtered the in-memory documents array
+    // (capped at 50 items) which made nicolas vial look like he had 0 orders
+    // while his folder actually contained 5. The Phase 12 events-based count
+    // covered events tagged with organization_id, but agent docs frequently
+    // live in fair/partner events with no org tag, so those slipped through.
+    //
+    // We mirror the exact logic /api/documents uses when filtering by
+    // organization_id: a doc "belongs to" an org if its created_by is a
+    // member OR its event is in events.organization_id = org.id. Same
+    // visibility filters apply (deleted_at IS NULL, exclude internal/
+    // consignment/delete_from_stock channels).
+    try {
+      const allMemberIds = new Set();
+      const memberOrgMap = new Map(); // user_id -> Set<org_id>
+      for (const f of orgFolders) {
+        for (const m of f.members) {
+          allMemberIds.add(m.user_id);
+          if (!memberOrgMap.has(m.user_id)) memberOrgMap.set(m.user_id, new Set());
+          memberOrgMap.get(m.user_id).add(f.organization_id);
+        }
+      }
+
+      const { data: orgEvents, error: orgEventsErr } = await adminSupabase
+        .from('events')
+        .select('id, organization_id')
+        .in('organization_id', orgIds);
+      if (orgEventsErr) throw orgEventsErr;
+      const eventToOrg = new Map(
+        (orgEvents || []).map((e) => [e.id, e.organization_id]),
+      );
+      const allOrgEventIds = (orgEvents || []).map((e) => e.id);
+
+      const orParts = [];
+      if (allMemberIds.size > 0) {
+        orParts.push(`created_by.in.(${[...allMemberIds].join(',')})`);
+      }
+      if (allOrgEventIds.length > 0) {
+        orParts.push(`event_id.in.(${allOrgEventIds.join(',')})`);
+      }
+
+      if (orParts.length > 0) {
+        const { data: docs, error: docsErr } = await adminSupabase
+          .from('documents')
+          .select('id, created_by, event_id')
+          .or(orParts.join(','))
+          .is('deleted_at', null)
+          .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+        if (docsErr) throw docsErr;
+
+        const countByOrg = new Map();
+        const countedKeys = new Set(); // doc_id|org_id
+        for (const d of docs || []) {
+          const orgsForDoc = new Set();
+          const memberOrgs = memberOrgMap.get(d.created_by);
+          if (memberOrgs) for (const o of memberOrgs) orgsForDoc.add(o);
+          if (d.event_id && eventToOrg.has(d.event_id)) {
+            orgsForDoc.add(eventToOrg.get(d.event_id));
+          }
+          for (const oid of orgsForDoc) {
+            const key = `${d.id}|${oid}`;
+            if (countedKeys.has(key)) continue;
+            countedKeys.add(key);
+            countByOrg.set(oid, (countByOrg.get(oid) || 0) + 1);
+          }
+        }
+        for (const f of orgFolders) {
+          f.doc_count = countByOrg.get(f.organization_id) || 0;
+        }
+      }
+    } catch (countErr) {
+      console.error('[org-folders GET] doc_count compute failed:', countErr.message);
+      // Leave doc_count: 0 on every folder; the sidebar still falls back to
+      // its in-memory filter when doc_count looks unset/zero.
+    }
 
     return NextResponse.json({ orgFolders });
   } catch (err) {

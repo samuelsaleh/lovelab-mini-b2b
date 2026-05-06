@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
 import { grantAccess, revokeAccess } from '@/lib/agents/access';
+import { recordHealthEvent } from '@/lib/healthEvent';
 import { NextResponse } from 'next/server';
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
@@ -335,7 +336,18 @@ export async function DELETE(request, { params }) {
     try {
       await adminSupabase.rpc('revoke_user_sessions', { uid: id });
     } catch (revokeErr) {
-      console.error('[Agent DELETE] Session revocation error (non-blocking):', revokeErr.message);
+      // Tier A — security-relevant. A failure here means the soft-deleted
+      // agent might still hold a valid refresh token until expiry.
+      await recordHealthEvent({
+        source: 'agents_delete_revoke_sessions',
+        severity: 'error',
+        message: revokeErr.message || 'Session revocation RPC failed',
+        context: {
+          agentId: id,
+          actorId: session?.profile?.id || null,
+          code: revokeErr.code || null,
+        },
+      });
     }
 
     // Remove from allowed_emails so they cannot log back in

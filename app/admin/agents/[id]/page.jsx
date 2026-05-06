@@ -7,6 +7,7 @@ import { fmt } from '@/lib/utils';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
+import AddBonusModal from '@/app/components/AddBonusModal';
 
 export default function AdminAgentDetailsPage() {
   const router = useRouter();
@@ -30,6 +31,10 @@ export default function AdminAgentDetailsPage() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [savingPayment, setSavingPayment] = useState(false);
+  // When non-null, the Record Payment modal is in edit mode for this row.
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
+  const [showBonusModal, setShowBonusModal] = useState(false);
 
   // Contract Q&A panel
   const [contractChatOpen, setContractChatOpen] = useState(false);
@@ -208,33 +213,88 @@ export default function AdminAgentDetailsPage() {
     }
   }, [proposedConfig, agentId, load]);
 
+  const openCreatePayment = () => {
+    setEditingPayment(null);
+    setPaymentAmount('');
+    setPaymentNotes('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setShowPaymentModal(true);
+  };
+
+  const openEditPayment = (row) => {
+    setEditingPayment(row);
+    setPaymentAmount(String(row.amount ?? ''));
+    setPaymentNotes(row.notes || '');
+    // payment_date may be a full ISO timestamp; the date input wants YYYY-MM-DD
+    const d = row.payment_date ? new Date(row.payment_date) : new Date();
+    setPaymentDate(d.toISOString().split('T')[0]);
+    setShowPaymentModal(true);
+  };
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false);
+    setEditingPayment(null);
+  };
+
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     if (!paymentAmount || Number(paymentAmount) <= 0) return;
     setSavingPayment(true);
     try {
-      const res = await fetch('/api/agent-payments', {
-        method: 'POST',
+      const url = editingPayment
+        ? `/api/agent-payments/${editingPayment.id}`
+        : '/api/agent-payments';
+      const method = editingPayment ? 'PATCH' : 'POST';
+      const body = editingPayment
+        ? {
+            amount: Number(paymentAmount),
+            notes: paymentNotes,
+            payment_date: paymentDate,
+          }
+        : {
+            agent_id: agentId,
+            amount: paymentAmount,
+            notes: paymentNotes,
+            payment_date: new Date(paymentDate).toISOString(),
+          };
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: agentId,
-          amount: paymentAmount,
-          notes: paymentNotes,
-          payment_date: new Date(paymentDate).toISOString()
-        })
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         throw new Error(d.error || 'Failed to save payment');
       }
-      setShowPaymentModal(false);
+      closePaymentModal();
       setPaymentAmount('');
       setPaymentNotes('');
       await load();
     } catch (err) {
-      setError(err.message || 'Failed to record payment');
+      setError(err.message || 'Failed to save payment');
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (row) => {
+    if (!row?.id) return;
+    const ok = typeof window !== 'undefined'
+      ? window.confirm('Delete this payment? This cannot be undone.')
+      : true;
+    if (!ok) return;
+    setDeletingPaymentId(row.id);
+    try {
+      const res = await fetch(`/api/agent-payments/${row.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Failed to delete payment');
+      }
+      await load();
+    } catch (err) {
+      setError(err.message || 'Failed to delete payment');
+    } finally {
+      setDeletingPaymentId(null);
     }
   };
 
@@ -378,7 +438,13 @@ export default function AdminAgentDetailsPage() {
                   </button>
                 )}
                 <button
-                  onClick={() => setShowPaymentModal(true)}
+                  onClick={() => setShowBonusModal(true)}
+                  style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+                >
+                  Add Bonus
+                </button>
+                <button
+                  onClick={openCreatePayment}
                   style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
                 >
                   Record Payment
@@ -538,16 +604,41 @@ export default function AdminAgentDetailsPage() {
                           <th style={th}>Date</th>
                           <th style={{ ...th, textAlign: 'right' }}>Amount</th>
                           <th style={th}>Notes</th>
+                          <th style={{ ...th, textAlign: 'right', width: 120 }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {payments.map((row) => (
-                          <tr key={row.id}>
-                            <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.amount)}</td>
-                            <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
-                          </tr>
-                        ))}
+                        {payments.map((row) => {
+                          const isDeleting = deletingPaymentId === row.id;
+                          return (
+                            <tr key={row.id}>
+                              <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.amount)}</td>
+                              <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
+                              <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditPayment(row)}
+                                  aria-label="Edit payment"
+                                  title="Edit"
+                                  style={{ padding: '4px 8px', marginRight: 6, borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', cursor: 'pointer', fontSize: 11, fontFamily: fonts.body, color: colors.inkPlum }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePayment(row)}
+                                  disabled={isDeleting}
+                                  aria-label="Delete payment"
+                                  title="Delete"
+                                  style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', cursor: isDeleting ? 'default' : 'pointer', fontSize: 11, fontFamily: fonts.body, color: '#b91c1c' }}
+                                >
+                                  {isDeleting ? '…' : 'Delete'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -795,7 +886,9 @@ export default function AdminAgentDetailsPage() {
             {showPaymentModal && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
                 <div style={{ background: '#fff', padding: 24, borderRadius: 14, width: 400, boxShadow: '0 10px 40px rgba(0,0,0,0.15)', fontFamily: fonts.body }}>
-                  <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 800, color: colors.inkPlum }}>Record Payment</h3>
+                  <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 800, color: colors.inkPlum }}>
+                    {editingPayment ? 'Edit Payment' : 'Record Payment'}
+                  </h3>
                   <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Date</label>
@@ -810,14 +903,22 @@ export default function AdminAgentDetailsPage() {
                       <input type="text" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="e.g. bank transfer" style={inputStyle} />
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                      <button type="button" onClick={() => setShowPaymentModal(false)} style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: fonts.body }}>Cancel</button>
+                      <button type="button" onClick={closePaymentModal} style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontFamily: fonts.body }}>Cancel</button>
                       <button type="submit" disabled={savingPayment} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingPayment ? 'default' : 'pointer', fontWeight: 700, fontFamily: fonts.body }}>
-                        {savingPayment ? 'Saving...' : 'Save Payment'}
+                        {savingPayment ? 'Saving...' : (editingPayment ? 'Save Changes' : 'Save Payment')}
                       </button>
                     </div>
                   </form>
                 </div>
               </div>
+            )}
+
+            {showBonusModal && agent && (
+              <AddBonusModal
+                agent={agent}
+                onClose={() => setShowBonusModal(false)}
+                onSuccess={() => { setShowBonusModal(false); load(); }}
+              />
             )}
           </>
         )}

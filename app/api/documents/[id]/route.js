@@ -2,8 +2,9 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
-import { calculateCommission } from '@/lib/commission';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
+import { recordHealthEvent } from '@/lib/healthEvent';
+import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -137,46 +138,33 @@ export async function PUT(request, { params }) {
     }
 
     // Recalculate commission when total_amount changes (skip for internal and consignment orders)
+    // Attribution logic shared with POST — see lib/commissionAttribution.js.
     try {
       if (doc?.total_amount > 0 && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
-        const { data: agentProfile } = await adminSupabase
-          .from('profiles')
-          .select('is_agent, commission_rate, agent_status, agent_commission_config, organization_id')
-          .eq('id', doc.created_by)
-          .single();
-
-        if (agentProfile?.is_agent && agentProfile.agent_status === 'active') {
-          let effectiveRate = agentProfile.commission_rate || 0;
-          if (!effectiveRate && agentProfile.organization_id) {
-            const { data: org } = await adminSupabase
-              .from('organizations')
-              .select('commission_rate')
-              .eq('id', agentProfile.organization_id)
-              .single();
-            effectiveRate = org?.commission_rate || 0;
-          }
-
-          const { amount, rate } = calculateCommission(
-            doc.total_amount,
-            agentProfile.agent_commission_config || null,
-            effectiveRate,
-          );
-
-          if (amount > 0) {
-            await adminSupabase.from('agent_commissions').upsert({
-              agent_id: doc.created_by,
-              document_id: doc.id,
-              type: 'order',
-              order_total: doc.total_amount,
-              commission_rate: rate,
-              commission_amount: amount,
-              status: 'pending',
-            }, { onConflict: 'agent_id,document_id' });
-          }
+        const attribution = await resolveCommissionAgent(adminSupabase, doc);
+        if (attribution) {
+          await upsertCommissionForDocument(adminSupabase, {
+            document: doc,
+            profile: attribution.profile,
+            agentId: attribution.agentId,
+          });
         }
       }
     } catch (commErr) {
-      console.error('[Documents PUT] Commission recalc error (non-blocking):', commErr.message);
+      // Tier A — never silent. See lib/healthEvent.js.
+      await recordHealthEvent({
+        source: 'documents_put_commission_recalc',
+        severity: 'error',
+        message: commErr.message || 'Commission recalculation failed',
+        context: {
+          documentId: doc?.id || null,
+          createdBy: doc?.created_by || null,
+          orderChannel: doc?.order_channel || null,
+          totalAmount: doc?.total_amount ?? null,
+          code: commErr.code || null,
+          details: commErr.details || null,
+        },
+      });
     }
 
     return NextResponse.json({ document: doc });
@@ -233,6 +221,37 @@ export async function DELETE(request, { params }) {
     if (updateError) {
       console.error('[Documents DELETE] Error:', updateError.message);
       return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
+    }
+
+    // Cascade: cancel linked commissions so they stop showing up in agent
+    // pending totals. Never touch a 'paid' row — that's an admin/refund flow.
+    // Soft-delete on documents does NOT trigger the FK ON DELETE CASCADE, so
+    // we must do this explicitly. See docs/cascade-delete-audit.md gap 1.
+    try {
+      const { error: cascadeErr } = await adminSupabase
+        .from('agent_commissions')
+        .update({
+          status: 'cancelled',
+          notes: 'Auto-cancelled because the linked document was soft-deleted.',
+        })
+        .eq('document_id', id)
+        .neq('status', 'paid');
+
+      if (cascadeErr) {
+        await recordHealthEvent({
+          source: 'documents_delete_commission_cascade',
+          severity: 'error',
+          message: cascadeErr.message || 'Failed to cancel linked commissions',
+          context: { documentId: id, code: cascadeErr.code || null },
+        });
+      }
+    } catch (cascadeThrew) {
+      await recordHealthEvent({
+        source: 'documents_delete_commission_cascade',
+        severity: 'error',
+        message: cascadeThrew?.message || 'Cascade threw',
+        context: { documentId: id },
+      });
     }
 
     return NextResponse.json({ success: true });

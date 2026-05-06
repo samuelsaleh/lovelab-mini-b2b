@@ -48,8 +48,32 @@ export default function DocumentsSidebar({
 }) {
   const router = useRouter()
 
-  const getEventDocCount = (eventId) => documents.filter(d => d.event_id === eventId).length
-  const getOrgDocCount = (organizationId) => documents.filter(d => d.events?.organization_id === organizationId).length
+  // Server-authoritative counts (events.doc_count is computed in /api/events
+  // with the same filters as /api/documents — see Phase 12 fix). Falls back to
+  // an in-memory filter for backward compatibility while the API rolls out.
+  const eventCountById = new Map((events || []).map(e => [e.id, e.doc_count]))
+  const getEventDocCount = (eventId) => {
+    const fromServer = eventCountById.get(eventId)
+    if (typeof fromServer === 'number') return fromServer
+    return documents.filter(d => d.event_id === eventId).length
+  }
+  // Phase 18b: prefer server-authoritative orgFolder.doc_count (computed by
+  // /api/org-folders with the same filters as /api/documents). Falls back to
+  // event-summing (Phase 12) and finally to in-memory filtering.
+  const orgFolderCountById = new Map(
+    (orgFolders || []).map(f => [f.organization_id, f.doc_count]),
+  )
+  const getOrgDocCount = (organizationId) => {
+    const fromServer = orgFolderCountById.get(organizationId)
+    if (typeof fromServer === 'number' && fromServer > 0) return fromServer
+    const orgEvents = (events || []).filter(e => e.organization_id === organizationId)
+    if (orgEvents.length > 0 && orgEvents.every(e => typeof e.doc_count === 'number')) {
+      const sum = orgEvents.reduce((acc, e) => acc + (e.doc_count || 0), 0)
+      if (sum > 0) return sum
+    }
+    if (typeof fromServer === 'number') return fromServer
+    return documents.filter(d => d.events?.organization_id === organizationId).length
+  }
   const allDocsCount = documents.length
 
   const eventFolders = (events || []).filter(e => (e.type || 'other') !== 'agent')

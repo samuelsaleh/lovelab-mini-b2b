@@ -123,6 +123,12 @@ export async function GET(request) {
     };
 
     for (const c of allForSummary || []) {
+      // Phase 18 fix: cancelled rows are kept for the audit trail (the agent
+      // can still see "this order was cancelled because it was deleted") but
+      // they must NOT contribute to total_earned, from_orders, order_count,
+      // from_bonuses, or bonus_count. Same root cause as the Marc Schlund
+      // 1 order / 470€ bug in the admin Top Agents widget.
+      if (c.status === 'cancelled') continue;
       const amt = Number(c.commission_amount) || 0;
       summary.total_earned += amt;
       if (c.type === 'order') {

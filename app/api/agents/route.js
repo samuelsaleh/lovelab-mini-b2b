@@ -66,6 +66,12 @@ export async function GET(request) {
         .select('agent_id, type, order_total, commission_amount, status');
       for (const c of commRows || []) {
         if (!c.agent_id) continue;
+        // Phase 18 fix: cancelled rows must NOT count toward orders/revenue/
+        // commission totals. Phase 11b's soft-delete cascade flips a row to
+        // status='cancelled' when its document is trashed, which means a
+        // deleted order would otherwise still appear in admin "Top Agents"
+        // (this is exactly the Marc Schlund / 1 order / 470€ bug).
+        if (c.status === 'cancelled') continue;
         if (!commByAgent[c.agent_id]) commByAgent[c.agent_id] = { orders: 0, revenue: 0, commission: 0, pending: 0, paid: 0 };
         const a = commByAgent[c.agent_id];
         const amt = Number(c.commission_amount) || 0;

@@ -1531,6 +1531,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onSaveSuccess={deleteDraft}
         initialOrderChannel={initialOrderChannel}
         metadata={{
+          // Top-level shipping_amount drives commission calculation
+          // (lib/commissionAttribution.js): commission = (total - shipping) * rate.
+          // Persisted at the top level (not just inside formState) so back-end
+          // logic doesn't have to crack open the form snapshot.
+          shipping_amount: Number(shippingAmount) || 0,
           formState: {
             rows: rows.filter(r => isRowFilled(r)),
             companyName, contactName, addressLine1, addressLine2, country,
