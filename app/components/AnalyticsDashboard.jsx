@@ -224,18 +224,41 @@ export default function AnalyticsDashboard({ initialEventId = null }) {
   const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
 
+  // Paginate through /api/documents to load every doc, not just the most
+  // recent 50 (the API's default page size). Without this, fairs older than
+  // the most recent ~50 documents would show near-zero revenue and the KPI
+  // totals would silently undercount.
+  const fetchAllDocuments = async () => {
+    const PER_PAGE = 200 // API hard-caps at 200 for non-consignment views
+    const all = []
+    let page = 1
+    while (true) {
+      // Note: cannot use summary=true here — country / product / vitrine
+      // breakdowns rely on metadata.formState which summary mode strips.
+      const res = await safeFetch(`/api/documents?page=${page}&per_page=${PER_PAGE}`)
+      const data = await res.json()
+      const batch = Array.isArray(data?.documents) ? data.documents : []
+      all.push(...batch)
+      if (batch.length < PER_PAGE) break
+      page += 1
+      // Defensive cap: never loop forever even if the API returned full
+      // pages indefinitely. 50 pages * 200 = 10,000 documents is plenty.
+      if (page > 50) break
+    }
+    return all
+  }
+
   const loadAnalytics = async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const [docsRes, eventsRes] = await Promise.all([
-        safeFetch('/api/documents'),
+      const [allDocs, eventsRes] = await Promise.all([
+        fetchAllDocuments(),
         safeFetch('/api/events'),
       ])
-      const docsData = await docsRes.json()
       const eventsData = await eventsRes.json()
       // Exclude internal (supplier) orders from all analytics — they are not revenue
-      if (docsData.documents) setDocuments(docsData.documents.filter(d => d.order_channel !== 'internal'))
+      setDocuments(allDocs.filter(d => d.order_channel !== 'internal'))
       if (eventsData.events) setEvents(eventsData.events)
     } catch {
       setFetchError('Failed to load analytics data.')
@@ -264,10 +287,15 @@ export default function AnalyticsDashboard({ initialEventId = null }) {
   }, [docs])
 
   // ─── Revenue per fair ─────────────────────────────────────────────────
+  // Only count `order` documents, so the per-fair bars sum to the same total
+  // as the "Total Revenue" KPI above. Previously this also counted quotes,
+  // which inflated bars relative to the KPI and made the chart inconsistent
+  // with the top number.
   const revenuePerFair = useMemo(() => {
     if (selectedEventId) return []
     const map = new Map()
     documents.forEach(d => {
+      if (d.document_type !== 'order') return
       const eid = d.event_id || '__none__'
       const eName = d.events?.name || 'No Event'
       if (!map.has(eid)) map.set(eid, { name: eName, revenue: 0, orders: 0 })
