@@ -91,27 +91,27 @@
     },
     {
       "parameters": {
-        "fromEmail": "={{ $env.N8N_ALERT_FROM || 'no-reply@love-lab.com' }}",
-        "toEmail": "={{ $env.N8N_ALERT_TO || 'sam@love-lab.com' }}",
+        "sendTo": "={{ $env.N8N_ALERT_TO || 'sam@love-lab.com' }}",
         "subject": "=⚠️  LoveLab commission cron — {{$json.summary.failed}} agent(s) failed for {{$json.period.label}}",
-        "html": "=<h3>Commission report cron — partial failure</h3>\n<p>Period: <strong>{{ $json.period.label }}</strong></p>\n<ul>\n  <li>Total agents: {{ $json.summary.total_agents }}</li>\n  <li>Sent: {{ $json.summary.sent }}</li>\n  <li>Skipped (no orders): {{ $json.summary.skipped }}</li>\n  <li>Failed: {{ $json.summary.failed }}</li>\n</ul>\n<h4>Failures</h4>\n<pre>{{ JSON.stringify($json.results.filter(r => !r.ok), null, 2) }}</pre>\n<p>Check Supabase <code>system_health_events</code> table — the route also recorded a warn-severity event there.</p>",
+        "emailType": "html",
+        "message": "=<h3>Commission report cron — partial failure</h3>\n<p>Period: <strong>{{ $json.period.label }}</strong></p>\n<ul>\n  <li>Total agents: {{ $json.summary.total_agents }}</li>\n  <li>Sent: {{ $json.summary.sent }}</li>\n  <li>Skipped (no orders): {{ $json.summary.skipped }}</li>\n  <li>Failed: {{ $json.summary.failed }}</li>\n</ul>\n<h4>Failures</h4>\n<pre>{{ JSON.stringify($json.results.filter(r => !r.ok), null, 2) }}</pre>\n<p>Check Supabase <code>system_health_events</code> table — the route also recorded a warn-severity event there.</p>",
         "options": {}
       },
       "id": "alert-email",
       "name": "Email Sam (failure alert)",
-      "type": "n8n-nodes-base.emailSend",
+      "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
         1140,
         220
       ],
       "credentials": {
-        "smtp": {
-          "id": "lovelab-smtp",
-          "name": "LoveLab SMTP (Resend or your provider)"
+        "gmailOAuth2": {
+          "id": "gmail-oauth",
+          "name": "Gmail account"
         }
       },
-      "notes": "Optional. If you don't want a 2nd email channel, delete this node — the API already records a warn event in system_health_events which surfaces in the admin UI."
+      "notes": "Uses your existing Gmail OAuth2 credential. Change the credential name to match what you have in n8n."
     },
     {
       "parameters": {
