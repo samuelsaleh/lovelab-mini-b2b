@@ -1,0 +1,191 @@
+{
+  "name": "LoveLab — Monthly Commission Reports",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "1st of the month, 08:00 Brussels",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Runs at 08:00 Brussels time on the 1st of every month. n8n's Schedule node respects the workflow timezone — set workflow timezone to Europe/Brussels in workflow settings."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LOVELAB_BASE_URL }}/api/commission-reports/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"send_email\": true,\n  \"upload_to_drive\": true,\n  \"skip_if_empty\": true\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "http-generate",
+      "name": "POST /api/commission-reports/generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lovelab-cron-secret",
+          "name": "LoveLab CRON_SECRET (x-vercel-cron-secret)"
+        }
+      },
+      "notes": "Body has no agent_id and no month → server defaults to PREVIOUS calendar month and loops over every active agent. Auth header is x-vercel-cron-secret = $env.CRON_SECRET (configured in the credential)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "any-failures",
+              "leftValue": "={{ $json.summary?.failed }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-failures",
+      "name": "Any agent failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.N8N_ALERT_FROM || 'no-reply@love-lab.com' }}",
+        "toEmail": "={{ $env.N8N_ALERT_TO || 'sam@love-lab.com' }}",
+        "subject": "=⚠️  LoveLab commission cron — {{$json.summary.failed}} agent(s) failed for {{$json.period.label}}",
+        "html": "=<h3>Commission report cron — partial failure</h3>\n<p>Period: <strong>{{ $json.period.label }}</strong></p>\n<ul>\n  <li>Total agents: {{ $json.summary.total_agents }}</li>\n  <li>Sent: {{ $json.summary.sent }}</li>\n  <li>Skipped (no orders): {{ $json.summary.skipped }}</li>\n  <li>Failed: {{ $json.summary.failed }}</li>\n</ul>\n<h4>Failures</h4>\n<pre>{{ JSON.stringify($json.results.filter(r => !r.ok), null, 2) }}</pre>\n<p>Check Supabase <code>system_health_events</code> table — the route also recorded a warn-severity event there.</p>",
+        "options": {}
+      },
+      "id": "alert-email",
+      "name": "Email Sam (failure alert)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        220
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "lovelab-smtp",
+          "name": "LoveLab SMTP (Resend or your provider)"
+        }
+      },
+      "notes": "Optional. If you don't want a 2nd email channel, delete this node — the API already records a warn event in system_health_events which surfaces in the admin UI."
+    },
+    {
+      "parameters": {
+        "content": "=## ✅ Commission run successful\n\nPeriod: **{{ $json.period.label }}**\n\n- Total agents: {{ $json.summary.total_agents }}\n- Sent: {{ $json.summary.sent }}\n- Skipped (no paid orders): {{ $json.summary.skipped }}\n- Failed: {{ $json.summary.failed }}\n\nView per-agent results in the run history.",
+        "options": {}
+      },
+      "id": "noop-success",
+      "name": "Success log",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "1st of the month, 08:00 Brussels": {
+      "main": [
+        [
+          {
+            "node": "POST /api/commission-reports/generate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /api/commission-reports/generate": {
+      "main": [
+        [
+          {
+            "node": "Any agent failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any agent failed?": {
+      "main": [
+        [
+          {
+            "node": "Email Sam (failure alert)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Success log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Brussels",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 600
+  },
+  "tags": [
+    {
+      "name": "lovelab"
+    },
+    {
+      "name": "monthly"
+    }
+  ]
+}

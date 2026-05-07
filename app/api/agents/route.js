@@ -25,7 +25,7 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
-    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
+    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
 
     // Use OR so agents whose is_agent flag was lost (NULL after a profile migration
     // race or partial upsert) are still visible as long as agent_status is set.
@@ -63,7 +63,7 @@ export async function GET(request) {
     try {
       const { data: commRows } = await adminSupabase
         .from('agent_commissions')
-        .select('agent_id, type, order_total, commission_amount, status');
+        .select('agent_id, type, order_total, commission_amount, status, customer_paid_at');
       for (const c of commRows || []) {
         if (!c.agent_id) continue;
         // Phase 18 fix: cancelled rows must NOT count toward orders/revenue/
@@ -72,13 +72,29 @@ export async function GET(request) {
         // deleted order would otherwise still appear in admin "Top Agents"
         // (this is exactly the Marc Schlund / 1 order / 470€ bug).
         if (c.status === 'cancelled') continue;
-        if (!commByAgent[c.agent_id]) commByAgent[c.agent_id] = { orders: 0, revenue: 0, commission: 0, pending: 0, paid: 0 };
+        if (!commByAgent[c.agent_id]) {
+          commByAgent[c.agent_id] = {
+            orders: 0,
+            revenue: 0,
+            commission: 0,
+            pending: 0,
+            paid: 0,
+            // Phase 19b — four-bucket split.
+            ready_to_pay: 0,
+            awaiting_customer: 0,
+          };
+        }
         const a = commByAgent[c.agent_id];
         const amt = Number(c.commission_amount) || 0;
         if (c.type === 'order') { a.orders++; a.revenue += Number(c.order_total) || 0; }
         a.commission += amt;
-        if (c.status === 'pending' || c.status === 'approved') a.pending += amt;
-        else if (c.status === 'paid') a.paid += amt;
+        if (c.status === 'pending' || c.status === 'approved') {
+          a.pending += amt;
+          if (c.customer_paid_at) a.ready_to_pay += amt;
+          else a.awaiting_customer += amt;
+        } else if (c.status === 'paid') {
+          a.paid += amt;
+        }
       }
     } catch (e) {
       console.error('[Agents GET] commission query error (non-blocking):', e?.message);
@@ -177,12 +193,22 @@ export async function GET(request) {
         : fb ? fb.pending
         : effective_total_commission - (base.paid_commission || (fb?.paid ?? 0));
 
+      // Phase 19b — four-bucket split. Always sourced from the live
+      // commission table (commByAgent); falls back to 0 when there are
+      // no rows yet (older agents pre-migration). Never derived from
+      // documents because the customer_paid_at flag has no document-level
+      // equivalent.
+      const ready_to_pay = fb?.ready_to_pay || 0;
+      const awaiting_customer = fb?.awaiting_customer || 0;
+
       return {
         ...base,
         effective_orders: Math.round((effective_orders || 0) * 100) / 100,
         effective_revenue: Math.round((effective_revenue || 0) * 100) / 100,
         effective_total_commission: Math.round((effective_total_commission || 0) * 100) / 100,
         effective_pending_commission: Math.round(Math.max(0, effective_pending_commission || 0) * 100) / 100,
+        ready_to_pay: Math.round(ready_to_pay * 100) / 100,
+        awaiting_customer: Math.round(awaiting_customer * 100) / 100,
       };
     };
 

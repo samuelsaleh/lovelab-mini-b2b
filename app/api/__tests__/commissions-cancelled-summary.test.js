@@ -130,3 +130,88 @@ describe('/api/commissions GET — cancelled rows excluded from summary', () => 
     expect(body.summary.paid_amount).toBe(20);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// Phase 19b — four-bucket split (READY TO PAY vs AWAITING CUSTOMER)
+// ────────────────────────────────────────────────────────────────────────
+
+describe('/api/commissions GET — Phase 19b four-bucket summary', () => {
+  test('ready_to_pay sums pending rows where customer_paid_at is set', async () => {
+    summaryRows = [
+      // Customer paid → READY TO PAY
+      { commission_amount: 100, status: 'pending', type: 'order', customer_paid_at: '2026-05-01T10:00:00Z' },
+      { commission_amount: 200, status: 'pending', type: 'order', customer_paid_at: '2026-05-02T10:00:00Z' },
+      // Customer hasn't paid → AWAITING CUSTOMER
+      { commission_amount: 300, status: 'pending', type: 'order', customer_paid_at: null },
+      // Already paid out → PAID OUT (not in either pending bucket)
+      { commission_amount: 50, status: 'paid', type: 'order', customer_paid_at: '2026-04-01T10:00:00Z' },
+    ];
+    detailRows = [...summaryRows];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(body.summary.ready_to_pay).toBe(300);          // 100 + 200
+    expect(body.summary.awaiting_customer).toBe(300);     // just the 300
+    expect(body.summary.ready_to_pay_count).toBe(2);
+    expect(body.summary.awaiting_customer_count).toBe(1);
+    // pending_amount should stay = ready_to_pay + awaiting_customer
+    expect(body.summary.pending_amount).toBe(600);
+    expect(body.summary.paid_amount).toBe(50);
+  });
+
+  test('cancelled rows are excluded from both new buckets', async () => {
+    summaryRows = [
+      { commission_amount: 999, status: 'cancelled', type: 'order', customer_paid_at: '2026-05-01' },
+      { commission_amount: 100, status: 'pending', type: 'order', customer_paid_at: null },
+    ];
+    detailRows = [...summaryRows];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(body.summary.ready_to_pay).toBe(0);
+    expect(body.summary.awaiting_customer).toBe(100);
+  });
+
+  test('approved status counts toward ready_to_pay just like pending (when customer_paid_at set)', async () => {
+    summaryRows = [
+      { commission_amount: 50, status: 'approved', type: 'order', customer_paid_at: '2026-05-01' },
+    ];
+    detailRows = [...summaryRows];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.summary.ready_to_pay).toBe(50);
+    expect(body.summary.awaiting_customer).toBe(0);
+  });
+
+  test('new_client_bonus rows split into ready/awaiting just like orders', async () => {
+    summaryRows = [
+      { commission_amount: 200, status: 'pending', type: 'new_client_bonus', customer_paid_at: '2026-05-01' },
+      { commission_amount: 200, status: 'pending', type: 'new_client_bonus', customer_paid_at: null },
+    ];
+    detailRows = [...summaryRows];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.summary.from_new_client_bonus).toBe(400);
+    expect(body.summary.new_client_bonus_count).toBe(2);
+    expect(body.summary.ready_to_pay).toBe(200);
+    expect(body.summary.awaiting_customer).toBe(200);
+  });
+
+  test('all customers paid → awaiting_customer is 0; pending_amount equals ready_to_pay', async () => {
+    summaryRows = [
+      { commission_amount: 100, status: 'pending', type: 'order', customer_paid_at: '2026-05-01' },
+      { commission_amount: 50, status: 'pending', type: 'new_client_bonus', customer_paid_at: '2026-05-01' },
+    ];
+    detailRows = [...summaryRows];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    expect(body.summary.awaiting_customer).toBe(0);
+    expect(body.summary.ready_to_pay).toBe(150);
+    expect(body.summary.pending_amount).toBe(150);
+  });
+});

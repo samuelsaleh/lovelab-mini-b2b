@@ -8,6 +8,8 @@ import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
 import AddBonusModal from '@/app/components/AddBonusModal';
+import NewClientBonusModal from '@/app/components/NewClientBonusModal';
+import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 
 export default function AdminAgentDetailsPage() {
   const router = useRouter();
@@ -35,6 +37,7 @@ export default function AdminAgentDetailsPage() {
   const [editingPayment, setEditingPayment] = useState(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [showBonusModal, setShowBonusModal] = useState(false);
+  const [showNewClientBonusModal, setShowNewClientBonusModal] = useState(false);
 
   // Contract Q&A panel
   const [contractChatOpen, setContractChatOpen] = useState(false);
@@ -132,21 +135,46 @@ export default function AdminAgentDetailsPage() {
 
       // Always build derived commission rows from actual documents when no real records exist.
       // This fixes agents who have orders but no agent_commissions table entries yet.
+      //
+      // Phase 19b: only fall back to doc-derived when there are NO commissions
+      // at all (not "no order commissions"). Otherwise new_client_bonus rows
+      // would be hidden because they don't satisfy the type==='order' filter
+      // — exactly the bug Sam saw on Nicolas after the bonus backfill.
       const commList = commJson.commissions || [];
-      if (commList.filter(c => c.type === 'order').length === 0) {
+      if (commList.length === 0) {
         const orderDocs = fetchedOrgDocs.filter(
           (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
         );
         const rate = Number(found.commission_rate) || 0;
-        setDocDerivedRows(orderDocs.map((d) => ({
-          id: `doc-${d.id}`,
-          type: 'order',
-          created_at: d.created_at,
-          order_total: Number(d.total_amount) || 0,
-          commission_amount: Math.round(((Number(d.total_amount) || 0) * rate / 100) * 100) / 100,
-          document: { client_company: d.client_company || d.client_name || 'Order', id: d.id, order_channel: d.order_channel },
-          _derived: true,
-        })));
+        setDocDerivedRows(orderDocs.map((d) => {
+          const grossTotal = Number(d.total_amount) || 0;
+          const rawShipping = Number(
+            d?.metadata?.shipping_amount ??
+              d?.metadata?.formState?.deliveryCost ??
+              0,
+          );
+          const shipping = Number.isFinite(rawShipping) && rawShipping > 0 ? rawShipping : 0;
+          const netTotal = Math.max(0, grossTotal - shipping);
+          return {
+            id: `doc-${d.id}`,
+            type: 'order',
+            created_at: d.created_at,
+            // order_total is the POST-shipping commissionable base (matches
+            // what the real commission hook stores). gross_total is shown
+            // in a separate column so Sam sees both numbers.
+            order_total: netTotal,
+            gross_total: grossTotal,
+            commission_rate: rate,
+            commission_amount: Math.round(netTotal * rate / 100 * 100) / 100,
+            document: {
+              client_company: d.client_company || d.client_name || 'Order',
+              id: d.id,
+              order_channel: d.order_channel,
+              total_amount: grossTotal,
+            },
+            _derived: true,
+          };
+        }));
       } else {
         setDocDerivedRows([]);
       }
@@ -319,6 +347,45 @@ export default function AdminAgentDetailsPage() {
     }
   };
 
+  // Phase 19b — toggle the per-commission "customer paid" flag.
+  // Optimistic: flips the local row immediately so the checkbox reacts
+  // instantly, then revalidates from the server. On failure, reverts and
+  // surfaces the error.
+  const [togglingCommissionId, setTogglingCommissionId] = useState(null);
+  const handleToggleCustomerPaid = useCallback(async (commissionId, nextPaid) => {
+    if (!commissionId || togglingCommissionId === commissionId) return;
+    setTogglingCommissionId(commissionId);
+    setCommissions((prev) =>
+      prev.map((c) =>
+        c.id === commissionId
+          ? { ...c, customer_paid_at: nextPaid ? new Date().toISOString() : null }
+          : c,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}/customer-paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paid: nextPaid }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update');
+      // Refresh the summary KPIs from the source of truth.
+      await load();
+    } catch (err) {
+      setCommissions((prev) =>
+        prev.map((c) =>
+          c.id === commissionId
+            ? { ...c, customer_paid_at: nextPaid ? null : c.customer_paid_at }
+            : c,
+        ),
+      );
+      setError(err.message || 'Failed to update commission');
+    } finally {
+      setTogglingCommissionId(null);
+    }
+  }, [load, togglingCommissionId]);
+
   const handleSaveOrg = async () => {
     if (!agent?.organization_id) return;
     setSavingOrg(true);
@@ -381,6 +448,7 @@ export default function AdminAgentDetailsPage() {
 
   const TABS = [
     { id: 'financials', label: 'Financials' },
+    { id: 'reports', label: 'Reports' },
     { id: 'consignment', label: `Consignment (${agentConsignmentOrders.length})` },
     { id: 'organisation', label: 'Organisation' },
     { id: 'documents', label: 'Documents' },
@@ -420,6 +488,36 @@ export default function AdminAgentDetailsPage() {
                     <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, background: '#f3f0f8', borderRadius: 20, padding: '2px 9px' }}>
                       {commRate}% rate
                     </span>
+                    {(() => {
+                      const bonusOn = !!agent?.new_client_bonus_enabled;
+                      const bonusAmt = Number(agent?.new_client_bonus_amount) || 0;
+                      const label = bonusOn && bonusAmt > 0
+                        ? `+${fmt(bonusAmt)} / new client`
+                        : '+ New client bonus';
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewClientBonusModal(true)}
+                          title={bonusOn ? 'Adjust new-client bonus' : 'Enable new-client bonus'}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: bonusOn ? '#fff' : colors.inkPlum,
+                            background: bonusOn ? colors.inkPlum : '#fff',
+                            border: `1px solid ${colors.inkPlum}`,
+                            borderRadius: 20,
+                            padding: '2px 9px',
+                            cursor: 'pointer',
+                            fontFamily: fonts.body,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                     <span style={{ fontSize: 11, fontWeight: 700, color: agent?.agent_status === 'active' ? '#374151' : '#9ca3af', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f5f5f5', border: `1px solid ${agent?.agent_status === 'active' ? '#d1fae5' : '#e5e7eb'}`, borderRadius: 20, padding: '2px 9px' }}>
                       {agent?.agent_status || 'unknown'}
                     </span>
@@ -453,16 +551,53 @@ export default function AdminAgentDetailsPage() {
             </div>
 
             {/* ── 4 KPI cards ──────────────────────────────────────────────── */}
+            {/*
+              Phase 19b — four-bucket split.
+                READY TO PAY      = customer has paid the order (green); will be
+                                    included in next month's payout export.
+                AWAITING CUSTOMER = customer hasn't paid yet (orange); commission
+                                    is on hold; rolls over to next month.
+                PAID OUT          = already transferred to the agent.
+                REVENUE           = total post-shipping revenue brought in.
+            */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
               {[
-                { label: 'EARNED', value: fmt(totalEarned), sub: `est. ${commRate}%` },
-                { label: 'PENDING', value: fmt(pendingBalance), sub: 'to pay out' },
-                { label: 'REVENUE', value: fmt(orderRevenue), sub: 'total' },
-                { label: 'ORDERS', value: orderDocsList.length, sub: 'B2B / B2C' },
+                {
+                  label: 'READY TO PAY',
+                  value: fmt(s.ready_to_pay || 0),
+                  sub: s.ready_to_pay_count ? `${s.ready_to_pay_count} commission${s.ready_to_pay_count === 1 ? '' : 's'}` : 'customer paid',
+                  accent: '#16a34a',
+                  background: '#f0fdf4',
+                  border: '#bbf7d0',
+                },
+                {
+                  label: 'AWAITING CUSTOMER',
+                  value: fmt(s.awaiting_customer || 0),
+                  sub: s.awaiting_customer_count ? `${s.awaiting_customer_count} on hold` : 'customer not paid yet',
+                  accent: '#c2410c',
+                  background: '#fff7ed',
+                  border: '#fed7aa',
+                },
+                {
+                  label: 'PAID OUT',
+                  value: fmt(s.paid_amount || s.total_paid_out || 0),
+                  sub: 'transferred',
+                  accent: colors.charcoal,
+                  background: '#fff',
+                  border: colors.lineGray,
+                },
+                {
+                  label: 'REVENUE',
+                  value: fmt(orderRevenue),
+                  sub: `${orderDocsList.length} order${orderDocsList.length === 1 ? '' : 's'}`,
+                  accent: colors.charcoal,
+                  background: '#fff',
+                  border: colors.lineGray,
+                },
               ].map(k => (
-                <div key={k.label} style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: '16px 18px' }}>
+                <div key={k.label} style={{ background: k.background, border: `1px solid ${k.border}`, borderRadius: 12, padding: '16px 18px' }}>
                   <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: colors.lovelabMuted, marginBottom: 6, textTransform: 'uppercase' }}>{k.label}</div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: colors.charcoal, lineHeight: 1 }}>{k.value}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: k.accent, lineHeight: 1 }}>{k.value}</div>
                   <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>{k.sub}</div>
                 </div>
               ))}
@@ -540,8 +675,15 @@ export default function AdminAgentDetailsPage() {
             </div>
 
             {/* ── Tab: Financials ───────────────────────────────────────────── */}
+            {/*
+              Phase 19b — stacked vertically (was a 2-col grid). The new
+              7-column Commission History needs full container width;
+              cramming it next to the Payments Ledger at ~480px clipped
+              the last two columns (Customer paid?, Status). Stacking
+              keeps both tables breathable on mobile and desktop.
+            */}
             {activeTab === 'financials' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
                 {/* Commission */}
                 <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
@@ -557,34 +699,99 @@ export default function AdminAgentDetailsPage() {
                       <>
                         {isDerived && (
                           <div style={{ padding: '7px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
-                            Estimated from order documents
+                            Estimated from order documents — save an order to create real commission rows.
                           </div>
                         )}
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
                               <th style={th}>Date</th>
                               <th style={th}>Client</th>
-                              <th style={{ ...th, textAlign: 'right' }}>Total</th>
-                              <th style={{ ...th, textAlign: 'right' }}>Comm.</th>
+                              <th style={{ ...th, textAlign: 'right' }} title="The full order total as invoiced to the customer (includes shipping).">Total</th>
+                              <th style={{ ...th, textAlign: 'right' }} title="Order total minus shipping. Commission is a % of this number.">Net</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Rate</th>
+                              <th style={{ ...th, textAlign: 'right' }}>Commission</th>
+                              <th style={{ ...th, textAlign: 'center' }} title="Tick when the customer has paid this order. Only ticked rows are included in the next monthly payout.">Paid?</th>
+                              <th style={{ ...th, textAlign: 'center' }}>Status</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {allRows.map((row) => (
-                              <tr key={row.id}>
-                                <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
-                                <td style={{ ...td, fontSize: 12 }}>
-                                  {row.type === 'bonus' ? 'Bonus' : (row.document?.client_company || 'Order')}
-                                  {row.document?.order_channel === 'b2c' && (
-                                    <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
-                                  )}
-                                </td>
-                                <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{row.type === 'order' ? fmt(row.order_total) : '—'}</td>
-                                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.commission_amount)}</td>
-                              </tr>
-                            ))}
+                            {allRows.map((row) => {
+                              const isBonus = row.type === 'new_client_bonus' || row.type === 'bonus';
+                              const isCustomerPaid = !!row.customer_paid_at;
+                              const isPaidOut = row.status === 'paid';
+                              const isCancelled = row.status === 'cancelled';
+                              const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
+                              const status = isCancelled
+                                ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
+                                : isPaidOut
+                                ? { label: 'Paid', bg: '#f3f4f6', fg: '#374151' }
+                                : isCustomerPaid
+                                ? { label: 'Ready', bg: '#f0fdf4', fg: '#166534' }
+                                : { label: 'Awaiting', bg: '#fff7ed', fg: '#9a3412' };
+                              const clientLabel = row.type === 'new_client_bonus'
+                                ? `New client bonus${row.document?.client_company ? ` — ${row.document.client_company}` : ''}`
+                                : row.type === 'bonus'
+                                ? 'Bonus'
+                                : (row.document?.client_company || row.document?.client_name || 'Order');
+                              // Resolve gross total: doc-derived rows pre-compute it; real
+                              // commission rows get it from the joined document. Fallback
+                              // to net total when shipping data isn't available.
+                              const netTotal = Number(row.order_total) || 0;
+                              const grossTotal = Number(
+                                row.gross_total ?? row.document?.total_amount ?? netTotal,
+                              );
+                              const hasShipping = isFinite(grossTotal) && grossTotal > netTotal;
+                              // Commission rate display: prefer the row's stored rate; if
+                              // it's 0/missing on an order row, fall back to the agent's
+                              // rate so admins see a meaningful number for legacy rows.
+                              const rowRate = Number(row.commission_rate) || 0;
+                              const displayRate = isBonus ? null : (rowRate > 0 ? rowRate : commRate);
+                              return (
+                                <tr key={row.id} style={isCancelled ? { opacity: 0.55 } : undefined}>
+                                  <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                                  <td style={{ ...td, fontSize: 12 }}>
+                                    {clientLabel}
+                                    {row.type === 'new_client_bonus' && (
+                                      <span style={{ marginLeft: 5, fontSize: 9, color: colors.inkPlum, fontWeight: 700, background: '#f3f0f8', padding: '1px 5px', borderRadius: 3 }}>NEW</span>
+                                    )}
+                                    {row.document?.order_channel === 'b2c' && (
+                                      <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
+                                    )}
+                                  </td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt(grossTotal)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt(netTotal)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.commission_amount)}</td>
+                                  <td style={{ ...td, textAlign: 'center' }}>
+                                    {canToggle ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={isCustomerPaid}
+                                        disabled={togglingCommissionId === row.id}
+                                        onChange={(e) => handleToggleCustomerPaid(row.id, e.target.checked)}
+                                        title={isCustomerPaid ? 'Tick removes from next payout' : 'Tick when customer has paid the order'}
+                                        style={{ width: 16, height: 16, cursor: 'pointer', accentColor: colors.inkPlum }}
+                                      />
+                                    ) : (
+                                      <span style={{ fontSize: 11, color: colors.lovelabMuted }} title={isDerived ? 'Save the order to create a real commission row before you can tick this.' : isPaidOut ? 'Already paid out.' : isCancelled ? 'Cancelled.' : ''}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={{ ...td, textAlign: 'center' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: status.fg, background: status.bg, borderRadius: 12, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                      {status.label}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
+                        </div>
+                        <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, background: '#fafafa' }}>
+                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order — only ticked rows are included in the next monthly payout.
+                        </div>
                       </>
                     );
                   })()}
@@ -644,6 +851,17 @@ export default function AdminAgentDetailsPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ── Tab: Reports ──────────────────────────────────────────────── */}
+            {/*
+              Phase 19/B7 — Monthly commission Excel + email + Drive archive.
+              All heavy lifting (build, upload, email) happens server-side
+              via /api/commission-reports/generate. This card is just the
+              control surface: pick a month, click Generate, see history.
+            */}
+            {activeTab === 'reports' && agent && (
+              <CommissionReportsCard agentId={agent.id} agentName={agent.full_name || agent.email} />
             )}
 
             {/* ── Tab: Consignment ──────────────────────────────────────────── */}
@@ -918,6 +1136,14 @@ export default function AdminAgentDetailsPage() {
                 agent={agent}
                 onClose={() => setShowBonusModal(false)}
                 onSuccess={() => { setShowBonusModal(false); load(); }}
+              />
+            )}
+
+            {showNewClientBonusModal && agent && (
+              <NewClientBonusModal
+                agent={agent}
+                onClose={() => setShowNewClientBonusModal(false)}
+                onSuccess={() => { setShowNewClientBonusModal(false); load(); }}
               />
             )}
           </>

@@ -36,6 +36,22 @@ const TIER_A_SITES = [
   },
 ];
 
+// Phase 19 — bonus hook sites use severity 'warn' (a bonus failure is
+// recoverable since the order commission still saved). Tested separately
+// so the severity assertion above stays strict for the commission paths.
+const BONUS_HOOK_SITES = [
+  {
+    file: 'app/api/documents/route.js',
+    source: 'documents_post_new_client_bonus_hook',
+    purpose: 'New-client bonus auto-create on document save',
+  },
+  {
+    file: 'app/api/documents/[id]/route.js',
+    source: 'documents_put_new_client_bonus_hook',
+    purpose: 'New-client bonus recalc on document edit',
+  },
+];
+
 describe.each(TIER_A_SITES)('Tier A wiring — $purpose ($file)', ({ file, source }) => {
   const src = readFileSync(resolve(ROOT, file), 'utf8');
 
@@ -59,5 +75,28 @@ describe.each(TIER_A_SITES)('Tier A wiring — $purpose ($file)', ({ file, sourc
     expect(src).not.toMatch(/Commission hook error \(non-blocking\)/);
     expect(src).not.toMatch(/Commission recalc error \(non-blocking\)/);
     expect(src).not.toMatch(/Session revocation error \(non-blocking\)/);
+  });
+});
+
+describe.each(BONUS_HOOK_SITES)('New-client bonus wiring — $purpose ($file)', ({ file, source }) => {
+  const src = readFileSync(resolve(ROOT, file), 'utf8');
+
+  test('imports maybeCreateBonusForOrder', () => {
+    expect(src).toMatch(/import\s*\{[^}]*maybeCreateBonusForOrder[^}]*\}\s*from\s*['"]@\/lib\/newClientBonus['"]/);
+  });
+
+  test(`uses bonus source identifier '${source}'`, () => {
+    expect(src).toMatch(new RegExp(`source:\\s*['"]${source}['"]`));
+  });
+
+  test('uses severity warn (recoverable since order commission already saved)', () => {
+    // Find the source line and confirm the surrounding recordHealthEvent
+    // block uses severity 'warn'. The block is small (~400 chars) so a
+    // generous symmetric window catches both before- and after-source
+    // severity orderings.
+    const sourceIdx = src.indexOf(`source: '${source}'`);
+    expect(sourceIdx).toBeGreaterThan(-1);
+    const ctx = src.slice(Math.max(0, sourceIdx - 200), sourceIdx + 400);
+    expect(ctx).toMatch(/severity:\s*['"]warn['"]/);
   });
 });

@@ -57,7 +57,7 @@ export async function GET(request) {
     let detailQuery = applyFilters(
       adminSupabase
         .from('agent_commissions')
-        .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at', { count: 'exact' })
+        .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at, customer_paid_at', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(offset, offset + perPage - 1)
     );
@@ -66,7 +66,7 @@ export async function GET(request) {
     let summaryQuery = applyFilters(
       adminSupabase
         .from('agent_commissions')
-        .select('commission_amount, status, type')
+        .select('commission_amount, status, type, customer_paid_at')
     );
 
     const [{ data: commissions, error, count: totalCount }, { data: allForSummary }] =
@@ -86,7 +86,7 @@ export async function GET(request) {
     if (docIds.length > 0) {
       const { data: docs } = await adminSupabase
         .from('documents')
-        .select('id, client_name, client_company, document_type, created_at, event_id')
+        .select('id, client_name, client_company, document_type, created_at, event_id, total_amount, order_channel, metadata')
         .in('id', docIds);
 
       for (const d of docs || []) {
@@ -109,15 +109,28 @@ export async function GET(request) {
     const { data: paymentsData } = await paymentsQuery;
     const total_paid_out = (paymentsData || []).reduce((sum, p) => sum + Number(p.amount), 0);
 
-    // Compute summary stats
+    // Compute summary stats.
+    //
+    // Phase 19b adds a four-bucket split so the agent detail page can show:
+    //   AWAITING CUSTOMER → status='pending' AND customer_paid_at IS NULL
+    //   READY TO PAY      → status='pending' AND customer_paid_at NOT NULL
+    //   PAID OUT          → status='paid'
+    //   REVENUE / EARNED  → unchanged (kept for back-compat)
     const summary = {
       total_earned: 0,
       from_orders: 0,
       from_bonuses: 0,
+      from_new_client_bonus: 0,
       pending_amount: 0,
       paid_amount: 0,
       order_count: 0,
       bonus_count: 0,
+      new_client_bonus_count: 0,
+      // Phase 19b — four-bucket split.
+      ready_to_pay: 0,
+      awaiting_customer: 0,
+      ready_to_pay_count: 0,
+      awaiting_customer_count: 0,
       total_paid_out,
       true_pending_balance: 0,
     };
@@ -125,9 +138,8 @@ export async function GET(request) {
     for (const c of allForSummary || []) {
       // Phase 18 fix: cancelled rows are kept for the audit trail (the agent
       // can still see "this order was cancelled because it was deleted") but
-      // they must NOT contribute to total_earned, from_orders, order_count,
-      // from_bonuses, or bonus_count. Same root cause as the Marc Schlund
-      // 1 order / 470€ bug in the admin Top Agents widget.
+      // they must NOT contribute to any totals. Same root cause as the
+      // Marc Schlund 1 order / 470€ bug in the admin Top Agents widget.
       if (c.status === 'cancelled') continue;
       const amt = Number(c.commission_amount) || 0;
       summary.total_earned += amt;
@@ -137,9 +149,19 @@ export async function GET(request) {
       } else if (c.type === 'bonus') {
         summary.from_bonuses += amt;
         summary.bonus_count++;
+      } else if (c.type === 'new_client_bonus') {
+        summary.from_new_client_bonus += amt;
+        summary.new_client_bonus_count++;
       }
       if (c.status === 'pending' || c.status === 'approved') {
         summary.pending_amount += amt;
+        if (c.customer_paid_at) {
+          summary.ready_to_pay += amt;
+          summary.ready_to_pay_count++;
+        } else {
+          summary.awaiting_customer += amt;
+          summary.awaiting_customer_count++;
+        }
       } else if (c.status === 'paid') {
         summary.paid_amount += amt;
       }
@@ -147,11 +169,11 @@ export async function GET(request) {
 
     summary.true_pending_balance = summary.total_earned - summary.total_paid_out;
 
-    // Round summary values
+    // Round all monetary values to 2 decimal places. Counts stay integers.
     for (const key of Object.keys(summary)) {
-      if (typeof summary[key] === 'number' && (key.includes('amount') || key.includes('earned') || key.includes('orders') || key.includes('bonuses') || key.includes('balance') || key === 'total_paid_out')) {
-        summary[key] = Math.round(summary[key] * 100) / 100;
-      }
+      if (typeof summary[key] !== 'number') continue;
+      if (key.endsWith('_count') || key === 'order_count' || key === 'bonus_count') continue;
+      summary[key] = Math.round(summary[key] * 100) / 100;
     }
 
     const response = {

@@ -7,6 +7,7 @@ import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-s
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
@@ -298,6 +299,26 @@ export async function POST(request) {
             profile: attribution.profile,
             agentId: attribution.agentId,
           });
+          // Phase 19 — new-client bonus. Wrapped in its own try/catch so a
+          // bonus failure cannot revert the order commission we just wrote.
+          try {
+            await maybeCreateBonusForOrder(commSupabase, {
+              agentId: attribution.agentId,
+              profile: attribution.profile,
+              document,
+            });
+          } catch (bonusErr) {
+            await recordHealthEvent({
+              source: 'documents_post_new_client_bonus_hook',
+              severity: 'warn',
+              message: bonusErr.message || 'New-client bonus hook failed',
+              context: {
+                documentId: document?.id || null,
+                agentId: attribution.agentId,
+                code: bonusErr.code || null,
+              },
+            });
+          }
         }
       }
     } catch (commErr) {

@@ -5,6 +5,7 @@ import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -148,6 +149,26 @@ export async function PUT(request, { params }) {
             profile: attribution.profile,
             agentId: attribution.agentId,
           });
+          // Phase 19 — new-client bonus. Same pattern as POST: isolated
+          // try/catch so a bonus failure doesn't break the recalc above.
+          try {
+            await maybeCreateBonusForOrder(adminSupabase, {
+              agentId: attribution.agentId,
+              profile: attribution.profile,
+              document: doc,
+            });
+          } catch (bonusErr) {
+            await recordHealthEvent({
+              source: 'documents_put_new_client_bonus_hook',
+              severity: 'warn',
+              message: bonusErr.message || 'New-client bonus hook failed',
+              context: {
+                documentId: doc?.id || null,
+                agentId: attribution.agentId,
+                code: bonusErr.code || null,
+              },
+            });
+          }
         }
       }
     } catch (commErr) {
