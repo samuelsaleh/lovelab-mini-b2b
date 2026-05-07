@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
+import { recordHealthEvent } from '@/lib/healthEvent'
 
 // Allowed models whitelist
 const ALLOWED_MODELS = [
@@ -89,6 +90,16 @@ export async function POST(request) {
       if (!response.ok) {
         const errMsg = data?.error?.message || data?.error?.type || JSON.stringify(data?.error) || `Anthropic API error (${response.status})`
         console.error('[Anthropic] API error:', response.status, errMsg)
+        try {
+          await recordHealthEvent({
+            source: 'anthropic_proxy',
+            severity: 'warn',
+            message: errMsg,
+            context: { status: response.status, model: body?.model || null },
+          })
+        } catch (alertErr) {
+          console.error('[Anthropic] Failed to record health event:', alertErr?.message)
+        }
         return NextResponse.json({ error: errMsg }, { status: response.status })
       }
 
@@ -97,7 +108,18 @@ export async function POST(request) {
       clearTimeout(timeout)
     }
   } catch (err) {
-    if (err.name === 'AbortError') {
+    const isTimeout = err?.name === 'AbortError'
+    try {
+      await recordHealthEvent({
+        source: 'anthropic_proxy',
+        severity: 'warn',
+        message: err?.message || (isTimeout ? 'Anthropic upstream timed out' : 'Anthropic upstream call failed'),
+        context: { status: isTimeout ? 504 : 502 },
+      })
+    } catch (alertErr) {
+      console.error('[Anthropic] Failed to record health event:', alertErr?.message)
+    }
+    if (isTimeout) {
       return NextResponse.json({ error: 'Request timed out' }, { status: 504 })
     }
     return NextResponse.json(

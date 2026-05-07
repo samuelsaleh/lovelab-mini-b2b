@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { NextResponse } from 'next/server'
+import { recordHealthEvent } from '@/lib/healthEvent'
 
 // Allowed models whitelist
 const ALLOWED_MODELS = [
@@ -83,6 +84,16 @@ export async function POST(request) {
       if (!response.ok || data.error) {
         const errMsg = data?.error?.message || data?.error || `Perplexity API error (${response.status})`
         console.error('[Perplexity] API error:', response.status, errMsg)
+        try {
+          await recordHealthEvent({
+            source: 'perplexity_proxy',
+            severity: 'warn',
+            message: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+            context: { status: response.status, model: body?.model || null },
+          })
+        } catch (alertErr) {
+          console.error('[Perplexity] Failed to record health event:', alertErr?.message)
+        }
         return NextResponse.json({ error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg) }, { status: response.status })
       }
 
@@ -91,7 +102,18 @@ export async function POST(request) {
       clearTimeout(timeout)
     }
   } catch (err) {
-    if (err.name === 'AbortError') {
+    const isTimeout = err?.name === 'AbortError'
+    try {
+      await recordHealthEvent({
+        source: 'perplexity_proxy',
+        severity: 'warn',
+        message: err?.message || (isTimeout ? 'Perplexity upstream timed out' : 'Perplexity upstream call failed'),
+        context: { status: isTimeout ? 504 : 502 },
+      })
+    } catch (alertErr) {
+      console.error('[Perplexity] Failed to record health event:', alertErr?.message)
+    }
+    if (isTimeout) {
       return NextResponse.json({ error: 'Request timed out' }, { status: 504 })
     }
     return NextResponse.json(

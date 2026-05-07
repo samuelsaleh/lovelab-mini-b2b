@@ -91,6 +91,11 @@ jest.mock('@/lib/lovelab-sync', () => ({
   undoConsignmentReturnToLovelab: jest.fn().mockResolvedValue({ message: 'ok' }),
 }))
 
+const mockRecordHealthEvent = jest.fn().mockResolvedValue(undefined)
+jest.mock('@/lib/healthEvent', () => ({
+  recordHealthEvent: (...args) => mockRecordHealthEvent(...args),
+}))
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeRequest(body) {
@@ -147,6 +152,30 @@ describe('POST /api/consignment/reconcile', () => {
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
     expect(body.idempotent).toBe(true)
+  })
+
+  it('records a warn-severity health event when Lovelab sync fails', async () => {
+    const { syncConsignmentToLovelab } = require('@/lib/lovelab-sync')
+    syncConsignmentToLovelab.mockRejectedValueOnce(new Error('Lovelab is down'))
+
+    const res = await POST(makeRequest({
+      order_id: 'order-abc',
+      reconciliation: [{ row_no: 1, sent: 3, came_back: 3, sold: 0, lost: 0 }],
+    }))
+    expect(res.status).toBe(200)
+
+    // The sync runs fire-and-forget, so we wait one microtask + rejection tick
+    // before asserting on the health event.
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(mockRecordHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'consignment_reconcile_lovelab_sync',
+        severity: 'warn',
+        message: 'Lovelab is down',
+        context: expect.objectContaining({ document_id: expect.any(String) }),
+      }),
+    )
   })
 })
 

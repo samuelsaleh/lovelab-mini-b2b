@@ -1,8 +1,29 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 const API_BASE = 'https://software.love-lab.com/api';
 
+// Both GET and POST proxy into the LoveLab Laravel API which holds private
+// agent discount information. The Laravel side has no auth of its own, so we
+// MUST gate this route on a Supabase session — anonymous access would leak
+// agent discount metadata to anyone who guesses an email.
+
+async function requireUser() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
 export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'agent-discount' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const user = await requireUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const email = searchParams.get('email');
   if (!email) {
@@ -32,6 +53,14 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'agent-discount-post' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const user = await requireUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (!API_BASE) {
     return NextResponse.json({ error: 'Laravel API base URL not configured' }, { status: 500 });
   }

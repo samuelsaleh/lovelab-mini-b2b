@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getUserContext } from '@/app/api/_lib/access'
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync'
+import { recordHealthEvent } from '@/lib/healthEvent'
 
 /**
  * POST /api/consignment/reconcile
@@ -145,10 +146,22 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to update consignment', detail: patchErr.message }, { status: 500 })
     }
 
-    // Non-blocking: sync return to Lovelab ERP
-    syncConsignmentToLovelab(updated, true).catch(err =>
-      console.error('[reconcile] Lovelab sync error (non-blocking):', err.message)
-    )
+    // Non-blocking: sync return to Lovelab ERP. The reconcile already
+    // succeeded in our DB at this point — failures here are recoverable
+    // and logged so an admin can re-run the sync later.
+    syncConsignmentToLovelab(updated, true).catch(async (err) => {
+      console.error('[reconcile] Lovelab sync error (non-blocking):', err?.message)
+      try {
+        await recordHealthEvent({
+          source: 'consignment_reconcile_lovelab_sync',
+          severity: 'warn',
+          message: err?.message || 'Lovelab consignment sync failed',
+          context: { document_id: updated?.id || order_id, invoice_id: invoiceId || null },
+        })
+      } catch (alertErr) {
+        console.error('[reconcile] Failed to record health event:', alertErr?.message)
+      }
+    })
 
     return NextResponse.json({ ok: true, invoice_id: invoiceId, document: updated })
   } catch (err) {
