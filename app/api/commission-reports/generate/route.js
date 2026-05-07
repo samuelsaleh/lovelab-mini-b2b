@@ -16,6 +16,8 @@
  *     upload_to_drive?: boolean,// default true
  *     skip_if_empty?: boolean,  // default true (no .xlsx for empty months)
  *     recipient?: string,       // override dionne@love-lab.com (testing)
+ *     cc?:  string|string[],    // optional carbon-copy
+ *     bcc?: string|string[],    // optional blind carbon-copy
  *   }
  *
  * Auth (one of):
@@ -133,6 +135,8 @@ export async function POST(request) {
       uploadToDrive: body.upload_to_drive !== false,
       skipIfEmpty: body.skip_if_empty !== false,
       recipient: body.recipient || undefined,
+      cc: body.cc || undefined,
+      bcc: body.bcc || undefined,
       triggeredBy: userId,
       triggerSource,
     };
