@@ -25,7 +25,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.LOVELAB_BASE_URL }}/api/commission-reports/generate",
+        "url": "https://b2b.love-lab.com/api/commission-reports/generate",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
