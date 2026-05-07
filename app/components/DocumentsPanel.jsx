@@ -726,11 +726,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             {!mobile && <span>Trash</span>}
           </button>
           <button
-            onClick={() => {
-              if (isAdmin) router.push('/admin/reports')
-              else if (profile?.is_agent) router.push('/agent/reports')
-              else router.push('/analytics')
-            }}
+            onClick={() => router.push('/analytics')}
             style={{
               padding: mobile ? '12px 16px' : '10px 18px', borderRadius: 10, border: 'none',
               background: colors.inkPlum, color: '#fff', fontSize: mobile ? 13 : 12,

@@ -1,51 +1,45 @@
 /**
- * /analytics redirect smoke tests
+ * /analytics smoke test
  *
- * Covers:
- *   - Admin user → redirects to /admin/reports
- *   - Agent user → redirects to /agent/reports
- *   - Unknown/unauthenticated user → redirects to /
+ * The analytics page renders the rich AnalyticsDashboard (Revenue per Fair,
+ * country / product / client breakdowns, vitrine, KPIs). Auth is enforced
+ * downstream by the /api/documents RLS policy that the dashboard fetches.
+ *
+ * This test stubs the dashboard so we don't pull in its 700-line dependency
+ * tree, and just asserts the page mounts the dashboard inside a Suspense
+ * boundary and forwards the optional ?event=... query param.
  */
 
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 
-const mockReplace = jest.fn()
+const mockGet = jest.fn()
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useSearchParams: () => ({ get: (...args) => mockGet(...args) }),
 }))
 
-jest.mock('../../components/AuthProvider', () => ({
-  useAuth: jest.fn(),
-}))
+jest.mock('@/app/components/AnalyticsDashboard', () => {
+  const Mock = ({ initialEventId }) => (
+    <div data-testid="analytics-dashboard">{initialEventId || 'no-event'}</div>
+  )
+  Mock.displayName = 'MockAnalyticsDashboard'
+  return Mock
+})
 
-import { useAuth } from '../../components/AuthProvider'
-import AnalyticsRedirect from '../page'
+import Analytics from '../page'
 
-beforeEach(() => { mockReplace.mockClear() })
+beforeEach(() => { mockGet.mockReset() })
 
-describe('/analytics redirect', () => {
-  it('redirects admin to /admin/reports', () => {
-    useAuth.mockReturnValue({ profile: { role: 'admin', is_agent: false }, loading: false })
-    render(<AnalyticsRedirect />)
-    expect(mockReplace).toHaveBeenCalledWith('/admin/reports')
+describe('/analytics page', () => {
+  it('renders the AnalyticsDashboard with no event id by default', () => {
+    mockGet.mockReturnValue(null)
+    render(<Analytics />)
+    expect(screen.getByTestId('analytics-dashboard')).toHaveTextContent('no-event')
   })
 
-  it('redirects agent to /agent/reports', () => {
-    useAuth.mockReturnValue({ profile: { role: 'member', is_agent: true }, loading: false })
-    render(<AnalyticsRedirect />)
-    expect(mockReplace).toHaveBeenCalledWith('/agent/reports')
-  })
-
-  it('redirects unknown user to /', () => {
-    useAuth.mockReturnValue({ profile: { role: 'member', is_agent: false }, loading: false })
-    render(<AnalyticsRedirect />)
-    expect(mockReplace).toHaveBeenCalledWith('/')
-  })
-
-  it('does not redirect while loading', () => {
-    useAuth.mockReturnValue({ profile: null, loading: true })
-    render(<AnalyticsRedirect />)
-    expect(mockReplace).not.toHaveBeenCalled()
+  it('forwards the ?event=... query param to the dashboard', () => {
+    mockGet.mockImplementation((key) => (key === 'event' ? 'evt-123' : null))
+    render(<Analytics />)
+    expect(screen.getByTestId('analytics-dashboard')).toHaveTextContent('evt-123')
   })
 })
