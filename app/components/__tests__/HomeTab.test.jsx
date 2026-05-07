@@ -4,7 +4,7 @@
  * Guarantees:
  *   - Renders with zero financial data
  *   - No API calls are made on mount
- *   - "+ Create New Order" button calls onSwitchTab('builder')
+ *   - "+ Create New Order" button (agent role) calls onCreateOrder('b2b')
  *   - Welcome message contains the user's name
  */
 
@@ -65,11 +65,11 @@ describe('HomeTab', () => {
     expect(screen.getByTestId('new-order-button')).toBeInTheDocument()
   })
 
-  it('calls onSwitchTab("builder") when New Order is clicked', () => {
-    const onSwitchTab = jest.fn()
-    render(<HomeTab onSwitchTab={onSwitchTab} />)
+  it('calls onCreateOrder("b2b") when New Order is clicked (agent role)', () => {
+    const onCreateOrder = jest.fn()
+    render(<HomeTab onSwitchTab={jest.fn()} onCreateOrder={onCreateOrder} />)
     fireEvent.click(screen.getByTestId('new-order-button'))
-    expect(onSwitchTab).toHaveBeenCalledWith('builder')
+    expect(onCreateOrder).toHaveBeenCalledWith('b2b')
   })
 
   it('makes NO fetch calls on mount (privacy guarantee)', () => {

@@ -232,10 +232,20 @@ export default function App() {
   }, [])
 
   // ─── Create new order of a specific type (from OrderTypePicker) ───
-  // All types → open the OrderForm overlay directly with the selected channel
+  // Land in the Builder (visual product picker) so the user starts at the
+  // beginning of the flow, not on the OrderForm "review" page. The selected
+  // channel (b2b/internal/consignment/delete_from_stock) is remembered so
+  // the SaveDocumentModal pre-selects it later.
   const handleCreateOrder = useCallback((type = 'b2b') => {
-    handleBlankOrderForm(type)
-  }, [handleBlankOrderForm])
+    setOrderFormQuote(null)
+    setSavedFormState(null)
+    setEditingDocumentId(null)
+    setShowOrderForm(false)
+    setLines([])
+    setInitialOrderChannel(type)
+    pendingOrderChannel.current = type
+    setActiveTab('builder')
+  }, [])
 
   // ─── Re-edit a saved document ───
   const handleReEdit = useCallback((doc) => {
@@ -330,8 +340,15 @@ export default function App() {
 
   // ─── Edit in Builder (from OrderForm) ───
   const handleEditInBuilder = useCallback((formRows) => {
-    if (!formRows || formRows.length === 0) return
-    
+    // Even with no rows we still navigate back to the builder so the user
+    // can start adding lines (otherwise the button does nothing on a fresh
+    // form, which feels broken).
+    if (!formRows || formRows.length === 0) {
+      setShowOrderForm(false)
+      setActiveTab('builder')
+      return
+    }
+
     // Convert OrderForm rows back to builder lines
     // Group by collection
     const byCollection = new Map()
