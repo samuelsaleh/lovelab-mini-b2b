@@ -26,6 +26,24 @@ const normalizeCountryValue = normalizeCountry
 // ─── Vitrine helpers (shared with DocumentsPanel) ──────────────────────────
 const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i
 
+// Real LoveLab orders are 1–10 vitrines. Anything above this is almost
+// certainly a data-entry mistake (typo in vitrineQty, or a price/SKU number
+// that happens to sit next to the word "vitrine" in the remarks). We clamp
+// the parsed value to 1 so a single bad order can't skew the entire summary.
+const MAX_VITRINE_QTY = 20
+
+function clampVitrineQty(n, source) {
+  if (n == null) return null
+  if (n <= 0) return null
+  if (n > MAX_VITRINE_QTY) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn(`[Analytics] Capping implausible vitrine quantity ${n} → 1 (source: ${source})`)
+    }
+    return 1
+  }
+  return n
+}
+
 function parseVitrineFromRemarks(remarks) {
   if (!remarks) return null
   const m = remarks.match(VITRINE_REGEX)
@@ -39,9 +57,10 @@ function resolveVitrineQty(doc) {
   const { hasVitrine, vitrineQty, remarks } = fs
   const toggleQty = hasVitrine ? (vitrineQty || 1) : null
   const remarksQty = parseVitrineFromRemarks(remarks)
-  if (toggleQty !== null && remarksQty !== null) return toggleQty
-  if (toggleQty !== null) return toggleQty
-  if (remarksQty !== null) return remarksQty
+  const company = doc?.client_company || doc?.client_name || 'unknown'
+  if (toggleQty !== null && remarksQty !== null) return clampVitrineQty(toggleQty, `toggle/${company}`)
+  if (toggleQty !== null) return clampVitrineQty(toggleQty, `toggle/${company}`)
+  if (remarksQty !== null) return clampVitrineQty(remarksQty, `remarks/${company}`)
   return null
 }
 
