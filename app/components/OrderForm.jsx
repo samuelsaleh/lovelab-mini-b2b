@@ -17,6 +17,7 @@ import {
   splitHousing as sharedSplitHousing,
   validateOrder as validateOrderRows,
 } from '@/lib/orderRowValidation'
+import { computeAfterDiscount, formatDiscountDisplay } from '@/lib/orderTotals'
 
 const ROWS_PER_PAGE = 10
 const PRINT_ROWS_PER_PAGE = 14
@@ -540,6 +541,11 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
           onApplyToForm({
             subtotal: calc.sub,
             totalDiscount: calc.totalDiscount,
+            // Pass the raw % and flat inputs so the form can preserve
+            // percent intent. Without these a "20%" discount used to be
+            // frozen as "€1725" and went wrong as soon as rows changed.
+            discountPct: Number(discountPct) || 0,
+            discountFlat: Number(discountFlat) || 0,
             finalTotal: calc.final,
             delivery: calc.delivery,
             customLabel,
@@ -988,23 +994,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
 
   const finalTotal = finalTotalOverride != null ? finalTotalOverride : subtotal
 
-  // Compute after-discount amount from discountDisplay (supports "10%" or "€500" or plain "500")
-  const afterDiscount = useMemo(() => {
-    const base = finalTotal || 0
-    // Coerce defensively: a saved order with a numeric discountDisplay would
-    // otherwise crash here with "trim is not a function" the moment the form
-    // mounts.
-    const d = String(discountDisplay ?? '').trim()
-    if (!d) return null
-    if (d.endsWith('%')) {
-      const pct = parseFloat(d) || 0
-      if (pct <= 0) return null
-      return base - base * pct / 100
-    }
-    const flat = parseFloat(d.replace(/[€,]/g, '')) || 0
-    if (flat <= 0) return null
-    return base - flat
-  }, [finalTotal, discountDisplay])
+  // Compute after-discount amount from discountDisplay. Supports "20%", "€500"
+  // and plain "500" formats, defensively coerces non-string values, and
+  // clamps at 0 so a runaway discount cannot push commissions / Excel
+  // exports negative. See lib/orderTotals.js for the regression context.
+  const afterDiscount = useMemo(
+    () => computeAfterDiscount(finalTotal, discountDisplay),
+    [finalTotal, discountDisplay],
+  )
 
   // Vitrine total (added after discount)
   const vitrineTotal = hasVitrine ? vitrinePrice * vitrineQty : 0
@@ -1299,7 +1296,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl, baseBeforeTax }) => {
+  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, discountPct, discountFlat, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl, baseBeforeTax }) => {
     // Shipping line
     setShippingAmount(delivery > 0 ? delivery : null)
     // Custom line
@@ -1315,24 +1312,19 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       setTaxBaseAmount(null)
     }
     // When calculator applies:
-    // - If there's a discount, set discountDisplay so before/after shows
-    // - Use the row subtotal as "before" (don't override it)
-    // - The "after" will be computed from subtotal - discountDisplay
-    
+    // - If there's a discount, encode it as "X%" or "€Y" via the helper so
+    //   percent intent survives later row changes.
+    // - Use the raw row subtotal as "before" (don't override it).
+    // - The "after" is recomputed from subtotal and discountDisplay.
+
     if (totalDiscount > 0) {
-      // There's a discount — populate discount field to trigger before/after display
-      // Round to avoid floating point issues
-      const discountRounded = Math.round(totalDiscount * 100) / 100
-      setDiscountDisplay(`€${discountRounded}`)
-      // Don't set finalTotalOverride — let the raw subtotal be "before"
+      setDiscountDisplay(formatDiscountDisplay({ discountPct, discountFlat, totalDiscount }))
       setFinalTotalOverride(null)
     } else if (val !== calcSubtotal) {
       // No discount but there are additions (delivery, custom, etc.)
-      // In this case, directly set the final as the override
       setFinalTotalOverride(val)
       setDiscountDisplay('')
     } else {
-      // No changes at all
       setFinalTotalOverride(null)
       setDiscountDisplay('')
     }
@@ -2600,7 +2592,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         </div>
                         <PrintableInput
                           value={finalTotalOverride != null ? String(finalTotalOverride) : String(subtotal || '')}
-                          onChange={(e) => setFinalTotalOverride(Number(e.target.value) || 0)}
+                          onChange={(e) => {
+                            // Manually editing the subtotal here means the
+                            // user wants this exact number as the new
+                            // "before" — any previously applied calculator
+                            // discount must be cleared, or the same percent
+                            // is deducted twice (8 625 → 6 900 → 5 175).
+                            // Shipping / custom / tax remain independent
+                            // and are added on top of the new subtotal.
+                            setFinalTotalOverride(Number(e.target.value) || 0)
+                            setDiscountDisplay('')
+                          }}
                           style={{
                             fontSize: hasAnyExtra ? 14 : 18,
                             fontWeight: 800,
