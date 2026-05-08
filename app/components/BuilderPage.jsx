@@ -120,7 +120,7 @@ const PACK3_ROWS = [
 ]
 
 const PACK4_ROWS = [
-  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Grey', quantity: '1', unitPrice: '55', cert: 'IGI' },
+  { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Silver Grey', quantity: '1', unitPrice: '55', cert: 'IGI' },
   { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Pear', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '55', cert: 'IGI' },
   { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Marquise', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Navy Blue', quantity: '1', unitPrice: '55', cert: 'IGI' },
   { collection: 'SHAPY SHINE FANCY', carat: '0.10', shape: 'Emerald', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '55', cert: 'IGI' },
