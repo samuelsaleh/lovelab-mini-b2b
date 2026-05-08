@@ -2,9 +2,15 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getUserContext } from '@/app/api/_lib/access'
 import { undoConsignmentReturnToLovelab } from '@/lib/lovelab-sync'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export async function POST(request) {
   try {
+    // Even admins go through this — a stuck loop or a leaked token could
+    // otherwise hammer the Lovelab ERP.
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'lovelab-undo-return' })
+    if (rateLimitRes) return rateLimitRes
+
     const supabase = await createClient()
     const { user, isAdmin } = await getUserContext(supabase)
     if (!user) {

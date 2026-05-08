@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
+import { checkRateLimit } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'organizations' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     const session = await requireSession(supabase);
     if (session.error) return session.error;
@@ -38,6 +42,10 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    // Tighter ceiling than GET — POST creates rows, GET just lists them.
+    const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'organizations-post' });
+    if (rateLimitRes) return rateLimitRes;
+
     const supabase = await createClient();
     const session = await requireSession(supabase);
     if (session.error) return session.error;

@@ -552,7 +552,6 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
             customAmount: calc.custom,
             extraPercent: calc.extraPct,
             extraPercentLabel,
-            baseBeforeTax: calc.baseWithShipping,
           })
         }}
         style={{
@@ -757,7 +756,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Tax/% applied from calculator
   const [taxPercent, setTaxPercent] = useState(null)     // e.g. 21
   const [taxLabel, setTaxLabel] = useState('VAT')         // e.g. "VAT"
-  const [taxBaseAmount, setTaxBaseAmount] = useState(null) // amount before tax
   // Shipping + custom lines applied from calculator
   const [shippingAmount, setShippingAmount] = useState(null)
   const [customLineLabel, setCustomLineLabel] = useState('')
@@ -1296,7 +1294,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, discountPct, discountFlat, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl, baseBeforeTax }) => {
+  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, discountPct, discountFlat, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl }) => {
     // Shipping line
     setShippingAmount(delivery > 0 ? delivery : null)
     // Custom line
@@ -1306,10 +1304,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (ep > 0) {
       setTaxPercent(ep)
       setTaxLabel(epl || 'VAT')
-      setTaxBaseAmount(baseBeforeTax ?? null)
     } else {
       setTaxPercent(null)
-      setTaxBaseAmount(null)
     }
     // When calculator applies:
     // - If there's a discount, encode it as "X%" or "€Y" via the helper so
