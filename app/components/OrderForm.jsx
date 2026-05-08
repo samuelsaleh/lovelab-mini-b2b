@@ -12,6 +12,11 @@ import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
 import { findPackshot } from '@/lib/packshot-lookup'
 import PackshotThumb from './PackshotThumb'
+import {
+  findCollection as sharedFindCollection,
+  splitHousing as sharedSplitHousing,
+  validateOrder as validateOrderRows,
+} from '@/lib/orderRowValidation'
 
 const ROWS_PER_PAGE = 10
 const PRINT_ROWS_PER_PAGE = 14
@@ -83,13 +88,10 @@ function parseMaterial(material) {
   return { cordType, thickness: '' }
 }
 
-function splitHousing(housing) {
-  if (!housing) return { setting: '', color: '' }
-  if (housing.startsWith('Bezel ')) return { setting: 'Bezel', color: housing.slice(6) }
-  if (housing.startsWith('Prong ')) return { setting: 'Prong', color: housing.slice(6) }
-  if (housing === 'Prong') return { setting: 'Prong', color: '' }
-  return { setting: '', color: housing }
-}
+// Re-exports of the hardened helpers in lib/orderRowValidation.js. They live
+// outside this file so they can be unit-tested without mounting OrderForm,
+// and so a non-string upstream payload can no longer crash the form.
+const splitHousing = sharedSplitHousing
 
 function rowPackshotOpts(row) {
   const opts = {}
@@ -109,15 +111,7 @@ function rowCollectionId(row) {
   return col?.id || null
 }
 
-function findCollection(productName) {
-  if (!productName) return null
-  const name = productName.toUpperCase()
-  return COLLECTIONS.find(
-    (c) => c.label.toUpperCase() === name || c.id.toUpperCase() === name
-  ) || COLLECTIONS.find(
-    (c) => name.includes(c.label.toUpperCase()) || name.includes(c.id.toUpperCase())
-  ) || null
-}
+const findCollection = sharedFindCollection
 
 function getHousingOptions(housingKey, setting) {
   if (!housingKey) return []
@@ -798,7 +792,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
     if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
-    if (s.vitrineQty != null) setVitrineQty(s.vitrineQty)
+    if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
+    // Restore shipping / tax / custom line so re-opening a saved order
+    // doesn't silently drop them from the totals (and from the saved
+    // document on the next save). `deliveryCost` is the legacy field name
+    // used before metadata.shipping_amount existed — same fallback as
+    // lib/commissionAttribution.js.
+    if (s.shippingAmount != null) setShippingAmount(Number(s.shippingAmount) || null)
+    else if (s.deliveryCost != null) setShippingAmount(Number(s.deliveryCost) || null)
+    if (s.taxPercent != null) setTaxPercent(Number(s.taxPercent) || null)
+    if (s.taxLabel != null) setTaxLabel(s.taxLabel)
+    if (s.customLineLabel != null) setCustomLineLabel(s.customLineLabel)
+    if (s.customLineAmount != null) setCustomLineAmount(Number(s.customLineAmount) || null)
     if (s.rows && s.rows.length > 0) {
       // Pad rows to fill at least one page
       const restored = [...s.rows]
@@ -872,7 +877,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.finalTotalOverride != null) setFinalTotalOverride(s.finalTotalOverride)
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
     if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
-    if (s.vitrineQty != null) setVitrineQty(s.vitrineQty)
+    if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
+    // Same shipping/tax/custom-line restore as the saved-document path.
+    if (s.shippingAmount != null) setShippingAmount(Number(s.shippingAmount) || null)
+    else if (s.deliveryCost != null) setShippingAmount(Number(s.deliveryCost) || null)
+    if (s.taxPercent != null) setTaxPercent(Number(s.taxPercent) || null)
+    if (s.taxLabel != null) setTaxLabel(s.taxLabel)
+    if (s.customLineLabel != null) setCustomLineLabel(s.customLineLabel)
+    if (s.customLineAmount != null) setCustomLineAmount(Number(s.customLineAmount) || null)
     if (s.rows && s.rows.length > 0) {
       const restored = [...s.rows]
       while (restored.length < ROWS_PER_PAGE) {
@@ -922,6 +934,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
           discountDisplay, finalTotalOverride,
           hasVitrine, vitrinePrice, vitrineQty,
+          // Keep drafts and saved orders in sync — drafts also need to
+          // restore shipping / tax / custom line on reopen.
+          shippingAmount,
+          taxPercent, taxLabel,
+          customLineLabel, customLineAmount,
         }
         
         await fetch('/api/drafts', {
@@ -974,7 +991,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Compute after-discount amount from discountDisplay (supports "10%" or "€500" or plain "500")
   const afterDiscount = useMemo(() => {
     const base = finalTotal || 0
-    const d = (discountDisplay || '').trim()
+    // Coerce defensively: a saved order with a numeric discountDisplay would
+    // otherwise crash here with "trim is not a function" the moment the form
+    // mounts.
+    const d = String(discountDisplay ?? '').trim()
     if (!d) return null
     if (d.endsWith('%')) {
       const pct = parseFloat(d) || 0
@@ -998,6 +1018,28 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     const taxAmount = taxPercent > 0 ? (beforeTax * taxPercent / 100) : 0
     return beforeTax + taxAmount
   }, [afterDiscount, finalTotal, shippingAmount, customLineAmount, vitrineTotal, taxPercent])
+
+  // ── Order completeness gate ────────────────────────────────────────────
+  // Hard-block Save / Download / Print when any visibly-required cell on a
+  // non-empty row is blank. Drafts are unaffected (they don't go through
+  // this code path). The detailed list of issues drives the inline banner
+  // and the disabled-button tooltip.
+  const orderValidation = useMemo(() => {
+    const filledRows = rows.filter(isRowFilled)
+    if (filledRows.length === 0) {
+      // No rows entered yet — surface a single "missing rows" issue so the
+      // user can't accidentally save an empty order.
+      return { ok: false, issues: [{ rowNo: '—', missing: ['rows'] }] }
+    }
+    return validateOrderRows(filledRows, findCollection)
+  }, [rows])
+  const orderIncomplete = !orderValidation.ok
+  const incompleteSummary = useMemo(() => {
+    if (orderValidation.ok) return ''
+    return orderValidation.issues
+      .map(i => `Row ${i.rowNo}: missing ${i.missing.join(', ')}`)
+      .join(' \u00B7 ')
+  }, [orderValidation])
 
   const checkVat = useCallback(() => {
     const vat = vatNumber.trim()
@@ -1304,6 +1346,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   }, [handlePrint, handleDownload])
 
   const triggerWithPrepaymentCheck = useCallback((action) => {
+    // Hard block: refuse to save / print / download an order with missing
+    // required cells. Buttons are visually disabled too — this is defense
+    // in depth in case a stale state or programmatic call slips through.
+    if (orderIncomplete) return
     if (prepaymentConfirmed === null) {
       setGateHasPrepayment(hasPrepayment)
       setGatePrepaymentAmount(prepaymentAmount)
@@ -1313,7 +1359,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     } else {
       runAction(action)
     }
-  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction])
+  }, [orderIncomplete, prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction])
 
   const confirmPrepaymentGate = useCallback(() => {
     setHasPrepayment(gateHasPrepayment)
@@ -1520,6 +1566,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onClose={() => setShowSaveModal(false)}
         documentType="order"
         elementRef={printRef}
+        orderIncomplete={orderIncomplete}
+        incompleteSummary={incompleteSummary}
         clientName={contactName || client?.name}
         clientCompany={companyName}
         clientEmail={email}
@@ -1544,6 +1592,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
             discountDisplay, finalTotalOverride,
             hasVitrine, vitrinePrice, vitrineQty,
+            // Persisted alongside the top-level metadata.shipping_amount so the
+            // form can rehydrate them when re-opening a saved order. Without
+            // these, re-saving stripped any delivery fee, VAT line, or custom
+            // line from the document — a silent money bug for the commission
+            // base and grand total.
+            shippingAmount,
+            taxPercent, taxLabel,
+            customLineLabel, customLineAmount,
           },
           rowCount: rows.filter(r => isRowFilled(r)).length,
           hasPrepayment,
@@ -1821,44 +1877,92 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         </div>
         <button
           onClick={() => triggerWithPrepaymentCheck('save')}
+          disabled={orderIncomplete}
+          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
+            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
+            opacity: orderIncomplete ? 0.45 : 1,
+            fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.background = colors.ice }}
+          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.background = '#fff' }}
         >
           {t('order.save')}
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('download')}
+          disabled={orderIncomplete}
+          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
+            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
+            opacity: orderIncomplete ? 0.45 : 1,
+            fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.background = colors.ice }}
+          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.background = '#fff' }}
         >
           {t('order.download') || 'Download PDF'}
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('print')}
+          disabled={orderIncomplete}
+          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: fonts.body, transition: 'opacity .15s', minHeight: mobile ? 44 : 'auto',
+            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
+            opacity: orderIncomplete ? 0.45 : 1,
+            fontFamily: fonts.body, transition: 'opacity .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.opacity = '0.9' }}
+          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.opacity = '1' }}
         >
           {t('order.print')}
         </button>
       </div>
+
+      {orderIncomplete && (
+        <div
+          role="alert"
+          style={{
+            margin: mobile ? '0 12px' : '0 20px',
+            padding: '10px 14px',
+            borderRadius: 8,
+            border: '1px solid #f0c39c',
+            background: '#fff7eb',
+            color: '#7a4a14',
+            fontFamily: fonts.body,
+            fontSize: mobile ? 12 : 13,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }} aria-hidden="true">!</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>
+              Order not ready to send
+            </div>
+            <div style={{ lineHeight: 1.45, wordBreak: 'break-word' }}>
+              {orderValidation.issues.length === 1 && orderValidation.issues[0].missing[0] === 'rows'
+                ? 'Add at least one product row before saving.'
+                : orderValidation.issues.map((issue, idx) => (
+                  <span key={`${issue.rowNo}-${idx}`}>
+                    {idx > 0 && <span style={{ color: '#caa073', margin: '0 6px' }}>&middot;</span>}
+                    <strong>Row {issue.rowNo}:</strong> missing {issue.missing.join(', ')}
+                  </span>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main content: form pages + calculator */}
       <div id="order-form-scroll-area" ref={scrollAreaRef} style={{ 
@@ -2086,7 +2190,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           <span style={{ fontSize: 10, color: colors.lovelabMuted }}>x</span>
                           <select
                             value={vitrineQty}
-                            onChange={(e) => setVitrineQty(Number(e.target.value))}
+                            onChange={(e) => setVitrineQty(Math.max(0, Number(e.target.value) || 0))}
                             style={{
                               padding: '2px 4px', borderRadius: 4,
                               border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,

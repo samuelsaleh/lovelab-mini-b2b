@@ -57,6 +57,11 @@ export default function SaveDocumentModal({
   onSaveSuccess = null, // Callback when save completes successfully
   initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
+  // Defense-in-depth gate: the parent OrderForm already disables its Save
+  // button when the order is incomplete, but if the modal somehow opens
+  // (e.g. dev tools, async race) we refuse to save here too.
+  orderIncomplete = false,
+  incompleteSummary = '',
 }) {
   const { profile } = useAuth();
   const { t, lang: appLang } = useI18n();
@@ -1111,6 +1116,21 @@ export default function SaveDocumentModal({
               </div>
             )}
 
+            {orderIncomplete && (
+              <div role="alert" style={{
+                background: '#fff7eb',
+                color: '#7a4a14',
+                border: '1px solid #f0c39c',
+                padding: '10px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                marginBottom: 16,
+              }}>
+                <strong>Order not ready to send.</strong>
+                {incompleteSummary ? <span> {incompleteSummary}</span> : null} Close this dialog and fill in the highlighted fields first.
+              </div>
+            )}
+
             {/* Action buttons */}
             <div style={{ display: 'flex', flexDirection: mobile ? 'column-reverse' : 'row', gap: 10, justifyContent: 'flex-end' }}>
               <button
@@ -1135,7 +1155,7 @@ export default function SaveDocumentModal({
               {(() => {
                 const writeOffMissing = orderChannel === 'delete_from_stock' && !writeOffComment.trim();
                 const emailMissing = emailEnabled && !recipientLooksValid;
-                const disabled = saving || writeOffMissing || emailMissing;
+                const disabled = saving || writeOffMissing || emailMissing || orderIncomplete;
                 return (
                   <button
                     onClick={handleSave}
