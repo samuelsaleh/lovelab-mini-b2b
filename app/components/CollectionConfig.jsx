@@ -1144,21 +1144,44 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
 
           {/* ─── Config Table (desktop) / Card list (mobile) ─── */}
           {line.colorConfigs.length > 0 && !mobile && (
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table ref={tableRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            // Wrapper:
+            //  - `overflowX: auto` lets the table scroll horizontally on
+            //    narrow screens (the table is wider than the parent on
+            //    13" laptops once Housing + Shape + Size + Thickness are
+            //    all visible).
+            //  - The right-edge fade ::after rule + the always-visible
+            //    scrollbar ::-webkit-scrollbar rule are added to the
+            //    `.cc-table-scroll` class in JSX-level <style>, so non-
+            //    technical users get a visible cue that there's more.
+            //  - The action column is `position: sticky; right: 0` so the
+            //    X button is always reachable, even while mid-scroll.
+            <div className="cc-table-scroll" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
+              <style>{`
+                /* Always-visible horizontal scrollbar so mum sees the cue */
+                .cc-table-scroll::-webkit-scrollbar { height: 10px; }
+                .cc-table-scroll::-webkit-scrollbar-track { background: #f4f0f7; border-radius: 5px; }
+                .cc-table-scroll::-webkit-scrollbar-thumb { background: #c8b8d0; border-radius: 5px; }
+                .cc-table-scroll::-webkit-scrollbar-thumb:hover { background: #5d3a5e; }
+                /* Firefox */
+                .cc-table-scroll { scrollbar-color: #c8b8d0 #f4f0f7; scrollbar-width: thin; }
+                /* Row separators — needed because borderCollapse:'separate' is required
+                   for sticky table cells to render their background correctly. */
+                .cc-table-scroll tbody tr td { border-bottom: 1px solid #f5f5f5; }
+              `}</style>
+              <table ref={tableRef} style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #eee' }}>
-                    {onToggleConfigSelect && <th style={{ ...thStyle, width: 32 }}></th>}
-                    <th style={thStyle}>{t('quote.color')}</th>
-                    {col.certificate && <th style={thStyle}>{t('cert.label')}</th>}
-                    <th style={thStyle}>{t('quote.carat')}</th>
-                    {hasHousing && <th style={thStyle}>{t('quote.housing')}</th>}
-                    {hasShapes && <th style={thStyle}>{t('quote.shape')}</th>}
-                    {hasSizes && <th style={thStyle}>{t('quote.size')}</th>}
-                    {hasThickness && <th style={thStyle}>{hasCordOptions ? 'Material' : 'Thickness'}</th>}
-                    <th style={thStyle}>{t('quote.qty')}</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>{t('quote.total')}</th>
-                    <th style={{ ...thStyle, width: 54 }}></th>
+                  <tr>
+                    {onToggleConfigSelect && <th style={{ ...thStyle, width: 32, borderBottom: '2px solid #eee' }}></th>}
+                    <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.color')}</th>
+                    {col.certificate && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('cert.label')}</th>}
+                    <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.carat')}</th>
+                    {hasHousing && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.housing')}</th>}
+                    {hasShapes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.shape')}</th>}
+                    {hasSizes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.size')}</th>}
+                    {hasThickness && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{hasCordOptions ? 'Material' : 'Thickness'}</th>}
+                    <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.qty')}</th>
+                    <th style={{ ...thStyle, textAlign: 'right', borderBottom: '2px solid #eee' }}>{t('quote.total')}</th>
+                    <th style={stickyActionHeaderStyle}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1182,10 +1205,21 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
 
                     const isDragTarget = dragFill && cfgIdx > dragFill.sourceIdx && cfgIdx <= dragFill.targetIdx
 
+                    // Solid row background — the sticky action cell needs a
+                    // non-transparent colour or the scrolled-under content
+                    // shows through. We use solid hex equivalents instead
+                    // of the original rgba so the sticky cell matches the
+                    // rest of the row exactly.
+                    const rowBg = isRecentlyDuplicated
+                      ? '#fce4ec'
+                      : isDragTarget
+                        ? '#f3eef5'
+                        : isSelected
+                          ? '#f3f0f5'
+                          : '#ffffff'
                     return (
-                      <tr key={cfg.id} data-row-idx={cfgIdx} style={{ 
-                        borderBottom: '1px solid #f5f5f5', 
-                        background: isRecentlyDuplicated ? '#fce4ec' : isDragTarget ? 'rgba(93, 58, 94, 0.07)' : isSelected ? '#f3f0f5' : 'transparent', 
+                      <tr key={cfg.id} data-row-idx={cfgIdx} style={{
+                        background: rowBg,
                         transition: 'background 0.15s ease-out',
                         animation: isRecentlyDuplicated ? 'duplicateHighlight 15s ease-out forwards' : 'none',
                         outline: isDragTarget ? '1px solid rgba(93,58,94,0.2)' : 'none',
@@ -1395,10 +1429,24 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             )}
                           </div>
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        <td style={{
+                          ...tdStyle,
+                          textAlign: 'center',
+                          position: 'sticky',
+                          right: 0,
+                          background: rowBg,
+                          // Subtle shadow on the left edge tells the eye
+                          // there's content scrolling underneath.
+                          boxShadow: '-4px 0 8px -4px rgba(0,0,0,0.08)',
+                          width: 54,
+                          minWidth: 54,
+                        }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                            <button onClick={() => duplicateConfig(cfg.id)} title="Duplicate row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 12, padding: '2px 4px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>+</button>
-                            <button onClick={() => removeConfig(cfg.id)} title="Remove row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 14, padding: '2px 4px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = '#e74c3c' }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>x</button>
+                            <button onClick={() => duplicateConfig(cfg.id)} title="Duplicate row" style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 14, padding: '4px 6px', transition: 'color .15s' }} onMouseEnter={(e) => { e.currentTarget.style.color = colors.inkPlum }} onMouseLeave={(e) => { e.currentTarget.style.color = '#ccc' }}>+</button>
+                            {/* Bigger, plum-tinted X — mum couldn't spot the
+                               old grey "x". This one is large, coloured, and
+                               keeps the same hover-red treatment. */}
+                            <button onClick={() => removeConfig(cfg.id)} title="Remove row" style={{ background: 'none', border: '1px solid #e8d8e8', color: '#5d3a5e', cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: '2px 8px', borderRadius: 4, transition: 'all .15s', lineHeight: 1 }} onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = '#e74c3c'; e.currentTarget.style.borderColor = '#e74c3c' }} onMouseLeave={(e) => { e.currentTarget.style.color = '#5d3a5e'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#e8d8e8' }}>×</button>
                           </div>
                         </td>
                       </tr>
@@ -1633,6 +1681,21 @@ const selectStyle = {
 const thStyle = {
   padding: '8px 6px', textAlign: 'left', fontSize: 11, fontWeight: 600,
   color: '#999', textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap',
+}
+
+// Sticky right column — pairs with the rowBg-aware sticky <td>.
+// The header sits behind the data cells visually (lower z-index) and
+// uses the same plum shadow on the left edge.
+const stickyActionHeaderStyle = {
+  ...thStyle,
+  width: 54,
+  minWidth: 54,
+  position: 'sticky',
+  right: 0,
+  background: '#fff',
+  zIndex: 2,
+  borderBottom: '2px solid #eee',
+  boxShadow: '-4px 0 8px -4px rgba(0,0,0,0.08)',
 }
 
 const tdStyle = {
