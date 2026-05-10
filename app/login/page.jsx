@@ -1,6 +1,11 @@
 'use client';
 
+// TODO: extract LoginTabs into a separate component. With Forgot Password
+// and Request Access links the page is doing too many jobs in one file.
+// Out of scope for the onboarding-and-auth PR — defer the refactor.
+
 import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useIsMobile } from '@/lib/useIsMobile';
@@ -13,21 +18,20 @@ export default function LoginPage() {
   );
 }
 
-// Modes: 'google' | 'signin' (email+password) | 'magic' (magic link) | 'request' (request access)
+// Modes: 'google' | 'signin' (email+password) | 'magic' (magic link)
 function LoginContent() {
   const mobile = useIsMobile();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [errorWithLink, setErrorWithLink] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [mode, setMode] = useState('google');
   const searchParams = useSearchParams();
 
-  // Email+password fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Magic link field
   const [magicEmail, setMagicEmail] = useState('');
 
   useEffect(() => {
@@ -45,9 +49,15 @@ function LoginContent() {
     return `${origin}/auth/callback`;
   };
 
+  const clearMessages = () => {
+    setError(null);
+    setErrorWithLink(null);
+    setSuccessMsg(null);
+  };
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
-    setError(null);
+    clearMessages();
     try {
       const supabase = createClient();
       const redirectTo = getAuthCallbackUrl();
@@ -64,25 +74,35 @@ function LoginContent() {
     }
   };
 
+  // Magic link now goes through our LoveLab-branded /api/magic-link endpoint
+  // instead of supabase.auth.signInWithOtp (which would send Supabase's own
+  // generic template). Backend always returns 200 (no enumeration leak), so
+  // we always show the success state from the UI side.
   const handleMagicLink = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    setSuccessMsg(null);
+    clearMessages();
     try {
-      const supabase = createClient();
-      const redirectTo = getAuthCallbackUrl();
-      const { error } = await supabase.auth.signInWithOtp({
-        email: magicEmail.trim(),
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+      const res = await fetch('/api/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: magicEmail.trim() }),
       });
-      if (error) {
-        setError('Could not send magic link. Make sure your email is registered.');
-      } else {
-        setSuccessMsg('Magic link sent! Check your inbox and click the link to sign in.');
+      if (res.status === 429) {
+        setError('Too many attempts. Please wait a minute and try again.');
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      setError(err?.message || 'Unexpected error.');
+      // Always show generic success — the API returns 200 even for unknown
+      // addresses by design. Letting the UI differentiate would defeat that.
+      setSuccessMsg("If your email is registered, we just sent you a sign-in link. Check your inbox.");
+    } catch {
+      setErrorWithLink({
+        text: "We couldn't send your link. ",
+        linkHref: '/request-access',
+        linkText: 'Request access',
+        suffix: ' if you don\'t have an account yet.',
+      });
     }
     setLoading(false);
   };
@@ -90,12 +110,17 @@ function LoginContent() {
   const handleEmailSignIn = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    clearMessages();
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) {
-        setError('Invalid email or password. If you just got approved, check your email to set your password first.');
+        setErrorWithLink({
+          text: 'Wrong email or password. ',
+          linkHref: '/forgot-password',
+          linkText: 'Reset password',
+          suffix: ' or use the Magic Link tab.',
+        });
         setLoading(false);
         return;
       }
@@ -124,7 +149,7 @@ function LoginContent() {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { setMode(tab.id); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode(tab.id); clearMessages(); }}
               style={{
                 flex: 1,
                 padding: '9px 4px',
@@ -144,9 +169,16 @@ function LoginContent() {
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
+        {errorWithLink && (
+          <div style={styles.error} data-testid="login-error-with-link">
+            {errorWithLink.text}
+            <Link href={errorWithLink.linkHref} style={styles.errorLink}>{errorWithLink.linkText}</Link>
+            {errorWithLink.suffix}
+          </div>
+        )}
         {successMsg && <div style={styles.success}>{successMsg}</div>}
 
-        {/* ── Google sign-in ── */}
+        {/* Google sign-in */}
         {mode === 'google' && (
           <>
             <button
@@ -165,32 +197,37 @@ function LoginContent() {
           </>
         )}
 
-        {/* ── Email + password login ── */}
+        {/* Email + password login */}
         {mode === 'signin' && (
-          <form onSubmit={handleEmailSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              style={styles.input}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              style={styles.input}
-            />
-            <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+          <>
+            <form onSubmit={handleEmailSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                style={styles.input}
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                style={styles.input}
+              />
+              <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <Link href="/forgot-password" style={styles.subtleLink}>Forgot password?</Link>
+            </div>
+          </>
         )}
 
-        {/* ── Magic link sign-in ── */}
+        {/* Magic link sign-in */}
         {mode === 'magic' && !successMsg && (
           <form onSubmit={handleMagicLink} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ fontSize: 13, color: '#555', marginBottom: 4, textAlign: 'left' }}>
@@ -216,6 +253,12 @@ function LoginContent() {
             <p style={{ fontSize: 12, color: '#999', marginTop: 8 }}>The link expires in 1 hour.</p>
           </div>
         )}
+
+        {/* Secondary: request access — the door for new partners who don't have an account yet */}
+        <div style={styles.requestAccessRow}>
+          Don't have access yet?{' '}
+          <Link href="/request-access" style={styles.requestAccessLink}>Request access</Link>
+        </div>
 
         <p style={styles.footer}>Reserved for LoveLab team members</p>
       </div>
@@ -249,6 +292,11 @@ const styles = {
     padding: '12px 16px', borderRadius: '8px',
     marginBottom: '16px', fontSize: '14px', textAlign: 'left',
   },
+  errorLink: {
+    color: '#991b1b',
+    fontWeight: 700,
+    textDecoration: 'underline',
+  },
   success: {
     background: '#ecfdf5', color: '#059669',
     padding: '12px 16px', borderRadius: '8px',
@@ -275,5 +323,24 @@ const styles = {
     fontFamily: 'inherit',
   },
   googleIcon: { width: '20px', height: '20px' },
-  footer: { marginTop: '24px', fontSize: '12px', color: '#999', marginBottom: 0 },
+  subtleLink: {
+    fontSize: 12,
+    color: '#5D3A5E',
+    textDecoration: 'underline',
+    fontWeight: 600,
+  },
+  requestAccessRow: {
+    marginTop: 24,
+    paddingTop: 16,
+    borderTop: '1px solid #f0f0f0',
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  requestAccessLink: {
+    color: '#5D3A5E',
+    fontWeight: 700,
+    textDecoration: 'underline',
+  },
+  footer: { marginTop: '20px', fontSize: '11px', color: '#aaa', marginBottom: 0 },
 };

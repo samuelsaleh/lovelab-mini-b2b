@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getSenderFrom, getSenderEmail } from '@/lib/email';
+import { getSenderFrom } from '@/lib/email';
+import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -15,10 +16,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Name and email are required.' }, { status: 400 });
     }
 
-    const emailLower = email.trim().toLowerCase();
+    const emailLower = normalizeEmail(email);
     const nameTrimmed = full_name.trim();
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
+    if (!isValidEmail(emailLower)) {
       return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
     }
 
@@ -67,7 +68,21 @@ export async function POST(request) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || origin;
     const approveUrl = `${siteUrl}/api/approve-signup?token=${signup.token}`;
     const rejectUrl = `${siteUrl}/api/reject-signup?token=${signup.token}`;
-    const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || getSenderEmail();
+
+    // ADMIN_NOTIFICATION_EMAIL is a comma-separated list. First address is
+    // the primary recipient, the rest are CC'd. Defaults to Alberto so
+    // approvals don't go silently missing if the env var is forgotten.
+    // Whitespace and duplicates are normalized away.
+    const adminRecipients = Array.from(new Set(
+      (process.env.ADMIN_NOTIFICATION_EMAIL || 'albertosaleh@gmail.com')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean)
+    ));
+    const [primaryAdmin, ...ccAdmins] = adminRecipients.length > 0
+      ? adminRecipients
+      : ['albertosaleh@gmail.com'];
+
     const resendApiKey = process.env.RESEND_API_KEY;
 
     if (!resendApiKey) {
@@ -89,7 +104,8 @@ export async function POST(request) {
         },
         body: JSON.stringify({
           from: getSenderFrom(),
-          to: [adminEmail],
+          to: [primaryAdmin],
+          ...(ccAdmins.length > 0 ? { cc: ccAdmins } : {}),
           subject: `Access Request: ${nameTrimmed} (${emailLower})`,
           html: `
             <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">

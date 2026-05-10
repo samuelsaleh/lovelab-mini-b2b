@@ -5,9 +5,8 @@ import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
 import { grantAccess } from '@/lib/agents/access';
+import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
 import { NextResponse } from 'next/server';
-
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 // GET - List all agents with aggregated commission stats (admin only)
 export async function GET(request) {
@@ -286,8 +285,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const emailLower = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
+    const emailLower = normalizeEmail(email);
+    if (!isValidEmail(emailLower)) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
