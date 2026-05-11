@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, resolvePricelist } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -82,7 +82,10 @@ function ensureUniqueConfigIds(configs) {
   return changed ? next : null
 }
 
-export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect, recentlyDuplicated = new Set() }) {
+export default function CollectionConfig({ line, col, onChange, onRemove, selectedConfigs = new Set(), onToggleConfigSelect, onToggleLineSelect, recentlyDuplicated = new Set(), pricelistYear }) {
+  // Single normalization point so a missing or invalid year never leaks
+  // into a getPrice call inside this huge component.
+  const yr = resolvePricelist(pricelistYear)
   const { t } = useI18n()
   const mobile = useIsMobile()
   const expanded = line.expanded ?? true
@@ -166,7 +169,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const totalQty = line.colorConfigs.reduce((sum, c) => sum + c.qty, 0)
   const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-    const catalogP = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType) : 0
+    const catalogP = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType, yr) : 0
     const unitP = cfg.priceOverride != null ? cfg.priceOverride : catalogP
     return sum + (cfg.qty * unitP)
   }, 0)
@@ -419,7 +422,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     
     const newConfigs = configsToDuplicate.map(cfg => {
       const nextCaratIdx = duplicateSettings.carat.keepSame ? cfg.caratIdx : duplicateSettings.carat.value
-      const certOptions = getAvailableCerts(col, nextCaratIdx)
+      const certOptions = getAvailableCerts(col, nextCaratIdx, yr)
       const preferredCert = duplicateSettings.cert.keepSame
         ? (cfg.certType || getDefaultCert(col))
         : duplicateSettings.cert.value
@@ -458,7 +461,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const hasSizes = col.sizes && col.sizes.length > 0
   const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
   const getCertForCarat = useCallback((currentCert, caratIdx) => {
-    const available = getAvailableCerts(col, caratIdx)
+    const available = getAvailableCerts(col, caratIdx, yr)
     if (currentCert && available.includes(currentCert)) return currentCert
     return available[0] || getDefaultCert(col)
   }, [col])
@@ -653,7 +656,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             {col.label}
           </span>
           <span style={{ fontSize: 12, color: '#999' }}>
-            {fmt(getPrice(col, 0, getDefaultCert(col)))}-{fmt(getPrice(col, col.carats.length - 1, getDefaultCert(col)))}
+            {fmt(getPrice(col, 0, getDefaultCert(col), yr))}-{fmt(getPrice(col, col.carats.length - 1, getDefaultCert(col), yr))}
           </span>
           {line.colorConfigs.length > 0 && (
             <span style={{
@@ -920,7 +923,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           >
                             <option value="">{t('collection.caratPlaceholder')}</option>
                             {col.carats.map((ct, ci) => (
-                              <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col))}</option>
+                              <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col), yr)}</option>
                             ))}
                           </select>
                         )}
@@ -1094,7 +1097,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 >
                   <option value="">{t('collection.caratPlaceholder')}</option>
                   {col.carats.map((ct, ci) => (
-                    <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col))}</option>
+                    <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col), yr)}</option>
                   ))}
                 </select>
 
@@ -1188,8 +1191,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   {line.colorConfigs.map((cfg, cfgIdx) => {
                     const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                     const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-                    const catalogPrice = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType) : 0
-                    const retailPrice = effectiveCaratIdx !== null ? getRetail(col, effectiveCaratIdx, cfg.certType) : 0
+                    const catalogPrice = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType, yr) : 0
+                    const retailPrice = effectiveCaratIdx !== null ? getRetail(col, effectiveCaratIdx, cfg.certType, yr) : 0
                     const unitPrice = cfg.priceOverride != null ? cfg.priceOverride : catalogPrice
                     const price = unitPrice
                     const rowTotal = unitPrice * cfg.qty
@@ -1257,7 +1260,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             {col.certificate === 'both' ? (
                               <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
                                 {['igi', 'inhouse'].map(ct => {
-                                  const avail = getAvailableCerts(col, cfg.caratIdx)
+                                  const avail = getAvailableCerts(col, cfg.caratIdx, yr)
                                   const isAvail = avail.includes(ct)
                                   const isActive = (cfg.certType || getDefaultCert(col)) === ct
                                   return (
@@ -1298,7 +1301,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           ) : (
                             <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); const certType = getCertForCarat(cfg.certType, val); updateConfig(cfg.id, { caratIdx: val, certType, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                               <option value="">{t('collection.selectPlaceholder')}</option>
-                              {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType)}</option>)}
+                              {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType, yr)}</option>)}
                             </select>
                           )}
                           {canFillCarat && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} />}
@@ -1463,8 +1466,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               {line.colorConfigs.map((cfg, cfgIdx) => {
                 const colorDef = palette.find(p => p.n === cfg.colorName) || { h: '#ccc' }
                 const effectiveCaratIdx = cfg.caratIdx ?? (sameForAll ? sharedSettings.caratIdx : null)
-                const catalogPriceMobile = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType) : 0
-                const retailPriceMobile = effectiveCaratIdx !== null ? getRetail(col, effectiveCaratIdx, cfg.certType) : 0
+                const catalogPriceMobile = effectiveCaratIdx !== null ? getPrice(col, effectiveCaratIdx, cfg.certType, yr) : 0
+                const retailPriceMobile = effectiveCaratIdx !== null ? getRetail(col, effectiveCaratIdx, cfg.certType, yr) : 0
                 const unitPriceMobile = cfg.priceOverride != null ? cfg.priceOverride : catalogPriceMobile
                 const price = unitPriceMobile
                 const rowTotal = unitPriceMobile * cfg.qty
@@ -1564,7 +1567,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           {col.certificate === 'both' ? (
                             <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
                               {['igi', 'inhouse'].map(ct => {
-                                const avail = getAvailableCerts(col, cfg.caratIdx)
+                                const avail = getAvailableCerts(col, cfg.caratIdx, yr)
                                 const isAvail = avail.includes(ct)
                                 const isActive = (cfg.certType || getDefaultCert(col)) === ct
                                 return (
@@ -1599,7 +1602,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.carat')}</span>
                           <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); const certType = getCertForCarat(cfg.certType, val); updateConfig(cfg.id, { caratIdx: val, certType, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
-                            {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType)}</option>)}
+                            {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType, yr)}</option>)}
                           </select>
                         </div>
                       )}

@@ -12,7 +12,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { COLLECTIONS, CORD_COLORS } from '../../lib/catalog.js';
+import { COLLECTIONS, CORD_COLORS, getPrice, getDefaultCert } from '../../lib/catalog.js';
+
+const Y = '2026';
 
 const CUTY = COLLECTIONS.find(c => c.id === 'CUTY');
 const M3   = COLLECTIONS.find(c => c.id === 'M3');
@@ -178,32 +180,49 @@ test('removeLine: returns all config ids from removed line for selection cleanup
 
 // ─── computePackTotal ────────────────────────────────────────────────────────
 
-function computePackTotal(pack) {
+// Mirrors the year-aware helper inside BuilderPage. Defaults to '2026' so a
+// caller that hasn't been migrated still gets today's prices, matching the
+// production catalog's fallback contract.
+function computePackTotal(pack, pricelistYear = Y) {
   return pack.lines.reduce((sum, line) => {
     const col = COLLECTIONS.find(c => c.id === line.collectionId);
     if (!col) return sum;
     const colorCount = (CORD_COLORS[col.cord] || []).length;
     const minQty = col.minC || 1;
-    const lineTotal = line.caratIndices.reduce((s, ci) => s + (col.prices[ci] || 0), 0);
+    const cert = getDefaultCert(col);
+    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, cert, pricelistYear), 0);
     return sum + lineTotal * colorCount * minQty;
   }, 0);
 }
 
-test('computePackTotal: M3 pack accounts for minC=2', () => {
-  // M3: nylon=20 colors, price[0]=55, minC=2 → 55*20*2=2200
+// CORD_COLORS.nylon currently has 21 entries; we read it dynamically so a
+// future palette tweak doesn't make these tests lie about the count.
+const NYLON_COUNT = (CORD_COLORS.nylon || []).length;
+
+test('computePackTotal: M3 pack accounts for minC=2 (2026 prices)', () => {
+  // M3 2026 IGI [0]=65, nylon=NYLON_COUNT, minC=2 → 65 × NYLON_COUNT × 2
   const total = computePackTotal({ lines: [{ collectionId: 'M3', caratIndices: [0] }] });
-  assert.equal(total, 2200);
+  const m3p = getPrice(COLLECTIONS.find(c => c.id === 'M3'), 0, 'igi', Y);
+  assert.equal(total, m3p * NYLON_COUNT * 2);
 });
 
-test('computePackTotal: CUTY pack with minC=1', () => {
-  // CUTY: nylon=20 colors, price[1]=30, minC=1 → 30*20*1=600
+test('computePackTotal: CUTY pack with minC=3 (2026 prices)', () => {
+  // CUTY 2026 IGI [1]=40, nylon=NYLON_COUNT, minC=3
   const total = computePackTotal({ lines: [{ collectionId: 'CUTY', caratIndices: [1] }] });
-  assert.equal(total, 600);
+  const cutyp = getPrice(COLLECTIONS.find(c => c.id === 'CUTY'), 1, 'igi', Y);
+  assert.equal(total, cutyp * NYLON_COUNT * 3);
 });
 
 test('computePackTotal: unknown collection returns 0', () => {
   const total = computePackTotal({ lines: [{ collectionId: 'NOPE', caratIndices: [0] }] });
   assert.equal(total, 0);
+});
+
+test('computePackTotal: switches to 2025 numbers when given pricelistYear="2025"', () => {
+  // M3 0.15 IGI: 2025=€55, 2026=€65. nylon=NYLON_COUNT, minC=2.
+  const pack = { lines: [{ collectionId: 'M3', caratIndices: [0] }] };
+  assert.equal(computePackTotal(pack, '2025'), 55 * NYLON_COUNT * 2);
+  assert.equal(computePackTotal(pack, '2026'), 65 * NYLON_COUNT * 2);
 });
 
 // ─── collectionsSelected translation key ─────────────────────────────────────

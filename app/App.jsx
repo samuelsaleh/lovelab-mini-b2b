@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, DEFAULT_PRICELIST, resolvePricelist } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -64,6 +64,16 @@ export default function App() {
   const [builderBudget, setBuilderBudget] = useState('')
   const [budgetRecommendations, setBudgetRecommendations] = useState(null)
   const [showRecommendations, setShowRecommendations] = useState(false)
+
+  // Active price list (2025 vs 2026). Defaults to DEFAULT_PRICELIST ('2026').
+  // Lives at App-level so the same value flows into Builder, OrderForm,
+  // saved metadata, and AI prompt context — single source of truth.
+  // Wrapped setter normalizes the input through resolvePricelist so a stray
+  // undefined or unknown year never lands in state.
+  const [pricelistYear, setPricelistYearRaw] = useState(DEFAULT_PRICELIST)
+  const setPricelistYear = useCallback((next) => {
+    setPricelistYearRaw(resolvePricelist(next))
+  }, [])
 
   // Quote state
   const [curQuote, setCurQuote] = useState(null)
@@ -191,7 +201,7 @@ export default function App() {
   const handleBudgetRecommendations = useCallback(async () => {
     const budgetNum = parseFloat(builderBudget)
     if (!budgetNum || budgetNum <= 0) return
-    const quote = calculateQuote(lines)
+    const quote = calculateQuote(lines, { pricelistYear })
     const spent = quote.total
     const remaining = budgetNum - spent
     if (remaining <= 0) return
@@ -202,12 +212,12 @@ export default function App() {
     ).join('; ')
     const prompt = `The client has a budget of €${budgetNum}. They have already built an order worth €${spent} (after any discounts). They have €${remaining} remaining.\n\nCurrent order: ${currentItems || 'empty'}\n\nIMPORTANT: Do NOT change or remove anything from the current order. Only suggest what to ADD on top of it.\nBased on what they already like (their chosen collections, colors, carat sizes), suggest 3-5 smart additions they could make with the remaining €${remaining}. Consider:\n- Adding more pieces of collections they already chose (safe upsell)\n- Trying a new complementary collection\n- Upgrading carat size on an existing line\n- Adding new colors of something they already have\n\nFor each suggestion, give a short one-line description and the approximate cost.\nKeep it very concise — this is for a salesperson at a trade fair.`
     try {
-      const parsed = await sendRecommendationChat(prompt)
+      const parsed = await sendRecommendationChat(prompt, { pricelistYear })
       setBudgetRecommendations({ loading: false, message: parsed.message, suggestions: parsed.quote })
     } catch {
       setBudgetRecommendations({ loading: false, message: 'Could not generate recommendations. Please try again.', suggestions: null })
     }
-  }, [builderBudget, lines])
+  }, [builderBudget, lines, pricelistYear])
 
   // ─── Finalize order ───
   const handleFinalize = useCallback(() => {
@@ -466,7 +476,7 @@ export default function App() {
     const apiMsgs = [...aiMsgs, apiMsg]
     setAiMsgs((prev) => [...prev, displayMsg])
     try {
-      const parsed = await sendChat(apiMsgs)
+      const parsed = await sendChat(apiMsgs, { pricelistYear })
       let expandedQuote = null
       if (parsed.quote && parsed.quote.lines && parsed.quote.lines.length > 0) {
         const linesByCollection = new Map()
@@ -500,7 +510,7 @@ export default function App() {
           return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
         })
         setLines(newLines)
-        expandedQuote = calculateQuote(newLines)
+        expandedQuote = calculateQuote(newLines, { pricelistYear })
         setCurQuote(expandedQuote)
         if (unmappedProducts.length > 0) {
           parsed.message = (parsed.message || '') + `\n\n⚠️ Could not map ${unmappedProducts.length} product(s) to the catalog: ${unmappedProducts.join(', ')}. These were skipped.`
@@ -520,7 +530,7 @@ export default function App() {
     }
     setDescLoading(false)
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-  }, [chatInput, descLoading, aiMsgs, buildFilterContext])
+  }, [chatInput, descLoading, aiMsgs, buildFilterContext, pricelistYear])
 
   const handleSuggestFillOrder = useCallback(() => {
     if (descLoading) return
@@ -576,6 +586,7 @@ export default function App() {
         if (state.aiBudget) setAiBudget(state.aiBudget)
         if (state.aiCollections) setAiCollections(state.aiCollections)
         if (state.aiColors) setAiColors(state.aiColors)
+        if (state.pricelistYear) setPricelistYearRaw(resolvePricelist(state.pricelistYear))
       }
     } catch { /* ignore */ }
 
@@ -602,9 +613,10 @@ export default function App() {
         aiBudget,
         aiCollections,
         aiColors,
+        pricelistYear,
       }))
     } catch { /* localStorage full or unavailable -- ignore */ }
-  }, [lines, client, clientReady, curQuote, aiMsgs, activeTab, builderBudget, aiBudget, aiCollections, aiColors])
+  }, [lines, client, clientReady, curQuote, aiMsgs, activeTab, builderBudget, aiBudget, aiCollections, aiColors, pricelistYear])
 
   // ─── Pick up re-edit from sessionStorage (dashboard redirect) ───
   useEffect(() => {
@@ -711,7 +723,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 
       {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
       {accountPanelOpen && (
@@ -806,6 +818,8 @@ export default function App() {
             setShowRecommendations={setShowRecommendations}
             onRequestRecommendations={handleBudgetRecommendations}
             orderChannel={initialOrderChannel}
+            pricelistYear={pricelistYear}
+            setPricelistYear={setPricelistYear}
           />
         )}
 

@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -569,7 +569,12 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder, initialOrderChannel = 'b2b' }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
+  // OrderForm reads `pricelistYear` from (in priority): the saved doc's
+  // metadata.formState (handled in the formState init below), the parent
+  // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
+  // Phase 5 wires the "saved doc" path; for now the prop fallback is enough.
+  const pricelistYear = resolvePricelist(pricelistYearProp)
   const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
@@ -808,6 +813,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.taxLabel != null) setTaxLabel(s.taxLabel)
     if (s.customLineLabel != null) setCustomLineLabel(s.customLineLabel)
     if (s.customLineAmount != null) setCustomLineAmount(Number(s.customLineAmount) || null)
+    // Rehydrate the active price list. Saved docs from before this feature
+    // shipped won't have it — those default to '2026' via resolvePricelist.
+    // We push it up to the parent so the Builder header reflects the right
+    // year when the user clicks "Edit in builder".
+    if (s.pricelistYear != null && typeof setPricelistYear === 'function') {
+      setPricelistYear(resolvePricelist(s.pricelistYear))
+    }
     if (s.rows && s.rows.length > 0) {
       // Pad rows to fill at least one page
       const restored = [...s.rows]
@@ -889,6 +901,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.taxLabel != null) setTaxLabel(s.taxLabel)
     if (s.customLineLabel != null) setCustomLineLabel(s.customLineLabel)
     if (s.customLineAmount != null) setCustomLineAmount(Number(s.customLineAmount) || null)
+    // Same pricelistYear restore as the saved-document path.
+    if (s.pricelistYear != null && typeof setPricelistYear === 'function') {
+      setPricelistYear(resolvePricelist(s.pricelistYear))
+    }
     if (s.rows && s.rows.length > 0) {
       const restored = [...s.rows]
       while (restored.length < ROWS_PER_PAGE) {
@@ -1089,7 +1105,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           const caratIdx = col.carats.findIndex(c => c === row.carat)
           if (caratIdx !== -1) {
             const certKey = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : getDefaultCert(col)
-            const price = getPrice(col, caratIdx, certKey)
+            const price = getPrice(col, caratIdx, certKey, pricelistYear)
             next[rowIdx].unitPrice = String(price)
             const qty = Number(row.quantity) || 0
             if (qty) next[rowIdx].total = String(qty * price)
@@ -1588,6 +1604,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             shippingAmount,
             taxPercent, taxLabel,
             customLineLabel, customLineAmount,
+            // Active price list at save time. The /api/documents reload path
+            // reads this field; if absent (legacy doc), it defaults to '2026'.
+            pricelistYear,
           },
           rowCount: rows.filter(r => isRowFilled(r)).length,
           hasPrepayment,
@@ -1595,6 +1614,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           createdBy,
           eventName,
           contactName,
+          pricelistYear,
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
           shippingAddress: shippingSameAsBilling 
             ? [addressLine1, addressLine2, country].filter(Boolean).join(', ')
@@ -2084,6 +2104,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div>
                     <div style={hFieldLabel}>Order by (LoveLab) :</div>
                     <PrintableInput value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                  </div>
+                  <div>
+                    {/* Read-only badge — toggled in the Builder. Lives in the
+                        page header so the html2canvas PDF capture picks it up
+                        automatically, no PDF code change needed. */}
+                    <div style={hFieldLabel}>Price List :</div>
+                    <div data-testid="orderform-pricelist-badge" style={{ ...hFieldInput, display: 'flex', alignItems: 'center', minHeight: 18 }}>
+                      {PRICELIST_LABELS[pricelistYear]}
+                    </div>
                   </div>
                 </div>
               </div>

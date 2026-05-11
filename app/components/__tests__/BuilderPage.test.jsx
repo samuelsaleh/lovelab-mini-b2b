@@ -153,12 +153,15 @@ describe('BuilderPage — computePackTotal with minC', () => {
   // Test the exported function via the module
   it('computePackTotal multiplies by minC for M3', () => {
     // We test this indirectly by checking pack card display
-    // M3: minC=2, prices.igi[0]=65, nylon palette has 20 colors
+    // M3: minC=2, prices.2026.igi[0]=65, nylon palette has 20 colors
     // Expected total = 65 * 20 * 2 = 2600
     const col = M3
     const colorCount = 20
     const minQty = col.minC || 1
-    const lineTotal = getPrice(col, 0, getDefaultCert(col))
+    // Pin the year explicitly so this test breaks loudly if the catalog data
+    // model changes again. (Default fallback is also '2026' per the catalog
+    // contract — see catalog-pricelist-defaults.test.js.)
+    const lineTotal = getPrice(col, 0, getDefaultCert(col), '2026')
     const expected = lineTotal * colorCount * minQty
     expect(expected).toBe(2600)
   })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -213,7 +213,10 @@ const PACKS = [
 ]
 
 // ─── Compute total order estimate for a pack ───
-function computePackTotal(pack) {
+// pricelistYear is forwarded so pack price estimates show the same year the
+// agent currently has selected. Defaults to DEFAULT_PRICELIST when absent so
+// any caller that hasn't been updated still works.
+function computePackTotal(pack, pricelistYear) {
   if (pack.fixedTotal != null) return pack.fixedTotal
   if (!pack.lines) return 0
   return pack.lines.reduce((sum, line) => {
@@ -222,7 +225,7 @@ function computePackTotal(pack) {
     const colorCount = (CORD_COLORS[col.cord] || []).length
     const minQty = col.minC || 1
     const cert = getDefaultCert(col)
-    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, cert), 0)
+    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, cert, pricelistYear), 0)
     return sum + lineTotal * colorCount * minQty
   }, 0)
 }
@@ -280,7 +283,7 @@ const CHANNEL_BANNER = {
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel }) {
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear }) {
   const mobile = useIsMobile()
   const tablet = useIsTablet()
   const { t } = useI18n()
@@ -314,8 +317,49 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const aiChatEndRef = useRef(null)
   const aiInputRef = useRef(null)
 
+  // Resolve once per render so every downstream getter / calculator sees the
+  // same year, even if the parent passes a stale or undefined value mid-flight.
+  const activePricelist = resolvePricelist(pricelistYear)
+
+  // Pending pricelist switch — set to a year string when the agent clicks the
+  // other toggle button while there are non-empty lines. Confirms via modal,
+  // then commits via setPricelistYear. Empty builder → silent (no modal).
+  const [pendingPricelistSwitch, setPendingPricelistSwitch] = useState(null)
+  const requestPricelistSwitch = useCallback((nextYear) => {
+    const target = resolvePricelist(nextYear)
+    if (target === activePricelist) return
+    if (typeof setPricelistYear !== 'function') return
+    // hasContent is computed below — we capture the current snapshot here
+    // by re-checking lines synchronously to avoid a stale closure.
+    const linesHaveContent = lines.some((l) => {
+      if (!l.collectionId || (l.colorConfigs || []).length === 0) return false
+      const c = COLLECTIONS.find((x) => x.id === l.collectionId)
+      if (!c) return false
+      return l.colorConfigs.some((cfg) => cfg.caratIdx !== null && cfg.caratIdx !== undefined)
+    })
+    if (!linesHaveContent) {
+      setPricelistYear(target)
+      return
+    }
+    setPendingPricelistSwitch(target)
+  }, [activePricelist, setPricelistYear, lines])
+
+  const confirmPricelistSwitch = useCallback(() => {
+    if (pendingPricelistSwitch && typeof setPricelistYear === 'function') {
+      setPricelistYear(pendingPricelistSwitch)
+    }
+    setPendingPricelistSwitch(null)
+  }, [pendingPricelistSwitch, setPricelistYear])
+
+  const cancelPricelistSwitch = useCallback(() => {
+    setPendingPricelistSwitch(null)
+  }, [])
+
   // Live quote
-  const quote = useMemo(() => calculateQuote(lines), [lines])
+  const quote = useMemo(
+    () => calculateQuote(lines, { pricelistYear: activePricelist }),
+    [lines, activePricelist],
+  )
   const hasContent = lines.some(l => {
     if (!l.collectionId || l.colorConfigs.length === 0) return false
     const col = COLLECTIONS.find(c => c.id === l.collectionId)
@@ -462,19 +506,20 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       } else {
         line.colorConfigs.forEach((cfg, idx) => {
           const caratLabel = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] + 'ct' : 'no carat'
-          const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType) : 0
+          const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType, activePricelist) : 0
           parts.push(`  ${idx + 1}. ${cfg.colorName} | ${caratLabel} | ${cfg.housing || 'no housing'} | ${cfg.size || 'no size'} | qty:${cfg.qty} | €${price * cfg.qty}`)
         })
       }
     })
 
     parts.push(`\nTotal: ${quote.totalPieces} pieces, ${fmt(quote.total)}`)
+    parts.push(`Price list: ${activePricelist}`)
     if (hasBudget) {
       parts.push(`Budget: ${fmt(budgetNum)}, Remaining: ${fmt(remaining)}`)
     }
 
     return parts.join('\n')
-  }, [lines, quote, hasBudget, budgetNum, remaining])
+  }, [lines, quote, hasBudget, budgetNum, remaining, activePricelist])
 
   // Execute AI actions
   const executeAiActions = useCallback((actions) => {
@@ -634,7 +679,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       const orderContext = buildOrderContext()
       const response = await sendBuilderChat(
         [...aiMessages, { role: 'user', content: userMessage }],
-        orderContext
+        orderContext,
+        { pricelistYear: activePricelist },
       )
 
       if (response.actions && response.actions.length > 0) {
@@ -656,7 +702,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     } finally {
       setAiLoading(false)
     }
-  }, [aiInput, aiLoading, aiMessages, buildOrderContext, t])
+  }, [aiInput, aiLoading, aiMessages, buildOrderContext, t, activePricelist])
 
   // Scroll AI chat to bottom on new messages
   useEffect(() => {
@@ -931,7 +977,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             {pack.budget}
                           </div>
                           <div style={{ fontSize: 10, color: '#bbb', marginTop: 2 }}>
-                            Total order: {pack.fixedTotal != null ? '' : '~'}€{computePackTotal(pack).toLocaleString('fr-FR')}
+                            Total order: {pack.fixedTotal != null ? '' : '~'}€{computePackTotal(pack, activePricelist).toLocaleString('fr-FR')}
                           </div>
                         </div>
                       )}
@@ -979,8 +1025,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   ].map(col => {
                     const isSelected = selectedCollections.includes(col.id)
                     const defaultCert = getDefaultCert(col)
-                    const priceMin = `€${getPrice(col, 0, defaultCert)}`
-                    const priceMax = col.carats.length > 1 ? ` – €${getPrice(col, col.carats.length - 1, defaultCert)}` : ''
+                    const priceMin = `€${getPrice(col, 0, defaultCert, activePricelist)}`
+                    const priceMax = col.carats.length > 1 ? ` – €${getPrice(col, col.carats.length - 1, defaultCert, activePricelist)}` : ''
                     const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
 
                     return (
@@ -1118,6 +1164,49 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: mobile ? 'flex-start' : 'flex-end' }}>
+                    {/* ─── Pricelist toggle (2025 / 2026) ─── */}
+                    {/* Wraps in a fieldset for screen-reader semantics: a clear
+                        radiogroup label avoids confusing AT users who
+                        otherwise hear two unconnected buttons. */}
+                    <fieldset
+                      data-testid="pricelist-toggle"
+                      aria-label="Active price list"
+                      title="Choose 2025 for legacy clients still on the old pricing during the 6-month transition. New clients use 2026."
+                      style={{
+                        display: 'inline-flex', border: '1px solid #ddd',
+                        borderRadius: 8, padding: 0, margin: 0, gap: 0,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <legend style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+                        Active price list
+                      </legend>
+                      {PRICELISTS.map((year) => {
+                        const isActive = activePricelist === year
+                        return (
+                          <button
+                            key={year}
+                            type="button"
+                            role="radio"
+                            aria-checked={isActive}
+                            data-testid={`pricelist-toggle-${year}`}
+                            onClick={() => requestPricelistSwitch(year)}
+                            style={{
+                              padding: '7px 12px', fontSize: 11, fontWeight: 700,
+                              border: 'none',
+                              borderRadius: 7,
+                              background: isActive ? colors.inkPlum : 'transparent',
+                              color: isActive ? '#fff' : '#666',
+                              cursor: isActive ? 'default' : 'pointer',
+                              fontFamily: 'inherit',
+                              transition: 'all .12s',
+                            }}
+                          >
+                            {PRICELIST_LABELS[year] || `${year} prices`}
+                          </button>
+                        )
+                      })}
+                    </fieldset>
                     {/* Collapse / Expand all */}
                     {(() => {
                       const allExpanded = lines.filter(l => l.collectionId).every(l => l.expanded !== false)
@@ -1178,6 +1267,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       onToggleConfigSelect={toggleConfigSelection}
                       onToggleLineSelect={toggleLineSelection}
                       recentlyDuplicated={recentlyDuplicated}
+                      pricelistYear={activePricelist}
                     />
                   )
                 })}
@@ -1338,7 +1428,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             const col = COLLECTIONS.find(c => c.id === line.collectionId)
             if (!col) return null
             const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
-              const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType) : 0
+              const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType, activePricelist) : 0
               return sum + (cfg.qty * price)
             }, 0)
             const pieces = line.colorConfigs.reduce((sum, cfg) => sum + cfg.qty, 0)
@@ -1673,6 +1763,66 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       )}
 
       </div>
+
+      {/* Pricelist switch confirmation — only mounts when a switch is pending */}
+      {pendingPricelistSwitch && (
+        <div
+          data-testid="pricelist-switch-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pricelist-switch-title"
+          onClick={cancelPricelistSwitch}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 600, padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 12, padding: '20px 22px',
+              maxWidth: 440, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
+              fontFamily: fonts.body,
+            }}
+          >
+            <h3 id="pricelist-switch-title" style={{ fontSize: 16, fontWeight: 700, color: colors.inkPlum, margin: '0 0 10px' }}>
+              Switch to {PRICELIST_LABELS[pendingPricelistSwitch] || pendingPricelistSwitch}?
+            </h3>
+            <p style={{ fontSize: 13, color: '#444', lineHeight: 1.55, margin: '0 0 18px' }}>
+              This will re-price every line in the builder. Lines with manual price overrides will keep their overrides. Continue?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                data-testid="pricelist-switch-cancel"
+                onClick={cancelPricelistSwitch}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 600,
+                  borderRadius: 8, border: '1px solid #ddd',
+                  background: '#fff', color: '#666', cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="pricelist-switch-confirm"
+                onClick={confirmPricelistSwitch}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                  borderRadius: 8, border: 'none',
+                  background: colors.inkPlum, color: '#fff', cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
