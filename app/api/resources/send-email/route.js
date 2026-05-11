@@ -2,15 +2,15 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext } from '@/app/api/_lib/access';
-import { getSenderFrom } from '@/lib/email';
+import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
 
 export const runtime = 'nodejs';
 
-// Hardcoded CC — every resources email is silently copied to Alberto's
-// personal Gmail so he has a record of every outbound document send.
-// Clients don't see this address.
-const CC_RECIPIENTS = ['albertosaleh@gmail.com'];
+// Every resources email is silently copied to whoever is listed in
+// ADMIN_NOTIFICATION_EMAIL so admins keep a record of every outbound document
+// send. Defaults to Alberto's personal Gmail when the env var is unset.
+// Clients never see these addresses.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
@@ -162,7 +162,7 @@ export async function POST(request) {
     const payload = {
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: CC_RECIPIENTS,
+      cc: getAdminNotificationRecipients().all,
       subject,
       html,
       attachments,

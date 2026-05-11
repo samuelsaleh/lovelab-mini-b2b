@@ -258,15 +258,22 @@ export default function App() {
   }, [])
 
   // ─── Re-edit a saved document ───
+  // We sync pricelistYear into App-level state BEFORE showing OrderForm so the
+  // first paint already has the correct year (avoids the one-frame mismatch
+  // where header badge + totals flash 2026 then snap to 2025). Both
+  // metadata.formState.pricelistYear and the top-level metadata.pricelistYear
+  // are checked because we shipped both during the pricelist rollout.
   const handleReEdit = useCallback((doc) => {
     const formState = doc?.metadata?.formState
     if (!formState) return
+    const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
+    if (docYear != null) setPricelistYear(docYear)
     setOrderFormQuote(null)
     setSavedFormState(formState)
     setEditingDocumentId(doc.id)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
-  }, [])
+  }, [setPricelistYear])
 
   // ─── Deep-link handler — handles all URL params in one place ────────────
   //
@@ -316,6 +323,12 @@ export default function App() {
           pendingOrderChannel.current = channel
           setInitialOrderChannel(channel)
           setEditingDocumentId(data.document.id)
+          // Restore the pricelist year before switching tabs so builder + AI
+          // immediately quote the document's saved year — previously this was
+          // skipped, so a 2025 doc reopened in the builder at 2026 prices.
+          const docYear = data.document.metadata?.formState?.pricelistYear
+            ?? data.document.metadata?.pricelistYear
+          if (docYear != null) setPricelistYear(docYear)
           // Load formState rows into builder if available
           if (data.document.metadata?.formState) {
             setSavedFormState(data.document.metadata.formState)
@@ -331,7 +344,7 @@ export default function App() {
       setInitialOrderChannel('consignment')
       setActiveTab('builder')
     }
-  }, [authLoading, user, handleReEdit])
+  }, [authLoading, user, handleReEdit, setPricelistYear])
 
   // ─── Duplicate a saved document as a new order ───
   // Keeps product rows but clears contact info so the user fills in the new client
@@ -341,12 +354,17 @@ export default function App() {
     const { companyName, contactName, addressLine1, addressLine2, country,
       shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
       vatNumber, email, phone, eventName, createdBy, ...rest } = formState
+    // Keep the original document's pricelist year on the duplicate so the
+    // copy quotes the same numbers as the source order. Same first-paint
+    // fix as handleReEdit.
+    const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
+    if (docYear != null) setPricelistYear(docYear)
     setOrderFormQuote(null)
     setSavedFormState(rest)
     setEditingDocumentId(null)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
-  }, [])
+  }, [setPricelistYear])
 
   // ─── Edit in Builder (from OrderForm) ───
   const handleEditInBuilder = useCallback((formRows) => {

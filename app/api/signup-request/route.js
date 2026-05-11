@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getSenderFrom } from '@/lib/email';
+import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
 import { NextResponse } from 'next/server';
 
@@ -69,19 +69,9 @@ export async function POST(request) {
     const approveUrl = `${siteUrl}/api/approve-signup?token=${signup.token}`;
     const rejectUrl = `${siteUrl}/api/reject-signup?token=${signup.token}`;
 
-    // ADMIN_NOTIFICATION_EMAIL is a comma-separated list. First address is
-    // the primary recipient, the rest are CC'd. Defaults to Alberto so
-    // approvals don't go silently missing if the env var is forgotten.
-    // Whitespace and duplicates are normalized away.
-    const adminRecipients = Array.from(new Set(
-      (process.env.ADMIN_NOTIFICATION_EMAIL || 'albertosaleh@gmail.com')
-        .split(',')
-        .map(e => e.trim().toLowerCase())
-        .filter(Boolean)
-    ));
-    const [primaryAdmin, ...ccAdmins] = adminRecipients.length > 0
-      ? adminRecipients
-      : ['albertosaleh@gmail.com'];
+    // Single source of truth for admin recipients across every email path —
+    // see lib/email.js getAdminNotificationRecipients for parsing rules.
+    const { to: primaryAdmin, cc: ccAdmins } = getAdminNotificationRecipients();
 
     const resendApiKey = process.env.RESEND_API_KEY;
 

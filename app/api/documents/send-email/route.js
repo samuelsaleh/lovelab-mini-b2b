@@ -2,26 +2,46 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
-import { getSenderFrom, getSenderEmail } from '@/lib/email';
+import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
 import { clientOrderEmail } from '@/lib/email-templates';
 
-// All client-facing order emails are CC'd to the LoveLab office inboxes plus
-// Alberto's personal Gmail so every conversation funnels through inboxes
-// someone actually reads. Reply-to only includes the office inboxes (Dionne +
-// Elie) so client replies don't bury Alberto's personal mailbox — he just
-// gets the read-only copies. Hardcoded on purpose — admins can't accidentally
-// bypass it.
-const CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com', 'albertosaleh@gmail.com'];
+// All client-facing order emails are CC'd to the LoveLab office inboxes (so
+// every conversation funnels through inboxes someone actually reads) PLUS the
+// admin recipients from ADMIN_NOTIFICATION_EMAIL (so Alberto / whoever owns
+// admin alerts also gets a copy). Reply-to is restricted to the office
+// inboxes only — client replies should never bury an admin's personal
+// mailbox. The office list is hardcoded on purpose so admins can't
+// accidentally bypass the team CC.
+const OFFICE_CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 const REPLY_TO_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 
+function buildOrderCcRecipients() {
+  // Merge office inboxes + admin recipients, dedupe (case-insensitive),
+  // preserve order. Returns at minimum the office inboxes even if env is empty.
+  const seen = new Set();
+  const out = [];
+  for (const e of [...OFFICE_CC_RECIPIENTS, ...getAdminNotificationRecipients().all]) {
+    const key = e.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+  }
+  return out;
+}
+
 // Address that gets pinged ONLY when an outbound order email fails to send.
-// Override via env so we can route alerts elsewhere without a code change.
-const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || CC_RECIPIENTS[0];
+// Honors ADMIN_ALERT_EMAIL override, otherwise falls through to the primary
+// admin from ADMIN_NOTIFICATION_EMAIL — so a single env var change reroutes
+// both the CC list and the failure alerts.
+function getAdminAlertEmail() {
+  return process.env.ADMIN_ALERT_EMAIL || getAdminNotificationRecipients().to;
+}
 
 async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, reason, statusCode }) {
-  if (!apiKey || !ADMIN_ALERT_EMAIL) return;
+  const adminAlertEmail = getAdminAlertEmail();
+  if (!apiKey || !adminAlertEmail) return;
   try {
-    const subject = `[LoveLab B2B] Order email FAILED — ${recipient || 'unknown recipient'}`;
+    const subject = `[LoveLab] Order email FAILED — ${recipient || 'unknown recipient'}`;
     const html = `
       <div style="font-family:sans-serif;max-width:520px">
         <h2 style="color:#b91c1c;margin:0 0 12px">Order email failed</h2>
@@ -43,8 +63,8 @@ async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, re
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `LoveLab B2B Alerts <${getSenderEmail()}>`,
-        to: [ADMIN_ALERT_EMAIL],
+        from: `LoveLab Alerts <${getSenderEmail()}>`,
+        to: [adminAlertEmail],
         subject,
         html,
       }),
@@ -156,7 +176,7 @@ export async function POST(request) {
     // addresses, but it guarantees the team always has a copy of every send
     // (their "sent folder" replacement, since Resend can't write to Outlook/
     // Gmail Sent).
-    const ccEmails = CC_RECIPIENTS;
+    const ccEmails = buildOrderCcRecipients();
 
     const langCode = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
 

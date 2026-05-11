@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive } from '@/lib/google-drive';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getSenderFrom, getSenderEmail } from '@/lib/email';
+import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
 import { NextResponse } from 'next/server';
 
 const TABLES = [
@@ -34,8 +34,16 @@ function verifyCronAuth(request) {
 
 async function sendAlertEmail(error) {
   const resendApiKey = process.env.RESEND_API_KEY;
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || getSenderEmail();
   if (!resendApiKey) return;
+
+  // ADMIN_NOTIFICATION_EMAIL is comma-separated; previously this route passed
+  // the raw string straight to Resend, which silently dropped multi-recipient
+  // alerts. Use the shared parser so backup failures reach every admin.
+  const { to: primaryAdmin, cc: ccAdmins } = getAdminNotificationRecipients();
+  // Final fallback: if for some reason the helper returned nothing usable,
+  // ping the sender mailbox so the alert isn't lost entirely.
+  const toAddress = primaryAdmin || getSenderEmail();
+  if (!toAddress) return;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
 
@@ -48,7 +56,8 @@ async function sendAlertEmail(error) {
       },
       body: JSON.stringify({
         from: getSenderFrom(),
-        to: [adminEmail],
+        to: [toAddress],
+        ...(ccAdmins.length > 0 ? { cc: ccAdmins } : {}),
         subject: 'LoveLab Backup FAILED',
         html: `
           <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px;">

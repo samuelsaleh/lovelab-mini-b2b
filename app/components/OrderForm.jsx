@@ -959,6 +959,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           shippingAmount,
           taxPercent, taxLabel,
           customLineLabel, customLineAmount,
+          // Pricelist year must round-trip on draft restore. Without this,
+          // an agent who sets the toggle to 2025, fills out half an order,
+          // and refreshes the tab gets the draft restored at 2026 prices.
+          pricelistYear,
         }
         
         await fetch('/api/drafts', {
@@ -987,7 +991,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows, pricelistYear])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
