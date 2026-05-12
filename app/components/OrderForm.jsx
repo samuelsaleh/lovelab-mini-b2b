@@ -33,6 +33,11 @@ const COLUMNS = [
   { key: 'shape', labelKey: 'order.columns.shape', width: 72 },
   { key: 'setting', labelKey: 'order.columns.setting', width: 60 },
   { key: 'bpColor', labelKey: 'order.columns.bpColor', width: 72 },
+  // Bracelet thread closure: only meaningful for collections with hasClosure
+  // (CUTY, CUBIX). For every other collection the cell renders as N/A
+  // (em-dash) so users can't accidentally pick a closure where it doesn't
+  // exist physically.
+  { key: 'closure', labelKey: 'order.columns.closure', width: 84 },
   { key: 'size', labelKey: 'order.columns.size', width: 44 },
   { key: 'material', labelKey: 'order.columns.material', width: 100 },
   { key: 'colorCord', labelKey: 'order.columns.colorCord', width: 100 },
@@ -40,7 +45,7 @@ const COLUMNS = [
   { key: 'total', labelKey: 'order.columns.total', width: 84 },
 ]
 
-const FILL_KEYS = ['quantity', 'collection', 'cert', 'carat', 'shape', 'setting', 'bpColor', 'size', 'material', 'colorCord', 'unitPrice']
+const FILL_KEYS = ['quantity', 'collection', 'cert', 'carat', 'shape', 'setting', 'bpColor', 'closure', 'size', 'material', 'colorCord', 'unitPrice']
 
 function isRowFilled(row) {
   // Show action buttons if any field has content (not just when ALL fields are filled)
@@ -61,6 +66,7 @@ function emptyRow(no) {
     shape: '',
     setting: '',
     bpColor: '',
+    closure: '',
     size: '',
     material: '',
     colorCord: '',
@@ -175,6 +181,10 @@ function prefillRows(quote) {
       shape: ln.shape || '',
       setting,
       bpColor: color,
+      // Bracelet thread closure: builder stores it on the line as
+      // 'braided' | 'nonBraided' | null. Persist as the exact same string
+      // so the OrderForm select can pre-pick it on prefill.
+      closure: ln.closureType || '',
       size: ln.size || '',
       material: buildMaterial(ln.cordType, ln.thickness),
       colorCord: ln.colorName || '',
@@ -2372,10 +2382,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const isShapeCol = col.key === 'shape'
                           const isSettingCol = col.key === 'setting'
                           const isBpColorCol = col.key === 'bpColor'
+                          const isClosureCol = col.key === 'closure'
                           const isSizeCol = col.key === 'size'
                           const isMaterialCol = col.key === 'material'
                           const isColorCordCol = col.key === 'colorCord'
-                          const needsLookup = isCaratCol || isShapeCol || isSettingCol || isBpColorCol || isSizeCol || isMaterialCol || isColorCordCol
+                          const needsLookup = isCaratCol || isShapeCol || isSettingCol || isBpColorCol || isClosureCol || isSizeCol || isMaterialCol || isColorCordCol
                           const rowCol = needsLookup ? findCollection(row.collection) : null
                           const shapeOptions = isShapeCol && rowCol?.shapes ? rowCol.shapes.map(s => ({ value: s, label: s })) : null
                           const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng', 'multiThree'].includes(rowCol.housing)
@@ -2409,12 +2420,22 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const { cordType: parsedCord } = parseMaterial(row.material)
                           const effectiveCord = rowCol?.cord === 'silkBraided' ? (parsedCord || 'silk') : rowCol?.cord
                           const cordOptions = isColorCordCol && rowCol?.cord ? (CORD_COLORS[effectiveCord] || CORD_COLORS.silk || []).filter(c => !rowCol.allowedColors || rowCol.allowedColors.includes(c.n)).map(c => ({ value: c.n, label: c.n })) : null
+                          // Closure dropdown opts — only built for collections that opt-in (CUTY, CUBIX).
+                          // Labels are localised via the same i18n keys used by the builder.
+                          const closureOptions = isClosureCol && rowCol?.hasClosure
+                            ? [
+                                { value: 'braided',    label: t('order.columns.closureBraided') },
+                                { value: 'nonBraided', label: t('order.columns.closureNonBraided') },
+                              ]
+                            : null
 
                           const na = rowCol && row.collection
                           const isNA = na && (
                             (isShapeCol && !rowCol.shapes) ||
                             (isSettingCol && !hasSetting) ||
-                            (isBpColorCol && rowCol.housing === 'sparkleProng')
+                            (isBpColorCol && rowCol.housing === 'sparkleProng') ||
+                            // Closure column: hide for collections that don't opt-in via hasClosure.
+                            (isClosureCol && !rowCol.hasClosure)
                           )
 
                           return (
@@ -2483,6 +2504,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   value={row.bpColor}
                                   onChange={(val) => updateCell(globalIdx, 'bpColor', val)}
                                   options={housingOpts}
+                                  isPrinting={isPrinting}
+                                />
+                              ) : isClosureCol && closureOptions ? (
+                                <CellSelect
+                                  value={row.closure}
+                                  onChange={(val) => updateCell(globalIdx, 'closure', val)}
+                                  options={closureOptions}
                                   isPrinting={isPrinting}
                                 />
                               ) : isSizeCol && sizeOptions ? (

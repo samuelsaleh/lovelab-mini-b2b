@@ -31,6 +31,10 @@ export function mkColorConfig(colorName, minC = 1) {
     size: null,
     cordType: null,
     thickness: null,
+    // Bracelet thread closure: only used for hasClosure collections (CUTY,
+    // CUBIX). Values: 'braided' | 'nonBraided' | null. Stays null on every
+    // other collection so existing rows are unaffected.
+    closureType: null,
     qty: minC,
     priceOverride: null,
     certType: null,
@@ -46,7 +50,9 @@ export function mkLine() {
     sameForAll: false,
     sharedSettings: {
       caratIdx: null, housing: null, housingType: null,
-      multiAttached: null, shape: null, size: null, cordType: null, thickness: null, qty: null,
+      multiAttached: null, shape: null, size: null, cordType: null, thickness: null,
+      closureType: null,
+      qty: null,
     },
   }
 }

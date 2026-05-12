@@ -157,6 +157,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (col.sizes && col.sizes.length > 0 && !cfg.size) return false
     if (hasCordOptions && !cfg.cordType) return false
     if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
+    // Bracelet thread closure required for hasClosure collections (CUTY, CUBIX).
+    if (col.hasClosure && !cfg.closureType) return false
     return true
   }
 
@@ -460,6 +462,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const hasShapes = col.shapes && col.shapes.length > 0
   const hasSizes = col.sizes && col.sizes.length > 0
   const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
+  // Bracelet thread closure column: shown for collections that opt-in via
+  // hasClosure (currently CUTY, CUBIX). Lets the user pick "Braided" vs
+  // "Non-braided" closure per row.
+  const hasClosure = !!col.hasClosure
   const getCertForCarat = useCallback((currentCert, caratIdx) => {
     const available = getAvailableCerts(col, caratIdx, yr)
     if (currentCert && available.includes(currentCert)) return currentCert
@@ -1182,6 +1188,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {hasShapes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.shape')}</th>}
                     {hasSizes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.size')}</th>}
                     {hasThickness && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{hasCordOptions ? 'Material' : 'Thickness'}</th>}
+                    {hasClosure && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.closure')}</th>}
                     <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.qty')}</th>
                     <th style={{ ...thStyle, textAlign: 'right', borderBottom: '2px solid #eee' }}>{t('quote.total')}</th>
                     <th style={stickyActionHeaderStyle}></th>
@@ -1204,6 +1211,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     const canFillShape = cfg.shape !== null && hasRowsBelow && !sameForAll
                     const canFillSize = cfg.size !== null && hasRowsBelow && !sameForAll
                     const canFillThickness = cfg.thickness !== null && hasRowsBelow && !sameForAll
+                    const canFillClosure = cfg.closureType !== null && hasRowsBelow && !sameForAll
                     const canFillQty = hasRowsBelow && !sameForAll
 
                     const isDragTarget = dragFill && cfgIdx > dragFill.sourceIdx && cfgIdx <= dragFill.targetIdx
@@ -1380,6 +1388,31 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               </select>
                             )}
                             {canFillThickness && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} />}
+                          </td>
+                        )}
+                        {hasClosure && (
+                          <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
+                            {sameForAll ? (
+                              <span style={{ color: '#888', fontSize: 11 }}>
+                                {(() => {
+                                  const v = cfg.closureType ?? sharedSettings.closureType
+                                  if (v === 'braided') return t('collection.closureBraided')
+                                  if (v === 'nonBraided') return t('collection.closureNonBraided')
+                                  return '-'
+                                })()}
+                              </span>
+                            ) : (
+                              <select
+                                value={cfg.closureType || ''}
+                                onChange={(e) => updateConfig(cfg.id, { closureType: e.target.value || null })}
+                                style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-closureType`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                              >
+                                <option value="">{t('collection.closurePlaceholder')}</option>
+                                <option value="braided">{t('collection.closureBraided')}</option>
+                                <option value="nonBraided">{t('collection.closureNonBraided')}</option>
+                              </select>
+                            )}
+                            {canFillClosure && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'closureType', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'closureType', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
                         <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
@@ -1630,6 +1663,21 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
                             {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {/* Closure (CUTY/CUBIX) */}
+                      {hasClosure && !sameForAll && cfg.caratIdx !== null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.closure')}</span>
+                          <select
+                            value={cfg.closureType || ''}
+                            onChange={(e) => updateConfig(cfg.id, { closureType: e.target.value || null })}
+                            style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-closureType`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                          >
+                            <option value="">{t('collection.closurePlaceholder')}</option>
+                            <option value="braided">{t('collection.closureBraided')}</option>
+                            <option value="nonBraided">{t('collection.closureNonBraided')}</option>
                           </select>
                         </div>
                       )}
