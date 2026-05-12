@@ -92,7 +92,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const sameForAll = line.sameForAll ?? false
   const sharedSettings = line.sharedSettings ?? {
     caratIdx: null, housing: null, housingType: null,
-    multiAttached: null, shape: null, size: null, cordType: null, thickness: null, qty: null,
+    multiAttached: null, shape: null, size: null, cordType: null, thickness: null,
+    // Cert + closure live in shared settings so they can be picked once and
+    // applied to every colour. New lines that haven't been touched since
+    // these fields existed default both to null.
+    certType: null, closureType: null,
+    qty: null,
   }
   const [showDuplicatePanel, setShowDuplicatePanel] = useState(false)
   const [duplicateSettings, setDuplicateSettings] = useState({
@@ -102,6 +107,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     housingType: { keepSame: true, value: null },
     size: { keepSame: true, value: null },
     shape: { keepSame: true, value: null },
+    // Bracelet thread closure (CUTY/CUBIX): default to keep-same so existing
+    // collections without hasClosure are unaffected. Value is 'braided' |
+    // 'nonBraided' | null.
+    closure: { keepSame: true, value: null },
     qty: { keepSame: true, value: 1 },
   })
 
@@ -244,7 +253,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     const next = !sameForAll
     
     if (!next && sameForAll && line.colorConfigs.length > 0) {
-      // Turning OFF: copy sharedSettings into each config so values persist
+      // Turning OFF: copy sharedSettings into each config so values persist.
+      // Cert + closure are carried over so a row that was sharing them
+      // doesn't suddenly lose those values when the user splits the line.
       set({
         colorConfigs: line.colorConfigs.map(cfg => ({
           ...cfg,
@@ -254,6 +265,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           multiAttached: cfg.multiAttached ?? sharedSettings.multiAttached,
           shape: cfg.shape ?? sharedSettings.shape,
           size: cfg.size ?? sharedSettings.size,
+          certType: cfg.certType ?? sharedSettings.certType,
+          closureType: cfg.closureType ?? sharedSettings.closureType,
           qty: sharedSettings.qty ?? cfg.qty,
         })),
       })
@@ -272,6 +285,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           multiAttached: first.multiAttached,
           shape: first.shape,
           size: first.size,
+          // Seed shared cert / closure from the first config so picking
+          // "same for all" feels like a no-op rather than wiping fields.
+          certType: first.certType ?? null,
+          closureType: first.closureType ?? null,
           qty: 1,
         }
         set({ sharedSettings: s })
@@ -441,6 +458,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         housingType: duplicateSettings.housingType.keepSame ? cfg.housingType : duplicateSettings.housingType.value,
         size: duplicateSettings.size.keepSame ? cfg.size : duplicateSettings.size.value,
         shape: duplicateSettings.shape.keepSame ? cfg.shape : duplicateSettings.shape.value,
+        // Closure: gated by hasClosure so duplicating M3/HOLY/etc. never
+        // accidentally writes a closureType where the column doesn't exist.
+        closureType: col.hasClosure
+          ? (duplicateSettings.closure.keepSame ? cfg.closureType : duplicateSettings.closure.value)
+          : null,
         qty: Math.max(1, typeof qtyVal === 'number' && !Number.isNaN(qtyVal) ? qtyVal : 1),
       }
     })
@@ -890,6 +912,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     { field: 'housing', label: t('quote.housing'), show: hasHousing },
                     { field: 'size', label: t('quote.size'), show: hasSizes },
                     { field: 'shape', label: t('quote.shape'), show: hasShapes },
+                    { field: 'closure', label: t('quote.closure'), show: hasClosure },
                     { field: 'qty', label: t('quote.qty'), show: true },
                   ].filter(r => r.show).map(({ field, label }) => (
                     <div key={field} style={{
@@ -1049,6 +1072,17 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         )}
+                        {!duplicateSettings[field].keepSame && field === 'closure' && (
+                          <select
+                            value={duplicateSettings.closure.value || ''}
+                            onChange={(e) => updateDuplicateSetting('closure', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.closurePlaceholder')}</option>
+                            <option value="braided">{t('collection.closureBraided')}</option>
+                            <option value="nonBraided">{t('collection.closureNonBraided')}</option>
+                          </select>
+                        )}
                         {!duplicateSettings[field].keepSame && field === 'qty' && (
                           <input
                             type="number"
@@ -1097,15 +1131,56 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   value={sharedSettings.caratIdx !== null ? sharedSettings.caratIdx : ''}
                   onChange={(e) => {
                     const val = e.target.value === '' ? null : parseInt(e.target.value)
-                    updateShared({ caratIdx: val, housing: null, housingType: null, multiAttached: null, shape: null, size: null })
+                    // When carat changes, reconcile the shared cert to one
+                    // that's still available for the new carat (e.g. CUTY's
+                    // 0.20 ct has no in-house option). Keeps sharedSettings
+                    // and the broadcast `certType` patch consistent.
+                    const reconciledCert = sharedSettings.certType
+                      ? getCertForCarat(sharedSettings.certType, val)
+                      : null
+                    updateShared({
+                      caratIdx: val, housing: null, housingType: null, multiAttached: null,
+                      shape: null, size: null,
+                      certType: reconciledCert,
+                    })
                   }}
                   style={selectStyle}
                 >
                   <option value="">{t('collection.caratPlaceholder')}</option>
                   {col.carats.map((ct, ci) => (
-                    <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col), yr)}</option>
+                    <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, sharedSettings.certType || getDefaultCert(col), yr)}</option>
                   ))}
                 </select>
+
+                {/* Certificate (shared) — only when both IGI + In-house are
+                    available on the collection. Picks one cert and pushes it
+                    to every colour via updateShared. */}
+                {col.certificate === 'both' && sharedSettings.caratIdx !== null && (
+                  <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
+                    {['igi', 'inhouse'].map(ct => {
+                      const avail = getAvailableCerts(col, sharedSettings.caratIdx, yr)
+                      const isAvail = avail.includes(ct)
+                      const isActive = (sharedSettings.certType || getDefaultCert(col)) === ct
+                      return (
+                        <button
+                          key={ct}
+                          disabled={!isAvail}
+                          onClick={() => isAvail && updateShared({ certType: ct })}
+                          style={{
+                            padding: '4px 10px', fontSize: 11, fontWeight: 700, border: 'none',
+                            background: isActive ? colors.inkPlum : '#f5f5f5',
+                            color: isActive ? '#fff' : isAvail ? '#888' : '#ccc',
+                            cursor: isAvail ? 'pointer' : 'not-allowed',
+                            fontFamily: 'inherit', transition: 'all .15s',
+                            opacity: isAvail ? 1 : 0.5,
+                          }}
+                        >
+                          {CERT_LABELS[ct]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* Housing */}
                 {hasHousing && sharedSettings.caratIdx !== null && (
@@ -1133,6 +1208,20 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   >
                     <option value="">{t('collection.sizePlaceholder')}</option>
                     {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+
+                {/* Closure (CUTY/CUBIX) — pushes the picked closureType to
+                    every colour so agents don't have to set it row by row. */}
+                {hasClosure && sharedSettings.caratIdx !== null && (
+                  <select
+                    value={sharedSettings.closureType || ''}
+                    onChange={(e) => updateShared({ closureType: e.target.value || null })}
+                    style={selectStyle}
+                  >
+                    <option value="">{t('collection.closurePlaceholder')}</option>
+                    <option value="braided">{t('collection.closureBraided')}</option>
+                    <option value="nonBraided">{t('collection.closureNonBraided')}</option>
                   </select>
                 )}
 

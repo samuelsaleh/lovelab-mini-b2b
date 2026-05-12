@@ -51,7 +51,10 @@ export function mkLine() {
     sharedSettings: {
       caratIdx: null, housing: null, housingType: null,
       multiAttached: null, shape: null, size: null, cordType: null, thickness: null,
-      closureType: null,
+      // Cert + closure carry on shared settings so the "Same settings for all
+      // colours" panel can also drive them. Both default to null on a fresh
+      // line — first row picks resolve them.
+      certType: null, closureType: null,
       qty: null,
     },
   }

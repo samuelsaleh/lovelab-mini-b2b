@@ -118,3 +118,160 @@ describe('CollectionConfig — closure dropdown', () => {
     expect(screen.getByRole('option', { name: 'Non-braided' })).toBeInTheDocument()
   })
 })
+
+// ─── Shared Settings (sameForAll: true) ─────────────────────────────────────
+// When the agent flips "Same settings for all colours", the Shared Settings
+// strip becomes the source of truth for cert + closure. These tests guarantee
+// that strip exists for opt-in collections AND that picking a value pushes
+// the same patch into every colorConfig (not just the first).
+
+function mockLineSameForAll(col, configs = []) {
+  return mockLine(col, configs, {
+    sameForAll: true,
+    sharedSettings: {
+      caratIdx: 0,
+      housing: 'Yellow',
+      housingType: null,
+      multiAttached: null,
+      shape: null,
+      size: 'M',
+      cordType: null,
+      thickness: null,
+      certType: null,
+      closureType: null,
+      qty: 1,
+    },
+  })
+}
+
+describe('CollectionConfig — Shared Settings: Certificate', () => {
+  it('renders IGI + In-house buttons when col.certificate === "both" (CUTY)', () => {
+    const line = mockLineSameForAll(CUTY, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', size: 'M' }),
+    ])
+    renderConfig(CUTY, line)
+    // The per-row cert tabs ALSO render IGI / In-house buttons, so there
+    // will be 2 sets total (shared strip + 1 row). What matters is that the
+    // shared strip exists at all — assert >= 2 of each (shared + row).
+    expect(screen.getAllByRole('button', { name: 'IGI' }).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByRole('button', { name: 'In-house' }).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does NOT render the cert buttons for collections with a single fixed cert (M3 IGI-only)', () => {
+    const M3 = COLLECTIONS.find(c => c.id === 'M3')
+    const line = mockLineSameForAll(M3, [
+      mockColorConfig({ caratIdx: 0, housing: 'WWW', size: 'M' }),
+    ])
+    renderConfig(M3, line)
+    // M3 has certificate: 'igi' — the "both" toggle UI should not render.
+    expect(screen.queryByRole('button', { name: 'In-house' })).not.toBeInTheDocument()
+  })
+
+  it('broadcasts the picked cert to every colorConfig (shared button = first In-house)', () => {
+    const onChange = jest.fn()
+    const line = mockLineSameForAll(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M', certType: null }),
+      mockColorConfig({ id: 'cfg-2', caratIdx: 0, housing: 'Yellow', size: 'M', certType: null }),
+    ])
+    renderConfig(CUTY, line, onChange)
+
+    // The Shared Settings strip is rendered BEFORE the per-row table, so the
+    // first "In-house" button in the document is the shared one. Clicking it
+    // should call updateShared() which broadcasts the patch into EVERY
+    // colorConfig (this is what distinguishes shared from per-row).
+    const inhouseButtons = screen.getAllByRole('button', { name: 'In-house' })
+    fireEvent.click(inhouseButtons[0])
+
+    const colorConfigsCall = onChange.mock.calls.find(c => c[1]?.colorConfigs)
+    expect(colorConfigsCall).toBeTruthy()
+    expect(colorConfigsCall[1].colorConfigs).toEqual([
+      expect.objectContaining({ id: 'cfg-1', certType: 'inhouse' }),
+      expect.objectContaining({ id: 'cfg-2', certType: 'inhouse' }),
+    ])
+  })
+})
+
+describe('CollectionConfig — Shared Settings: Closure', () => {
+  it('renders the Closure dropdown for hasClosure collections (CUTY)', () => {
+    const line = mockLineSameForAll(CUTY, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', size: 'M' }),
+    ])
+    renderConfig(CUTY, line)
+    // The shared closure select must expose both Braided / Non-braided.
+    const selects = screen.getAllByRole('combobox')
+    const sharedClosure = selects.find(s =>
+      Array.from(s.options || []).some(o => o.text === 'Braided'),
+    )
+    expect(sharedClosure).toBeTruthy()
+  })
+
+  it('does NOT render the Closure dropdown for non-closure collections (HOLY)', () => {
+    const line = mockLineSameForAll(HOLY, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', shape: 'Cross', size: 'M' }),
+    ])
+    renderConfig(HOLY, line)
+    // Closure has no place on HOLY whether it's per-row or shared.
+    expect(screen.queryByRole('option', { name: 'Braided' })).not.toBeInTheDocument()
+  })
+
+  it('broadcasts the picked closure to every colorConfig', () => {
+    const onChange = jest.fn()
+    const line = mockLineSameForAll(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M', closureType: null }),
+      mockColorConfig({ id: 'cfg-2', caratIdx: 0, housing: 'Yellow', size: 'M', closureType: null }),
+    ])
+    renderConfig(CUTY, line, onChange)
+
+    const selects = screen.getAllByRole('combobox')
+    const sharedClosure = selects.find(s =>
+      Array.from(s.options || []).some(o => o.text === 'Braided'),
+    )
+    fireEvent.change(sharedClosure, { target: { value: 'nonBraided' } })
+
+    const colorConfigsCall = onChange.mock.calls.find(c => c[1]?.colorConfigs)
+    expect(colorConfigsCall).toBeTruthy()
+    expect(colorConfigsCall[1].colorConfigs).toEqual([
+      expect.objectContaining({ id: 'cfg-1', closureType: 'nonBraided' }),
+      expect.objectContaining({ id: 'cfg-2', closureType: 'nonBraided' }),
+    ])
+  })
+})
+
+// ─── Duplicate panel (sameForAll: false) ───────────────────────────────────
+// Pinning the closure row inside the "Duplicate all with variations" panel
+// so a future refactor can't silently drop it (which is exactly what
+// happened during Phase 20).
+
+describe('CollectionConfig — Duplicate panel: Closure row', () => {
+  it('renders a CLOSURE row (Keep same / Change to radios) in the duplicate panel for CUTY', () => {
+    const line = mockLine(CUTY, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', size: 'M', closureType: 'braided' }),
+    ])
+    renderConfig(CUTY, line)
+
+    // Open the panel — find by its role+name (the toggle is the only element
+    // exposing that text once the trigger button is present).
+    const triggers = screen.getAllByText(/Duplicate all with variations/i)
+    fireEvent.click(triggers[0])
+
+    // The duplicate panel uses radio inputs named `dup-<field>-<lineUid>`.
+    // Existence of `dup-closure-...` proves the closure row is in the panel.
+    const closureRadios = document.querySelectorAll('input[type="radio"][name^="dup-closure-"]')
+    expect(closureRadios.length).toBeGreaterThanOrEqual(2) // Keep same + Change to
+  })
+
+  it('does NOT render a CLOSURE row for non-closure collections (HOLY)', () => {
+    const line = mockLine(HOLY, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', shape: 'Cross', size: 'M' }),
+    ])
+    renderConfig(HOLY, line)
+
+    const triggers = screen.getAllByText(/Duplicate all with variations/i)
+    fireEvent.click(triggers[0])
+
+    // No `dup-closure-*` radios should exist for HOLY — the field is gated
+    // by hasClosure in the panel's row array.
+    const closureRadios = document.querySelectorAll('input[type="radio"][name^="dup-closure-"]')
+    expect(closureRadios.length).toBe(0)
+  })
+})
