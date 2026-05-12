@@ -548,6 +548,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         const caratIdx = col.carats.findIndex(c => String(c) === caratStr)
         const newId = uniqueId()
         
+        // certType + closureType matter for CUTY/CUBIX — without them the
+        // row will fail validation when the agent tries to save the order.
+        const closureType = col.hasClosure
+          ? (action.closureType === 'braided' || action.closureType === 'nonBraided' ? action.closureType : null)
+          : null
+        const certType = action.certType === 'igi' || action.certType === 'inhouse' ? action.certType : null
         newConfigsToAdd.push({
           collectionId: col.id,
           config: {
@@ -557,8 +563,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             housing: action.housing || null,
             housingType: null,
             multiAttached: null,
-            shape: null,
+            shape: action.shape || null,
             size: action.size || null,
+            certType,
+            closureType,
             qty: parseInt(action.qty) || 1,
           }
         })
@@ -600,12 +608,14 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
             const filteredConfigs = line.colorConfigs.filter(cfg => {
               const caratLabel = cfg.caratIdx !== null ? String(col.carats[cfg.caratIdx]) : ''
-              
+
               if (action.filter.color && cfg.colorName.toLowerCase() !== action.filter.color.toLowerCase()) return true
               if (action.filter.carat && caratLabel !== String(action.filter.carat).replace('ct', '')) return true
               if (action.filter.housing && (cfg.housing || '').toLowerCase() !== action.filter.housing.toLowerCase()) return true
               if (action.filter.size && (cfg.size || '').toLowerCase() !== action.filter.size.toLowerCase()) return true
-              
+              if (action.filter.certType && (cfg.certType || '').toLowerCase() !== String(action.filter.certType).toLowerCase()) return true
+              if (action.filter.closureType && (cfg.closureType || '').toLowerCase() !== String(action.filter.closureType).toLowerCase()) return true
+
               return false // matches filter, delete it
             })
 
@@ -633,6 +643,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               if (action.filter.carat && caratLabel !== String(action.filter.carat).replace('ct', '')) matches = false
               if (action.filter.housing && (cfg.housing || '').toLowerCase() !== action.filter.housing.toLowerCase()) matches = false
               if (action.filter.size && (cfg.size || '').toLowerCase() !== action.filter.size.toLowerCase()) matches = false
+              if (action.filter.certType && (cfg.certType || '').toLowerCase() !== String(action.filter.certType).toLowerCase()) matches = false
+              if (action.filter.closureType && (cfg.closureType || '').toLowerCase() !== String(action.filter.closureType).toLowerCase()) matches = false
 
               if (!matches) return cfg
 
@@ -645,6 +657,13 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               }
               if (action.changes.housing) modified.housing = action.changes.housing
               if (action.changes.size) modified.size = action.changes.size
+              if (action.changes.shape) modified.shape = action.changes.shape
+              if (action.changes.certType === 'igi' || action.changes.certType === 'inhouse') {
+                modified.certType = action.changes.certType
+              }
+              if (col.hasClosure && (action.changes.closureType === 'braided' || action.changes.closureType === 'nonBraided')) {
+                modified.closureType = action.changes.closureType
+              }
               if (action.changes.qty) modified.qty = parseInt(action.changes.qty) || modified.qty
 
               return modified
@@ -1390,10 +1409,16 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
       </div>
 
-      {/* ═══ Order Summary Sidebar ═══ */}
+      {/* ═══ Order Summary Sidebar ═══
+          Narrower on desktop than the original 280px so the Configure Order
+          table to the left of it gets enough room on 13"-14" Windows
+          laptops (mom's machine) without forcing horizontal scroll inside
+          the per-collection rows. Still wide enough to show:
+            COLLECTION · n colors · n pcs        XX €
+      */}
       <div style={{
-        width: mobile ? '85%' : tablet ? 240 : 280,
-        maxWidth: mobile ? 320 : tablet ? 240 : 280,
+        width: mobile ? '85%' : tablet ? 220 : 220,
+        maxWidth: mobile ? 320 : tablet ? 220 : 220,
         flexShrink: 0,
         background: '#fff',
         borderLeft: '1px solid #eaeaea',
@@ -1424,14 +1449,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             }}
           >×</button>
         )}
-        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #eaeaea' }}>
+        <div style={{ padding: '20px 12px 12px', borderBottom: '1px solid #eaeaea' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, marginBottom: 2 }}>{t('builder.orderSummary')}</div>
           <div style={{ fontSize: 11, color: '#999' }}>
             {quote.totalPieces > 0 ? t('builder.piecesCount').replace('{count}', quote.totalPieces) : t('builder.noItemsYet')}
           </div>
         </div>
 
-        {/* Per-collection breakdown */}
+        {/* Per-collection breakdown — gap: 8 + tighter horizontal padding so
+            the collection name and total never collide on a 220px sidebar. */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {lines.filter(l => l.collectionId && l.colorConfigs.length > 0).map(line => {
             const col = COLLECTIONS.find(c => c.id === line.collectionId)
@@ -1443,24 +1469,24 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             const pieces = line.colorConfigs.reduce((sum, cfg) => sum + cfg.qty, 0)
             if (pieces === 0 && lineTotal === 0) return null
             return (
-              <div key={line.uid} style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{col.label}</div>
-              <div style={{ fontSize: 11, color: '#999' }}>{t('builder.colorsPcs').replace('{colors}', line.colorConfigs.length).replace('{pieces}', pieces)}</div>
+              <div key={line.uid} style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{col.label}</div>
+                  <div style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('builder.colorsPcs').replace('{colors}', line.colorConfigs.length).replace('{pieces}', pieces)}</div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#333' }}>{fmt(lineTotal)}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#333', flexShrink: 0 }}>{fmt(lineTotal)}</div>
               </div>
             )
           })}
           {quote.totalPieces === 0 && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 12, color: '#ccc' }}>
+            <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: 12, color: '#ccc' }}>
               {t('builder.addColorsToSeeTotals')}
             </div>
           )}
         </div>
 
         {/* Totals */}
-        <div style={{ borderTop: '1px solid #eaeaea', padding: '12px 16px', maxHeight: '45vh', overflowY: 'auto' }}>
+        <div style={{ borderTop: '1px solid #eaeaea', padding: '12px', maxHeight: '45vh', overflowY: 'auto' }}>
           {quote.discountPercent > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
               <span style={{ color: '#27ae60', fontWeight: 600 }}>{t('quote.discount')} ({quote.discountPercent}%)</span>

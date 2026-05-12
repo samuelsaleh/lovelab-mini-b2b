@@ -513,7 +513,19 @@ export default function App() {
           const colorConfigs = []
           for (const ql of qls) {
             const caratIdx = findCaratIdx(ql.product, ql.carat)
-            const base = { caratIdx, housing: ql.housing ?? null, housingType: ql.housingType ?? null, multiAttached: ql.multiAttached ?? null, shape: ql.shape ?? null, size: ql.size ?? null }
+            // Forward every field the AI may have set on the line. certType
+            // and closureType matter for CUTY/CUBIX — without these the row
+            // fails the orderRowValidation gate when the agent tries to save.
+            const base = {
+              caratIdx,
+              housing: ql.housing ?? null,
+              housingType: ql.housingType ?? null,
+              multiAttached: ql.multiAttached ?? null,
+              shape: ql.shape ?? null,
+              size: ql.size ?? null,
+              certType: ql.certType ?? null,
+              closureType: ql.closureType ?? null,
+            }
             if (Array.isArray(ql.colors) && ql.colors.length > 0) {
               const per = Number(ql.qtyPerColor) || Number(ql.qty) || 1
               for (const cName of ql.colors) {
