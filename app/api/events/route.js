@@ -122,14 +122,60 @@ export async function POST(request) {
     const validTypes = ['fair', 'agent', 'partner', 'other'];
     const eventType = validTypes.includes(type) ? type : 'other';
     const trimmedName = name.trim();
-    const targetOrgId = (eventType === 'agent' && organization_id) ? organization_id : null;
+    // Auto-link agent folders to the matching agent's organization. Without
+    // this, every order saved into the folder skips Tier 2 commission
+    // attribution (the order's event has no organization_id, so
+    // resolveCommissionAgent can't find the agent), which is exactly the
+    // "PO Oxygène doesn't appear on Corinne's page" bug from May 2026.
+    //
+    // Resolution order:
+    //   1. organization_id explicitly passed in the body (admin override).
+    //   2. Single agent profile whose full_name matches the folder name.
+    //   3. null (orphan folder — falls back to the legacy behaviour).
+    let targetOrgId = (eventType === 'agent' && organization_id) ? organization_id : null;
+    if (eventType === 'agent' && !targetOrgId) {
+      const { data: agentMatch } = await adminSupabase
+        .from('profiles')
+        .select('organization_id')
+        .ilike('full_name', trimmedName)
+        .or('is_agent.eq.true,agent_status.in.(invited,active,inactive)')
+        .is('agent_deleted_at', null)
+        .not('organization_id', 'is', null)
+        .limit(2);
+      // Only auto-link when EXACTLY one agent matches — avoids cross-wiring
+      // two people with the same display name into one folder.
+      if (Array.isArray(agentMatch) && agentMatch.length === 1) {
+        targetOrgId = agentMatch[0].organization_id;
+      }
+    }
 
     // Phase 13 dedup: when an agent-type event is created with the same name
     // (case-insensitive, trimmed) within the same organization, return the
     // existing one instead of inserting a duplicate. Sam saw two "Corinne"
     // entries in the dropdown because two admins (or one admin twice) hit
     // "+ New Event" with the same name; this makes the create idempotent.
+    //
+    // Phase 21: also dedup by `organization_id` alone — once we auto-link
+    // agent folders, the canonical folder for an agent might have a
+    // different display name than the auto-creator's `full_name` lookup
+    // (e.g. profile.full_name = "CORINNE SECRET CODE PARIS" but the legacy
+    // folder is still named "Corinne Ruimy"). Returning that existing row
+    // stops the dropdown growing a duplicate every time SaveDocumentModal
+    // opens.
     if (eventType === 'agent') {
+      if (targetOrgId) {
+        const { data: orgMatch, error: orgErr } = await adminSupabase
+          .from('events')
+          .select('*')
+          .eq('type', 'agent')
+          .eq('organization_id', targetOrgId)
+          .limit(1);
+        if (orgErr) {
+          console.error('[Events POST] org-dedup probe failed:', orgErr.message);
+        } else if ((orgMatch || []).length > 0) {
+          return NextResponse.json({ event: orgMatch[0], deduplicated: true });
+        }
+      }
       const dedupQuery = adminSupabase
         .from('events')
         .select('*')

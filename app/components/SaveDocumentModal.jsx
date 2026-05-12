@@ -160,26 +160,48 @@ export default function SaveDocumentModal({
 
       let allEvents = data.events || [];
 
-      // Auto-create missing agent folders so new agents always appear in the picker
+      // Auto-create missing agent folders so new agents always appear in the picker.
+      //
+      // We dedup by BOTH name AND organization_id so an agent whose folder
+      // exists under a different display name (e.g. "CORINNE SECRET CODE
+      // PARIS" while profile.full_name is "Corinne Ruimy") isn't re-created
+      // every time the modal opens. Pre-Phase 21 we deduped by name only,
+      // which produced the "Corinne Ruimy AND CORINNE SECRET CODE PARIS in
+      // the dropdown" duplicate.
+      //
+      // We ALSO pass organization_id when creating, so Tier 2 commission
+      // attribution (lib/commissionAttribution.js) finds the agent for any
+      // future order saved into this folder.
       if (isAdmin && agentsRes?.ok) {
         const agentsData = await agentsRes.json();
         const activeAgents = (agentsData.agents || []).filter(
           a => a.agent_status === 'active' || a.agent_status === 'invited'
         );
+        const agentEvents = allEvents.filter(e => e.type === 'agent');
         const existingAgentNames = new Set(
-          allEvents.filter(e => e.type === 'agent').map(e => e.name.toLowerCase().trim())
+          agentEvents.map(e => (e.name || '').toLowerCase().trim())
         );
-        // Create folders for agents that don't have one yet (fire-and-forget)
-        const missing = activeAgents.filter(
-          a => a.full_name && !existingAgentNames.has(a.full_name.toLowerCase().trim())
+        const existingAgentOrgs = new Set(
+          agentEvents.map(e => e.organization_id).filter(Boolean)
         );
+        const missing = activeAgents.filter(a => {
+          if (!a.full_name) return false;
+          const nameKey = a.full_name.toLowerCase().trim();
+          if (existingAgentNames.has(nameKey)) return false;
+          if (a.organization_id && existingAgentOrgs.has(a.organization_id)) return false;
+          return true;
+        });
         if (missing.length > 0) {
           const created = await Promise.all(
             missing.map(a =>
               fetch('/api/events', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: a.full_name, type: 'agent' }),
+                body: JSON.stringify({
+                  name: a.full_name,
+                  type: 'agent',
+                  organization_id: a.organization_id || undefined,
+                }),
               })
                 .then(r => r.ok ? r.json() : null)
                 .then(d => d?.event || null)
