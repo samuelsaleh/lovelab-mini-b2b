@@ -5,7 +5,7 @@ import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { useI18n } from '@/lib/i18n';
-import { getClientOrderLocale, clientOrderEmail } from '@/lib/email-templates';
+import { getClientOrderLocale, clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 import { useAuth } from './AuthProvider';
 import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 
@@ -57,9 +57,11 @@ export default function SaveDocumentModal({
   onSaveSuccess = null, // Callback when save completes successfully
   initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
-  // Defense-in-depth gate: the parent OrderForm already disables its Save
-  // button when the order is incomplete, but if the modal somehow opens
-  // (e.g. dev tools, async race) we refuse to save here too.
+  // Soft warning: if the parent OrderForm thinks some rows are incomplete,
+  // we surface the same summary at the top of the modal so the agent sees
+  // exactly what's missing before they hit Save. Saving is NOT blocked —
+  // Sam asked for the override in May 2026 because some rows have
+  // optional closure / size that the validator over-flags.
   orderIncomplete = false,
   incompleteSummary = '',
 }) {
@@ -453,6 +455,10 @@ export default function SaveDocumentModal({
           setEmailStatus({ kind: 'skipped', message: t('email.invalidRecipient') });
         } else {
           try {
+            // Strip company prefix on the way out so the API + the live
+            // preview agree on what greeting the client sees. The route
+            // applies the same helper as a defense-in-depth backstop.
+            const greetingName = stripCompanyPrefix(clientName || '', clientCompany);
             const sendRes = await fetch('/api/documents/send-email', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -460,7 +466,7 @@ export default function SaveDocumentModal({
                 documentId: savedDoc.id,
                 to: trimmedTo,
                 lang: emailLang,
-                contactName: clientName || '',
+                contactName: greetingName,
                 // Send the resolved final values (defaults merged with any
                 // edits) so the client receives exactly what's in the preview.
                 subject: emailFinal.subject,
@@ -509,9 +515,13 @@ export default function SaveDocumentModal({
   // ─── Localised defaults for every editable email field ───
   // Keep these as plain strings (no JSX) so we can feed them straight back into
   // both the editable inputs and the live HTML preview without any conversion.
+  // The greeting name is run through stripCompanyPrefix so the preview shows
+  // the same "Cher Marie Schultz," as the email actually sent — never the
+  // accidental "Cher Oxygene Marie Schultz," when the contact field has the
+  // company name prepended.
   const emailDefaults = useMemo(() => {
     const L = getClientOrderLocale(emailLang);
-    const name = (clientName || '').trim();
+    const name = stripCompanyPrefix((clientName || '').trim(), clientCompany);
     return {
       subject: L.subject({ name }),
       greeting: L.greeting({ name }),
@@ -521,7 +531,7 @@ export default function SaveDocumentModal({
       driveLabel: L.driveLabel,
       signoff: L.signoff,
     };
-  }, [emailLang, clientName]);
+  }, [emailLang, clientName, clientCompany]);
 
   // Resolve the final value for each field: explicit override wins, else default.
   // Stored as the source of truth for both the form inputs AND the API payload,
@@ -537,16 +547,17 @@ export default function SaveDocumentModal({
   // Render the actual email HTML the same way the API will, so the in-modal
   // preview is byte-for-byte identical to what the client receives. The Alberto
   // signature block is hardcoded inside `clientOrderEmail` — no sender name or
-  // company is passed in.
+  // company is passed in. contactName is stripped of the company prefix so the
+  // greeting matches what the route will compute server-side.
   const livePreviewHtml = useMemo(() => {
     const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const { html } = clientOrderEmail({
-      contactName: clientName || '',
+      contactName: stripCompanyPrefix(clientName || '', clientCompany),
       lang: emailLang,
       overrides: emailFinal,
     }, siteUrl);
     return html;
-  }, [clientName, emailLang, emailFinal]);
+  }, [clientName, clientCompany, emailLang, emailFinal]);
 
   // When the user switches language, drop their custom edits so they see the
   // fresh localised defaults. They can still re-customise on top of those.
@@ -1148,8 +1159,8 @@ export default function SaveDocumentModal({
                 fontSize: 12,
                 marginBottom: 16,
               }}>
-                <strong>Order not ready to send.</strong>
-                {incompleteSummary ? <span> {incompleteSummary}</span> : null} Close this dialog and fill in the highlighted fields first.
+                <strong>Some rows are incomplete.</strong>
+                {incompleteSummary ? <span> {incompleteSummary}</span> : null} You can still save &mdash; or close this dialog to fill in the highlighted fields first.
               </div>
             )}
 
@@ -1177,7 +1188,11 @@ export default function SaveDocumentModal({
               {(() => {
                 const writeOffMissing = orderChannel === 'delete_from_stock' && !writeOffComment.trim();
                 const emailMissing = emailEnabled && !recipientLooksValid;
-                const disabled = saving || writeOffMissing || emailMissing || orderIncomplete;
+                // `orderIncomplete` is intentionally NOT a disabling
+                // condition — it's a soft warning surfaced in the banner
+                // above. The remaining gates are real: a write-off needs
+                // a comment, an outgoing email needs a valid recipient.
+                const disabled = saving || writeOffMissing || emailMissing;
                 return (
                   <button
                     onClick={handleSave}

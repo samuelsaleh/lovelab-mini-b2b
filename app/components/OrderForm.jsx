@@ -17,11 +17,19 @@ import {
   splitHousing as sharedSplitHousing,
   validateOrder as validateOrderRows,
 } from '@/lib/orderRowValidation'
-import { computeAfterDiscount, formatDiscountDisplay } from '@/lib/orderTotals'
+import { computeAfterDiscount } from '@/lib/orderTotals'
+import { chunkRowsForPrint } from '@/lib/orderPrintPagination'
+import { applyCalculatorToOrder } from '@/lib/applyCalculatorToOrder'
 
 const ROWS_PER_PAGE = 10
-const PRINT_ROWS_PER_PAGE = 14
-const PRINT_ROWS_LAST_PAGE = 7 // Fewer rows on last page to leave room for footer/signatures
+// Row counts tuned 2026-05-12 so each rendered page reliably fits one A4
+// landscape PDF page after html2canvas + jsPDF projection. Pre-fix these
+// were 14 / 7, but page 1 (with the full Company/Contact/Address/Shipping/
+// VAT header) overflowed the 190mm available height, which made jsPDF slice
+// the page in two and produce a stray middle PDF page (the "1 of 2 then a
+// random page" bug Sam reported on the Oxygene order).
+const PRINT_ROWS_PER_PAGE = 10
+const PRINT_ROWS_LAST_PAGE = 6 // Fewer rows on last page to leave room for footer/signatures
 
 const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
@@ -1178,39 +1186,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     return p
   }, [rows])
 
-  // For printing/saving, pack more rows per page to reduce page count and PDF size
-  // Last page gets fewer rows to leave room for footer/signatures section
+  // For printing/saving, pack rows per page to reduce page count and PDF
+  // size. Last page gets fewer rows to leave room for the
+  // footer/signatures block. Chunking logic lives in lib/orderPrintPagination
+  // so it can be unit-tested without rendering the whole component.
   const printPages = useMemo(() => {
     const filledRows = rows.filter(isRowFilled)
-    if (filledRows.length === 0) return [[]] // at least one empty page
-    
-    const p = []
-    let i = 0
-    while (i < filledRows.length) {
-      const remaining = filledRows.length - i
-      // If remaining rows fit in a last-page allocation, make this the last page
-      if (remaining <= PRINT_ROWS_LAST_PAGE) {
-        p.push(filledRows.slice(i))
-        break
-      }
-      // Check if we need to start thinking about last page
-      // If after this page, remaining would fit in last page, use normal rows
-      const afterThisPage = remaining - PRINT_ROWS_PER_PAGE
-      if (afterThisPage > 0 && afterThisPage <= PRINT_ROWS_LAST_PAGE) {
-        // This is NOT the last page, use full rows
-        p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
-        i += PRINT_ROWS_PER_PAGE
-      } else if (afterThisPage <= 0) {
-        // This will be the last page
-        p.push(filledRows.slice(i))
-        break
-      } else {
-        // Normal page
-        p.push(filledRows.slice(i, i + PRINT_ROWS_PER_PAGE))
-        i += PRINT_ROWS_PER_PAGE
-      }
-    }
-    return p
+    return chunkRowsForPrint(filledRows, PRINT_ROWS_PER_PAGE, PRINT_ROWS_LAST_PAGE)
   }, [rows])
 
   // Use printPages when printing (filters empty rows), otherwise use pages
@@ -1324,36 +1306,32 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setIsPrinting(false)
   }, [])
 
-  const handleApplyFromCalc = useCallback(({ subtotal: calcSubtotal, totalDiscount, discountPct, discountFlat, finalTotal: val, delivery, customLabel: cl, customAmount: ca, extraPercent: ep, extraPercentLabel: epl }) => {
-    // Shipping line
-    setShippingAmount(delivery > 0 ? delivery : null)
-    // Custom line
-    setCustomLineLabel(cl || '')
-    setCustomLineAmount(ca != null && ca !== 0 ? ca : null)
-    // Tax
-    if (ep > 0) {
-      setTaxPercent(ep)
-      setTaxLabel(epl || 'VAT')
+  const handleApplyFromCalc = useCallback((payload) => {
+    // All the heavy lifting (line item splitting, discount encoding, the
+    // "never write the calculator's rolled-up `final` back into the
+    // subtotal override" rule) lives in `applyCalculatorToOrder` so the
+    // exact downstream grand total math can be unit-tested without
+    // mounting the form. See lib/applyCalculatorToOrder.js for the full
+    // explanation of the double-count bug this prevents (subtotal 2270 +
+    // custom 45 used to produce a grandTotal of 2360 instead of 2315).
+    const patch = applyCalculatorToOrder(payload)
+
+    setShippingAmount(patch.shippingAmount)
+    setCustomLineLabel(patch.customLineLabel)
+    setCustomLineAmount(patch.customLineAmount)
+
+    if (patch.taxPercent != null) {
+      setTaxPercent(patch.taxPercent)
+      setTaxLabel(patch.taxLabel || 'VAT')
     } else {
       setTaxPercent(null)
     }
-    // When calculator applies:
-    // - If there's a discount, encode it as "X%" or "€Y" via the helper so
-    //   percent intent survives later row changes.
-    // - Use the raw row subtotal as "before" (don't override it).
-    // - The "after" is recomputed from subtotal and discountDisplay.
 
-    if (totalDiscount > 0) {
-      setDiscountDisplay(formatDiscountDisplay({ discountPct, discountFlat, totalDiscount }))
-      setFinalTotalOverride(null)
-    } else if (val !== calcSubtotal) {
-      // No discount but there are additions (delivery, custom, etc.)
-      setFinalTotalOverride(val)
-      setDiscountDisplay('')
-    } else {
-      setFinalTotalOverride(null)
-      setDiscountDisplay('')
-    }
+    setDiscountDisplay(patch.discountDisplay)
+    // Always null when applying from the calculator — the line items we
+    // just stored above will be added back at grandTotal time, so any
+    // override here would double-count them.
+    setFinalTotalOverride(patch.finalTotalOverride)
   }, [])
 
   // ─── Prepayment gate logic ───
@@ -1364,10 +1342,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   }, [handlePrint, handleDownload])
 
   const triggerWithPrepaymentCheck = useCallback((action) => {
-    // Hard block: refuse to save / print / download an order with missing
-    // required cells. Buttons are visually disabled too — this is defense
-    // in depth in case a stale state or programmatic call slips through.
-    if (orderIncomplete) return
+    // Soft validation: incomplete orders show a warning banner with the
+    // exact missing fields, but Save / Print / Download stay clickable.
+    // Sam asked for this explicitly because some rows legitimately have
+    // optional closure / size that the validator currently flags. The
+    // warning banner remains visible so nothing is filled silently — agents
+    // just aren't blocked from completing the action when they know the
+    // order is correct.
     if (prepaymentConfirmed === null) {
       setGateHasPrepayment(hasPrepayment)
       setGatePrepaymentAmount(prepaymentAmount)
@@ -1377,7 +1358,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     } else {
       runAction(action)
     }
-  }, [orderIncomplete, prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction])
+  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction])
 
   const confirmPrepaymentGate = useCallback(() => {
     setHasPrepayment(gateHasPrepayment)
@@ -1897,54 +1878,57 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         <div style={{ flex: mobile ? '1 1 100%' : 1, textAlign: mobile ? 'left' : 'center', fontSize: mobile ? 13 : 14, fontWeight: 700, color: colors.inkPlum }}>
           {t('nav.orderform')}
         </div>
+        {/*
+          Save / Download / Print stay clickable even when the order is
+          incomplete. The warning banner below still surfaces every missing
+          field (per row) so nothing is filled silently — agents are simply
+          trusted to override the validator when they know the row is
+          intentionally partial (e.g. a closure that doesn't apply, a size
+          they'll confirm with the client). Hover/title text reflects this:
+          it's a heads-up, not a block.
+         */}
         <button
           onClick={() => triggerWithPrepaymentCheck('save')}
-          disabled={orderIncomplete}
-          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
-            opacity: orderIncomplete ? 0.45 : 1,
+            cursor: 'pointer',
             fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.background = colors.ice }}
-          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.background = '#fff' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
         >
           {t('order.save')}
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('download')}
-          disabled={orderIncomplete}
-          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
-            opacity: orderIncomplete ? 0.45 : 1,
+            cursor: 'pointer',
             fontFamily: fonts.body, transition: 'all .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.background = colors.ice }}
-          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.background = '#fff' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = colors.ice }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
         >
           {t('order.download') || 'Download PDF'}
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('print')}
-          disabled={orderIncomplete}
-          title={orderIncomplete ? `Fill in all required fields first. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
-            cursor: orderIncomplete ? 'not-allowed' : 'pointer',
-            opacity: orderIncomplete ? 0.45 : 1,
+            cursor: 'pointer',
             fontFamily: fonts.body, transition: 'opacity .15s', minHeight: mobile ? 44 : 'auto',
             flex: mobile ? '1 1 110px' : '0 0 auto',
           }}
-          onMouseEnter={(e) => { if (!orderIncomplete) e.currentTarget.style.opacity = '0.9' }}
-          onMouseLeave={(e) => { if (!orderIncomplete) e.currentTarget.style.opacity = '1' }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
         >
           {t('order.print')}
         </button>
@@ -1970,11 +1954,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }} aria-hidden="true">!</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>
-              Order not ready to send
+              Some rows are incomplete &mdash; you can still save
             </div>
             <div style={{ lineHeight: 1.45, wordBreak: 'break-word' }}>
               {orderValidation.issues.length === 1 && orderValidation.issues[0].missing[0] === 'rows'
-                ? 'Add at least one product row before saving.'
+                ? 'Tip: add at least one product row before saving.'
                 : orderValidation.issues.map((issue, idx) => (
                   <span key={`${issue.rowNo}-${idx}`}>
                     {idx > 0 && <span style={{ color: '#caa073', margin: '0 6px' }}>&middot;</span>}
@@ -2026,8 +2010,16 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
                     <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
-                    <div style={{ ...hFieldLabel, marginTop: 4 }}>Contact Name :</div>
+                    {/* Contact Person — i18n'd label + hint to prevent the
+                        "Cher Oxygene Marie Schultz" bug. The hint is hidden
+                        in print mode so the PDF stays clean. */}
+                    <div style={{ ...hFieldLabel, marginTop: 4 }}>{t('order.contactName')} :</div>
                     <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                    {!isPrinting && (
+                      <div style={{ fontSize: 9, fontStyle: 'italic', color: colors.lovelabMuted, marginTop: 2, lineHeight: 1.3 }}>
+                        {t('order.contactNameHint')}
+                      </div>
+                    )}
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Billing Address :</div>
                     <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
                     <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />

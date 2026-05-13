@@ -3,24 +3,25 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
-import { clientOrderEmail } from '@/lib/email-templates';
+import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 
-// All client-facing order emails are CC'd to the LoveLab office inboxes (so
+// All client-facing order emails are BCC'd to the LoveLab office inboxes (so
 // every conversation funnels through inboxes someone actually reads) PLUS the
 // admin recipients from ADMIN_NOTIFICATION_EMAIL (so Alberto / whoever owns
-// admin alerts also gets a copy). Reply-to is restricted to the office
-// inboxes only — client replies should never bury an admin's personal
-// mailbox. The office list is hardcoded on purpose so admins can't
-// accidentally bypass the team CC.
-const OFFICE_CC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
-const REPLY_TO_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
+// admin alerts also gets a copy). BCC instead of CC keeps internal addresses
+// invisible to the client — they only see their own address in the To field.
+// No reply_to is set on purpose: replies fall back to the From address (the
+// dionne@love-lab.com office mailbox), which is exactly where we want them.
+// The office list is hardcoded on purpose so admins can't accidentally bypass
+// the team BCC.
+const OFFICE_BCC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 
-function buildOrderCcRecipients() {
+function buildOrderBccRecipients() {
   // Merge office inboxes + admin recipients, dedupe (case-insensitive),
   // preserve order. Returns at minimum the office inboxes even if env is empty.
   const seen = new Set();
   const out = [];
-  for (const e of [...OFFICE_CC_RECIPIENTS, ...getAdminNotificationRecipients().all]) {
+  for (const e of [...OFFICE_BCC_RECIPIENTS, ...getAdminNotificationRecipients().all]) {
     const key = e.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -32,12 +33,12 @@ function buildOrderCcRecipients() {
 // Address that gets pinged ONLY when an outbound order email fails to send.
 // Honors ADMIN_ALERT_EMAIL override, otherwise falls through to the primary
 // admin from ADMIN_NOTIFICATION_EMAIL — so a single env var change reroutes
-// both the CC list and the failure alerts.
+// both the BCC list and the failure alerts.
 function getAdminAlertEmail() {
   return process.env.ADMIN_ALERT_EMAIL || getAdminNotificationRecipients().to;
 }
 
-async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, reason, statusCode }) {
+async function sendAdminAlert({ apiKey, recipient, bccEmail, lang, documentId, reason, statusCode }) {
   const adminAlertEmail = getAdminAlertEmail();
   if (!apiKey || !adminAlertEmail) return;
   try {
@@ -49,7 +50,7 @@ async function sendAdminAlert({ apiKey, recipient, ccEmail, lang, documentId, re
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr><td style="padding:4px 0;color:#666;width:140px">Document ID</td><td>${documentId || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">Recipient</td><td>${recipient || '—'}</td></tr>
-          <tr><td style="padding:4px 0;color:#666">CC</td><td>${ccEmail || '—'}</td></tr>
+          <tr><td style="padding:4px 0;color:#666">BCC</td><td>${bccEmail || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">Language</td><td>${lang || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666">HTTP status</td><td>${statusCode || '—'}</td></tr>
           <tr><td style="padding:4px 0;color:#666;vertical-align:top">Reason</td><td><pre style="margin:0;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px">${(reason || 'unknown').slice(0, 800)}</pre></td></tr>
@@ -172,11 +173,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid recipient email' }, { status: 400 });
     }
 
-    // CC is hardcoded to the LoveLab office inboxes — clients can't see these
-    // addresses, but it guarantees the team always has a copy of every send
-    // (their "sent folder" replacement, since Resend can't write to Outlook/
-    // Gmail Sent).
-    const ccEmails = buildOrderCcRecipients();
+    // BCC is hardcoded to the LoveLab office inboxes — clients can't see
+    // these addresses (BCC, not CC), but it guarantees the team always has a
+    // copy of every send (their "sent folder" replacement, since Resend can't
+    // write to Outlook/Gmail Sent).
+    const bccEmails = buildOrderBccRecipients();
 
     const langCode = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
 
@@ -259,8 +260,17 @@ export async function POST(request) {
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+    // Defensive: if the user typed the company name into the contact
+    // field too (e.g. contact="Oxygene Marie Schultz" with company="Oxygene"),
+    // strip the company prefix so the greeting reads "Cher Marie Schultz,"
+    // not "Cher Oxygene Marie Schultz,". The modal preview applies the
+    // same helper so what the admin sees is what the client gets.
+    const greetingName = stripCompanyPrefix(
+      contactName || doc.client_name || '',
+      doc.client_company,
+    );
     const { subject, html } = clientOrderEmail({
-      contactName: contactName || doc.client_name || '',
+      contactName: greetingName,
       lang: langCode,
       overrides: {
         subject: subjectOverride,
@@ -276,13 +286,13 @@ export async function POST(request) {
 
     // From-name is hardcoded to "LoveLab" so every client sees a consistent
     // sender label regardless of which admin triggered the email.
-    // Reply-to is the same office inboxes as the CC so all client replies
-    // funnel into the team inboxes (not the per-admin sender address).
+    // No reply_to: client replies fall back to the From address
+    // (dionne@love-lab.com), which is the office mailbox we want them in.
+    // BCC keeps the team copy invisible to the client.
     const payload = {
       from: getSenderFrom('LoveLab'),
       to: [recipient],
-      cc: ccEmails,
-      reply_to: REPLY_TO_RECIPIENTS,
+      bcc: bccEmails,
       subject,
       html,
       attachments,
@@ -303,7 +313,7 @@ export async function POST(request) {
       await sendAdminAlert({
         apiKey,
         recipient,
-        ccEmail: ccEmails.join(', '),
+        bccEmail: bccEmails.join(', '),
         lang: langCode,
         documentId,
         reason: errBody || `Resend HTTP ${res.status}`,
@@ -323,7 +333,7 @@ export async function POST(request) {
       await sendAdminAlert({
         apiKey: process.env.RESEND_API_KEY,
         recipient: null,
-        ccEmail: null,
+        bccEmail: null,
         lang: null,
         documentId: null,
         reason: `${error?.message || 'unknown'}\n${error?.stack || ''}`,
