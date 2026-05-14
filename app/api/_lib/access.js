@@ -17,7 +17,7 @@ export async function getUserContext(supabase) {
   const adminSupabase = createAdminClient();
   const { data: profile } = await adminSupabase
     .from('profiles')
-    .select('id, role, is_agent, full_name, email')
+    .select('id, role, is_agent, full_name, email, organization_id')
     .eq('id', user.id)
     .single();
 

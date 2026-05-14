@@ -25,8 +25,10 @@
 let dedupRowsByName = [];
 let dedupRowsByOrg = [];
 let agentProfileLookupRows = [];
+let organizationMembershipRow = null;
 let insertCalls = [];
 let lastInsertedRow = null;
+const mockGetUserContext = jest.fn();
 
 // Builds a flexible chainable that records the chain's filters and resolves
 // to whatever the caller has set up before invocation.
@@ -84,6 +86,11 @@ const mockAdminSupabase = {
       });
       return chain;
     }
+    if (table === 'organization_memberships') {
+      const chain = makeChain({ resolveValue: () => ({ data: organizationMembershipRow, error: null }) });
+      chain.maybeSingle = jest.fn(() => Promise.resolve({ data: organizationMembershipRow, error: null }));
+      return chain;
+    }
     throw new Error('unexpected table: ' + table);
   }),
 };
@@ -96,7 +103,7 @@ jest.mock('@/lib/supabase/server', () => ({
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: jest.fn(() => null) }));
 
 jest.mock('@/app/api/_lib/access', () => ({
-  getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-user' }, isAdmin: true }),
+  getUserContext: (...args) => mockGetUserContext(...args),
   resolveAgentIds: jest.fn().mockResolvedValue(['admin-user']),
 }));
 
@@ -114,8 +121,14 @@ beforeEach(() => {
   dedupRowsByName = [];
   dedupRowsByOrg = [];
   agentProfileLookupRows = [];
+  organizationMembershipRow = null;
   insertCalls = [];
   lastInsertedRow = null;
+  mockGetUserContext.mockResolvedValue({
+    user: { id: 'admin-user' },
+    profile: { id: 'admin-user', role: 'admin', organization_id: null },
+    isAdmin: true,
+  });
 });
 
 describe('/api/events POST — Phase 13 dedup', () => {
@@ -209,6 +222,56 @@ describe('/api/events POST — Phase 21 auto-link agent folder to org', () => {
     );
     expect(res.status).toBe(200);
     expect(insertCalls[0].organization_id).toBe('explicit-org');
+  });
+
+  test('rejects explicit organization_id when a non-admin does not belong to that org', async () => {
+    mockGetUserContext.mockResolvedValue({
+      user: { id: 'user-1' },
+      profile: { id: 'user-1', role: 'member', organization_id: 'org-own' },
+      isAdmin: false,
+    });
+
+    const res = await POST(
+      makeRequest({ name: 'Victim Agent', type: 'agent', organization_id: 'org-victim' }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toMatch(/cannot link folder/i);
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  test('does not auto-link a non-admin folder to a matched agent org outside their org', async () => {
+    mockGetUserContext.mockResolvedValue({
+      user: { id: 'user-1' },
+      profile: { id: 'user-1', role: 'member', organization_id: 'org-own' },
+      isAdmin: false,
+    });
+    agentProfileLookupRows = [{ organization_id: 'org-victim' }];
+
+    const res = await POST(makeRequest({ name: 'Victim Agent', type: 'agent' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0].organization_id).toBeNull();
+    expect(body.event.organization_id).toBeNull();
+  });
+
+  test('allows a non-admin to link an agent folder to their own org', async () => {
+    mockGetUserContext.mockResolvedValue({
+      user: { id: 'user-1' },
+      profile: { id: 'user-1', role: 'member', organization_id: 'org-own' },
+      isAdmin: false,
+    });
+
+    const res = await POST(
+      makeRequest({ name: 'Own Agent', type: 'agent', organization_id: 'org-own' }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0].organization_id).toBe('org-own');
   });
 
   test('org-based dedup returns the existing folder when an agent already has one (different name)', async () => {

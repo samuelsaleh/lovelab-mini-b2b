@@ -9,6 +9,30 @@ import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
+function sanitizeDocumentFilePath(filePath) {
+  if (!filePath) return null;
+  const safePath = String(filePath)
+    .replace(/\.\./g, '')
+    .replace(/^\/+/, '')
+    .replace(/[^a-zA-Z0-9\-_./]/g, '_');
+  return safePath && safePath.length >= 3 ? safePath : null;
+}
+
+function isUserScopedFilePath(filePath, userId) {
+  return !!filePath && !!userId && String(filePath).startsWith(`${userId}/`);
+}
+
+function validateWritableFilePath(filePath, { userId, isAdmin }) {
+  const safePath = sanitizeDocumentFilePath(filePath);
+  if (filePath && !safePath) {
+    return { error: 'Invalid file path' };
+  }
+  if (safePath && !isAdmin && !isUserScopedFilePath(safePath, userId)) {
+    return { error: 'Invalid file path scope' };
+  }
+  return { safePath };
+}
+
 // GET - List documents (optionally filtered by event_id)
 export async function GET(request) {
   try {
@@ -242,16 +266,12 @@ export async function POST(request) {
       }
     }
 
-    // Sanitize file_path to prevent path traversal (skip when null/undefined)
-    let safePath = null;
-    if (file_path) {
-      safePath = String(file_path)
-        .replace(/\.\./g, '')
-        .replace(/^\/+/, '')
-        .replace(/[^a-zA-Z0-9\-_./]/g, '_');
-      if (!safePath || safePath.length < 3) {
-        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
-      }
+    const { safePath, error: filePathError } = validateWritableFilePath(file_path, {
+      userId: user.id,
+      isAdmin,
+    });
+    if (filePathError) {
+      return NextResponse.json({ error: filePathError }, { status: 400 });
     }
 
     // Limit metadata size to prevent abuse (max 100KB)
