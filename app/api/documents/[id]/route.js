@@ -10,6 +10,33 @@ import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function sanitizeDocumentFilePath(filePath) {
+  if (!filePath) return null;
+  const safePath = String(filePath)
+    .replace(/\.\./g, '')
+    .replace(/^\/+/, '')
+    .replace(/[^a-zA-Z0-9\-_./]/g, '_');
+  return safePath && safePath.length >= 3 ? safePath : null;
+}
+
+function isUserScopedFilePath(filePath, userId) {
+  return !!filePath && !!userId && String(filePath).startsWith(`${userId}/`);
+}
+
+function validateWritableFilePath(filePath, { userId, isAdmin }) {
+  const safePath = sanitizeDocumentFilePath(filePath);
+  if (filePath && !safePath) {
+    return { error: 'Invalid file path' };
+  }
+  if (!safePath && !isAdmin) {
+    return { error: 'Missing file path' };
+  }
+  if (safePath && !isAdmin && !isUserScopedFilePath(safePath, userId)) {
+    return { error: 'Invalid file path scope' };
+  }
+  return { safePath };
+}
+
 // GET - Fetch a single document by ID
 export async function GET(request, { params }) {
   try {
@@ -94,14 +121,32 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const { safePath, error: filePathError } = validateWritableFilePath(body.file_path, {
+      userId: user.id,
+      isAdmin,
+    });
+    if (filePathError) {
+      return NextResponse.json({ error: filePathError }, { status: 400 });
+    }
+
     // Delete old file from storage if we have a new one
-    if (oldDoc.file_path && body.file_path && oldDoc.file_path !== body.file_path) {
-      await adminSupabase.storage.from('documents').remove([oldDoc.file_path]);
-      // Also try owner-scoped path
+    if (oldDoc.file_path && safePath && oldDoc.file_path !== safePath) {
+      const removalPaths = new Set();
+      if (
+        isUserScopedFilePath(oldDoc.file_path, oldDoc.created_by) ||
+        isUserScopedFilePath(oldDoc.file_path, user.id)
+      ) {
+        removalPaths.add(oldDoc.file_path);
+      }
+      // Also try owner-scoped path for legacy records that stored an unscoped
+      // path while the actual upload was written below the document owner.
       const filename = oldDoc.file_path.split('/').pop();
       const ownerScopedPath = `${oldDoc.created_by}/${filename}`;
       if (ownerScopedPath !== oldDoc.file_path) {
-        await adminSupabase.storage.from('documents').remove([ownerScopedPath]);
+        removalPaths.add(ownerScopedPath);
+      }
+      if (removalPaths.size > 0) {
+        await adminSupabase.storage.from('documents').remove([...removalPaths]);
       }
     }
 
@@ -111,7 +156,7 @@ export async function PUT(request, { params }) {
       client_name: body.client_name,
       client_company: body.client_company,
       document_type: body.document_type,
-      file_path: body.file_path,
+      file_path: safePath,
       file_name: body.file_name,
       file_size: body.file_size,
       total_amount: body.total_amount,

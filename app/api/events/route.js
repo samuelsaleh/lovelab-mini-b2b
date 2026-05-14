@@ -6,6 +6,26 @@ import { getUserContext, resolveAgentIds } from '@/app/api/_lib/access';
 // Simple ISO date validation (YYYY-MM-DD)
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+async function canLinkOrganization(adminSupabase, { userId, profile, isAdmin, organizationId }) {
+  if (!organizationId) return false;
+  if (isAdmin) return true;
+  if (profile?.organization_id === organizationId) return true;
+
+  const { data: membership, error } = await adminSupabase
+    .from('organization_memberships')
+    .select('id, deleted_at')
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Events POST] organization membership check failed:', error.message);
+    return false;
+  }
+
+  return !!membership && !membership.deleted_at;
+}
+
 // GET - List all events
 export async function GET(request) {
   try {
@@ -96,7 +116,7 @@ export async function POST(request) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user } = await getUserContext(supabase);
+    const { user, profile, isAdmin } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -129,10 +149,23 @@ export async function POST(request) {
     // "PO Oxygène doesn't appear on Corinne's page" bug from May 2026.
     //
     // Resolution order:
-    //   1. organization_id explicitly passed in the body (admin override).
+    //   1. organization_id explicitly passed in the body (authorized override).
     //   2. Single agent profile whose full_name matches the folder name.
     //   3. null (orphan folder — falls back to the legacy behaviour).
-    let targetOrgId = (eventType === 'agent' && organization_id) ? organization_id : null;
+    let targetOrgId = null;
+    const requestedOrgId = eventType === 'agent' && organization_id ? String(organization_id).trim() : null;
+    if (requestedOrgId) {
+      const allowed = await canLinkOrganization(adminSupabase, {
+        userId: user.id,
+        profile,
+        isAdmin,
+        organizationId: requestedOrgId,
+      });
+      if (!allowed) {
+        return NextResponse.json({ error: 'Forbidden: cannot link folder to this organization' }, { status: 403 });
+      }
+      targetOrgId = requestedOrgId;
+    }
     if (eventType === 'agent' && !targetOrgId) {
       const { data: agentMatch } = await adminSupabase
         .from('profiles')
@@ -145,7 +178,16 @@ export async function POST(request) {
       // Only auto-link when EXACTLY one agent matches — avoids cross-wiring
       // two people with the same display name into one folder.
       if (Array.isArray(agentMatch) && agentMatch.length === 1) {
-        targetOrgId = agentMatch[0].organization_id;
+        const matchedOrgId = agentMatch[0].organization_id;
+        const allowed = await canLinkOrganization(adminSupabase, {
+          userId: user.id,
+          profile,
+          isAdmin,
+          organizationId: matchedOrgId,
+        });
+        if (allowed) {
+          targetOrgId = matchedOrgId;
+        }
       }
     }
 
