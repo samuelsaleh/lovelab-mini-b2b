@@ -4,7 +4,12 @@ import { NextResponse } from 'next/server';
 import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 import { recordHealthEvent } from '@/lib/healthEvent';
-import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import {
+  cancelNonPayableCommissionsForDocument,
+  isCommissionableDocument,
+  resolveCommissionAgent,
+  upsertCommissionForDocument,
+} from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
@@ -117,7 +122,7 @@ export async function PUT(request, { params }) {
       total_amount: body.total_amount,
       metadata: body.metadata,
     };
-    if (['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)) {
+    if (['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'].includes(body.order_channel)) {
       updatePayload.order_channel = body.order_channel;
     }
     if (body.order_channel === 'consignment') {
@@ -138,10 +143,10 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
-    // Recalculate commission when total_amount changes (skip for internal and consignment orders)
+    // Reconcile commissions when order totals or revenue channel change.
     // Attribution logic shared with POST — see lib/commissionAttribution.js.
     try {
-      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
+      if (isCommissionableDocument(doc)) {
         const attribution = await resolveCommissionAgent(adminSupabase, doc);
         if (attribution) {
           await upsertCommissionForDocument(adminSupabase, {
@@ -170,6 +175,12 @@ export async function PUT(request, { params }) {
             });
           }
         }
+      } else {
+        await cancelNonPayableCommissionsForDocument(
+          adminSupabase,
+          doc?.id,
+          'Auto-cancelled because the linked document is no longer commissionable.',
+        );
       }
     } catch (commErr) {
       // Tier A — never silent. See lib/healthEvent.js.
@@ -307,7 +318,7 @@ export async function PATCH(request, { params }) {
 
     // Must provide at least one updatable field
     const hasName = newName && newName.length <= 255;
-    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(newChannel);
+    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'].includes(newChannel);
     const hasMetadata = newMetadata !== undefined && newMetadata !== null;
     if (!hasName && !hasChannel && !hasMetadata) {
       return NextResponse.json({ error: 'Provide file_name, order_channel, or metadata' }, { status: 400 });
@@ -369,6 +380,59 @@ export async function PATCH(request, { params }) {
     if (updated.order_channel === 'consignment' && updated.metadata?.consignment?.returned_at) {
       // Non-blocking
       syncConsignmentToLovelab(updated, true).catch(err => console.error('[Lovelab Sync PATCH] error:', err));
+    }
+
+    if (hasChannel) {
+      try {
+        if (isCommissionableDocument(updated)) {
+          const attribution = await resolveCommissionAgent(adminSupabase, updated);
+          if (attribution) {
+            await upsertCommissionForDocument(adminSupabase, {
+              document: updated,
+              profile: attribution.profile,
+              agentId: attribution.agentId,
+            });
+            try {
+              await maybeCreateBonusForOrder(adminSupabase, {
+                agentId: attribution.agentId,
+                profile: attribution.profile,
+                document: updated,
+              });
+            } catch (bonusErr) {
+              await recordHealthEvent({
+                source: 'documents_patch_new_client_bonus_hook',
+                severity: 'warn',
+                message: bonusErr.message || 'New-client bonus hook failed',
+                context: {
+                  documentId: updated?.id || null,
+                  agentId: attribution.agentId,
+                  code: bonusErr.code || null,
+                },
+              });
+            }
+          }
+        } else {
+          await cancelNonPayableCommissionsForDocument(
+            adminSupabase,
+            updated?.id,
+            'Auto-cancelled because the linked document is no longer commissionable.',
+          );
+        }
+      } catch (commErr) {
+        await recordHealthEvent({
+          source: 'documents_patch_commission_reconcile',
+          severity: 'error',
+          message: commErr.message || 'Commission reconciliation failed',
+          context: {
+            documentId: updated?.id || null,
+            createdBy: updated?.created_by || null,
+            orderChannel: updated?.order_channel || null,
+            totalAmount: updated?.total_amount ?? null,
+            code: commErr.code || null,
+            details: commErr.details || null,
+          },
+        });
+      }
     }
 
     return NextResponse.json({ document: updated });
