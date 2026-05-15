@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
 import { recordHealthEvent } from '@/lib/healthEvent';
-import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { isCommissionableDocument, resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // GET - List documents (optionally filtered by event_id)
@@ -290,7 +290,7 @@ export async function POST(request) {
     // Attribution logic lives in lib/commissionAttribution.js so PUT and POST
     // resolve the same way.
     try {
-      if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
+      if (isCommissionableDocument(document) && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
         const commSupabase = createAdminClient();
         const attribution = await resolveCommissionAgent(commSupabase, document);
         if (attribution) {
