@@ -9,6 +9,71 @@ import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_ORDER_CHANNELS = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'];
+const NON_COMMISSION_ORDER_CHANNELS = new Set(['internal', 'consignment', 'delete_from_stock']);
+
+function isCommissionableOrderDocument(doc) {
+  return Number(doc?.total_amount) > 0 && !NON_COMMISSION_ORDER_CHANNELS.has(doc?.order_channel);
+}
+
+async function cancelOpenCommissionsForDocument(adminSupabase, doc) {
+  if (!doc?.id) return { skipped: true, reason: 'no_document' };
+
+  const { error } = await adminSupabase
+    .from('agent_commissions')
+    .update({
+      status: 'cancelled',
+      notes: `Auto-cancelled because the linked document is ${doc.order_channel || 'not commissionable'}.`,
+    })
+    .eq('document_id', doc.id)
+    .neq('status', 'paid');
+
+  if (error) {
+    const enriched = new Error(error.message || 'Commission cancellation failed');
+    enriched.code = error.code || null;
+    enriched.details = error.details || null;
+    throw enriched;
+  }
+
+  return { cancelled: true };
+}
+
+async function syncDocumentCommissions(adminSupabase, doc, { bonusHealthSource }) {
+  if (!isCommissionableOrderDocument(doc)) {
+    return cancelOpenCommissionsForDocument(adminSupabase, doc);
+  }
+
+  const attribution = await resolveCommissionAgent(adminSupabase, doc);
+  if (!attribution) return { skipped: true, reason: 'no_agent' };
+
+  await upsertCommissionForDocument(adminSupabase, {
+    document: doc,
+    profile: attribution.profile,
+    agentId: attribution.agentId,
+  });
+
+  // Bonus failures must surface, but must not undo the order commission recalc.
+  try {
+    await maybeCreateBonusForOrder(adminSupabase, {
+      agentId: attribution.agentId,
+      profile: attribution.profile,
+      document: doc,
+    });
+  } catch (bonusErr) {
+    await recordHealthEvent({
+      source: bonusHealthSource,
+      severity: 'warn',
+      message: bonusErr.message || 'New-client bonus hook failed',
+      context: {
+        documentId: doc?.id || null,
+        agentId: attribution.agentId,
+        code: bonusErr.code || null,
+      },
+    });
+  }
+
+  return { synced: true };
+}
 
 // GET - Fetch a single document by ID
 export async function GET(request, { params }) {
@@ -117,7 +182,7 @@ export async function PUT(request, { params }) {
       total_amount: body.total_amount,
       metadata: body.metadata,
     };
-    if (['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)) {
+    if (VALID_ORDER_CHANNELS.includes(body.order_channel)) {
       updatePayload.order_channel = body.order_channel;
     }
     if (body.order_channel === 'consignment') {
@@ -138,39 +203,13 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
-    // Recalculate commission when total_amount changes (skip for internal and consignment orders)
+    // Recalculate commission when total/channel changes. Non-revenue channels
+    // must also cancel stale unpaid rows from an earlier B2B/B2C save.
     // Attribution logic shared with POST — see lib/commissionAttribution.js.
     try {
-      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
-        const attribution = await resolveCommissionAgent(adminSupabase, doc);
-        if (attribution) {
-          await upsertCommissionForDocument(adminSupabase, {
-            document: doc,
-            profile: attribution.profile,
-            agentId: attribution.agentId,
-          });
-          // Phase 19 — new-client bonus. Same pattern as POST: isolated
-          // try/catch so a bonus failure doesn't break the recalc above.
-          try {
-            await maybeCreateBonusForOrder(adminSupabase, {
-              agentId: attribution.agentId,
-              profile: attribution.profile,
-              document: doc,
-            });
-          } catch (bonusErr) {
-            await recordHealthEvent({
-              source: 'documents_put_new_client_bonus_hook',
-              severity: 'warn',
-              message: bonusErr.message || 'New-client bonus hook failed',
-              context: {
-                documentId: doc?.id || null,
-                agentId: attribution.agentId,
-                code: bonusErr.code || null,
-              },
-            });
-          }
-        }
-      }
+      await syncDocumentCommissions(adminSupabase, doc, {
+        bonusHealthSource: 'documents_put_new_client_bonus_hook',
+      });
     } catch (commErr) {
       // Tier A — never silent. See lib/healthEvent.js.
       await recordHealthEvent({
@@ -307,7 +346,7 @@ export async function PATCH(request, { params }) {
 
     // Must provide at least one updatable field
     const hasName = newName && newName.length <= 255;
-    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(newChannel);
+    const hasChannel = VALID_ORDER_CHANNELS.includes(newChannel);
     const hasMetadata = newMetadata !== undefined && newMetadata !== null;
     if (!hasName && !hasChannel && !hasMetadata) {
       return NextResponse.json({ error: 'Provide file_name, order_channel, or metadata' }, { status: 400 });
@@ -369,6 +408,28 @@ export async function PATCH(request, { params }) {
     if (updated.order_channel === 'consignment' && updated.metadata?.consignment?.returned_at) {
       // Non-blocking
       syncConsignmentToLovelab(updated, true).catch(err => console.error('[Lovelab Sync PATCH] error:', err));
+    }
+
+    if (hasChannel) {
+      try {
+        await syncDocumentCommissions(adminSupabase, updated, {
+          bonusHealthSource: 'documents_patch_new_client_bonus_hook',
+        });
+      } catch (commErr) {
+        await recordHealthEvent({
+          source: 'documents_patch_commission_recalc',
+          severity: 'error',
+          message: commErr.message || 'Commission recalculation failed',
+          context: {
+            documentId: updated?.id || null,
+            createdBy: updated?.created_by || null,
+            orderChannel: updated?.order_channel || null,
+            totalAmount: updated?.total_amount ?? null,
+            code: commErr.code || null,
+            details: commErr.details || null,
+          },
+        });
+      }
     }
 
     return NextResponse.json({ document: updated });
