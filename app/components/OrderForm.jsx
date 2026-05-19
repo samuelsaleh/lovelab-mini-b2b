@@ -35,7 +35,7 @@ const COLUMNS = [
   { key: 'no', labelKey: 'order.columns.no', width: 34 },
   { key: 'photo', labelKey: 'order.columns.photo', width: 52 },
   { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
-  { key: 'collection', labelKey: 'order.columns.collection', width: 118 },
+  { key: 'collection', labelKey: 'order.columns.collection', width: 148 },
   { key: 'cert', labelKey: 'order.columns.cert', width: 56 },
   { key: 'carat', labelKey: 'order.columns.carat', width: 58 },
   { key: 'shape', labelKey: 'order.columns.shape', width: 72 },
@@ -330,7 +330,7 @@ function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting
   )
 }
 
-function CellSelect({ value, onChange, options, isPrinting, align }) {
+function CellSelect({ value, onChange, options, isPrinting, align, wrapText }) {
   const baseStyle = {
     width: '100%',
     fontFamily: fonts.body,
@@ -342,7 +342,7 @@ function CellSelect({ value, onChange, options, isPrinting, align }) {
   if (isPrinting) {
     const opt = options.find(o => o.value === value)
     return (
-      <div style={{ ...baseStyle, minHeight: 18, overflow: 'visible', whiteSpace: 'nowrap' }}>
+      <div style={{ ...baseStyle, minHeight: 18, overflow: 'hidden', whiteSpace: wrapText ? 'normal' : 'nowrap', wordBreak: wrapText ? 'break-word' : undefined }}>
         {opt ? opt.label : (value || '')}
       </div>
     )
@@ -1265,6 +1265,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       border-radius: 0 !important;
       width: 100% !important;
       max-width: none !important;
+      min-height: 210mm !important;
       page-break-after: always;
       break-after: page;
       padding: 10mm !important;
@@ -1762,6 +1763,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             border-radius: 0 !important;
             width: 100% !important;
             max-width: none !important;
+            min-height: 210mm !important;
             padding: 8mm !important;
             box-sizing: border-box !important;
             background: #fff !important;
@@ -2455,6 +2457,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   onChange={(val) => updateCell(globalIdx, 'collection', val)}
                                   options={COLLECTIONS.map(c => ({ value: c.label, label: c.label }))}
                                   isPrinting={isPrinting}
+                                  wrapText
                                 />
                               ) : isCertCol && row.collection ? (
                                 (() => {
