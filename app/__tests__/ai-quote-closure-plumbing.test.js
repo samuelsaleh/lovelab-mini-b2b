@@ -41,3 +41,14 @@ describe('app/App.jsx — AI quote → builder line plumbing', () => {
     expect(m[0]).toMatch(/closureType/)
   })
 })
+
+describe('app/App.jsx — OrderForm rows → builder line plumbing', () => {
+  const src = readApp()
+
+  it('forwards closure from saved/order form rows into builder configs', () => {
+    const m = src.match(/function builderLinesFromFormRows\(formRows\) \{[\s\S]*?return \{ uid: uniqueId\(\), collectionId: colId, colorConfigs, expanded: true \}/)
+    expect(m).not.toBeNull()
+    expect(m[0]).toMatch(/row\.closure/)
+    expect(m[0]).toMatch(/closureType/)
+  })
+})

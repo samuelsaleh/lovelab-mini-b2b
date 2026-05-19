@@ -19,12 +19,23 @@ export async function getUserContext(supabase) {
     .from('profiles')
     .select('id, role, is_agent, full_name, email')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
+
+  let effectiveProfile = profile || null;
+  const userEmail = normalizeEmail(user.email);
+  if (!effectiveProfile && userEmail) {
+    const { data: emailProfile } = await adminSupabase
+      .from('profiles')
+      .select('id, role, is_agent, full_name, email')
+      .eq('email', userEmail)
+      .maybeSingle();
+    effectiveProfile = emailProfile || null;
+  }
 
   return {
     user,
-    profile: profile || null,
-    isAdmin: profile?.role === 'admin',
+    profile: effectiveProfile,
+    isAdmin: effectiveProfile?.role === 'admin',
   };
 }
 
@@ -131,13 +142,20 @@ export async function resolveAgentIds(adminSupabase, agentId) {
     .select('email')
     .eq('id', agentId)
     .single();
-  if (!profile?.email) return [agentId];
-  const email = normalizeEmail(profile.email);
+  let email = normalizeEmail(profile?.email);
+  if (!email) {
+    try {
+      const authLookup = await adminSupabase.auth?.admin?.getUserById?.(agentId);
+      email = normalizeEmail(authLookup?.data?.user?.email);
+    } catch (err) {
+      console.error('[access] auth user email lookup error:', err?.message || err);
+    }
+  }
   if (!email) return [agentId];
   const { data: all } = await adminSupabase
     .from('profiles')
     .select('id')
     .eq('email', email);
-  const ids = (all || []).map((r) => r.id);
+  const ids = Array.from(new Set([agentId, ...(all || []).map((r) => r.id)]));
   return ids.length > 0 ? ids : [agentId];
 }

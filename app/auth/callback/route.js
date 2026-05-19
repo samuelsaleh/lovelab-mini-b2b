@@ -190,8 +190,9 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
         .maybeSingle();
 
       if (emailProfile && emailProfile.id !== user.id) {
-        // Migrate: update the old profile row to use the new auth ID
-        const oldId = emailProfile.id;
+        // Reuse the existing profile by email instead of deleting/re-inserting
+        // it under the new auth ID. Deleting profiles cascades memberships, so
+        // any failed insert/restore can permanently erase agent access.
         const updates = {
           full_name: emailProfile.full_name || user.user_metadata?.full_name || user.user_metadata?.name || '',
           avatar_url: emailProfile.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
@@ -203,40 +204,18 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
           updates.agent_status = 'active';
         }
 
-        // Supabase profiles.id is the PK tied to auth.users.id, so we need
-        // to delete the old row and insert a new one with the correct ID.
-        const fullRow = { ...emailProfile, ...updates };
-        delete fullRow.id;
-
         try {
-          await adminSupabase.from('profiles').delete().eq('id', oldId);
-          const { error: insertErr } = await adminSupabase.from('profiles').insert({
-            id: user.id,
-            ...fullRow,
-          });
-          if (insertErr) {
-            console.error('[auth/callback] Profile migration insert error:', insertErr.message);
-            // Restore the old profile so it isn't permanently lost
-            const { error: restoreErr } = await adminSupabase.from('profiles').insert({
-              id: oldId,
-              ...fullRow,
-            });
-            if (restoreErr) {
-              console.error('[auth/callback] CRITICAL: Could not restore old profile:', restoreErr.message);
-            }
-          } else {
-            // Only update org memberships if the new profile was created successfully
-            if (emailProfile.organization_id) {
-              await adminSupabase
-                .from('organization_memberships')
-                .update({ user_id: user.id })
-                .eq('user_id', oldId);
-            }
+          const { error: updateErr } = await adminSupabase
+            .from('profiles')
+            .update(updates)
+            .eq('id', emailProfile.id);
+          if (updateErr) {
+            console.error('[auth/callback] Existing profile update error:', updateErr.message);
           }
         } catch (migrateErr) {
-          console.error('[auth/callback] Profile migration error:', migrateErr.message);
+          console.error('[auth/callback] Existing profile update error:', migrateErr.message);
         }
-        return { ...emailProfile, ...updates, id: user.id };
+        return { ...emailProfile, ...updates };
       } else if (emailProfile && emailProfile.id === user.id) {
         return emailProfile;
       } else {

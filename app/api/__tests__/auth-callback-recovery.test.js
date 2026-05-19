@@ -18,6 +18,7 @@ const mockSignOut = jest.fn();
 const userMaybeSingle = jest.fn();
 const profileMaybeSingle = jest.fn();
 const allowedMaybeSingle = jest.fn();
+let profileChain;
 
 const buildAdminFromMock = () => {
   const allowedChain = {
@@ -25,7 +26,7 @@ const buildAdminFromMock = () => {
     eq: jest.fn().mockReturnThis(),
     maybeSingle: (...args) => allowedMaybeSingle(...args),
   };
-  const profileChain = {
+  profileChain = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     maybeSingle: (...args) => profileMaybeSingle(...args),
@@ -143,5 +144,44 @@ describe('GET /auth/callback — type=recovery', () => {
     const location = res.headers.get('location');
     expect(location).toContain('/login');
     expect(location).toContain('access_denied');
+  });
+
+  it('does not delete an existing same-email profile when auth user id changed', async () => {
+    profileMaybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'old-profile-id',
+          email: 'agent@example.com',
+          role: 'member',
+          is_agent: true,
+          agent_status: 'invited',
+          agent_deleted_at: null,
+          has_password_set: false,
+          organization_id: 'org-1',
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'old-profile-id',
+          email: 'agent@example.com',
+          role: 'member',
+          is_agent: true,
+          agent_status: 'invited',
+          agent_deleted_at: null,
+          has_password_set: false,
+          organization_id: 'org-1',
+        },
+        error: null,
+      });
+
+    const res = await GET(makeRecoveryRequest());
+    expect(res.status).toBe(307);
+    expect(profileChain.update).toHaveBeenCalledWith(expect.objectContaining({
+      agent_status: 'active',
+    }));
+    expect(profileChain.delete).not.toHaveBeenCalled();
+    expect(profileChain.insert).not.toHaveBeenCalled();
   });
 });

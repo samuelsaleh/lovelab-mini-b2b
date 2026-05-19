@@ -35,6 +35,19 @@ export async function GET(request) {
       return NextResponse.json({ user, profile: adminProfile });
     }
 
+    const userEmail = user.email?.trim().toLowerCase();
+    if (userEmail) {
+      const { data: emailProfile } = await admin
+        .from('profiles')
+        .select('*')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (emailProfile) {
+        return NextResponse.json({ user, profile: emailProfile });
+      }
+    }
+
     return NextResponse.json({
       user,
       profile: null,
