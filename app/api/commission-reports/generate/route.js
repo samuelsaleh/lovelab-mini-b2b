@@ -39,6 +39,7 @@ import {
   generateAgentReport,
   generateAllAgents,
   previousMonthPeriod,
+  snapshotPeriod,
 } from '@/lib/commissionReportService';
 import { recordHealthEvent } from '@/lib/healthEvent';
 
@@ -117,6 +118,16 @@ export async function POST(request) {
       return NextResponse.json({ error: 'agent_id must be a UUID' }, { status: 400 });
     }
 
+    // Period selection:
+    //   - body.month given     → calendar-month report (cron path, n8n still
+    //                            calls with `{ month: 'YYYY-MM' }`).
+    //   - cron auth, no month  → previous full month (legacy cron behaviour).
+    //   - manual auth, no month → snapshot of "ready to pay right now",
+    //                             titled with today's date (Sam's 2026-05-13
+    //                             redesign of the manual button). Fixes the
+    //                             "April report contains May orders" UX
+    //                             confusion by removing the calendar-month
+    //                             abstraction from the manual flow entirely.
     let period;
     if (body.month != null) {
       period = periodForMonth(String(body.month));
@@ -126,8 +137,10 @@ export async function POST(request) {
           { status: 400 },
         );
       }
-    } else {
+    } else if (cron) {
       period = previousMonthPeriod();
+    } else {
+      period = snapshotPeriod();
     }
 
     const options = {

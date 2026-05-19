@@ -1,7 +1,7 @@
 'use client'
 
-import AgentAnalytics from '@/app/components/AgentAnalytics'
+import AgentSelfView from '@/app/components/AgentSelfView'
 
 export default function AgentDocumentsPage() {
-  return <AgentAnalytics defaultTab="folder" />
+  return <AgentSelfView defaultTab="documents" focused pageTitle="Documents" />
 }

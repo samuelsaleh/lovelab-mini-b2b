@@ -6,6 +6,7 @@ import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
 import { grantAccess } from '@/lib/agents/access';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
+import { ensureAgentDriveFolder } from '@/lib/agentDriveFolder';
 import { NextResponse } from 'next/server';
 
 // GET - List all agents with aggregated commission stats (admin only)
@@ -476,6 +477,35 @@ export async function POST(request) {
         } catch (orgErr) {
           console.error('[Agents POST] Auto-ensure org error (non-blocking):', orgErr.message);
         }
+      }
+    }
+
+    // Phase 22: pre-create the per-agent Google Drive folder for commission
+    // reports so it shows up in mom's Drive immediately after the agent is
+    // added (without waiting for the first report). Strictly best-effort —
+    // a Drive outage / missing env / permission error must NEVER block agent
+    // creation. The reports flow itself also lazy-creates the folder, so
+    // worst case this hook is just a no-op and the folder appears on the
+    // first "Send report now" click.
+    if (agentProfile?.id && !agentProfile?._pending) {
+      try {
+        const drive = await ensureAgentDriveFolder({
+          agentName: agentProfile.full_name || agentProfile.email,
+          cachedFolderId: agentProfile.drive_folder_id || null,
+        });
+        if (drive?.ok && drive.folderId && !drive.fromCache) {
+          const { error: cacheErr } = await adminSupabase
+            .from('profiles')
+            .update({ drive_folder_id: drive.folderId })
+            .eq('id', agentProfile.id);
+          if (cacheErr) {
+            console.warn('[Agents POST] Failed to cache drive_folder_id (non-blocking):', cacheErr.message);
+          } else {
+            agentProfile.drive_folder_id = drive.folderId;
+          }
+        }
+      } catch (driveErr) {
+        console.warn('[Agents POST] Drive folder creation failed (non-blocking):', driveErr?.message || driveErr);
       }
     }
 

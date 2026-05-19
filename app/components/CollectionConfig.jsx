@@ -777,6 +777,36 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )}
               </div>
             )}
+            {/* Silk-only collections (cord:'silk', no cord-type choice) still
+                need Thin/Thick before colors can be added. */}
+            {!hasCordOptions && col.cord === 'silk' && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  Thickness
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['Thin', 'Thick'].map((th) => (
+                    <button
+                      key={th}
+                      onClick={() => setSelectedSilkThickness(th)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        border: selectedSilkThickness === th ? `1px solid ${colors.inkPlum}` : '1px solid #ddd',
+                        background: selectedSilkThickness === th ? '#f3edf6' : '#fff',
+                        color: selectedSilkThickness === th ? colors.inkPlum : '#666',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {th}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               {t('collection.clickColorsToAdd')}
             </div>

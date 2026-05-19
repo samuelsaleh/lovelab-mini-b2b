@@ -446,9 +446,11 @@ export default function AdminAgentDetailsPage() {
   const initials = (agent?.full_name || agent?.email || '?')
     .split(/[\s.@]+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('');
 
+  // Phase 22 (2026-05-13): Reports tab merged into Financials so mom sees
+  // "ready to pay" + "send report now" + commission history on a single
+  // screen, instead of bouncing between two tabs to do one workflow.
   const TABS = [
     { id: 'financials', label: 'Financials' },
-    { id: 'reports', label: 'Reports' },
     { id: 'consignment', label: `Consignment (${agentConsignmentOrders.length})` },
     { id: 'organisation', label: 'Organisation' },
     { id: 'documents', label: 'Documents' },
@@ -684,6 +686,18 @@ export default function AdminAgentDetailsPage() {
             */}
             {activeTab === 'financials' && (
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+                {/* Phase 22 (2026-05-13) — Commission report controls live
+                    here now (was its own tab). The card sits between the
+                    KPI strip above and Commission History below so mom can
+                    see how much is "ready to pay" right above the
+                    "Send report now" button. */}
+                {agent && (
+                  <CommissionReportsCard
+                    agentId={agent.id}
+                    agentName={agent.full_name || agent.email}
+                  />
+                )}
+
                 {/* Commission */}
                 <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
@@ -853,16 +867,10 @@ export default function AdminAgentDetailsPage() {
               </div>
             )}
 
-            {/* ── Tab: Reports ──────────────────────────────────────────────── */}
-            {/*
-              Phase 19/B7 — Monthly commission Excel + email + Drive archive.
-              All heavy lifting (build, upload, email) happens server-side
-              via /api/commission-reports/generate. This card is just the
-              control surface: pick a month, click Generate, see history.
-            */}
-            {activeTab === 'reports' && agent && (
-              <CommissionReportsCard agentId={agent.id} agentName={agent.full_name || agent.email} />
-            )}
+            {/* Tab: Reports — REMOVED (Phase 22, 2026-05-13). The
+                CommissionReportsCard now renders inside the Financials tab
+                above. Any old `?tab=reports` deep-links fall through to
+                the default tab ('financials'). */}
 
             {/* ── Tab: Consignment ──────────────────────────────────────────── */}
             {activeTab === 'consignment' && (

@@ -29,6 +29,10 @@ const PRICE_LIST_FILES = [
   { name: 'Pricelist_LoveLab_2026.pdf', path: '/Price Lists/Pricelist_LoveLab_2026.pdf' },
 ]
 
+const EAN_FILES = [
+  { name: 'Final-GS1-Code.xlsx', path: '/Ean Codes/Final-GS1-Code.xlsx' },
+]
+
 // Controlled folder: selection state lives in the parent so a single email
 // can bundle picks from Catalogue + Packs + Price List together.
 function DownloadFolder({ label, files, selected, onToggle }) {
@@ -169,7 +173,7 @@ export default function ResourcesCard({ isAdmin = false }) {
 
   // Flatten all folders into a single lookup so we can resolve selected paths
   // back to {name, path} regardless of which folder they came from.
-  const allFiles = [...CATALOGUE_FILES, ...PACKS_FILES, ...PRICE_LIST_FILES]
+  const allFiles = [...CATALOGUE_FILES, ...PACKS_FILES, ...PRICE_LIST_FILES, ...EAN_FILES]
   const selectedFiles = allFiles.filter(f => selected.has(f.path))
   const count = selectedFiles.length
   const sendLabel = count === 1
@@ -181,6 +185,7 @@ export default function ResourcesCard({ isAdmin = false }) {
   if (selectedFiles.some(f => CATALOGUE_FILES.includes(f))) folderLabels.push(t('resources.catalogue'))
   if (selectedFiles.some(f => PACKS_FILES.includes(f)))     folderLabels.push(t('resources.packs'))
   if (selectedFiles.some(f => PRICE_LIST_FILES.includes(f))) folderLabels.push(t('resources.priceList'))
+  if (selectedFiles.some(f => EAN_FILES.includes(f)))       folderLabels.push(t('resources.eanCodes'))
   const folderSummary = folderLabels.join(' · ')
 
   return (
@@ -266,6 +271,7 @@ export default function ResourcesCard({ isAdmin = false }) {
                 <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={PACKS_FILES}     selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
 
                 {count > 0 && (
                   <button

@@ -1,7 +1,7 @@
 # LoveLab Mini B2B - Project Resume
 
-> **Last Updated:** February 10, 2026  
-> **Current Phase:** Phases 1-4 Complete, Phase 5 (Google Drive Sync) Pending  
+> **Last Updated:** May 10, 2026  
+> **Current Phase:** Phase 20 Complete (Custom Packs + EAN folder + Closure type). All prior phases (1–19) shipped.  
 > **Status:** Development Server Running
 
 ---
@@ -78,6 +78,14 @@ The sales team needs a modern, mobile-friendly tool to:
 ### Phase 6: External API (FUTURE)
 - Create authenticated API endpoints
 - API key management for internal Laravel system
+
+### Phase 20: Custom Packs + EAN Codes + Closure Type ✅ COMPLETE (May 10, 2026)
+**Three product features shipped together. Detailed log in `~/Obsidian Brain/claude-brain/memory/hot.md`.**
+
+- **Custom Packs (admin global + agent private):** New `public.packs` Supabase table with RLS policies (`scope IN ('global','private')`, `fixed_total >= 970` check, `is_seed` flag for the legacy 4 packs). New API routes `/api/packs` (GET/POST) and `/api/packs/[id]` (PUT/DELETE) with €970 minimum + scope guards (agents can only create private; admins can create global; seed packs are undeletable). New `PackBuilderModal` component with live total + scope toggle (admin only). `BuilderPage` now fetches packs from the DB instead of using hardcoded constants; agent-private packs render with a purple "Mine" badge and a hover `×` delete affordance for non-seed packs the user owns. Visibility is strict: agent-private packs are invisible to other agents AND to admins. Migration: `database-migrations/supabase-phase20-custom-packs.sql` (must be run in Supabase SQL editor before deploy).
+- **EAN Codes folder:** New 4th `<DownloadFolder>` in `ResourcesCard` linking to `public/Ean Codes/Final-GS1-Code.xlsx`. Translations added for en/fr/it/de.
+- **Bracelet closure type:** CUTY and CUBIX collections now expose a Braided / Non-braided selector in the builder (`CollectionConfig`) and the order form (`OrderForm`). Validated server-side via `lib/orderRowValidation.js` and propagated through `calculateQuote`. AI advisor prompt updated to ask about closure for these two collections.
+- **Tests:** 100 new passing tests across 7 new/updated suites; added `applyPack` regression to ensure DB-loaded packs produce identical configs to the legacy hardcoded path. Pre-existing failing suites (DocumentsSidebar, ReconcileConsignmentModal, BuilderPage Multi-select, CollectionConfig color palette) are unrelated and predate this phase.
 - Endpoints for quotes, orders, clients data
 - Webhook support for real-time updates
 

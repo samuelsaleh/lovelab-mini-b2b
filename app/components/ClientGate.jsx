@@ -220,11 +220,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       address: '',
       city: '',
       zip: '',
-      vat: '',
-      vatValid: null,
-      vatStatus: null,
-      vatErrorCode: null,
-      vatMessageKey: null,
+      // Only clear vat if it came from a previous lookup. A manually typed
+      // VAT should survive a country re-selection.
+      ...(perplexityDone ? { vat: '', vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null } : {}),
     }))
     setViesResult(null)
     setPerplexityDone(false)
@@ -380,7 +378,17 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           <input
             value={client.company}
             onChange={(e) => {
-              setClient((c) => ({ ...c, company: e.target.value, address: '', city: '', zip: '', vat: '', vatValid: null }))
+              // Clear address/vat only if they came from a previous lookup
+              // (perplexityDone). If the user typed the VAT manually before
+              // touching company, keep it — don't wipe it on every keystroke.
+              setClient((c) => ({
+                ...c,
+                company: e.target.value,
+                address: '',
+                city: '',
+                zip: '',
+                ...(perplexityDone ? { vat: '', vatValid: null, vatStatus: null } : {}),
+              }))
               setViesResult(null)
               setPerplexityDone(false)
             }}

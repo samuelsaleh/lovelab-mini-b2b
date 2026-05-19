@@ -16,12 +16,17 @@
  *                 drive_view_link, storage_path,
  *                 trigger_source, created_at }, ...] }
  *
- * Access: admin only.
+ * Access:
+ *   - Admins   → can list any agent's reports (filter via ?agent_id=).
+ *   - Agents   → can only list THEIR OWN reports. The agent_id filter is
+ *                forced to their own user.id; an attempt to read another
+ *                agent's reports returns an empty list (no leak, no 403).
  */
 
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { resolveAgentIds } from '@/app/api/_lib/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONTH_REGEX = /^\d{4}-\d{2}$/;
@@ -64,24 +69,37 @@ export async function GET(request) {
     const adminSupabase = createAdminClient();
     const { data: profile } = await adminSupabase
       .from('profiles')
-      .select('role')
+      .select('role, is_agent')
       .eq('id', user.id)
       .single();
-    if (profile?.role !== 'admin') {
+
+    const isAdmin = profile?.role === 'admin';
+    const isAgent = profile?.is_agent === true;
+    if (!isAdmin && !isAgent) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const agentId = searchParams.get('agent_id');
+    const agentIdParam = searchParams.get('agent_id');
     const month = searchParams.get('month');
     const limitRaw = Number(searchParams.get('limit') || '50');
     const limit = Math.min(Math.max(Math.floor(limitRaw) || 50, 1), 200);
 
-    if (agentId && !UUID_REGEX.test(agentId)) {
+    if (agentIdParam && !UUID_REGEX.test(agentIdParam)) {
       return NextResponse.json({ error: 'agent_id must be UUID' }, { status: 400 });
     }
     if (month && !MONTH_REGEX.test(month)) {
       return NextResponse.json({ error: 'month must be YYYY-MM' }, { status: 400 });
+    }
+
+    // Agents are confined to their own reports. We resolve all profile IDs
+    // sharing the same email (handles re-invited agents) so a fresh re-add
+    // still surfaces the historical reports.
+    let agentIdFilter = null;
+    if (isAdmin) {
+      agentIdFilter = agentIdParam || null;
+    } else {
+      agentIdFilter = user.id;
     }
 
     let q = adminSupabase
@@ -90,7 +108,10 @@ export async function GET(request) {
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (agentId) q = q.eq('agent_id', agentId);
+    if (agentIdFilter) {
+      const allIds = await resolveAgentIds(adminSupabase, agentIdFilter);
+      q = allIds.length === 1 ? q.eq('agent_id', allIds[0]) : q.in('agent_id', allIds);
+    }
     if (month) q = q.eq('period_key', month);
 
     const { data, error } = await q;
