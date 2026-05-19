@@ -216,6 +216,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       : mkColorConfig(colorName, 1)
     if (hasCordOptions && selectedCordType) {
       newCfg = { ...newCfg, cordType: selectedCordType }
+    } else if (!hasCordOptions && col.cord === 'silk') {
+      // Silk-only collections have no cord-type toggle but still need
+      // cordType on the config so packBuild.js can render the material
+      // field as "silk (Thin)" / "silk (Thick)" in the order form.
+      newCfg = { ...newCfg, cordType: 'silk' }
     }
     if (col.cord === 'silk' || selectedCordType === 'silk') {
       newCfg = { ...newCfg, thickness: selectedSilkThickness || null }
