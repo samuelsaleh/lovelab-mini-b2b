@@ -54,6 +54,14 @@ describe('app/App.jsx — pricelistYear restoration', () => {
     expect(branch[0]).toMatch(/formState\?\.\s*pricelistYear|formState\.pricelistYear/)
   })
 
+  it('editInBuilder URL branch loads saved rows into builder lines', () => {
+    const src = readApp()
+    const branch = src.match(/editInBuilderId[\s\S]*?setActiveTab\('builder'\)/)
+    expect(branch).not.toBeNull()
+    expect(branch[0]).toMatch(/builderLinesFromFormRows\(formState\.rows/)
+    expect(branch[0]).toMatch(/setLines/)
+  })
+
   it('handleDuplicate also restores pricelistYear for visual consistency', () => {
     const src = readApp()
     const match = src.match(/handleDuplicate\s*=\s*useCallback\([\s\S]*?\}\s*,\s*\[[^\]]*\]\)/)
@@ -80,5 +88,13 @@ describe('app/components/OrderForm.jsx — draft round-trip', () => {
     expect(match).not.toBeNull()
     const deps = match[1]
     expect(deps).toMatch(/pricelistYear/)
+  })
+
+  it('row price lookup callback depends on pricelistYear', () => {
+    const src = readOrderForm()
+    const match = src.match(/const updateCell = useCallback\([\s\S]*?\}\s*,\s*\[([^\]]*)\]\)/)
+    expect(match).not.toBeNull()
+    expect(match[0]).toMatch(/getPrice\(col, caratIdx, certKey, pricelistYear\)/)
+    expect(match[1]).toMatch(/pricelistYear/)
   })
 })

@@ -1138,7 +1138,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     })
     // Clear override when user edits table
     setFinalTotalOverride(null)
-  }, [])
+  }, [pricelistYear])
 
   const addPage = useCallback(() => {
     setRows(prev => {

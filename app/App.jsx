@@ -38,6 +38,79 @@ const AI_CHIPS = [
   'What can I get for €1200?',
 ]
 
+export function builderLinesFromFormRows(formRows) {
+  if (!formRows || formRows.length === 0) return []
+
+  const byCollection = new Map()
+  for (const row of formRows) {
+    if (!row.collection || !row.quantity) continue
+    const col = COLLECTIONS.find(c => c.label === row.collection)
+    if (!col) continue
+    if (!byCollection.has(col.id)) byCollection.set(col.id, [])
+    byCollection.get(col.id).push(row)
+  }
+
+  return Array.from(byCollection.entries()).map(([colId, rows]) => {
+    const col = COLLECTIONS.find(c => c.id === colId)
+    const colorConfigs = rows.map(row => {
+      const caratIdx = col.carats.findIndex(c => c === row.carat)
+      let housing = row.bpColor || null
+      let housingType = row.setting ? row.setting.toLowerCase() : null
+      if (housingType && housing && (col.housing === 'shapyShine' || col.housing === 'matchy')) {
+        housing = `${row.setting} ${housing}`
+      }
+      if (!housingType && housing) {
+        if (housing.startsWith('Bezel ')) {
+          housingType = 'bezel'
+        } else if (housing.startsWith('Prong ')) {
+          housingType = 'prong'
+        }
+      }
+      let multiAttached = null
+      if (col.housing === 'multiThree') {
+        if (row.setting === 'F') multiAttached = true
+        else if (row.setting === 'LO') multiAttached = false
+        else if (housing) multiAttached = HOUSING.multiThree.attached.includes(housing)
+      }
+      let cordType = null
+      let thickness = null
+      if (row.material) {
+        const m = row.material.match(/^(.+?)\s*\((\w+)\)\s*$/)
+        if (m) {
+          const label = m[1].trim()
+          cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === label)?.[0] || label.toLowerCase()
+          thickness = m[2]
+        } else {
+          cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === row.material)?.[0] || row.material.toLowerCase()
+        }
+      }
+      const priceOverride = row.unitOverride != null ? row.unitOverride : null
+      const certType = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : null
+      const rawClosureType = row.closure ?? row.closureType
+      const closureType = col.hasClosure && (rawClosureType === 'braided' || rawClosureType === 'nonBraided')
+        ? rawClosureType
+        : null
+      return {
+        id: uniqueId(),
+        colorName: row.colorCord || '',
+        qty: parseInt(row.quantity) || 1,
+        caratIdx: caratIdx >= 0 ? caratIdx : null,
+        housing,
+        housingType,
+        shape: row.shape || null,
+        size: row.size || null,
+        multiAttached,
+        cordType,
+        thickness,
+        priceOverride,
+        certType,
+        closureType,
+      }
+    })
+    return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
+  })
+}
+
 export default function App() {
   const { user, profile, profileMissing, profileError, loading: authLoading, refreshProfile, signOut } = useAuth()
   const { t } = useI18n()
@@ -331,7 +404,10 @@ export default function App() {
           if (docYear != null) setPricelistYear(docYear)
           // Load formState rows into builder if available
           if (data.document.metadata?.formState) {
-            setSavedFormState(data.document.metadata.formState)
+            const formState = data.document.metadata.formState
+            setSavedFormState(formState)
+            const builderLines = builderLinesFromFormRows(formState.rows || [])
+            setLines(builderLines.length > 0 ? builderLines : [mkLine()])
           }
           setActiveTab('builder')
         })
@@ -378,78 +454,11 @@ export default function App() {
     }
 
     // Convert OrderForm rows back to builder lines
-    // Group by collection
-    const byCollection = new Map()
-    for (const row of formRows) {
-      if (!row.collection || !row.quantity) continue
-      const col = COLLECTIONS.find(c => c.label === row.collection)
-      if (!col) continue
-      if (!byCollection.has(col.id)) byCollection.set(col.id, [])
-      byCollection.get(col.id).push(row)
-    }
-    
-    // Build lines array
-    const newLines = Array.from(byCollection.entries()).map(([colId, rows]) => {
-      const col = COLLECTIONS.find(c => c.id === colId)
-      const colorConfigs = rows.map(row => {
-        const caratIdx = col.carats.findIndex(c => c === row.carat)
-        let housing = row.bpColor || null
-        let housingType = row.setting ? row.setting.toLowerCase() : null
-        // For shapyShine/matchy the builder stores housing as "Bezel Yellow" / "Prong Yellow"
-        // In the order form bpColor is stripped (just "Yellow") and setting holds "Bezel"/"Prong"
-        // Reconstruct the prefixed value the builder expects
-        if (housingType && housing && (col.housing === 'shapyShine' || col.housing === 'matchy')) {
-          housing = `${row.setting} ${housing}`
-        }
-        // Fallback: detect prefix in case bpColor still has it (legacy)
-        if (!housingType && housing) {
-          if (housing.startsWith('Bezel ')) {
-            housingType = 'bezel'
-          } else if (housing.startsWith('Prong ')) {
-            housingType = 'prong'
-          }
-        }
-        let multiAttached = null
-        if (col.housing === 'multiThree') {
-          if (row.setting === 'F') multiAttached = true
-          else if (row.setting === 'LO') multiAttached = false
-          else if (housing) multiAttached = HOUSING.multiThree.attached.includes(housing)
-        }
-        let cordType = null
-        let thickness = null
-        if (row.material) {
-          const m = row.material.match(/^(.+?)\s*\((\w+)\)\s*$/)
-          if (m) {
-            const label = m[1].trim()
-            cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === label)?.[0] || label.toLowerCase()
-            thickness = m[2]
-          } else {
-            cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === row.material)?.[0] || row.material.toLowerCase()
-          }
-        }
-        const priceOverride = row.unitOverride != null ? row.unitOverride : null
-        const certType = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : null
-        return {
-          id: uniqueId(),
-          colorName: row.colorCord || '',
-          qty: parseInt(row.quantity) || 1,
-          caratIdx: caratIdx >= 0 ? caratIdx : null,
-          housing,
-          housingType,
-          shape: row.shape || null,
-          size: row.size || null,
-          multiAttached,
-          cordType,
-          thickness,
-          priceOverride,
-          certType,
-        }
-      })
-      return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
-    })
-    
+    const newLines = builderLinesFromFormRows(formRows)
     if (newLines.length > 0) {
       setLines(newLines)
+    } else {
+      setLines([mkLine()])
     }
     setShowOrderForm(false)
     setActiveTab('builder')
@@ -658,6 +667,9 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           const formState = parsed.formState ?? parsed
           const documentId = parsed.documentId ?? null
+          if (formState?.pricelistYear != null) {
+            setPricelistYear(formState.pricelistYear)
+          }
           setSavedFormState(formState)
           setOrderFormQuote(null)
           if (documentId) setEditingDocumentId(documentId)
