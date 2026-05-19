@@ -84,8 +84,11 @@ function emptyRow(no) {
 }
 
 function buildMaterial(cordType, thickness) {
-  if (!cordType) return ''
-  const label = CORD_TYPE_LABELS[cordType] || cordType
+  // Fallback: if cordType is missing but thickness is set (e.g. silk-only
+  // configs saved before the cordType fix), treat it as silk.
+  const ct = cordType || (thickness ? 'silk' : null)
+  if (!ct) return ''
+  const label = CORD_TYPE_LABELS[ct] || ct
   if (thickness) return `${label} (${thickness})`
   return label
 }
