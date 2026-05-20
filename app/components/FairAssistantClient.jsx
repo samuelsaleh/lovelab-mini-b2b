@@ -30,7 +30,16 @@ export default function FairAssistantClient() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [busyAction, setBusyAction] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(mql.matches)
+    update()
+    mql.addEventListener('change', update)
+    return () => mql.removeEventListener('change', update)
+  }, [])
 
   const loadBatches = useCallback(async () => {
     const res = await fetch('/api/fair-assistant/batches')
@@ -241,18 +250,18 @@ export default function FairAssistantClient() {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 12px' : '24px 20px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Fair Assistant</h1>
+            <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Fair Assistant</h1>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: colors.lovelabMuted }}>Upload cards, review leads, send branded outreach emails.</p>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, alignItems: isMobile ? 'stretch' : 'center' }}>
             <select
               value={activeBatchId || ''}
               onChange={(e) => setActiveBatchId(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, minWidth: 220 }}
+              style={{ padding: '12px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, minWidth: isMobile ? 'auto' : 220, fontSize: 15, background: '#fff' }}
             >
               <option value="">Select batch...</option>
               {batches.map((b) => (
@@ -263,12 +272,12 @@ export default function FairAssistantClient() {
               value={newBatchName}
               onChange={(e) => setNewBatchName(e.target.value)}
               placeholder="New fair name"
-              style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body }}
+              style={{ padding: '12px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 15 }}
             />
             <button
               onClick={handleCreateBatch}
               disabled={creating || !newBatchName.trim()}
-              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+              style={{ padding: '12px 16px', minHeight: 44, borderRadius: 8, border: 'none', background: newBatchName.trim() ? colors.inkPlum : '#c5b9cf', color: '#fff', fontWeight: 600, cursor: newBatchName.trim() ? 'pointer' : 'not-allowed', fontFamily: fonts.body, fontSize: 15 }}
             >
               + New batch
             </button>
@@ -286,15 +295,15 @@ export default function FairAssistantClient() {
           <div style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted }}>Create or select a batch to begin.</div>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4, alignItems: 'center' }}>
               {TABS.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   style={{
-                    padding: '8px 16px', borderRadius: 20, border: `1px solid ${tab === t.id ? colors.inkPlum : colors.border}`,
+                    padding: '10px 18px', minHeight: 40, borderRadius: 20, border: `1px solid ${tab === t.id ? colors.inkPlum : colors.border}`,
                     background: tab === t.id ? colors.inkPlum : '#fff', color: tab === t.id ? '#fff' : colors.text,
-                    fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                    fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 14, whiteSpace: 'nowrap', flexShrink: 0,
                   }}
                 >
                   {t.label}
@@ -308,18 +317,43 @@ export default function FairAssistantClient() {
             </div>
 
             {tab === 'upload' && (
-              <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 24 }}>
-                <p style={{ marginTop: 0, color: colors.textLight }}>Select photos from your phone or computer. Each image is uploaded to Google Drive and processed by your existing automation.</p>
+              <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: isMobile ? 16 : 24 }}>
+                <p style={{ marginTop: 0, color: colors.textLight, fontSize: 14 }}>Snap or pick business card photos. Each one is uploaded to Drive and processed automatically.</p>
+
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   multiple
                   onChange={(e) => handleUploadFiles(e.target.files)}
-                  style={{ display: 'block', marginBottom: 12 }}
+                  style={{ display: 'none' }}
                 />
-                {uploading && <p style={{ color: colors.inkPlum }}>Uploading...</p>}
-                <p style={{ fontSize: 12, color: colors.lovelabMuted }}>{images.length} images in this batch</p>
+
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, marginBottom: 16 }}>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    style={{
+                      flex: 1, padding: isMobile ? '20px 16px' : '16px 24px',
+                      minHeight: 64, borderRadius: 12, border: 'none',
+                      background: uploading ? '#c5b9cf' : colors.inkPlum, color: '#fff',
+                      fontWeight: 700, fontSize: 16, cursor: uploading ? 'wait' : 'pointer',
+                      fontFamily: fonts.body, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    }}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                    {uploading ? 'Uploading…' : 'Take / pick photos'}
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: colors.lovelabMuted, borderTop: `1px solid ${colors.borderLight || colors.border}`, paddingTop: 12 }}>
+                  <span><strong style={{ color: colors.inkPlum, fontSize: 16 }}>{images.length}</strong> photo{images.length === 1 ? '' : 's'} in this batch</span>
+                  <span>{batch?.total_leads || 0} lead{(batch?.total_leads || 0) === 1 ? '' : 's'} extracted</span>
+                </div>
               </div>
             )}
 
