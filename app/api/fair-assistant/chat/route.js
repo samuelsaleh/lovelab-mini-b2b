@@ -29,6 +29,34 @@ Paragraph1: ...
 Paragraph2: ...
 Signoff: ...`;
 
+// GET — load the persisted chat history for a batch.
+export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'fair-chat' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const { searchParams } = new URL(request.url);
+  const batchId = searchParams.get('batchId');
+  if (!batchId) {
+    return NextResponse.json({ messages: [] });
+  }
+
+  const { data, error } = await auth.adminSupabase
+    .from('fair_chat_messages')
+    .select('id, role, content, created_at')
+    .eq('batch_id', batchId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[fair-chat GET]', error.message);
+    return NextResponse.json({ error: 'Failed to load chat history' }, { status: 500 });
+  }
+
+  return NextResponse.json({ messages: data || [] });
+}
+
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'fair-chat' });
   if (rateLimitRes) return rateLimitRes;
@@ -39,6 +67,7 @@ export async function POST(request) {
   const body = await request.json();
   const messages = body.messages;
   const context = body.context || {};
+  const batchId = context.batch?.id || body.batchId || null;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
@@ -55,9 +84,58 @@ export async function POST(request) {
       maxTokens: 1200,
     });
 
+    // Persist the most-recent user turn + the assistant's reply. We rely on
+    // the client to keep the in-flight conversation in messages[], so we only
+    // need to append the LAST user message and the new assistant response —
+    // earlier turns are already in the DB from prior POSTs.
+    if (batchId) {
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      const rowsToInsert = [];
+      if (lastUser?.content) {
+        rowsToInsert.push({ batch_id: batchId, role: 'user', content: String(lastUser.content) });
+      }
+      rowsToInsert.push({ batch_id: batchId, role: 'assistant', content: text });
+      if (rowsToInsert.length) {
+        const { error: insErr } = await auth.adminSupabase
+          .from('fair_chat_messages')
+          .insert(rowsToInsert);
+        if (insErr) {
+          // Persistence failure should not fail the chat — log and continue.
+          console.error('[fair-chat persist]', insErr.message);
+        }
+      }
+    }
+
     return NextResponse.json({ message: text });
   } catch (err) {
     console.error('[fair-chat]', err.message);
     return NextResponse.json({ error: err.message || 'Chat failed' }, { status: 502 });
   }
+}
+
+// DELETE — wipe a batch's chat history (useful when starting fresh).
+export async function DELETE(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'fair-chat' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const { searchParams } = new URL(request.url);
+  const batchId = searchParams.get('batchId');
+  if (!batchId) {
+    return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
+  }
+
+  const { error } = await auth.adminSupabase
+    .from('fair_chat_messages')
+    .delete()
+    .eq('batch_id', batchId);
+
+  if (error) {
+    console.error('[fair-chat DELETE]', error.message);
+    return NextResponse.json({ error: 'Failed to clear chat' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

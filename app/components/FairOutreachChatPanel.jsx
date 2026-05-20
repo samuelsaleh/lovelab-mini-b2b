@@ -18,21 +18,39 @@ function parseDraftFromAssistant(text) {
   }
 }
 
-export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCount, onApplyDraft }) {
+export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCount, onApplyDraft, onSaveAsTemplate }) {
   const mobile = useIsMobile()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
+  // Load persisted history when the panel opens for this batch. This is the
+  // "memory" — closing and reopening the panel keeps the conversation visible,
+  // and the next message Claude sees still has the full prior context.
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return
+    setInput('')
+    if (!batch?.id) {
       setMessages([])
-      setInput('')
-      setTimeout(() => inputRef.current?.focus(), 300)
+      return
     }
-  }, [isOpen])
+    let cancelled = false
+    setLoadingHistory(true)
+    fetch(`/api/fair-assistant/chat?batchId=${encodeURIComponent(batch.id)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        const rows = (data.messages || []).map((m) => ({ role: m.role, content: m.content }))
+        setMessages(rows)
+        setTimeout(() => inputRef.current?.focus(), 300)
+      })
+      .catch(() => { if (!cancelled) setMessages([]) })
+      .finally(() => { if (!cancelled) setLoadingHistory(false) })
+    return () => { cancelled = true }
+  }, [isOpen, batch?.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -67,9 +85,30 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
     }
   }, [input, loading, messages, batch, leadCount])
 
+  const handleClear = useCallback(async () => {
+    if (!batch?.id) { setMessages([]); return }
+    if (!window.confirm('Clear chat history for this fair? This cannot be undone.')) return
+    try {
+      await fetch(`/api/fair-assistant/chat?batchId=${encodeURIComponent(batch.id)}`, { method: 'DELETE' })
+    } catch {}
+    setMessages([])
+  }, [batch?.id])
+
   const latestAssistant = [...messages].reverse().find((m) => m.role === 'assistant')?.content
   const parsedDraft = latestAssistant ? parseDraftFromAssistant(latestAssistant) : null
   const canApply = parsedDraft && (parsedDraft.headline || parsedDraft.paragraph1)
+
+  const applyDraft = useCallback(() => {
+    if (!parsedDraft) return
+    onApplyDraft(Object.fromEntries(Object.entries(parsedDraft).filter(([, v]) => v)))
+  }, [parsedDraft, onApplyDraft])
+
+  const applyAndSave = useCallback(async () => {
+    applyDraft()
+    if (onSaveAsTemplate) await onSaveAsTemplate({ silent: true })
+  }, [applyDraft, onSaveAsTemplate])
+
+  const fairLabel = batch?.fair_name || batch?.name || 'this fair'
 
   return (
     <>
@@ -79,13 +118,26 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
         background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column',
         transform: isOpen ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '16px 20px', background: colors.inkPlum, color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
-          <strong style={{ fontFamily: fonts.body }}>Outreach Assistant</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>×</button>
+        <div style={{ padding: '16px 20px', background: colors.inkPlum, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ fontFamily: fonts.body, display: 'block' }}>Outreach Assistant</strong>
+            <span style={{ fontSize: 11, opacity: 0.8, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fairLabel}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {messages.length > 0 && (
+              <button
+                onClick={handleClear}
+                title="Clear chat history for this fair"
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: fonts.body }}
+              >Clear</button>
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>×</button>
+          </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-          {!messages.length && (
-            <p style={{ color: colors.lovelabMuted, fontSize: 13 }}>Ask Claude to draft or refine your fair follow-up email.</p>
+          {loadingHistory && <p style={{ fontSize: 12, color: colors.lovelabMuted }}>Loading conversation history…</p>}
+          {!loadingHistory && !messages.length && (
+            <p style={{ color: colors.lovelabMuted, fontSize: 13 }}>Ask Claude to draft or refine your fair follow-up email. Conversation is remembered between sessions for this fair.</p>
           )}
           {messages.map((m, i) => (
             <div key={i} style={{ marginBottom: 12, textAlign: m.role === 'user' ? 'right' : 'left' }}>
@@ -102,12 +154,18 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
           <div ref={bottomRef} />
         </div>
         {canApply && (
-          <div style={{ padding: '0 16px 8px' }}>
+          <div style={{ padding: '0 16px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
-              onClick={() => onApplyDraft(Object.fromEntries(Object.entries(parsedDraft).filter(([, v]) => v)))}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+              onClick={applyDraft}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
             >
               Use this draft
+            </button>
+            <button
+              onClick={applyAndSave}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+            >
+              💾 Use & save as template for {fairLabel}
             </button>
           </div>
         )}

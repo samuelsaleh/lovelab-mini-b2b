@@ -185,10 +185,14 @@ export default function FairAssistantClient() {
     } catch {}
   }, [])
 
-  const handleSaveAsTemplate = async () => {
+  const handleSaveAsTemplate = async (opts = {}) => {
     if (!batch) return
     const defaultName = batch.fair_name || batch.name || 'Untitled template'
-    const name = window.prompt('Name this template (e.g. "Vicenzaoro 2026 — shops"):', defaultName)
+    // When opts.silent is true (e.g. from the chat panel's "Use & save for fair"
+    // shortcut), skip the prompt and use the fair name directly.
+    const name = opts.silent
+      ? defaultName
+      : window.prompt('Name this template (e.g. "Vicenzaoro 2026 — shops"):', defaultName)
     if (!name || !name.trim()) return
     setError(null)
     try {
@@ -1027,6 +1031,7 @@ export default function FairAssistantClient() {
           setBatch((prev) => ({ ...prev, ...draft }))
           saveBatchFields(draft)
         }}
+        onSaveAsTemplate={handleSaveAsTemplate}
       />
     </div>
   )
