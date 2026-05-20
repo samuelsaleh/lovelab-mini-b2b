@@ -3,18 +3,21 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { sendEmail } from '@/lib/send-email';
 
-// Vercel Hobby functions have a ~10s wall-clock limit. Sending 100 emails
-// sequentially is too slow; with concurrency=8 and ~200ms per Resend call
-// we land around 2-3 seconds for typical batches. Cap each request at 75
-// drafts; the client can press Send again to drain the rest.
+// Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
+// the batch size, we time-box the loop: each worker checks an 8.5s deadline
+// before picking up another draft, and the response returns `remaining` so
+// the client can auto-loop until the queue is drained. This lets the user
+// press Send once even with hundreds of drafts queued.
 const CONCURRENCY = 8;
-const BATCH_LIMIT = 75;
+const TIME_BUDGET_MS = 8500;
+const HARD_LIMIT = 500; // safety: never load more than 500 drafts per request
 
-async function mapPool(items, limit, fn) {
+async function mapPoolWithDeadline(items, limit, deadlineAt, fn) {
   const results = new Array(items.length);
   let index = 0;
   async function worker() {
     while (index < items.length) {
+      if (Date.now() >= deadlineAt) return;
       const i = index++;
       results[i] = await fn(items[i], i);
     }
@@ -36,13 +39,16 @@ export async function POST(request) {
     return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
   }
 
+  const startedAt = Date.now();
+  const deadlineAt = startedAt + TIME_BUDGET_MS;
+
   // Pull this batch's draft_ready drafts together with their lead's email.
   const { data: drafts, error: draftsErr } = await auth.adminSupabase
     .from('fair_email_drafts')
     .select('id, subject, body_html, lead:fair_leads!inner(id, email, first_name, last_name, status)')
     .eq('batch_id', batchId)
     .eq('status', 'draft_ready')
-    .limit(BATCH_LIMIT);
+    .limit(HARD_LIMIT);
 
   if (draftsErr) {
     console.error('[fair-send] load drafts:', draftsErr.message);
@@ -62,7 +68,7 @@ export async function POST(request) {
   let failed = 0;
   let skipped = 0;
 
-  await mapPool(drafts, CONCURRENCY, async (draft) => {
+  await mapPoolWithDeadline(drafts, CONCURRENCY, deadlineAt, async (draft) => {
     const lead = draft.lead;
     const to = (lead?.email || '').trim();
 

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { verifyFairWebhookSecret } from '@/lib/fair-assistant/auth';
 import {
   computeLeadHash,
+  inferLeadType,
   normalizeLeadPayload,
   parseLeadCreatedCallback,
 } from '@/lib/fair-assistant/schemas';
@@ -52,6 +53,19 @@ export async function POST(request) {
   }
 
   const normalized = normalizeLeadPayload(lead || {});
+
+  // Auto-classify shop/agent/partner from OCR'd title/description/company.
+  // If n8n already explicitly sent a lead_type we trust that (normalizeLeadPayload
+  // returned it); otherwise infer from the card text. Default to 'shop'.
+  if (!normalized.lead_type) {
+    normalized.lead_type = inferLeadType({
+      title: normalized.title,
+      company: normalized.company,
+      description: lead?.description || lead?.notes || '',
+      ocrText: lead?.ocrText || lead?.rawText || '',
+    });
+  }
+
   const langs = languagesForCountry(normalized.country);
   const leadHash = computeLeadHash({
     email: normalized.email,

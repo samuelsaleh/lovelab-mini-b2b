@@ -100,6 +100,7 @@ export default function FairAssistantClient() {
   const [isMobile, setIsMobile] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(null)
   const [editingLead, setEditingLead] = useState(null)
+  const [savedTemplates, setSavedTemplates] = useState([])
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -135,7 +136,8 @@ export default function FairAssistantClient() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [loadBatches, activeBatchId])
+    loadSavedTemplates()
+  }, [loadBatches, activeBatchId, loadSavedTemplates])
 
   useEffect(() => {
     if (!activeBatchId) return
@@ -174,6 +176,73 @@ export default function FairAssistantClient() {
     }
     return [...set].sort()
   }, [leads])
+
+  const loadSavedTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/fair-assistant/saved-templates')
+      const data = await res.json()
+      if (res.ok) setSavedTemplates(data.templates || [])
+    } catch {}
+  }, [])
+
+  const handleSaveAsTemplate = async () => {
+    if (!batch) return
+    const defaultName = batch.fair_name || batch.name || 'Untitled template'
+    const name = window.prompt('Name this template (e.g. "Vicenzaoro 2026 — shops"):', defaultName)
+    if (!name || !name.trim()) return
+    setError(null)
+    try {
+      const res = await fetch('/api/fair-assistant/saved-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          lead_type: 'shop',
+          headline: batch.headline,
+          paragraph1: batch.paragraph1,
+          paragraph2: batch.paragraph2,
+          signoff: batch.signoff,
+          cta_line: batch.cta_line,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save template')
+      await loadSavedTemplates()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const handleApplySavedTemplate = async (templateId) => {
+    if (!templateId || !activeBatchId) return
+    const tpl = savedTemplates.find((t) => t.id === templateId)
+    if (!tpl) return
+    setError(null)
+    try {
+      await saveBatchFields({
+        headline: tpl.headline || '',
+        paragraph1: tpl.paragraph1 || '',
+        paragraph2: tpl.paragraph2 || '',
+        signoff: tpl.signoff || '',
+        cta_line: tpl.cta_line || '',
+      })
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const handleDeleteSavedTemplate = async (templateId) => {
+    if (!templateId) return
+    if (!window.confirm('Delete this saved template?')) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/fair-assistant/saved-templates/${templateId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete template')
+      await loadSavedTemplates()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   const handleSaveLead = async () => {
     if (!editingLead) return
@@ -388,14 +457,29 @@ export default function FairAssistantClient() {
       const genData = await genRes.json()
       if (!genRes.ok) throw new Error(genData.error || 'Generate failed')
 
-      const res = await fetch('/api/fair-assistant/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId: activeBatchId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Send failed')
-      await loadBatchDetails(activeBatchId)
+      // Auto-loop send until the server reports no drafts remaining. Each
+      // /send call drains as many as it can within the Vercel 10s function
+      // budget; for huge batches this just means a few extra round-trips.
+      let totals = { sent: 0, failed: 0, skipped: 0 }
+      let passes = 0
+      while (true) {
+        passes += 1
+        if (passes > 20) throw new Error('Aborted after 20 send passes — too many drafts; check Resend quota.')
+        const res = await fetch('/api/fair-assistant/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchId: activeBatchId }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Send failed')
+        totals.sent += data.sent || 0
+        totals.failed += data.failed || 0
+        totals.skipped += data.skipped || 0
+        await loadBatchDetails(activeBatchId)
+        if (!data.remaining) break
+        setBusyAction(`send-loop-${data.remaining}`) // UI sees "Sending... 47 remaining"
+      }
+      setError(`Done — ${totals.sent} sent, ${totals.failed} failed, ${totals.skipped} skipped (no email).`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -833,6 +917,51 @@ export default function FairAssistantClient() {
                       ✨ Chat with Claude
                     </button>
                   </div>
+
+                  {/* Saved templates — apply or save current as new */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, padding: 12, background: '#faf7fc', borderRadius: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em' }}>My saved templates</span>
+                    {savedTemplates.length === 0 ? (
+                      <span style={{ fontSize: 12, color: colors.lovelabMuted, flex: 1 }}>None yet. Save the current draft below.</span>
+                    ) : (
+                      <select
+                        onChange={(e) => { if (e.target.value) handleApplySavedTemplate(e.target.value); e.target.value = '' }}
+                        defaultValue=""
+                        style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 12, background: '#fff', flex: 1, minWidth: 180 }}
+                      >
+                        <option value="" disabled>Apply a saved template…</option>
+                        {savedTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}{t.lead_type !== 'shop' ? ` · ${t.lead_type}` : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      onClick={handleSaveAsTemplate}
+                      style={{ padding: '6px 12px', borderRadius: 16, border: `1px solid ${colors.inkPlum}`, background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+                    >
+                      💾 Save current as template
+                    </button>
+                    {savedTemplates.length > 0 && (
+                      <details style={{ flexBasis: '100%', marginTop: 4, fontSize: 11, color: colors.lovelabMuted }}>
+                        <summary style={{ cursor: 'pointer' }}>Manage saved templates ({savedTemplates.length})</summary>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+                          {savedTemplates.map((t) => (
+                            <li key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                              <span style={{ flex: 1 }}>{t.name} · <em style={{ color: colors.lovelabMuted }}>{t.lead_type}</em></span>
+                              <button
+                                onClick={() => handleApplySavedTemplate(t.id)}
+                                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body }}
+                              >Apply</button>
+                              <button
+                                onClick={() => handleDeleteSavedTemplate(t.id)}
+                                style={{ padding: '4px 8px', fontSize: 11, borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body }}
+                              >Delete</button>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
                   {[
                     { key: 'headline', label: 'Headline', kind: 'input' },
                     { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
@@ -864,7 +993,11 @@ export default function FairAssistantClient() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={runPreview} disabled={busyAction === 'preview'} style={actionBtnStyle}>{busyAction === 'preview' ? 'Loading...' : 'Preview email'}</button>
                     <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={actionBtnStyle}>{busyAction === 'generate' ? 'Generating...' : 'Generate all drafts'}</button>
-                    <button onClick={runSend} disabled={busyAction === 'send'} style={{ ...actionBtnStyle, background: colors.inkPlum, color: '#fff' }}>{busyAction === 'send' ? 'Sending...' : `Send to ${leads.length} leads`}</button>
+                    <button onClick={runSend} disabled={busyAction && busyAction.startsWith('send')} style={{ ...actionBtnStyle, background: colors.inkPlum, color: '#fff' }}>{
+                      busyAction === 'send' ? 'Sending…'
+                      : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} remaining`
+                      : `Send to ${leads.length} leads`
+                    }</button>
                   </div>
                 </div>
               </div>
