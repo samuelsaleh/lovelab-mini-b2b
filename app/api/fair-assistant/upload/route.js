@@ -46,7 +46,12 @@ export async function POST(request) {
     driveFile = await uploadFileToDrive(inboxFolderId, fileName, buffer, mimeType);
   } catch (err) {
     console.error('[fair-upload] Drive upload failed:', err.message);
-    return NextResponse.json({ error: 'Failed to upload to Google Drive' }, { status: 502 });
+    const reason = /credentials/i.test(err.message) ? 'Google Drive credentials are not configured on this deployment.'
+      : /401|invalid_grant/i.test(err.message) ? 'Google Drive token rejected — refresh token expired or revoked.'
+      : /404/i.test(err.message) ? 'Drive inbox folder not found — check FAIR_DRIVE_INBOX_FOLDER_ID and that the connected account has access.'
+      : /403/i.test(err.message) ? 'Drive denied the upload — the connected account does not have permission on the inbox folder.'
+      : `Drive upload failed: ${err.message}`;
+    return NextResponse.json({ error: reason }, { status: 502 });
   }
 
   const { data: imageRow, error: imageErr } = await auth.adminSupabase

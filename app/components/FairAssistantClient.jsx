@@ -12,6 +12,41 @@ const TABS = [
   { id: 'outreach', label: 'Outreach' },
 ]
 
+// Resize + JPEG-compress before upload so iPhone 10 MB photos
+// fit under Vercel's 4.5 MB serverless body limit. 1600 px is
+// well above what GPT-4 OCR needs to read a business card.
+async function compressImage(file, maxDim = 1600, quality = 0.85) {
+  if (!file.type.startsWith('image/')) return file
+  if (file.size <= 1.5 * 1024 * 1024) return file
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) { height = Math.round(height * (maxDim / width)); width = maxDim }
+        else { width = Math.round(width * (maxDim / height)); height = maxDim }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width; canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error('Canvas toBlob failed')); return }
+          const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+          resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }))
+        },
+        'image/jpeg',
+        quality
+      )
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')) }
+    img.src = url
+  })
+}
+
 export default function FairAssistantClient() {
   const [batches, setBatches] = useState([])
   const [activeBatchId, setActiveBatchId] = useState(null)
@@ -135,11 +170,19 @@ export default function FairAssistantClient() {
     setError(null)
     try {
       for (const file of fileList) {
+        const compressed = await compressImage(file).catch(() => file)
         const form = new FormData()
         form.append('batchId', activeBatchId)
-        form.append('file', file)
+        form.append('file', compressed)
         const res = await fetch('/api/fair-assistant/upload', { method: 'POST', body: form })
-        const data = await res.json()
+        let data
+        try {
+          data = await res.json()
+        } catch {
+          throw new Error(res.status === 413
+            ? `Image is too large (${Math.round(file.size / 1024 / 1024)} MB). Try a smaller photo.`
+            : `Server error (HTTP ${res.status}) uploading ${file.name}`)
+        }
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`)
       }
       await loadBatchDetails(activeBatchId)
