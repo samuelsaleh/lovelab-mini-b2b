@@ -12,39 +12,71 @@ const TABS = [
   { id: 'outreach', label: 'Outreach' },
 ]
 
-// Resize + JPEG-compress before upload so iPhone 10 MB photos
-// fit under Vercel's 4.5 MB serverless body limit. 1600 px is
-// well above what GPT-4 OCR needs to read a business card.
-async function compressImage(file, maxDim = 1600, quality = 0.85) {
-  if (!file.type.startsWith('image/')) return file
-  if (file.size <= 1.5 * 1024 * 1024) return file
+// Vercel's serverless body limit is 4.5 MB. iPhone photos are 5-10 MB
+// and HEIC images can be even larger. Run multiple compression passes
+// of increasing aggression until we land under 3 MB (safety margin)
+// or run out of options. 1280 px is still well above what GPT-4 OCR
+// needs to read a business card.
+async function loadBitmap(file) {
+  if (typeof createImageBitmap === 'function') {
+    try { return await createImageBitmap(file) } catch {}
+  }
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      let { width, height } = img
-      if (width > maxDim || height > maxDim) {
-        if (width >= height) { height = Math.round(height * (maxDim / width)); width = maxDim }
-        else { width = Math.round(width * (maxDim / height)); height = maxDim }
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width; canvas.height = height
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error('Canvas toBlob failed')); return }
-          const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
-          resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }))
-        },
-        'image/jpeg',
-        quality
-      )
-    }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')) }
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed (unsupported format?)')) }
     img.src = url
   })
+}
+
+async function compressPass(file, bitmap, maxDim, quality) {
+  let { width, height } = bitmap
+  if (!width || !height) throw new Error('Image has zero dimensions')
+  if (width > maxDim || height > maxDim) {
+    const scale = Math.min(maxDim / width, maxDim / height)
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(bitmap, 0, 0, width, height)
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error('Canvas toBlob returned null')); return }
+        const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+        resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }))
+      },
+      'image/jpeg',
+      quality
+    )
+  })
+}
+
+async function compressImage(file) {
+  if (!file.type.startsWith('image/')) return file
+  // Even small files can be HEIC and reject from the server — always compress
+  // unless the file is already a small JPEG/PNG.
+  if (file.size <= 800 * 1024 && /jpeg|jpg|png/i.test(file.type)) return file
+
+  const bitmap = await loadBitmap(file)
+  const passes = [
+    { maxDim: 1600, quality: 0.85 },
+    { maxDim: 1280, quality: 0.75 },
+    { maxDim: 1024, quality: 0.65 },
+    { maxDim: 800,  quality: 0.55 },
+    { maxDim: 640,  quality: 0.5  },
+  ]
+  let last = null
+  for (const opts of passes) {
+    last = await compressPass(file, bitmap, opts.maxDim, opts.quality)
+    if (last.size <= 3 * 1024 * 1024) break
+  }
+  if (bitmap.close) bitmap.close()
+  return last
 }
 
 export default function FairAssistantClient() {
@@ -170,18 +202,31 @@ export default function FairAssistantClient() {
     setError(null)
     try {
       for (const file of fileList) {
-        const compressed = await compressImage(file).catch(() => file)
+        let toSend = file
+        let compressError = null
+        try {
+          toSend = await compressImage(file)
+        } catch (err) {
+          compressError = err.message
+        }
+        const origKB = Math.round(file.size / 1024)
+        const sentKB = Math.round(toSend.size / 1024)
         const form = new FormData()
         form.append('batchId', activeBatchId)
-        form.append('file', compressed)
+        form.append('file', toSend)
         const res = await fetch('/api/fair-assistant/upload', { method: 'POST', body: form })
         let data
         try {
           data = await res.json()
         } catch {
-          throw new Error(res.status === 413
-            ? `Image is too large (${Math.round(file.size / 1024 / 1024)} MB). Try a smaller photo.`
-            : `Server error (HTTP ${res.status}) uploading ${file.name}`)
+          if (res.status === 413) {
+            throw new Error(
+              compressError
+                ? `Photo too large after compression failed (${compressError}). Original ${origKB} KB. Try saving the photo as JPEG and re-uploading.`
+                : `Photo too large: sent ${sentKB} KB (from original ${origKB} KB) — Vercel limit is ~4.5 MB. Compression helped but not enough.`
+            )
+          }
+          throw new Error(`Server error (HTTP ${res.status}) uploading ${file.name}`)
         }
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`)
       }
