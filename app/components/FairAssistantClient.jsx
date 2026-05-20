@@ -98,6 +98,7 @@ export default function FairAssistantClient() {
   const [busyAction, setBusyAction] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(null)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -198,10 +199,15 @@ export default function FairAssistantClient() {
 
   const handleUploadFiles = async (fileList) => {
     if (!activeBatchId || !fileList?.length) return
+    const files = Array.from(fileList)
     setUploading(true)
     setError(null)
+    setUploadProgress({ done: 0, total: files.length, failed: 0 })
+    const failures = []
     try {
-      for (const file of fileList) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        setUploadProgress({ done: i, total: files.length, failed: failures.length })
         let toSend = file
         let compressError = null
         try {
@@ -214,29 +220,40 @@ export default function FairAssistantClient() {
         const form = new FormData()
         form.append('batchId', activeBatchId)
         form.append('file', toSend)
-        const res = await fetch('/api/fair-assistant/upload', { method: 'POST', body: form })
-        let data
         try {
-          data = await res.json()
-        } catch {
-          if (res.status === 413) {
-            throw new Error(
-              compressError
-                ? `Photo too large after compression failed (${compressError}). Original ${origKB} KB. Try saving the photo as JPEG and re-uploading.`
-                : `Photo too large: sent ${sentKB} KB (from original ${origKB} KB) — Vercel limit is ~4.5 MB. Compression helped but not enough.`
-            )
+          const res = await fetch('/api/fair-assistant/upload', { method: 'POST', body: form })
+          let data
+          try {
+            data = await res.json()
+          } catch {
+            if (res.status === 413) {
+              throw new Error(
+                compressError
+                  ? `compression failed (${compressError}); original ${origKB} KB`
+                  : `sent ${sentKB} KB (original ${origKB} KB); Vercel limit ~4.5 MB`
+              )
+            }
+            throw new Error(`HTTP ${res.status}`)
           }
-          throw new Error(`Server error (HTTP ${res.status}) uploading ${file.name}`)
+          if (!res.ok) throw new Error(data.error || 'upload failed')
+        } catch (err) {
+          failures.push({ name: file.name, error: err.message })
         }
-        if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`)
+        if (i % 3 === 2 || i === files.length - 1) await loadBatchDetails(activeBatchId)
       }
+      setUploadProgress({ done: files.length, total: files.length, failed: failures.length })
       await loadBatchDetails(activeBatchId)
-      setTab('leads')
-    } catch (err) {
-      setError(err.message)
+      if (failures.length) {
+        const summary = failures.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join(' · ')
+        const more = failures.length > 3 ? ` (+${failures.length - 3} more)` : ''
+        setError(`${failures.length} of ${files.length} failed — ${summary}${more}`)
+      } else if (files.length > 0) {
+        setTab('leads')
+      }
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+      setTimeout(() => setUploadProgress(null), 3000)
     }
   }
 
@@ -406,13 +423,12 @@ export default function FairAssistantClient() {
 
             {tab === 'upload' && (
               <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: isMobile ? 16 : 24 }}>
-                <p style={{ marginTop: 0, color: colors.textLight, fontSize: 14 }}>Snap or pick business card photos. Each one is uploaded to Drive and processed automatically.</p>
+                <p style={{ marginTop: 0, color: colors.textLight, fontSize: 14 }}>Pick photos from your library, the camera, or files — multi-select supported (you can grab the whole roll). Each one is uploaded to Drive and processed automatically.</p>
 
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   multiple
                   onChange={(e) => handleUploadFiles(e.target.files)}
                   style={{ display: 'none' }}
@@ -431,12 +447,35 @@ export default function FairAssistantClient() {
                     }}
                   >
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                      <circle cx="12" cy="13" r="4"/>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
                     </svg>
-                    {uploading ? 'Uploading…' : 'Take / pick photos'}
+                    {uploading
+                      ? (uploadProgress ? `Uploading ${uploadProgress.done + 1} of ${uploadProgress.total}…` : 'Uploading…')
+                      : 'Pick photos'}
                   </button>
                 </div>
+
+                {uploadProgress && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: colors.lovelabMuted, marginBottom: 4 }}>
+                      <span>
+                        {uploadProgress.done} of {uploadProgress.total} uploaded
+                        {uploadProgress.failed > 0 && <span style={{ color: '#dc2626' }}> · {uploadProgress.failed} failed</span>}
+                      </span>
+                      <span>{Math.round((uploadProgress.done / uploadProgress.total) * 100)}%</span>
+                    </div>
+                    <div style={{ height: 6, background: '#f1ecf3', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${(uploadProgress.done / uploadProgress.total) * 100}%`,
+                        background: colors.inkPlum,
+                        transition: 'width .2s',
+                      }} />
+                    </div>
+                  </div>
+                )}
 
                 {images.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
