@@ -438,6 +438,43 @@ export default function FairAssistantClient() {
                   </button>
                 </div>
 
+                {images.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Photos in this batch</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {images.map((img, i) => {
+                        const statusColor =
+                          img.status === 'processed' ? '#16a34a' :
+                          img.status === 'failed' ? '#dc2626' :
+                          img.status === 'processing' ? '#ca8a04' : colors.lovelabMuted
+                        const statusLabel =
+                          img.status === 'processed' ? '✓ done' :
+                          img.status === 'failed' ? '✗ failed' :
+                          img.status === 'processing' ? '⋯ processing' : img.status
+                        return (
+                          <div key={img.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, padding: '8px 10px', background: '#fafafa', borderRadius: 6 }}>
+                            <span style={{ color: colors.lovelabMuted, minWidth: 24 }}>#{i + 1}</span>
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.file_name || 'card.jpg'}</span>
+                            <span style={{ color: statusColor, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{statusLabel}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {images.some((i) => i.status === 'failed' && i.error) && (
+                      <details style={{ marginTop: 10, fontSize: 12, color: colors.lovelabMuted }}>
+                        <summary style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 600 }}>Show failure details</summary>
+                        <ul style={{ marginTop: 6, paddingLeft: 16 }}>
+                          {images.filter((i) => i.status === 'failed' && i.error).map((i, idx) => (
+                            <li key={idx} style={{ marginBottom: 4 }}>
+                              <strong>{i.file_name || 'card.jpg'}:</strong> {i.error}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: colors.lovelabMuted, borderTop: `1px solid ${colors.borderLight || colors.border}`, paddingTop: 12 }}>
                   <span><strong style={{ color: colors.inkPlum, fontSize: 16 }}>{images.length}</strong> photo{images.length === 1 ? '' : 's'} in this batch</span>
                   <span>{batch?.total_leads || 0} lead{(batch?.total_leads || 0) === 1 ? '' : 's'} extracted</span>
