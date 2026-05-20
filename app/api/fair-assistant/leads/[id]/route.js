@@ -6,7 +6,7 @@ import { languagesForCountry, languageLabel } from '@/lib/fair-assistant/languag
 const EDITABLE_FIELDS = [
   'first_name', 'last_name', 'company', 'email', 'phone', 'mobile_phone',
   'title', 'country', 'street', 'city', 'state', 'postal_code',
-  'language', 'language_label', 'status',
+  'language', 'language_label', 'status', 'lead_type',
 ];
 
 export async function PATCH(request, { params }) {

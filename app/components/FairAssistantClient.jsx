@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { createClient } from '@/lib/supabase/client'
-import { FAIR_OUTREACH_TEMPLATES } from '@/lib/fair-assistant/templates'
+import { FAIR_OUTREACH_TEMPLATES, FAIR_LEAD_TYPES } from '@/lib/fair-assistant/templates'
 import FairOutreachChatPanel from '@/app/components/FairOutreachChatPanel'
 
 const TABS = [
@@ -448,6 +448,21 @@ export default function FairAssistantClient() {
                 </label>
               ))}
               <label style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                <span style={{ display: 'block', marginBottom: 3, fontWeight: 600, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 11 }}>Lead type (changes which template is used for this lead)</span>
+                <select
+                  value={editingLead.lead_type || 'shop'}
+                  onChange={(e) => setEditingLead({ ...editingLead, lead_type: e.target.value })}
+                  style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, background: '#fff' }}
+                >
+                  {FAIR_LEAD_TYPES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+                <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: colors.lovelabMuted }}>
+                  {FAIR_LEAD_TYPES.find((t) => t.id === (editingLead.lead_type || 'shop'))?.hint}
+                </span>
+              </label>
+              <label style={{ fontSize: 12, color: colors.lovelabMuted }}>
                 <span style={{ display: 'block', marginBottom: 3, fontWeight: 600, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 11 }}>Language (override auto-detection)</span>
                 <select
                   value={editingLead.language || ''}
@@ -747,7 +762,8 @@ export default function FairAssistantClient() {
                         <th style={{ padding: 8 }}>Language</th>
                         <th style={{ padding: 8 }}>Email</th>
                         <th style={{ padding: 8 }}>Status</th>
-                        <th style={{ padding: 8, width: 60 }}></th>
+                        <th style={{ padding: 8, width: 50 }}></th>
+                        <th style={{ padding: 8, width: 40 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -759,17 +775,37 @@ export default function FairAssistantClient() {
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#faf8fc' }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                         >
-                          <td style={{ padding: 8 }}>{[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}</td>
+                          <td style={{ padding: 8 }}>
+                            {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}
+                            {lead.lead_type && lead.lead_type !== 'shop' && (
+                              <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px', background: lead.lead_type === 'agent' ? '#fef3c7' : lead.lead_type === 'partner' ? '#dbeafe' : '#f3f4f6', color: lead.lead_type === 'agent' ? '#92400e' : lead.lead_type === 'partner' ? '#1e40af' : '#374151', borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                {lead.lead_type}
+                              </span>
+                            )}
+                          </td>
                           <td style={{ padding: 8 }}>{lead.company || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.country || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.language_label || lead.language || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.email || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.status}</td>
                           <td style={{ padding: 8, color: colors.inkPlum, fontSize: 12, fontWeight: 600 }}>Edit</td>
+                          <td style={{ padding: 4 }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteLead(lead.id) }}
+                              title="Delete lead"
+                              aria-label="Delete lead"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 6, display: 'flex', alignItems: 'center' }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                              </svg>
+                            </button>
+                          </td>
                         </tr>
                       ))}
                       {!filteredLeads.length && (
-                        <tr><td colSpan={7} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
+                        <tr><td colSpan={8} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
                       )}
                     </tbody>
                   </table>

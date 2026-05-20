@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin, siteUrl } from '@/lib/fair-assistant/server';
 import { buildEmailForLead, translateSlotsForLanguages } from '@/lib/fair-assistant/translate';
 import { languagesForCountry } from '@/lib/fair-assistant/languages';
+import { defaultTemplateForLeadType } from '@/lib/fair-assistant/templates';
 
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'fair-preview' });
@@ -42,14 +43,32 @@ export async function POST(request) {
   }
 
   const lead = leads[0];
-  const templateSlots = {
-    headline: batch.headline,
-    paragraph1: batch.paragraph1,
-    paragraph2: batch.paragraph2,
-    signoff: batch.signoff,
-    fairName: batch.fair_name || batch.name,
-    ctaLine: batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.',
-  };
+  const fairName = batch.fair_name || batch.name;
+  const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.';
+
+  // Use batch's edited template for shops; agent/partner leads get the
+  // type-specific preset so the preview reflects what generate-all will send.
+  const useTypeTemplate = lead.lead_type && lead.lead_type !== 'shop' && lead.lead_type !== 'other';
+  const templateSlots = useTypeTemplate
+    ? (() => {
+        const tpl = defaultTemplateForLeadType(lead.lead_type);
+        return {
+          headline: tpl.headline,
+          paragraph1: tpl.paragraph1,
+          paragraph2: tpl.paragraph2,
+          signoff: tpl.signoff,
+          fairName,
+          ctaLine,
+        };
+      })()
+    : {
+        headline: batch.headline,
+        paragraph1: batch.paragraph1,
+        paragraph2: batch.paragraph2,
+        signoff: batch.signoff,
+        fairName,
+        ctaLine,
+      };
 
   const languages = languagesForCountry(lead.country);
   const translatedByLanguage = await translateSlotsForLanguages(templateSlots, languages);
