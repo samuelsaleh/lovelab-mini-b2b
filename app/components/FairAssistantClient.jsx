@@ -99,6 +99,7 @@ export default function FairAssistantClient() {
   const [chatOpen, setChatOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(null)
+  const [editingLead, setEditingLead] = useState(null)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -173,6 +174,39 @@ export default function FairAssistantClient() {
     }
     return [...set].sort()
   }, [leads])
+
+  const handleSaveLead = async () => {
+    if (!editingLead) return
+    setError(null)
+    try {
+      const { id, ...patch } = editingLead
+      const res = await fetch(`/api/fair-assistant/leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to update lead')
+      setEditingLead(null)
+      await loadBatchDetails(activeBatchId)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const handleDeleteLead = async (leadId) => {
+    if (!leadId) return
+    if (!window.confirm('Delete this lead? This cannot be undone.')) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/fair-assistant/leads/${leadId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete lead')
+      setEditingLead(null)
+      await loadBatchDetails(activeBatchId)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   const handleDeleteBatch = async () => {
     if (!activeBatchId) return
@@ -375,6 +409,96 @@ export default function FairAssistantClient() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 12px' : '24px 20px' }}>
+      {editingLead && (
+        <div
+          onClick={() => setEditingLead(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: colors.inkPlum }}>Edit lead</h2>
+              <button
+                onClick={() => setEditingLead(null)}
+                aria-label="Close"
+                style={{ background: 'none', border: 'none', fontSize: 24, color: colors.lovelabMuted, cursor: 'pointer', padding: 4, lineHeight: 1 }}
+              >×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                ['first_name', 'First name'],
+                ['last_name', 'Last name'],
+                ['company', 'Company'],
+                ['title', 'Title'],
+                ['email', 'Email'],
+                ['phone', 'Phone'],
+                ['mobile_phone', 'Mobile phone'],
+                ['country', 'Country'],
+                ['city', 'City'],
+              ].map(([key, label]) => (
+                <label key={key} style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                  <span style={{ display: 'block', marginBottom: 3, fontWeight: 600, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 11 }}>{label}</span>
+                  <input
+                    value={editingLead[key] || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, [key]: e.target.value })}
+                    style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, boxSizing: 'border-box' }}
+                  />
+                </label>
+              ))}
+              <label style={{ fontSize: 12, color: colors.lovelabMuted }}>
+                <span style={{ display: 'block', marginBottom: 3, fontWeight: 600, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 11 }}>Language (override auto-detection)</span>
+                <select
+                  value={editingLead.language || ''}
+                  onChange={(e) => {
+                    const code = e.target.value
+                    const labels = { en: 'English', fr: 'French', nl: 'Dutch', de: 'German', it: 'Italian', es: 'Spanish', pt: 'Portuguese', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', pl: 'Polish', el: 'Greek', tr: 'Turkish', he: 'Hebrew', 'fr+nl': 'French + Dutch', 'de+fr': 'German + French', 'fr+de': 'French + German', 'en+fr': 'English + French', 'de+it': 'German + Italian' }
+                    setEditingLead({ ...editingLead, language: code, language_label: labels[code] || code })
+                  }}
+                  style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, background: '#fff' }}
+                >
+                  <option value="en">English</option>
+                  <option value="it">Italian</option>
+                  <option value="fr">French</option>
+                  <option value="nl">Dutch</option>
+                  <option value="de">German</option>
+                  <option value="es">Spanish</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="zh">Chinese</option>
+                  <option value="ja">Japanese</option>
+                  <option value="ko">Korean</option>
+                  <option value="pl">Polish</option>
+                  <option value="el">Greek</option>
+                  <option value="tr">Turkish</option>
+                  <option value="he">Hebrew</option>
+                  <option value="fr+nl">French + Dutch (Belgium)</option>
+                  <option value="de+fr">German + French (Switzerland)</option>
+                  <option value="fr+de">French + German (Luxembourg)</option>
+                  <option value="en+fr">English + French (Canada)</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, gap: 8 }}>
+              <button
+                onClick={() => handleDeleteLead(editingLead.id)}
+                style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600, fontSize: 13 }}
+              >Delete lead</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setEditingLead(null)}
+                  style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontWeight: 600, fontSize: 13 }}
+                >Cancel</button>
+                <button
+                  onClick={handleSaveLead}
+                  style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontWeight: 700, fontSize: 13 }}
+                >Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12 }}>
           <div>
@@ -623,21 +747,29 @@ export default function FairAssistantClient() {
                         <th style={{ padding: 8 }}>Language</th>
                         <th style={{ padding: 8 }}>Email</th>
                         <th style={{ padding: 8 }}>Status</th>
+                        <th style={{ padding: 8, width: 60 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredLeads.map((lead) => (
-                        <tr key={lead.id} style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+                        <tr
+                          key={lead.id}
+                          onClick={() => setEditingLead({ ...lead })}
+                          style={{ borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#faf8fc' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                        >
                           <td style={{ padding: 8 }}>{[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.company || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.country || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.language_label || lead.language || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.email || '—'}</td>
                           <td style={{ padding: 8 }}>{lead.status}</td>
+                          <td style={{ padding: 8, color: colors.inkPlum, fontSize: 12, fontWeight: 600 }}>Edit</td>
                         </tr>
                       ))}
                       {!filteredLeads.length && (
-                        <tr><td colSpan={6} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
+                        <tr><td colSpan={7} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -665,22 +797,29 @@ export default function FairAssistantClient() {
                       ✨ Chat with Claude
                     </button>
                   </div>
-                  {['headline', 'paragraph1', 'paragraph2', 'signoff'].map((field) => (
-                    <label key={field} style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-                      <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum, textTransform: 'capitalize' }}>{field}</span>
-                      {field === 'signoff' || field.startsWith('paragraph') ? (
+                  {[
+                    { key: 'headline', label: 'Headline', kind: 'input' },
+                    { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
+                    { key: 'paragraph2', label: 'Paragraph 2', kind: 'textarea', rows: 4 },
+                    { key: 'cta_line', label: 'Call-to-action line (the lovelab.be reference)', kind: 'textarea', rows: 2, hint: 'Shown above the signoff. Edit to control how lovelab.be is mentioned.' },
+                    { key: 'signoff', label: 'Signoff', kind: 'textarea', rows: 3 },
+                  ].map((field) => (
+                    <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+                      <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
+                      {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                      {field.kind === 'textarea' ? (
                         <textarea
-                          value={batch[field] || ''}
-                          onChange={(e) => setBatch({ ...batch, [field]: e.target.value })}
-                          onBlur={() => saveBatchFields({ [field]: batch[field] })}
-                          rows={field === 'signoff' ? 3 : 4}
+                          value={batch[field.key] || ''}
+                          onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
+                          onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
+                          rows={field.rows || 3}
                           style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical' }}
                         />
                       ) : (
                         <input
-                          value={batch[field] || ''}
-                          onChange={(e) => setBatch({ ...batch, [field]: e.target.value })}
-                          onBlur={() => saveBatchFields({ [field]: batch[field] })}
+                          value={batch[field.key] || ''}
+                          onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
+                          onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
                           style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body }}
                         />
                       )}

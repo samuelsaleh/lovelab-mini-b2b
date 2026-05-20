@@ -48,7 +48,7 @@ export async function POST(request) {
     paragraph2: batch.paragraph2,
     signoff: batch.signoff,
     fairName: batch.fair_name || batch.name,
-    ctaLine: 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.',
+    ctaLine: batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.',
   };
 
   const languages = languagesForCountry(lead.country);
