@@ -1,7 +1,27 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
-import { triggerN8nSendWebhook } from '@/lib/fair-assistant/n8n';
+import { sendEmail } from '@/lib/send-email';
+
+// Vercel Hobby functions have a ~10s wall-clock limit. Sending 100 emails
+// sequentially is too slow; with concurrency=8 and ~200ms per Resend call
+// we land around 2-3 seconds for typical batches. Cap each request at 75
+// drafts; the client can press Send again to drain the rest.
+const CONCURRENCY = 8;
+const BATCH_LIMIT = 75;
+
+async function mapPool(items, limit, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'fair-send' });
@@ -16,18 +36,21 @@ export async function POST(request) {
     return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
   }
 
-  const { count, error: countErr } = await auth.adminSupabase
+  // Pull this batch's draft_ready drafts together with their lead's email.
+  const { data: drafts, error: draftsErr } = await auth.adminSupabase
     .from('fair_email_drafts')
-    .select('*', { count: 'exact', head: true })
+    .select('id, subject, body_html, lead:fair_leads!inner(id, email, first_name, last_name, status)')
     .eq('batch_id', batchId)
-    .eq('status', 'draft_ready');
+    .eq('status', 'draft_ready')
+    .limit(BATCH_LIMIT);
 
-  if (countErr) {
-    return NextResponse.json({ error: 'Failed to count drafts' }, { status: 500 });
+  if (draftsErr) {
+    console.error('[fair-send] load drafts:', draftsErr.message);
+    return NextResponse.json({ error: 'Failed to load drafts' }, { status: 500 });
   }
 
-  if (!count) {
-    return NextResponse.json({ error: 'No drafts ready to send. Run generate-all first.' }, { status: 400 });
+  if (!drafts?.length) {
+    return NextResponse.json({ error: 'No drafts ready to send. Run "Generate all drafts" first.' }, { status: 400 });
   }
 
   await auth.adminSupabase
@@ -35,12 +58,89 @@ export async function POST(request) {
     .update({ status: 'sending', updated_at: new Date().toISOString() })
     .eq('id', batchId);
 
-  try {
-    await triggerN8nSendWebhook({ batchId });
-  } catch (err) {
-    console.error('[fair-send]', err.message);
-    return NextResponse.json({ error: err.message || 'Failed to trigger send workflow' }, { status: 502 });
-  }
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
 
-  return NextResponse.json({ ok: true, queued: count });
+  await mapPool(drafts, CONCURRENCY, async (draft) => {
+    const lead = draft.lead;
+    const to = (lead?.email || '').trim();
+
+    if (!to) {
+      // No email address on the card — mark the draft as failed but don't
+      // count it as a real send failure; the UI surfaces it as "skipped".
+      skipped += 1;
+      await auth.adminSupabase
+        .from('fair_email_drafts')
+        .update({
+          status: 'failed',
+          error: 'No email address on the lead',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', draft.id);
+      return;
+    }
+
+    const result = await sendEmail({
+      to,
+      subject: draft.subject,
+      html: draft.body_html,
+      // Resend sender defaults to lib/email.getSenderFrom(); reply-to lets
+      // recipients reply straight to Alberto's existing inbox.
+      replyTo: 'alberto@love-lab.com',
+    });
+
+    if (result.sent) {
+      sent += 1;
+      await auth.adminSupabase
+        .from('fair_email_drafts')
+        .update({
+          status: 'sent',
+          message_id: result.message_id || null,
+          sent_at: new Date().toISOString(),
+          error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', draft.id);
+    } else {
+      failed += 1;
+      await auth.adminSupabase
+        .from('fair_email_drafts')
+        .update({
+          status: 'failed',
+          error: `${result.reason}${result.status ? ` (HTTP ${result.status})` : ''}${result.error ? ` — ${String(result.error).slice(0, 200)}` : ''}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', draft.id);
+    }
+  });
+
+  // Refresh batch counters and status.
+  const [{ count: stillReady }, { count: totalSent }, { count: totalFailed }] = await Promise.all([
+    auth.adminSupabase.from('fair_email_drafts').select('*', { count: 'exact', head: true }).eq('batch_id', batchId).eq('status', 'draft_ready'),
+    auth.adminSupabase.from('fair_email_drafts').select('*', { count: 'exact', head: true }).eq('batch_id', batchId).eq('status', 'sent'),
+    auth.adminSupabase.from('fair_email_drafts').select('*', { count: 'exact', head: true }).eq('batch_id', batchId).eq('status', 'failed'),
+  ]);
+
+  const nextStatus = stillReady ? 'sending' : 'complete';
+  await auth.adminSupabase
+    .from('fair_batches')
+    .update({
+      status: nextStatus,
+      total_sent: totalSent || 0,
+      total_failed: totalFailed || 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', batchId);
+
+  return NextResponse.json({
+    ok: true,
+    sent,
+    failed,
+    skipped,
+    remaining: stillReady || 0,
+    message: stillReady
+      ? `${sent} sent, ${failed} failed, ${skipped} skipped. ${stillReady} more drafts ready — press Send again to continue.`
+      : `${sent} sent, ${failed} failed, ${skipped} skipped. Batch complete.`,
+  });
 }
