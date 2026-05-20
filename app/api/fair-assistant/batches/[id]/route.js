@@ -60,3 +60,27 @@ export async function PATCH(request, { params }) {
 
   return NextResponse.json({ batch: data });
 }
+
+export async function DELETE(request, { params }) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'fair-batch' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const { id } = await params;
+
+  // Cascade deletes are configured on the FK in supabase-phase23-fair-assistant.sql,
+  // so deleting the batch row also removes its fair_images, fair_leads, fair_email_drafts.
+  const { error } = await auth.adminSupabase
+    .from('fair_batches')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('[fair-batch DELETE]', error.message);
+    return NextResponse.json({ error: 'Failed to delete batch' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

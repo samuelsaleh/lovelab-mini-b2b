@@ -174,6 +174,25 @@ export default function FairAssistantClient() {
     return [...set].sort()
   }, [leads])
 
+  const handleDeleteBatch = async () => {
+    if (!activeBatchId) return
+    const batchName = batches.find((b) => b.id === activeBatchId)?.name || 'this batch'
+    if (!window.confirm(`Delete "${batchName}" and all its photos, leads, and drafts? This cannot be undone.`)) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/fair-assistant/batches/${activeBatchId}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to delete batch')
+      setActiveBatchId(null)
+      setBatch(null)
+      setLeads([])
+      setImages([])
+      await loadBatches()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   const handleCreateBatch = async () => {
     if (!newBatchName.trim()) return
     setCreating(true)
@@ -386,6 +405,22 @@ export default function FairAssistantClient() {
             >
               + New batch
             </button>
+            {activeBatchId && (
+              <button
+                onClick={handleDeleteBatch}
+                title="Delete this batch"
+                aria-label="Delete this batch"
+                style={{ padding: '12px 14px', minHeight: 44, borderRadius: 8, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                  <path d="M10 11v6"/>
+                  <path d="M14 11v6"/>
+                </svg>
+                Delete batch
+              </button>
+            )}
           </div>
         </div>
 
@@ -400,6 +435,37 @@ export default function FairAssistantClient() {
           <div style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted }}>Create or select a batch to begin.</div>
         ) : (
           <>
+            {/* Journey stepper — shows where the user is in the workflow */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: colors.lovelabMuted, flexWrap: 'wrap' }}>
+              {TABS.map((t, idx) => {
+                const isActive = tab === t.id
+                const stepCount = t.id === 'upload' ? images.length : t.id === 'leads' ? leads.length : (batch?.total_sent || 0)
+                const stepLabels = ['Upload cards', 'Review leads', 'Send outreach']
+                return (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => setTab(t.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', borderRadius: 14, border: 'none', background: 'transparent',
+                        color: isActive ? colors.inkPlum : colors.lovelabMuted, cursor: 'pointer', fontWeight: isActive ? 700 : 500,
+                        fontSize: 12, fontFamily: fonts.body,
+                      }}
+                    >
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%',
+                        background: isActive ? colors.inkPlum : '#e8dfee',
+                        color: isActive ? '#fff' : colors.inkPlum, fontWeight: 700, fontSize: 11,
+                      }}>{idx + 1}</span>
+                      <span>{stepLabels[idx]}{stepCount > 0 ? ` (${stepCount})` : ''}</span>
+                    </button>
+                    {idx < TABS.length - 1 && <span style={{ color: '#d0c4d6' }}>›</span>}
+                  </div>
+                )
+              })}
+            </div>
+
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4, alignItems: 'center' }}>
               {TABS.map((t) => (
                 <button
@@ -512,6 +578,20 @@ export default function FairAssistantClient() {
                       </details>
                     )}
                   </div>
+                )}
+
+                {leads.length > 0 && !uploading && (
+                  <button
+                    onClick={() => setTab('leads')}
+                    style={{
+                      width: '100%', padding: '14px 16px', minHeight: 48, borderRadius: 10,
+                      border: 'none', background: '#16a34a', color: '#fff',
+                      fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: fonts.body,
+                      marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}
+                  >
+                    Done — review {leads.length} lead{leads.length === 1 ? '' : 's'} →
+                  </button>
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: colors.lovelabMuted, borderTop: `1px solid ${colors.borderLight || colors.border}`, paddingTop: 12 }}>
