@@ -21,6 +21,35 @@ export async function GET() {
 
   if (process.env.GOOGLE_DRIVE_REFRESH_TOKEN && process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
     result.auth = 'OAuth refresh token';
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+          client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+          refresh_token: process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+          grant_type: 'refresh_token',
+        }),
+      });
+      if (tokenRes.ok) {
+        const { access_token } = await tokenRes.json();
+        const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+          headers: { Authorization: `Bearer ${access_token}` },
+        });
+        if (aboutRes.ok) {
+          const about = await aboutRes.json();
+          result.accountEmail = about?.user?.emailAddress || null;
+          result.accountDisplay = about?.user?.displayName || null;
+        } else {
+          result.accountEmail = `about_failed_${aboutRes.status}`;
+        }
+      } else {
+        result.accountEmail = `token_failed_${tokenRes.status}`;
+      }
+    } catch (err) {
+      result.accountEmail = `error: ${err.message}`;
+    }
   } else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
     result.auth = 'Service account';
     try {
