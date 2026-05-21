@@ -129,6 +129,14 @@ export default function FairAssistantClient() {
     setImages(data.images || [])
   }, [])
 
+  const loadSavedTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/fair-assistant/saved-templates')
+      const data = await res.json()
+      if (res.ok) setSavedTemplates(data.templates || [])
+    } catch {}
+  }, [])
+
   useEffect(() => {
     loadBatches()
       .then((list) => {
@@ -176,14 +184,6 @@ export default function FairAssistantClient() {
     }
     return [...set].sort()
   }, [leads])
-
-  const loadSavedTemplates = useCallback(async () => {
-    try {
-      const res = await fetch('/api/fair-assistant/saved-templates')
-      const data = await res.json()
-      if (res.ok) setSavedTemplates(data.templates || [])
-    } catch {}
-  }, [])
 
   const handleSaveAsTemplate = async (opts = {}) => {
     if (!batch) return
