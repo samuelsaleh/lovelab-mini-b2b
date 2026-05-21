@@ -117,6 +117,8 @@ export async function POST(request) {
         templateSlots: slots,
         translatedByLanguage,
         languages: langs,
+        button1: { label: batch.button1_label, url: batch.button1_url },
+        button2: { label: batch.button2_label, url: batch.button2_url },
       });
 
       const { error } = await auth.adminSupabase

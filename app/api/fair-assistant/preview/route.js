@@ -78,6 +78,8 @@ export async function POST(request) {
     templateSlots,
     translatedByLanguage,
     languages,
+    button1: { label: batch.button1_label, url: batch.button1_url },
+    button2: { label: batch.button2_label, url: batch.button2_url },
   });
 
   return NextResponse.json({

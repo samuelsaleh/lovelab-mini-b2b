@@ -967,10 +967,14 @@ export default function FairAssistantClient() {
                     )}
                   </div>
                   {[
-                    { key: 'headline', label: 'Headline', kind: 'input' },
+                    { key: 'headline', label: 'Headline', kind: 'input', hint: 'The big serif title. The fair name shows as a gold subtitle underneath — don\'t repeat the fair name here.' },
                     { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
                     { key: 'paragraph2', label: 'Paragraph 2', kind: 'textarea', rows: 4 },
-                    { key: 'cta_line', label: 'Call-to-action line (the lovelab.be reference)', kind: 'textarea', rows: 2, hint: 'Shown above the signoff. Edit to control how lovelab.be is mentioned.' },
+                    { key: 'button1_label', label: 'Button 1 — label', kind: 'input', hint: 'Filled purple pill. Default: "Visit Our Website".' },
+                    { key: 'button1_url',   label: 'Button 1 — URL',   kind: 'input', hint: 'Where Button 1 links. Default: https://lovelab.be/' },
+                    { key: 'button2_label', label: 'Button 2 — label', kind: 'input', hint: 'Outline pill. Default: "B2B Login". Leave blank to hide.' },
+                    { key: 'button2_url',   label: 'Button 2 — URL',   kind: 'input', hint: 'Where Button 2 links. Default: https://lovelab.be/b2b-signup' },
+                    { key: 'cta_line', label: 'Call-to-action line (optional, below paragraph 2)', kind: 'textarea', rows: 2, hint: 'Auto-hidden if it mentions "lovelab.be" since the buttons already say it.' },
                     { key: 'signoff', label: 'Signoff', kind: 'textarea', rows: 3 },
                   ].map((field) => (
                     <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>

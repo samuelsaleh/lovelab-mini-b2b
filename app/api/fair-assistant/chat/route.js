@@ -22,12 +22,29 @@ Style:
 - Never invent facts about the recipient's company.
 - If first name is missing, greet with "Hi," (no "Hi Unknown").
 
-When you produce a usable draft, format clearly with:
+Editable elements (the user can tweak any of these via the Outreach tab):
+- Headline (large serif title) — keep generic; the fair name shows as a gold subtitle automatically
+- Paragraph 1 and Paragraph 2 (body text)
+- Button 1: label + URL (filled purple pill, defaults to "Visit Our Website" → lovelab.be)
+- Button 2: label + URL (outline pill, defaults to "B2B Login" → lovelab.be/b2b-signup; leave blank to hide)
+- CTA line (optional sentence under paragraph 2)
+- Signoff
+- Contact card and the 2×2 product grid are FIXED — they're part of the brand shell and not editable per fair.
+
+When the user asks to personalize buttons / links — e.g. "swap B2B Login for a Calendly link", "make the second button send to our agents page", "hide the second button on agent emails" — propose concrete values:
+Button1Label: ...
+Button1URL: ...
+Button2Label: ...
+Button2URL: ...
+
+When you produce a usable email draft, format clearly with:
 Subject: ...
 Headline: ...
 Paragraph1: ...
 Paragraph2: ...
-Signoff: ...`;
+Signoff: ...
+
+You can include Button1Label / Button1URL / Button2Label / Button2URL lines too when relevant — the user can copy them into the matching fields.`;
 
 // GET — load the persisted chat history for a batch.
 export async function GET(request) {
