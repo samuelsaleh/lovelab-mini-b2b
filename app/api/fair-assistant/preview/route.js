@@ -93,6 +93,7 @@ export async function POST(request) {
     languages: previewLanguages,
     button1: { label: batch.button1_label, url: batch.button1_url },
     button2: { label: batch.button2_label, url: batch.button2_url },
+    customHtml: batch.custom_html || undefined,
   });
 
   return NextResponse.json({

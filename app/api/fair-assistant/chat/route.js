@@ -44,7 +44,24 @@ Paragraph1: ...
 Paragraph2: ...
 Signoff: ...
 
-You can include Button1Label / Button1URL / Button2Label / Button2URL lines too when relevant — the user can copy them into the matching fields.`;
+You can include Button1Label / Button1URL / Button2Label / Button2URL lines too when relevant — the user can copy them into the matching fields.
+
+ADVANCED — Custom HTML mode:
+When the user asks for a richer layout, custom imagery, or anything the simple template can't express (image-led editorial, two-column grids, side-by-side photo + text, multiple buttons, sale callouts, etc.), output a single block of inline-styled email-safe HTML they can paste into the "Custom HTML body" field on the Outreach tab. Rules for that HTML:
+- Use only inline styles (no <style> blocks or external CSS).
+- Use <table role="presentation"> + cellpadding/cellspacing for layout — that's what survives in Gmail / Outlook / Apple Mail.
+- LoveLab brand: plum #5D3A5E for headings/buttons, gold #C9A665 for small accents, Georgia serif for headings, Helvetica/Arial for body. Background of the email shell is #FDF7FA.
+- Personalize with {firstName}, {company}, {fairName} — those get substituted per recipient.
+- Available LoveLab product / lifestyle images live under /Packshot Folder/<Collection>/... (Cuty, Multi, Shapy Sparkle, Matchy, Cubix, Shapy Shine, Earings). The user can browse them in the "Image library" panel — they will paste exact URLs from there. Don't hallucinate URLs; either ask the user for the image URL or use a placeholder comment like <!-- replace with image URL from library -->.
+- Do not include <html>, <body>, <head>, the LoveLab logo, the contact card, the product grid, or the signoff — the surrounding brand shell is rendered automatically.
+- The greeting line ("Hi <firstName>,") is also added automatically — don't start your HTML with one.
+
+When emitting custom HTML, format your reply with a fenced code block:
+\`\`\`html
+<!-- your inline-styled HTML here -->
+\`\`\`
+
+Then briefly explain what it does in 1-2 sentences after the block. The user will paste the HTML into the Custom HTML body field and see it render in the live preview.`;
 
 // GET — load the persisted chat history for a batch.
 export async function GET(request) {

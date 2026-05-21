@@ -105,6 +105,7 @@ export default function FairAssistantClient() {
   const [livePreviewHtml, setLivePreviewHtml] = useState('')
   const [livePreviewLoading, setLivePreviewLoading] = useState(false)
   const [showLivePreview, setShowLivePreview] = useState(true)
+  const [imageLibrary, setImageLibrary] = useState({ groups: [], loaded: false, openGroup: null })
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -193,6 +194,7 @@ export default function FairAssistantClient() {
           button1_url: batch.button1_url,
           button2_label: batch.button2_label,
           button2_url: batch.button2_url,
+          custom_html: batch.custom_html,
         }
         const res = await fetch('/api/fair-assistant/preview', {
           method: 'POST',
@@ -221,7 +223,39 @@ export default function FairAssistantClient() {
     batch?.button1_url,
     batch?.button2_label,
     batch?.button2_url,
+    batch?.custom_html,
   ])
+
+  const loadImageLibrary = useCallback(async () => {
+    if (imageLibrary.loaded) return
+    try {
+      const res = await fetch('/api/fair-assistant/image-library')
+      const data = await res.json()
+      if (res.ok) {
+        setImageLibrary({ groups: data.groups || [], loaded: true, openGroup: data.groups?.[0]?.id || null })
+      }
+    } catch {
+      setImageLibrary({ groups: [], loaded: true, openGroup: null })
+    }
+  }, [imageLibrary.loaded])
+
+  const handleClearAllFields = useCallback(async () => {
+    if (!activeBatchId || !batch) return
+    if (!window.confirm('Clear all email fields for this batch? Headline, paragraphs, buttons, custom HTML, and attachments will be reset.')) return
+    const reset = {
+      headline: '', paragraph1: '', paragraph2: '', signoff: '',
+      cta_line: '',
+      button1_label: '', button1_url: '', button2_label: '', button2_url: '',
+      custom_html: '',
+      attached_files: [],
+    }
+    setBatch({ ...batch, ...reset })
+    try {
+      await saveBatchFields(reset)
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [activeBatchId, batch])
 
   const toggleAttachment = useCallback((path) => {
     if (!batch) return
@@ -1004,6 +1038,22 @@ export default function FairAssistantClient() {
                 },
               ]
 
+              const customHtmlActive = Boolean(batch.custom_html && batch.custom_html.trim())
+
+              const copyToClipboard = async (text) => {
+                try {
+                  await navigator.clipboard.writeText(text)
+                } catch {
+                  // Fallback for older browsers / iOS quirks
+                  const ta = document.createElement('textarea')
+                  ta.value = text
+                  document.body.appendChild(ta)
+                  ta.select()
+                  document.execCommand('copy')
+                  document.body.removeChild(ta)
+                }
+              }
+
               const attachedSet = new Set(Array.isArray(batch.attached_files) ? batch.attached_files : [])
               const attachedCount = attachedSet.size
 
@@ -1072,6 +1122,9 @@ export default function FairAssistantClient() {
                       <button onClick={() => setChatOpen(true)} style={{ padding: '7px 12px', borderRadius: 14, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}>
                         ✨ Chat with Claude
                       </button>
+                      <button onClick={handleClearAllFields} style={{ padding: '7px 12px', borderRadius: 14, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}>
+                        🧹 Start fresh
+                      </button>
                     </div>
                     {savedTemplates.length > 0 && (
                       <details style={{ marginTop: 10, fontSize: 11, color: colors.lovelabMuted }}>
@@ -1107,6 +1160,97 @@ export default function FairAssistantClient() {
                       ))}
                     </div>
                   ))}
+
+                  {/* Custom HTML — pasted Claude output that overrides the text fields */}
+                  <div style={{ background: '#fff', border: `1px solid ${customHtmlActive ? colors.inkPlum : colors.border}`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          🧬 Custom HTML body
+                          {customHtmlActive && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>ACTIVE</span>}
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>
+                          {customHtmlActive
+                            ? 'Active — overrides headline + paragraphs above. Brand shell (logo, subtitle, buttons, contact card) is still rendered.'
+                            : 'Paste HTML from Claude or write your own. When non-empty, replaces the template text. Use {firstName}, {fairName}, {company} for personalization.'}
+                        </p>
+                      </div>
+                    </div>
+                    <textarea
+                      value={batch.custom_html || ''}
+                      onChange={(e) => setBatch({ ...batch, custom_html: e.target.value })}
+                      onBlur={() => saveBatchFields({ custom_html: batch.custom_html })}
+                      rows={10}
+                      placeholder={'<!-- paste Claude HTML here, e.g. -->\n<p style="font-size:15px;">Dear {firstName}, …</p>\n<img src="/Packshot Folder/Cuty/…/Bordeaux_yellow_gold_0_2ct_nylon-ef4m75.png" width="280" style="display:block;margin:16px auto;border-radius:12px;">\n<p>…</p>'}
+                      style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical', fontSize: 12, boxSizing: 'border-box', lineHeight: 1.5 }}
+                    />
+                    {customHtmlActive && (
+                      <button
+                        onClick={() => { setBatch({ ...batch, custom_html: '' }); saveBatchFields({ custom_html: '' }) }}
+                        style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body, fontSize: 11, fontWeight: 600 }}
+                      >
+                        Clear custom HTML (back to template)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Image library — browse Packshot Folder, click to copy URL */}
+                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🖼️ Image library
+                      </h3>
+                      <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>
+                        Click any image to copy its URL. Paste into the Custom HTML field above (or share with Claude in chat).
+                      </p>
+                    </div>
+                    {!imageLibrary.loaded ? (
+                      <button
+                        onClick={loadImageLibrary}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px dashed ${colors.inkPlum}`, background: '#faf7fc', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+                      >
+                        📂 Browse 1,500+ packshots from your /public folder
+                      </button>
+                    ) : imageLibrary.groups.length === 0 ? (
+                      <p style={{ fontSize: 12, color: colors.lovelabMuted }}>No images found in /Packshot Folder.</p>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                          {imageLibrary.groups.map((g) => (
+                            <button
+                              key={g.id}
+                              onClick={() => setImageLibrary((prev) => ({ ...prev, openGroup: g.id }))}
+                              style={{
+                                padding: '5px 10px', fontSize: 11, borderRadius: 12,
+                                border: `1px solid ${imageLibrary.openGroup === g.id ? colors.inkPlum : colors.border}`,
+                                background: imageLibrary.openGroup === g.id ? '#f8f0fa' : '#fff',
+                                color: imageLibrary.openGroup === g.id ? colors.inkPlum : colors.text,
+                                cursor: 'pointer', fontFamily: fonts.body, fontWeight: imageLibrary.openGroup === g.id ? 600 : 400,
+                              }}
+                            >
+                              {g.label} <span style={{ opacity: 0.5 }}>· {g.count}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, maxHeight: 320, overflowY: 'auto', padding: 4, background: '#faf7fc', borderRadius: 8 }}>
+                          {(imageLibrary.groups.find((g) => g.id === imageLibrary.openGroup)?.images || []).map((img) => (
+                            <button
+                              key={img.url}
+                              onClick={async () => { await copyToClipboard(img.url); setError(`✓ Copied: ${img.url.slice(0, 60)}${img.url.length > 60 ? '…' : ''}`); setTimeout(() => setError(null), 2500) }}
+                              title={`Copy: ${img.url}`}
+                              style={{
+                                aspectRatio: '1', background: '#fff', border: `1px solid ${colors.border}`,
+                                borderRadius: 6, overflow: 'hidden', cursor: 'pointer', padding: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              <img src={img.url} alt={img.name} loading="lazy" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* Attachments section — PDFs from the B2B homepage */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
