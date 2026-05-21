@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { createClient } from '@/lib/supabase/client'
 import { FAIR_OUTREACH_TEMPLATES, FAIR_LEAD_TYPES } from '@/lib/fair-assistant/templates'
+import { B2B_RESOURCE_GROUPS } from '@/lib/b2b-files'
 import FairOutreachChatPanel from '@/app/components/FairOutreachChatPanel'
 
 const TABS = [
@@ -101,6 +102,9 @@ export default function FairAssistantClient() {
   const [uploadProgress, setUploadProgress] = useState(null)
   const [editingLead, setEditingLead] = useState(null)
   const [savedTemplates, setSavedTemplates] = useState([])
+  const [livePreviewHtml, setLivePreviewHtml] = useState('')
+  const [livePreviewLoading, setLivePreviewLoading] = useState(false)
+  const [showLivePreview, setShowLivePreview] = useState(true)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -167,6 +171,67 @@ export default function FairAssistantClient() {
 
     return () => { supabase.removeChannel(channel) }
   }, [activeBatchId, loadBatchDetails])
+
+  // Debounced live email preview — refreshes whenever a content/button field
+  // changes while the Outreach tab is open. Renders in EN (no Claude
+  // translation) so typing feels instant, and skips entirely if there are
+  // no leads yet (preview needs a recipient for the greeting).
+  useEffect(() => {
+    if (tab !== 'outreach' || !activeBatchId || !batch || leads.length === 0) {
+      return
+    }
+    const t = setTimeout(async () => {
+      setLivePreviewLoading(true)
+      try {
+        const overrides = {
+          headline: batch.headline,
+          paragraph1: batch.paragraph1,
+          paragraph2: batch.paragraph2,
+          signoff: batch.signoff,
+          cta_line: batch.cta_line,
+          button1_label: batch.button1_label,
+          button1_url: batch.button1_url,
+          button2_label: batch.button2_label,
+          button2_url: batch.button2_url,
+        }
+        const res = await fetch('/api/fair-assistant/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchId: activeBatchId, overrides }),
+        })
+        const data = await res.json()
+        if (res.ok && data?.preview?.bodyHtml) setLivePreviewHtml(data.preview.bodyHtml)
+      } catch {
+        /* keep prior preview on error */
+      } finally {
+        setLivePreviewLoading(false)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [
+    tab,
+    activeBatchId,
+    leads.length,
+    batch?.headline,
+    batch?.paragraph1,
+    batch?.paragraph2,
+    batch?.signoff,
+    batch?.cta_line,
+    batch?.button1_label,
+    batch?.button1_url,
+    batch?.button2_label,
+    batch?.button2_url,
+  ])
+
+  const toggleAttachment = useCallback((path) => {
+    if (!batch) return
+    const current = Array.isArray(batch.attached_files) ? batch.attached_files : []
+    const next = current.includes(path)
+      ? current.filter((p) => p !== path)
+      : [...current, path]
+    setBatch({ ...batch, attached_files: next })
+    saveBatchFields({ attached_files: next }).catch(() => {})
+  }, [batch])
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
@@ -901,115 +966,261 @@ export default function FairAssistantClient() {
               </div>
             )}
 
-            {tab === 'outreach' && batch && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-                <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 20 }}>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                    {FAIR_OUTREACH_TEMPLATES.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => applyTemplate(t.id)}
-                        style={{
-                          padding: '6px 12px', borderRadius: 16, border: `1px solid ${batch.template_id === t.id ? colors.inkPlum : colors.border}`,
-                          background: batch.template_id === t.id ? '#f8f0fa' : '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12,
-                        }}
-                      >
-                        {t.name}
-                      </button>
-                    ))}
-                    <button onClick={() => setChatOpen(true)} style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: 16, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12 }}>
-                      ✨ Chat with Claude
-                    </button>
-                  </div>
+            {tab === 'outreach' && batch && (() => {
+              // ── Section definitions for the form column ──────────────────
+              const sections = [
+                {
+                  id: 'content',
+                  title: 'Email content',
+                  icon: '📝',
+                  description: 'The text Alberto wants the recipient to read.',
+                  fields: [
+                    { key: 'headline', label: 'Headline', kind: 'input', hint: 'The big serif title. The fair name shows as a gold subtitle automatically — no need to repeat it here.' },
+                    { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
+                    { key: 'paragraph2', label: 'Paragraph 2', kind: 'textarea', rows: 5 },
+                    { key: 'signoff', label: 'Signoff', kind: 'textarea', rows: 3 },
+                  ],
+                },
+                {
+                  id: 'buttons',
+                  title: 'Call-to-action buttons',
+                  icon: '🔗',
+                  description: 'Two pill buttons sit between paragraph 1 and 2. Clear Button 2 to hide it.',
+                  fields: [
+                    { key: 'button1_label', label: 'Button 1 label (filled)', kind: 'input', placeholder: 'Visit Our Website' },
+                    { key: 'button1_url',   label: 'Button 1 URL',           kind: 'input', placeholder: 'https://lovelab.be/' },
+                    { key: 'button2_label', label: 'Button 2 label (outline)', kind: 'input', placeholder: 'B2B Login' },
+                    { key: 'button2_url',   label: 'Button 2 URL',             kind: 'input', placeholder: 'https://lovelab.be/b2b-signup' },
+                  ],
+                },
+                {
+                  id: 'advanced',
+                  title: 'Extras',
+                  icon: '⚙️',
+                  description: 'Optional. Auto-hidden if it just mentions lovelab.be (buttons already say it).',
+                  fields: [
+                    { key: 'cta_line', label: 'Extra CTA sentence', kind: 'textarea', rows: 2 },
+                  ],
+                },
+              ]
 
-                  {/* Saved templates — apply or save current as new */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, padding: 12, background: '#faf7fc', borderRadius: 8, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.04em' }}>My saved templates</span>
-                    {savedTemplates.length === 0 ? (
-                      <span style={{ fontSize: 12, color: colors.lovelabMuted, flex: 1 }}>None yet. Save the current draft below.</span>
-                    ) : (
-                      <select
-                        onChange={(e) => { if (e.target.value) handleApplySavedTemplate(e.target.value); e.target.value = '' }}
-                        defaultValue=""
-                        style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 12, background: '#fff', flex: 1, minWidth: 180 }}
+              const attachedSet = new Set(Array.isArray(batch.attached_files) ? batch.attached_files : [])
+              const attachedCount = attachedSet.size
+
+              const fieldInput = (field) => (
+                field.kind === 'textarea' ? (
+                  <textarea
+                    value={batch[field.key] || ''}
+                    onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
+                    onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
+                    rows={field.rows || 3}
+                    placeholder={field.placeholder}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                ) : (
+                  <input
+                    value={batch[field.key] || ''}
+                    onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
+                    onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
+                    placeholder={field.placeholder}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                )
+              )
+
+              const formColumn = (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Quick-start: preset templates + Claude chat */}
+                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                    <h3 style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>🚀 Start from a preset</h3>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {FAIR_OUTREACH_TEMPLATES.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => applyTemplate(t.id)}
+                          style={{
+                            padding: '6px 12px', borderRadius: 14, border: `1px solid ${batch.template_id === t.id ? colors.inkPlum : colors.border}`,
+                            background: batch.template_id === t.id ? '#f8f0fa' : '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12,
+                            color: batch.template_id === t.id ? colors.inkPlum : colors.text, fontWeight: batch.template_id === t.id ? 600 : 400,
+                          }}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', paddingTop: 10, borderTop: `1px solid ${colors.borderLight || '#eee'}` }}>
+                      {savedTemplates.length > 0 ? (
+                        <select
+                          onChange={(e) => { if (e.target.value) handleApplySavedTemplate(e.target.value); e.target.value = '' }}
+                          defaultValue=""
+                          style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 12, background: '#fff', flex: 1, minWidth: 180 }}
+                        >
+                          <option value="" disabled>📁 My saved templates ({savedTemplates.length})…</option>
+                          {savedTemplates.map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}{t.lead_type !== 'shop' ? ` · ${t.lead_type}` : ''}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: 1 }}>No saved templates yet — save the current draft for next fair.</span>
+                      )}
+                      <button
+                        onClick={handleSaveAsTemplate}
+                        style={{ padding: '7px 12px', borderRadius: 14, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
                       >
-                        <option value="" disabled>Apply a saved template…</option>
-                        {savedTemplates.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}{t.lead_type !== 'shop' ? ` · ${t.lead_type}` : ''}</option>
-                        ))}
-                      </select>
-                    )}
-                    <button
-                      onClick={handleSaveAsTemplate}
-                      style={{ padding: '6px 12px', borderRadius: 16, border: `1px solid ${colors.inkPlum}`, background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
-                    >
-                      💾 Save current as template
-                    </button>
+                        💾 Save current
+                      </button>
+                      <button onClick={() => setChatOpen(true)} style={{ padding: '7px 12px', borderRadius: 14, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}>
+                        ✨ Chat with Claude
+                      </button>
+                    </div>
                     {savedTemplates.length > 0 && (
-                      <details style={{ flexBasis: '100%', marginTop: 4, fontSize: 11, color: colors.lovelabMuted }}>
-                        <summary style={{ cursor: 'pointer' }}>Manage saved templates ({savedTemplates.length})</summary>
+                      <details style={{ marginTop: 10, fontSize: 11, color: colors.lovelabMuted }}>
+                        <summary style={{ cursor: 'pointer' }}>Manage saved templates</summary>
                         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
                           {savedTemplates.map((t) => (
                             <li key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
                               <span style={{ flex: 1 }}>{t.name} · <em style={{ color: colors.lovelabMuted }}>{t.lead_type}</em></span>
-                              <button
-                                onClick={() => handleApplySavedTemplate(t.id)}
-                                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body }}
-                              >Apply</button>
-                              <button
-                                onClick={() => handleDeleteSavedTemplate(t.id)}
-                                style={{ padding: '4px 8px', fontSize: 11, borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body }}
-                              >Delete</button>
+                              <button onClick={() => handleApplySavedTemplate(t.id)} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer' }}>Apply</button>
+                              <button onClick={() => handleDeleteSavedTemplate(t.id)} style={{ padding: '4px 8px', fontSize: 11, borderRadius: 6, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer' }}>Delete</button>
                             </li>
                           ))}
                         </ul>
                       </details>
                     )}
                   </div>
-                  {[
-                    { key: 'headline', label: 'Headline', kind: 'input', hint: 'The big serif title. The fair name shows as a gold subtitle underneath — don\'t repeat the fair name here.' },
-                    { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
-                    { key: 'paragraph2', label: 'Paragraph 2', kind: 'textarea', rows: 4 },
-                    { key: 'button1_label', label: 'Button 1 — label', kind: 'input', hint: 'Filled purple pill. Default: "Visit Our Website".' },
-                    { key: 'button1_url',   label: 'Button 1 — URL',   kind: 'input', hint: 'Where Button 1 links. Default: https://lovelab.be/' },
-                    { key: 'button2_label', label: 'Button 2 — label', kind: 'input', hint: 'Outline pill. Default: "B2B Login". Leave blank to hide.' },
-                    { key: 'button2_url',   label: 'Button 2 — URL',   kind: 'input', hint: 'Where Button 2 links. Default: https://lovelab.be/b2b-signup' },
-                    { key: 'cta_line', label: 'Call-to-action line (optional, below paragraph 2)', kind: 'textarea', rows: 2, hint: 'Auto-hidden if it mentions "lovelab.be" since the buttons already say it.' },
-                    { key: 'signoff', label: 'Signoff', kind: 'textarea', rows: 3 },
-                  ].map((field) => (
-                    <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-                      <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
-                      {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
-                      {field.kind === 'textarea' ? (
-                        <textarea
-                          value={batch[field.key] || ''}
-                          onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
-                          onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
-                          rows={field.rows || 3}
-                          style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical' }}
-                        />
-                      ) : (
-                        <input
-                          value={batch[field.key] || ''}
-                          onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
-                          onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
-                          style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body }}
-                        />
-                      )}
-                    </label>
+
+                  {/* Content/Buttons/Extras sections */}
+                  {sections.map((section) => (
+                    <div key={section.id} style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                      <div style={{ marginBottom: 12 }}>
+                        <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{section.icon}</span> {section.title}
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>{section.description}</p>
+                      </div>
+                      {section.fields.map((field) => (
+                        <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                          <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
+                          {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                          {fieldInput(field)}
+                        </label>
+                      ))}
+                    </div>
                   ))}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={runPreview} disabled={busyAction === 'preview'} style={actionBtnStyle}>{busyAction === 'preview' ? 'Loading...' : 'Preview email'}</button>
-                    <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={actionBtnStyle}>{busyAction === 'generate' ? 'Generating...' : 'Generate all drafts'}</button>
-                    <button onClick={runSend} disabled={busyAction && busyAction.startsWith('send')} style={{ ...actionBtnStyle, background: colors.inkPlum, color: '#fff' }}>{
-                      busyAction === 'send' ? 'Sending…'
-                      : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} remaining`
-                      : `Send to ${leads.length} leads`
-                    }</button>
+
+                  {/* Attachments section — PDFs from the B2B homepage */}
+                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        📎 Attachments
+                        {attachedCount > 0 && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{attachedCount}</span>}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>Pick PDFs / Excels to attach to every email in this batch. Same files as your B2B home page.</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {B2B_RESOURCE_GROUPS.map((group) => (
+                        <details key={group.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8 }}>
+                          <summary style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {group.label}
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: colors.lovelabMuted, fontWeight: 400 }}>
+                              {group.files.filter((f) => attachedSet.has(f.path)).length} / {group.files.length} selected
+                            </span>
+                          </summary>
+                          <div style={{ padding: '4px 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {group.files.map((f) => {
+                              const checked = attachedSet.has(f.path)
+                              return (
+                                <label key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? '#f8f0fa' : 'transparent', border: `1px solid ${checked ? colors.inkPlum + '44' : 'transparent'}`, fontSize: 12 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleAttachment(f.path)}
+                                    style={{ accentColor: colors.inkPlum, cursor: 'pointer' }}
+                                  />
+                                  <span style={{ flex: 1, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, position: 'sticky', bottom: 8, boxShadow: '0 -4px 14px rgba(0,0,0,0.04)' }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 13 }}>
+                        {busyAction === 'preview' ? 'Loading…' : 'Open big preview'}
+                      </button>
+                      <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={{ ...actionBtnStyle, fontSize: 13 }}>
+                        {busyAction === 'generate' ? 'Generating…' : 'Generate drafts'}
+                      </button>
+                      <button onClick={runSend} disabled={busyAction && busyAction.startsWith('send')} style={{ ...actionBtnStyle, background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700, flex: '1 1 auto', minWidth: 180 }}>
+                        {busyAction === 'send' ? 'Sending…'
+                          : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} remaining`
+                          : `Send to ${leads.length} lead${leads.length === 1 ? '' : 's'}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}`}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+
+              const previewColumn = (
+                <div style={{
+                  background: '#FDF7FA',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  height: isMobile ? 'auto' : 'calc(100vh - 180px)',
+                  position: isMobile ? 'static' : 'sticky',
+                  top: 16,
+                }}>
+                  <div style={{ padding: '10px 14px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live preview</span>
+                    {livePreviewLoading && <span style={{ fontSize: 11, color: colors.lovelabMuted }}>• updating…</span>}
+                    <button
+                      onClick={() => setShowLivePreview((v) => !v)}
+                      style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body, color: colors.text }}
+                    >
+                      {showLivePreview ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {showLivePreview && (
+                    <div style={{ flex: 1, overflow: 'auto', background: '#FDF7FA' }}>
+                      {leads.length === 0 ? (
+                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
+                          Upload at least one card and let n8n extract a lead — live preview needs a recipient to render the greeting.
+                        </div>
+                      ) : livePreviewHtml ? (
+                        <iframe
+                          title="Email live preview"
+                          srcDoc={livePreviewHtml}
+                          sandbox=""
+                          style={{ width: '100%', height: '100%', minHeight: isMobile ? 600 : '100%', border: 'none', background: '#FDF7FA' }}
+                        />
+                      ) : (
+                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>Loading preview…</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+
+              return (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: 16,
+                  alignItems: 'start',
+                }}>
+                  {formColumn}
+                  {previewColumn}
+                </div>
+              )
+            })()}
           </>
         )}
       </div>

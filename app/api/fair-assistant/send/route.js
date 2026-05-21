@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { sendEmail } from '@/lib/send-email';
+import { findB2BFileByPath } from '@/lib/b2b-files';
 
 // Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
 // the batch size, we time-box the loop: each worker checks an 8.5s deadline
@@ -41,6 +42,36 @@ export async function POST(request) {
 
   const startedAt = Date.now();
   const deadlineAt = startedAt + TIME_BUDGET_MS;
+
+  // Load the batch first so we know which PDFs to attach to every email.
+  const { data: batch } = await auth.adminSupabase
+    .from('fair_batches')
+    .select('id, attached_files')
+    .eq('id', batchId)
+    .single();
+
+  // Materialize attachment buffers once, reuse across the whole send loop.
+  // Files live in /public so we fetch them by absolute URL from this same
+  // deployment — NEXT_PUBLIC_SITE_URL or the request origin both work.
+  const siteOrigin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  const attachmentPaths = Array.isArray(batch?.attached_files) ? batch.attached_files : [];
+  const attachments = [];
+  for (const path of attachmentPaths) {
+    const file = findB2BFileByPath(path);
+    if (!file) continue; // unknown path, ignore silently
+    try {
+      const fileUrl = `${siteOrigin.replace(/\/$/, '')}${path}`;
+      const fileRes = await fetch(fileUrl);
+      if (!fileRes.ok) {
+        console.error('[fair-send] attachment fetch failed', file.path, fileRes.status);
+        continue;
+      }
+      const arrayBuf = await fileRes.arrayBuffer();
+      attachments.push({ filename: file.name, content: Buffer.from(arrayBuf) });
+    } catch (err) {
+      console.error('[fair-send] attachment fetch error', file.path, err.message);
+    }
+  }
 
   // Pull this batch's draft_ready drafts together with their lead's email.
   const { data: drafts, error: draftsErr } = await auth.adminSupabase
@@ -94,6 +125,9 @@ export async function POST(request) {
       // Resend sender defaults to lib/email.getSenderFrom(); reply-to lets
       // recipients reply straight to Alberto's existing inbox.
       replyTo: 'alberto@love-lab.com',
+      // PDFs/Excels the user picked in Outreach → Attachments. Materialized
+      // once at the top of this request so we don't refetch per draft.
+      attachments: attachments.length ? attachments : undefined,
     });
 
     if (result.sent) {

@@ -15,20 +15,28 @@ export async function POST(request) {
   const body = await request.json();
   const batchId = body.batchId;
   const leadId = body.leadId;
+  const overrides = body.overrides || null;
 
   if (!batchId) {
     return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
   }
 
-  const { data: batch, error: batchErr } = await auth.adminSupabase
+  const { data: batchRow, error: batchErr } = await auth.adminSupabase
     .from('fair_batches')
     .select('*')
     .eq('id', batchId)
     .single();
 
-  if (batchErr || !batch) {
+  if (batchErr || !batchRow) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
   }
+
+  // Merge in any unsaved field values from the live preview so the user can
+  // see their edits before they blur the input. Translation is skipped when
+  // overrides are present (live preview is always in the source language —
+  // makes typing feel instant instead of waiting for Claude on every keystroke).
+  const batch = overrides ? { ...batchRow, ...overrides } : batchRow;
+  const skipTranslation = Boolean(overrides);
 
   let leadQuery = auth.adminSupabase.from('fair_leads').select('*').eq('batch_id', batchId);
   if (leadId) {
@@ -71,13 +79,18 @@ export async function POST(request) {
       };
 
   const languages = languagesForCountry(lead.country);
-  const translatedByLanguage = await translateSlotsForLanguages(templateSlots, languages);
+  const translatedByLanguage = skipTranslation
+    ? { en: templateSlots }
+    : await translateSlotsForLanguages(templateSlots, languages);
+  // Force EN when previewing unsaved edits so we don't fall through to the
+  // (now empty) translated map for non-English leads.
+  const previewLanguages = skipTranslation ? ['en'] : languages;
   const email = buildEmailForLead({
     siteUrl: siteUrl(),
     lead,
     templateSlots,
     translatedByLanguage,
-    languages,
+    languages: previewLanguages,
     button1: { label: batch.button1_label, url: batch.button1_url },
     button2: { label: batch.button2_label, url: batch.button2_url },
   });
