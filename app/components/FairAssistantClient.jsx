@@ -1324,99 +1324,12 @@ export default function FairAssistantClient() {
                     </details>
                   ))}
 
-                  {/* Custom HTML — collapsed by default unless ACTIVE */}
-                  <details open={customHtmlActive} style={{ background: '#fff', border: `1px solid ${customHtmlActive ? colors.inkPlum : colors.border}`, borderRadius: 12 }}>
-                    <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🧬 Custom HTML body
-                        {customHtmlActive && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>ACTIVE</span>}
-                      </span>
-                      <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto', textAlign: 'right' }}>
-                        {customHtmlActive ? 'Overrides headline + paragraphs above' : 'Advanced — paste Claude HTML to override the template'}
-                      </span>
-                    </summary>
-                    <div style={{ padding: '0 16px 16px' }}>
-                    <textarea
-                      value={batch.custom_html || ''}
-                      onChange={(e) => setBatch({ ...batch, custom_html: e.target.value })}
-                      onBlur={() => saveBatchFields({ custom_html: batch.custom_html })}
-                      rows={10}
-                      placeholder={'<!-- paste Claude HTML here, e.g. -->\n<p style="font-size:15px;">Dear {firstName}, …</p>\n<img src="/Packshot Folder/Cuty/…/Bordeaux_yellow_gold_0_2ct_nylon-ef4m75.png" width="280" style="display:block;margin:16px auto;border-radius:12px;">\n<p>…</p>'}
-                      style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical', fontSize: 12, boxSizing: 'border-box', lineHeight: 1.5 }}
-                    />
-                    {customHtmlActive && (
-                      <button
-                        onClick={() => { setBatch({ ...batch, custom_html: '' }); saveBatchFields({ custom_html: '' }) }}
-                        style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body, fontSize: 11, fontWeight: 600 }}
-                      >
-                        Clear custom HTML (back to template)
-                      </button>
-                    )}
-                    </div>
-                  </details>
-
-                  {/* Image library — collapsed by default; opens on first interaction */}
-                  <details
-                    onToggle={(e) => { if (e.currentTarget.open && !imageLibrary.loaded) loadImageLibrary() }}
-                    style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12 }}
-                  >
-                    <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🖼️ Image library
-                      </span>
-                      <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto', textAlign: 'right' }}>
-                        Click any image → URL copied for use in chat or Custom HTML
-                      </span>
-                    </summary>
-                    <div style={{ padding: '0 16px 16px' }}>
-                    {!imageLibrary.loaded ? (
-                      <button
-                        onClick={loadImageLibrary}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px dashed ${colors.inkPlum}`, background: '#faf7fc', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
-                      >
-                        📂 Browse 1,500+ packshots from your /public folder
-                      </button>
-                    ) : imageLibrary.groups.length === 0 ? (
-                      <p style={{ fontSize: 12, color: colors.lovelabMuted }}>No images found in /Packshot Folder.</p>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                          {imageLibrary.groups.map((g) => (
-                            <button
-                              key={g.id}
-                              onClick={() => setImageLibrary((prev) => ({ ...prev, openGroup: g.id }))}
-                              style={{
-                                padding: '5px 10px', fontSize: 11, borderRadius: 12,
-                                border: `1px solid ${imageLibrary.openGroup === g.id ? colors.inkPlum : colors.border}`,
-                                background: imageLibrary.openGroup === g.id ? '#f8f0fa' : '#fff',
-                                color: imageLibrary.openGroup === g.id ? colors.inkPlum : colors.text,
-                                cursor: 'pointer', fontFamily: fonts.body, fontWeight: imageLibrary.openGroup === g.id ? 600 : 400,
-                              }}
-                            >
-                              {g.label} <span style={{ opacity: 0.5 }}>· {g.count}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, maxHeight: 320, overflowY: 'auto', padding: 4, background: '#faf7fc', borderRadius: 8 }}>
-                          {(imageLibrary.groups.find((g) => g.id === imageLibrary.openGroup)?.images || []).map((img) => (
-                            <button
-                              key={img.url}
-                              onClick={async () => { await copyToClipboard(img.url); showToast(`✓ Image URL copied — paste in Custom HTML or share with Claude`) }}
-                              title={`Copy: ${img.url}`}
-                              style={{
-                                aspectRatio: '1', background: '#fff', border: `1px solid ${colors.border}`,
-                                borderRadius: 6, overflow: 'hidden', cursor: 'pointer', padding: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              <img src={img.url} alt={img.name} loading="lazy" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                    </div>
-                  </details>
+                  {/* Custom HTML body and Image library are intentionally hidden from
+                      the Outreach UI per Sam (2026-05): too complex for the day-to-day
+                      workflow and Claude couldn't render HTML previews in chat anyway.
+                      The custom_html column + image-library API still exist; if any
+                      batch has custom_html set, it still renders correctly. Re-add the
+                      UI when there's a real workflow that needs it. */}
 
                   {/* Attachments section — PDFs from the B2B homepage */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
