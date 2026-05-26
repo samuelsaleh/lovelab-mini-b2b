@@ -31,6 +31,7 @@ export default function AdminLayout({ children }) {
   const activeId =
     pathname === '/admin'                          ? 'dashboard'
     : pathname.startsWith('/admin/agents')         ? 'agents'
+    : pathname.startsWith('/admin/fair-assistant') ? 'fair-assistant'
     : pathname.startsWith('/admin/fairs')          ? 'fairs'
     : pathname.startsWith('/admin/consignment')    ? 'consignment'
     : pathname.startsWith('/analytics')            ? 'analytics'

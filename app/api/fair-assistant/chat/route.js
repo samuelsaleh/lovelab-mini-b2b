@@ -1,0 +1,160 @@
+import { NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { requireFairAdmin } from '@/lib/fair-assistant/server';
+import { createAnthropicMessage } from '@/lib/ai/anthropic';
+
+const SYSTEM = `You help Alberto draft short, warm B2B follow-up emails after jewelry trade fairs for LoveLab Antwerp.
+
+FACTS about LoveLab — never contradict or invent:
+- LoveLab is a lab-grown coloured-diamond jewelry brand based in Antwerp, Belgium.
+- There is NO physical showroom or boutique in Antwerp to invite people to. Do not mention an "Antwerp showroom" or "visit our boutique" — it does not exist.
+- For deeper conversations, ALWAYS suggest a phone call or Google Meet instead of an in-person visit.
+- We can send a lookbook (PDF) on request.
+- The signoff is "Alberto Saleh / LoveLab Antwerp".
+
+Recipient types (the user will tell you which one, or guess from the company name):
+- shop / concept_store / jeweler — independent boutique or jewelry store. Tone: warm, mention the colored-diamond collections, offer to send lookbook or schedule a call.
+- agent — territorial wholesale rep who resells to retailers (e.g. owns the French market). Tone: brief, partnership-focused. Offer a call/Google Meet to discuss territory or commission terms. Do NOT push products yet.
+- partner — broader business partnership (collaboration, co-branding, etc.). Tone: open and exploratory. Suggest a call to align on what each side is looking for.
+
+Style:
+- 2-3 short paragraphs max. Plain language. No corporate jargon.
+- Never invent facts about the recipient's company.
+- If first name is missing, greet with "Hi," (no "Hi Unknown").
+
+Editable elements (the user can tweak any of these via the Outreach tab):
+- Headline (large serif title) — keep generic; the fair name shows as a gold subtitle automatically
+- Paragraph 1 and Paragraph 2 (body text)
+- Button 1: label + URL (filled purple pill, defaults to "Visit Our Website" → lovelab.be)
+- Button 2: label + URL (outline pill, defaults to "B2B Login" → lovelab.be/b2b-signup; leave blank to hide)
+- CTA line (optional sentence under paragraph 2)
+- Signoff
+- Contact card and the 2×2 product grid are FIXED — they're part of the brand shell and not editable per fair.
+
+When the user asks to personalize buttons / links — e.g. "swap B2B Login for a Calendly link", "make the second button send to our agents page", "hide the second button on agent emails" — propose concrete values:
+Button1Label: ...
+Button1URL: ...
+Button2Label: ...
+Button2URL: ...
+
+When you produce a usable email draft, format clearly with:
+Subject: ...
+Headline: ...
+Paragraph1: ...
+Paragraph2: ...
+Signoff: ...
+
+You can include Button1Label / Button1URL / Button2Label / Button2URL lines too when relevant — the user can copy them into the matching fields.
+
+You do NOT write HTML. The user pastes your text into plain text fields; the surrounding LoveLab brand shell (logo, fair-name subtitle, CTA buttons, product grid, contact card, footer) is rendered automatically. Focus on tight, warm copy — that's where Claude adds the most value here.`;
+
+// GET — load the persisted chat history for a batch.
+export async function GET(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'fair-chat' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const { searchParams } = new URL(request.url);
+  const batchId = searchParams.get('batchId');
+  if (!batchId) {
+    return NextResponse.json({ messages: [] });
+  }
+
+  const { data, error } = await auth.adminSupabase
+    .from('fair_chat_messages')
+    .select('id, role, content, created_at')
+    .eq('batch_id', batchId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[fair-chat GET]', error.message);
+    return NextResponse.json({ error: 'Failed to load chat history' }, { status: 500 });
+  }
+
+  return NextResponse.json({ messages: data || [] });
+}
+
+export async function POST(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 20, prefix: 'fair-chat' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const body = await request.json();
+  const messages = body.messages;
+  const context = body.context || {};
+  const batchId = context.batch?.id || body.batchId || null;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
+  }
+
+  const contextBlock = context.batch
+    ? `\n\nCurrent batch context:\nFair: ${context.batch.fair_name || context.batch.name}\nLeads: ${context.leadCount || 0}\nCurrent template:\nHeadline: ${context.batch.headline || ''}\nParagraph1: ${context.batch.paragraph1 || ''}\nParagraph2: ${context.batch.paragraph2 || ''}\nSignoff: ${context.batch.signoff || ''}`
+    : '';
+
+  try {
+    const { text } = await createAnthropicMessage({
+      system: SYSTEM + contextBlock,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      maxTokens: 1200,
+    });
+
+    // Persist the most-recent user turn + the assistant's reply. We rely on
+    // the client to keep the in-flight conversation in messages[], so we only
+    // need to append the LAST user message and the new assistant response —
+    // earlier turns are already in the DB from prior POSTs.
+    if (batchId) {
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      const rowsToInsert = [];
+      if (lastUser?.content) {
+        rowsToInsert.push({ batch_id: batchId, role: 'user', content: String(lastUser.content) });
+      }
+      rowsToInsert.push({ batch_id: batchId, role: 'assistant', content: text });
+      if (rowsToInsert.length) {
+        const { error: insErr } = await auth.adminSupabase
+          .from('fair_chat_messages')
+          .insert(rowsToInsert);
+        if (insErr) {
+          // Persistence failure should not fail the chat — log and continue.
+          console.error('[fair-chat persist]', insErr.message);
+        }
+      }
+    }
+
+    return NextResponse.json({ message: text });
+  } catch (err) {
+    console.error('[fair-chat]', err.message);
+    return NextResponse.json({ error: err.message || 'Chat failed' }, { status: 502 });
+  }
+}
+
+// DELETE — wipe a batch's chat history (useful when starting fresh).
+export async function DELETE(request) {
+  const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'fair-chat' });
+  if (rateLimitRes) return rateLimitRes;
+
+  const auth = await requireFairAdmin();
+  if (auth.error) return auth.error;
+
+  const { searchParams } = new URL(request.url);
+  const batchId = searchParams.get('batchId');
+  if (!batchId) {
+    return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
+  }
+
+  const { error } = await auth.adminSupabase
+    .from('fair_chat_messages')
+    .delete()
+    .eq('batch_id', batchId);
+
+  if (error) {
+    console.error('[fair-chat DELETE]', error.message);
+    return NextResponse.json({ error: 'Failed to clear chat' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
