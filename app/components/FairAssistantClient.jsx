@@ -107,7 +107,16 @@ export default function FairAssistantClient() {
   // Default OFF on phones — the form should own the screen. User can toggle on.
   const [showLivePreview, setShowLivePreview] = useState(false)
   const [imageLibrary, setImageLibrary] = useState({ groups: [], loaded: false, openGroup: null })
+  const [toast, setToast] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Ephemeral confirmation messages (image copied, link copied, etc.) live in
+  // a floating bottom toast — separate from setError so they don't masquerade
+  // as failures and so users can see them no matter how far they're scrolled.
+  const showToast = useCallback((message) => {
+    setToast(message)
+    setTimeout(() => setToast((current) => (current === message ? null : current)), 2400)
+  }, [])
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 767px)')
@@ -1179,6 +1188,36 @@ export default function FairAssistantClient() {
 
               const formColumn = (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Hero: chat is the primary way to build emails. Everything below
+                      is a manual escape hatch. */}
+                  <button
+                    onClick={() => setChatOpen(true)}
+                    style={{
+                      width: '100%',
+                      padding: isMobile ? '18px 20px' : '22px 24px',
+                      borderRadius: 14,
+                      border: 'none',
+                      background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #8b5e92 100%)`,
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontFamily: fonts.body,
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                      boxShadow: '0 4px 16px rgba(93,58,94,0.25)',
+                    }}
+                  >
+                    <div style={{ fontSize: isMobile ? 26 : 30, lineHeight: 1 }}>✨</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, marginBottom: 2 }}>Build this email with Claude</div>
+                      <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.4 }}>
+                        Describe what you want — Claude writes the copy, picks images, drafts the HTML. You approve.
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 22, opacity: 0.7 }}>→</div>
+                  </button>
+
                   {/* Quick-start: preset templates + Claude chat */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
                     <h3 style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>🚀 Start from a preset</h3>
@@ -1241,40 +1280,62 @@ export default function FairAssistantClient() {
                     )}
                   </div>
 
-                  {/* Content/Buttons/Extras sections */}
-                  {sections.map((section) => (
-                    <div key={section.id} style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                      <div style={{ marginBottom: 12 }}>
-                        <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span>{section.icon}</span> {section.title}
-                        </h3>
-                        <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>{section.description}</p>
+                  {/* Email content section — always visible, the primary editing surface */}
+                  {(() => {
+                    const contentSection = sections.find((s) => s.id === 'content')
+                    if (!contentSection) return null
+                    return (
+                      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                        <div style={{ marginBottom: 12 }}>
+                          <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{contentSection.icon}</span> {contentSection.title}
+                          </h3>
+                          <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>{contentSection.description}</p>
+                        </div>
+                        {contentSection.fields.map((field) => (
+                          <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                            <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
+                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                            {fieldInput(field)}
+                          </label>
+                        ))}
                       </div>
-                      {section.fields.map((field) => (
-                        <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
-                          <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
-                          {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
-                          {fieldInput(field)}
-                        </label>
-                      ))}
-                    </div>
+                    )
+                  })()}
+
+                  {/* Advanced sections — collapsed by default to keep the page calm. */}
+                  {sections.filter((s) => s.id !== 'content').map((section) => (
+                    <details key={section.id} style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 0 }}>
+                      <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{section.icon}</span> {section.title}
+                        </span>
+                        <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto' }}>{section.description}</span>
+                      </summary>
+                      <div style={{ padding: '0 16px 16px' }}>
+                        {section.fields.map((field) => (
+                          <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                            <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
+                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                            {fieldInput(field)}
+                          </label>
+                        ))}
+                      </div>
+                    </details>
                   ))}
 
-                  {/* Custom HTML — pasted Claude output that overrides the text fields */}
-                  <div style={{ background: '#fff', border: `1px solid ${customHtmlActive ? colors.inkPlum : colors.border}`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          🧬 Custom HTML body
-                          {customHtmlActive && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>ACTIVE</span>}
-                        </h3>
-                        <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>
-                          {customHtmlActive
-                            ? 'Active — overrides headline + paragraphs above. Brand shell (logo, subtitle, buttons, contact card) is still rendered.'
-                            : 'Paste HTML from Claude or write your own. When non-empty, replaces the template text. Use {firstName}, {fairName}, {company} for personalization.'}
-                        </p>
-                      </div>
-                    </div>
+                  {/* Custom HTML — collapsed by default unless ACTIVE */}
+                  <details open={customHtmlActive} style={{ background: '#fff', border: `1px solid ${customHtmlActive ? colors.inkPlum : colors.border}`, borderRadius: 12 }}>
+                    <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🧬 Custom HTML body
+                        {customHtmlActive && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>ACTIVE</span>}
+                      </span>
+                      <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto', textAlign: 'right' }}>
+                        {customHtmlActive ? 'Overrides headline + paragraphs above' : 'Advanced — paste Claude HTML to override the template'}
+                      </span>
+                    </summary>
+                    <div style={{ padding: '0 16px 16px' }}>
                     <textarea
                       value={batch.custom_html || ''}
                       onChange={(e) => setBatch({ ...batch, custom_html: e.target.value })}
@@ -1291,18 +1352,23 @@ export default function FairAssistantClient() {
                         Clear custom HTML (back to template)
                       </button>
                     )}
-                  </div>
-
-                  {/* Image library — browse Packshot Folder, click to copy URL */}
-                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ marginBottom: 12 }}>
-                      <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🖼️ Image library
-                      </h3>
-                      <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>
-                        Click any image to copy its URL. Paste into the Custom HTML field above (or share with Claude in chat).
-                      </p>
                     </div>
+                  </details>
+
+                  {/* Image library — collapsed by default; opens on first interaction */}
+                  <details
+                    onToggle={(e) => { if (e.currentTarget.open && !imageLibrary.loaded) loadImageLibrary() }}
+                    style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12 }}
+                  >
+                    <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🖼️ Image library
+                      </span>
+                      <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto', textAlign: 'right' }}>
+                        Click any image → URL copied for use in chat or Custom HTML
+                      </span>
+                    </summary>
+                    <div style={{ padding: '0 16px 16px' }}>
                     {!imageLibrary.loaded ? (
                       <button
                         onClick={loadImageLibrary}
@@ -1335,7 +1401,7 @@ export default function FairAssistantClient() {
                           {(imageLibrary.groups.find((g) => g.id === imageLibrary.openGroup)?.images || []).map((img) => (
                             <button
                               key={img.url}
-                              onClick={async () => { await copyToClipboard(img.url); setError(`✓ Copied: ${img.url.slice(0, 60)}${img.url.length > 60 ? '…' : ''}`); setTimeout(() => setError(null), 2500) }}
+                              onClick={async () => { await copyToClipboard(img.url); showToast(`✓ Image URL copied — paste in Custom HTML or share with Claude`) }}
                               title={`Copy: ${img.url}`}
                               style={{
                                 aspectRatio: '1', background: '#fff', border: `1px solid ${colors.border}`,
@@ -1349,7 +1415,8 @@ export default function FairAssistantClient() {
                         </div>
                       </>
                     )}
-                  </div>
+                    </div>
+                  </details>
 
                   {/* Attachments section — PDFs from the B2B homepage */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
@@ -1533,6 +1600,33 @@ export default function FairAssistantClient() {
           </>
         )}
       </div>
+
+      {toast && (
+        <div
+          onClick={() => setToast(null)}
+          style={{
+            position: 'fixed',
+            bottom: `calc(88px + env(safe-area-inset-bottom))`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2000,
+            background: 'rgba(33, 24, 38, 0.95)',
+            color: '#fff',
+            padding: '12px 20px',
+            borderRadius: 24,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: fonts.body,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.25)',
+            maxWidth: 'calc(100vw - 32px)',
+            textAlign: 'center',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          {toast}
+        </div>
+      )}
 
       {previewOpen && (
         <div className="fa-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setPreviewOpen(false)}>
