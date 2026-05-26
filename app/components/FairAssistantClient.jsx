@@ -194,7 +194,7 @@ export default function FairAssistantClient() {
   // translation) so typing feels instant, and skips entirely if there are
   // no leads yet (preview needs a recipient for the greeting).
   useEffect(() => {
-    if (tab !== 'outreach' || !activeBatchId || !batch || leads.length === 0) {
+    if (tab !== 'outreach' || !activeBatchId || !batch) {
       return
     }
     const t = setTimeout(async () => {
@@ -215,7 +215,10 @@ export default function FairAssistantClient() {
         const res = await fetch('/api/fair-assistant/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ batchId: activeBatchId, overrides }),
+          // allowPlaceholder=true lets the server render the email shell with
+          // a generic recipient when no leads exist yet (otherwise the user
+          // sees a confusing "no leads available" error before uploading).
+          body: JSON.stringify({ batchId: activeBatchId, overrides, allowPlaceholder: true }),
         })
         const data = await res.json()
         if (res.ok && data?.preview?.bodyHtml) setLivePreviewHtml(data.preview.bodyHtml)
@@ -229,7 +232,9 @@ export default function FairAssistantClient() {
   }, [
     tab,
     activeBatchId,
-    leads.length,
+    // Intentionally omitting leads.length — the live preview only needs to
+    // re-render when the batch's editable fields change. Without this,
+    // every realtime lead insert (n8n callback) re-runs the preview.
     batch?.headline,
     batch?.paragraph1,
     batch?.paragraph2,
@@ -596,6 +601,12 @@ export default function FairAssistantClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generate failed')
       await loadBatchDetails(activeBatchId)
+      // Tell the user when some drafts had to fall back to English. Without
+      // this they'd never know — the batch silently sends mixed-language.
+      if (Array.isArray(data.translationWarnings) && data.translationWarnings.length) {
+        const langs = [...new Set(data.translationWarnings.flatMap((w) => w.fellBackToEnglishFor))].join(', ')
+        setError(`⚠️ ${data.translationWarnings.length} draft${data.translationWarnings.length === 1 ? '' : 's'} couldn't be translated (${langs}) — those will go out in English. Click again to retry, or send anyway.`)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -1441,9 +1452,20 @@ export default function FairAssistantClient() {
                       <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={{ ...actionBtnStyle, fontSize: 13 }}>
                         {busyAction === 'generate' ? 'Generating…' : 'Generate drafts'}
                       </button>
-                      <button onClick={runSend} disabled={busyAction && busyAction.startsWith('send')} style={{ ...actionBtnStyle, background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700, flex: '1 1 auto', minWidth: 180 }}>
+                      <button
+                        onClick={runSend}
+                        disabled={(busyAction && busyAction.startsWith('send')) || uploading || leads.length === 0}
+                        title={
+                          uploading ? 'Wait for uploads to finish' :
+                          leads.length === 0 ? 'No leads in this batch yet' :
+                          ''
+                        }
+                        style={{ ...actionBtnStyle, background: (uploading || leads.length === 0) ? '#c5b9cf' : colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700, flex: '1 1 auto', minWidth: 180, cursor: (uploading || leads.length === 0) ? 'not-allowed' : 'pointer' }}
+                      >
                         {busyAction === 'send' ? 'Sending…'
                           : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} remaining`
+                          : uploading ? 'Wait for uploads…'
+                          : leads.length === 0 ? 'No leads yet'
                           : `Send to ${leads.length} lead${leads.length === 1 ? '' : 's'}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}`}
                       </button>
                     </div>

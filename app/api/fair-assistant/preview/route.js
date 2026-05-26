@@ -16,6 +16,7 @@ export async function POST(request) {
   const batchId = body.batchId;
   const leadId = body.leadId;
   const overrides = body.overrides || null;
+  const allowPlaceholder = body.allowPlaceholder === true;
 
   if (!batchId) {
     return NextResponse.json({ error: 'batchId is required' }, { status: 400 });
@@ -46,11 +47,28 @@ export async function POST(request) {
   }
 
   const { data: leads, error: leadsErr } = await leadQuery;
-  if (leadsErr || !leads?.length) {
-    return NextResponse.json({ error: 'No leads available for preview' }, { status: 400 });
+  if (leadsErr) {
+    return NextResponse.json({ error: 'Failed to load leads' }, { status: 500 });
   }
 
-  const lead = leads[0];
+  // No leads yet? Live preview passes allowPlaceholder=true so the user can
+  // still see the email shell with a generic recipient. Explicit /preview
+  // calls (Open big preview button) leave allowPlaceholder false and 400.
+  const lead = leads?.length ? leads[0] : (allowPlaceholder ? {
+    id: 'placeholder',
+    first_name: '',
+    last_name: '',
+    company: '',
+    email: '',
+    country: '',
+    lead_type: 'shop',
+    language: 'en',
+    language_label: 'English',
+  } : null);
+
+  if (!lead) {
+    return NextResponse.json({ error: 'No leads available for preview' }, { status: 400 });
+  }
   const fairName = batch.fair_name || batch.name;
   const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.';
 

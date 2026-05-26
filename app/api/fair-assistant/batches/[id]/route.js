@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
+import { findB2BFileByPath } from '@/lib/b2b-files';
 
 export async function GET(request, { params }) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'fair-batch' });
@@ -46,6 +47,19 @@ export async function PATCH(request, { params }) {
   for (const key of allowed) {
     if (body[key] !== undefined) patch[key] = body[key];
   }
+
+  // Validate attached_files — anything we don't recognize won't actually attach
+  // when send runs, so reject it up front instead of letting the user think
+  // they've attached files that will silently no-op.
+  if (Array.isArray(patch.attached_files)) {
+    const unknown = patch.attached_files.filter((p) => typeof p !== 'string' || !findB2BFileByPath(p));
+    if (unknown.length) {
+      return NextResponse.json({
+        error: `Unknown attachment path(s): ${unknown.slice(0, 3).join(', ')}${unknown.length > 3 ? ` (+${unknown.length - 3} more)` : ''}`,
+      }, { status: 400 });
+    }
+  }
+
   patch.updated_at = new Date().toISOString();
 
   const { data, error } = await auth.adminSupabase

@@ -103,25 +103,36 @@ export async function POST(request) {
       maxTokens: 1200,
     });
 
-    // Persist the most-recent user turn + the assistant's reply. We rely on
-    // the client to keep the in-flight conversation in messages[], so we only
-    // need to append the LAST user message and the new assistant response —
-    // earlier turns are already in the DB from prior POSTs.
+    // Persist anything in messages[] that isn't already in the DB, plus the
+    // new assistant reply. Previous version only inserted the LAST user turn,
+    // which dropped messages when the user typed two prompts back-to-back
+    // before the first response returned.
     if (batchId) {
-      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      const { data: existing } = await auth.adminSupabase
+        .from('fair_chat_messages')
+        .select('content, role, created_at')
+        .eq('batch_id', batchId)
+        .order('created_at', { ascending: true });
+      // Use a content+role tuple as the dedup key — cheap and correct for the
+      // realistic case where the same user doesn't send the exact same string
+      // twice in one session.
+      const seen = new Set((existing || []).map((m) => `${m.role}::${m.content}`));
       const rowsToInsert = [];
-      if (lastUser?.content) {
-        rowsToInsert.push({ batch_id: batchId, role: 'user', content: String(lastUser.content) });
+      for (const m of messages) {
+        if (!m?.content) continue;
+        const key = `${m.role}::${String(m.content)}`;
+        if (!seen.has(key)) {
+          rowsToInsert.push({ batch_id: batchId, role: m.role, content: String(m.content) });
+          seen.add(key);
+        }
       }
       rowsToInsert.push({ batch_id: batchId, role: 'assistant', content: text });
-      if (rowsToInsert.length) {
-        const { error: insErr } = await auth.adminSupabase
-          .from('fair_chat_messages')
-          .insert(rowsToInsert);
-        if (insErr) {
-          // Persistence failure should not fail the chat — log and continue.
-          console.error('[fair-chat persist]', insErr.message);
-        }
+      const { error: insErr } = await auth.adminSupabase
+        .from('fair_chat_messages')
+        .insert(rowsToInsert);
+      if (insErr) {
+        // Persistence failure should not fail the chat — log and continue.
+        console.error('[fair-chat persist]', insErr.message);
       }
     }
 

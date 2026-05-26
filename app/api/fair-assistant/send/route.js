@@ -55,21 +55,43 @@ export async function POST(request) {
   // deployment — NEXT_PUBLIC_SITE_URL or the request origin both work.
   const siteOrigin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
   const attachmentPaths = Array.isArray(batch?.attached_files) ? batch.attached_files : [];
+  // Resend caps attachments at ~40 MB per email. We stay safely under that
+  // (35 MB) to leave headroom for the HTML body, headers, and encoding overhead.
+  const RESEND_ATTACHMENT_BUDGET = 35 * 1024 * 1024;
   const attachments = [];
+  let attachmentBytes = 0;
+  const skippedAttachments = [];
   for (const path of attachmentPaths) {
     const file = findB2BFileByPath(path);
-    if (!file) continue; // unknown path, ignore silently
+    if (!file) {
+      // Unknown path — could be a stale reference. Surface in response.
+      skippedAttachments.push({ path, reason: 'unknown_path' });
+      continue;
+    }
     try {
       const fileUrl = `${siteOrigin.replace(/\/$/, '')}${path}`;
       const fileRes = await fetch(fileUrl);
       if (!fileRes.ok) {
         console.error('[fair-send] attachment fetch failed', file.path, fileRes.status);
+        skippedAttachments.push({ path, reason: `fetch_${fileRes.status}` });
         continue;
       }
       const arrayBuf = await fileRes.arrayBuffer();
+      if (attachmentBytes + arrayBuf.byteLength > RESEND_ATTACHMENT_BUDGET) {
+        // Adding this file would blow past Resend's limit and every email in
+        // this batch would 413. Refuse the batch entirely — better than half-
+        // sending some and corrupting the failed/sent counters.
+        return NextResponse.json({
+          error: `Attachments too large. Selected files total ${Math.round((attachmentBytes + arrayBuf.byteLength) / 1024 / 1024)} MB; Resend limit is ~40 MB per email. Deselect a few files in the Attachments panel and try again.`,
+          attachedBytes: attachmentBytes,
+          rejectedFile: file.name,
+        }, { status: 413 });
+      }
+      attachmentBytes += arrayBuf.byteLength;
       attachments.push({ filename: file.name, content: Buffer.from(arrayBuf) });
     } catch (err) {
       console.error('[fair-send] attachment fetch error', file.path, err.message);
+      skippedAttachments.push({ path, reason: 'fetch_error' });
     }
   }
 

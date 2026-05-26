@@ -107,10 +107,25 @@ export async function POST(request) {
 
   let generated = 0;
   let failed = 0;
+  // Translation can silently fall back to English when Claude returns
+  // un-parseable JSON. translateEmailSlots tags the result with
+  // __translationFailed; collect those here so the response can warn
+  // the user instead of pretending the batch is in 5 languages when
+  // really half of it is English.
+  const translationWarnings = [];
 
   await mapPool(leads, CONCURRENCY, async (lead) => {
     try {
       const { langs, slots, translatedByLanguage } = await getTranslations(lead);
+      const failedLangs = langs.filter((l) => l !== 'en' && translatedByLanguage[l]?.__translationFailed);
+      if (failedLangs.length) {
+        translationWarnings.push({
+          leadId: lead.id,
+          email: lead.email,
+          name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
+          fellBackToEnglishFor: failedLangs,
+        });
+      }
       const email = buildEmailForLead({
         siteUrl: siteUrl(),
         lead,
@@ -156,5 +171,11 @@ export async function POST(request) {
     .update({ status: 'drafting', updated_at: new Date().toISOString() })
     .eq('id', batchId);
 
-  return NextResponse.json({ ok: true, generated, failed, total: leads.length });
+  return NextResponse.json({
+    ok: true,
+    generated,
+    failed,
+    total: leads.length,
+    translationWarnings: translationWarnings.length ? translationWarnings : undefined,
+  });
 }

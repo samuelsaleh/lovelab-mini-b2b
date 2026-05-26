@@ -135,6 +135,11 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {(leadCount === 0) && (
+            <div style={{ padding: 12, marginBottom: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e' }}>
+              ⚠️ No leads in this batch yet. Claude can still help draft generic copy, but for best results upload card photos first so Claude knows who you're writing to.
+            </div>
+          )}
           {loadingHistory && <p style={{ fontSize: 12, color: colors.lovelabMuted }}>Loading conversation history…</p>}
           {!loadingHistory && !messages.length && (
             <p style={{ color: colors.lovelabMuted, fontSize: 13 }}>Ask Claude to draft or refine your fair follow-up email. Conversation is remembered between sessions for this fair.</p>
