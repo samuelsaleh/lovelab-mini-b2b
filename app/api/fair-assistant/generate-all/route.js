@@ -135,6 +135,7 @@ export async function POST(request) {
         button1: { label: batch.button1_label, url: batch.button1_url },
         button2: { label: batch.button2_label, url: batch.button2_url },
         customHtml: batch.custom_html || undefined,
+        subject: batch.subject || undefined,
       });
 
       const { error } = await auth.adminSupabase

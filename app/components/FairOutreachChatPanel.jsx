@@ -4,18 +4,37 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 
+// Detects "FieldName: value" updates anywhere in Claude's response.
+// The lookahead lists every label we care about so multi-field replies parse
+// cleanly even when the values themselves contain colons or newlines.
+const FIELD_DEFS = [
+  { key: 'subject',       chatLabels: ['Subject'],        uiLabel: 'Subject',     batchKey: 'subject' },
+  { key: 'headline',      chatLabels: ['Headline'],       uiLabel: 'Headline',    batchKey: 'headline' },
+  { key: 'paragraph1',    chatLabels: ['Paragraph1', 'Paragraph 1'], uiLabel: 'Paragraph 1', batchKey: 'paragraph1' },
+  { key: 'paragraph2',    chatLabels: ['Paragraph2', 'Paragraph 2'], uiLabel: 'Paragraph 2', batchKey: 'paragraph2' },
+  { key: 'signoff',       chatLabels: ['Signoff', 'Sign-off'],       uiLabel: 'Signoff',     batchKey: 'signoff' },
+  { key: 'button1_label', chatLabels: ['Button1Label', 'Button 1 Label'], uiLabel: 'Button 1 label', batchKey: 'button1_label' },
+  { key: 'button1_url',   chatLabels: ['Button1URL', 'Button 1 URL'],     uiLabel: 'Button 1 URL',   batchKey: 'button1_url' },
+  { key: 'button2_label', chatLabels: ['Button2Label', 'Button 2 Label'], uiLabel: 'Button 2 label', batchKey: 'button2_label' },
+  { key: 'button2_url',   chatLabels: ['Button2URL', 'Button 2 URL'],     uiLabel: 'Button 2 URL',   batchKey: 'button2_url' },
+]
+const ALL_CHAT_LABELS = FIELD_DEFS.flatMap((f) => f.chatLabels)
+
 function parseDraftFromAssistant(text) {
-  const pick = (label) => {
-    const re = new RegExp(`${label}:\\s*(.+?)(?=\\n(?:Subject|Headline|Paragraph1|Paragraph2|Signoff):|$)`, 'is')
-    const match = text.match(re)
-    return match ? match[1].trim() : null
+  const lookahead = ALL_CHAT_LABELS.map((l) => l.replace(/\s/g, '\\s?')).join('|')
+  const out = {}
+  for (const def of FIELD_DEFS) {
+    for (const label of def.chatLabels) {
+      const re = new RegExp(`(?:^|\\n)\\*{0,2}${label.replace(/\s/g, '\\s?')}\\*{0,2}\\s*:\\s*\\*{0,2}\\s*(.+?)(?=\\n\\s*\\*{0,2}(?:${lookahead})\\*{0,2}\\s*:|$)`, 'is')
+      const m = text.match(re)
+      if (m) {
+        // Strip surrounding markdown emphasis and trailing whitespace.
+        out[def.key] = m[1].replace(/^\*+|\*+$/g, '').trim()
+        break
+      }
+    }
   }
-  return {
-    headline: pick('Headline'),
-    paragraph1: pick('Paragraph1'),
-    paragraph2: pick('Paragraph2'),
-    signoff: pick('Signoff'),
-  }
+  return out
 }
 
 export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCount, onApplyDraft, onSaveAsTemplate }) {
@@ -95,18 +114,32 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
   }, [batch?.id])
 
   const latestAssistant = [...messages].reverse().find((m) => m.role === 'assistant')?.content
-  const parsedDraft = latestAssistant ? parseDraftFromAssistant(latestAssistant) : null
-  const canApply = parsedDraft && (parsedDraft.headline || parsedDraft.paragraph1)
+  const parsedDraft = latestAssistant ? parseDraftFromAssistant(latestAssistant) : {}
+  // Detected fields = the ones Claude actually included in its latest reply.
+  // We map them by FIELD_DEFS order so the UI lists them in a sensible order
+  // (Subject first, then Headline, paragraphs, signoff, buttons).
+  const detectedFields = FIELD_DEFS.filter((def) => parsedDraft[def.key])
+  const canApply = detectedFields.length > 0
 
-  const applyDraft = useCallback(() => {
-    if (!parsedDraft) return
-    onApplyDraft(Object.fromEntries(Object.entries(parsedDraft).filter(([, v]) => v)))
+  // Apply one specific field. We translate from our internal key -> the
+  // batch column name that FairAssistantClient expects.
+  const applyOne = useCallback((def) => {
+    if (!parsedDraft[def.key]) return
+    onApplyDraft({ [def.batchKey]: parsedDraft[def.key] })
   }, [parsedDraft, onApplyDraft])
 
-  const applyAndSave = useCallback(async () => {
-    applyDraft()
+  const applyAll = useCallback(() => {
+    const patch = {}
+    for (const def of detectedFields) {
+      patch[def.batchKey] = parsedDraft[def.key]
+    }
+    if (Object.keys(patch).length) onApplyDraft(patch)
+  }, [detectedFields, parsedDraft, onApplyDraft])
+
+  const applyAllAndSaveAsTemplate = useCallback(async () => {
+    applyAll()
     if (onSaveAsTemplate) await onSaveAsTemplate({ silent: true })
-  }, [applyDraft, onSaveAsTemplate])
+  }, [applyAll, onSaveAsTemplate])
 
   const fairLabel = batch?.fair_name || batch?.name || 'this fair'
 
@@ -159,18 +192,37 @@ export default function FairOutreachChatPanel({ isOpen, onClose, batch, leadCoun
           <div ref={bottomRef} />
         </div>
         {canApply && (
-          <div style={{ padding: '0 16px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ padding: '0 16px 8px', display: 'flex', flexDirection: 'column', gap: 6, borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
+              Claude proposed {detectedFields.length} field{detectedFields.length === 1 ? '' : 's'} — tap to apply
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {detectedFields.map((def) => (
+                <button
+                  key={def.key}
+                  onClick={() => applyOne(def)}
+                  title={`Apply to ${def.uiLabel}`}
+                  style={{
+                    padding: '6px 10px', borderRadius: 14, border: `1px solid ${colors.inkPlum}`,
+                    background: '#fff', color: colors.inkPlum, fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: fonts.body,
+                  }}
+                >
+                  ✓ {def.uiLabel}
+                </button>
+              ))}
+            </div>
             <button
-              onClick={applyDraft}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+              onClick={applyAll}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body, fontSize: 13 }}
             >
-              Use this draft
+              Apply all {detectedFields.length} change{detectedFields.length === 1 ? '' : 's'} to the form
             </button>
             <button
-              onClick={applyAndSave}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+              onClick={applyAllAndSaveAsTemplate}
+              style={{ width: '100%', padding: 8, borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12 }}
             >
-              💾 Use & save as template for {fairLabel}
+              💾 Apply & save as template for {fairLabel}
             </button>
           </div>
         )}

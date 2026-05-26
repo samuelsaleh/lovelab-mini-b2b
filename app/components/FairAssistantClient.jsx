@@ -201,6 +201,7 @@ export default function FairAssistantClient() {
       setLivePreviewLoading(true)
       try {
         const overrides = {
+          subject: batch.subject,
           headline: batch.headline,
           paragraph1: batch.paragraph1,
           paragraph2: batch.paragraph2,
@@ -235,6 +236,7 @@ export default function FairAssistantClient() {
     // Intentionally omitting leads.length — the live preview only needs to
     // re-render when the batch's editable fields change. Without this,
     // every realtime lead insert (n8n callback) re-runs the preview.
+    batch?.subject,
     batch?.headline,
     batch?.paragraph1,
     batch?.paragraph2,
@@ -549,6 +551,7 @@ export default function FairAssistantClient() {
   const flushPendingEdits = useCallback(async () => {
     if (!batch || !activeBatchId) return
     await saveBatchFields({
+      subject: batch.subject ?? '',
       headline: batch.headline ?? '',
       paragraph1: batch.paragraph1 ?? '',
       paragraph2: batch.paragraph2 ?? '',
@@ -1190,7 +1193,8 @@ export default function FairAssistantClient() {
                   icon: '📝',
                   description: 'The text Alberto wants the recipient to read.',
                   fields: [
-                    { key: 'headline', label: 'Headline', kind: 'input', hint: 'The big serif title. The fair name shows as a gold subtitle automatically — no need to repeat it here.' },
+                    { key: 'subject', label: 'Email subject line', kind: 'input', hint: 'What recipients see in their inbox. Defaults to your headline if blank. Use {fairName}, {firstName}, {company} for personalization.', placeholder: 'Following up from {fairName}' },
+                    { key: 'headline', label: 'Headline', kind: 'input', hint: 'The big serif title inside the email. The fair name shows as a gold subtitle automatically — no need to repeat it here.' },
                     { key: 'paragraph1', label: 'Paragraph 1', kind: 'textarea', rows: 4 },
                     { key: 'paragraph2', label: 'Paragraph 2', kind: 'textarea', rows: 5 },
                     { key: 'signoff', label: 'Signoff', kind: 'textarea', rows: 3 },
