@@ -273,6 +273,20 @@ export default function FairAssistantClient() {
     }
   }, [activeBatchId, batch])
 
+  const handleDeleteImage = useCallback(async (imageId, fileName) => {
+    if (!activeBatchId) return
+    if (!window.confirm(`Delete "${fileName || 'this photo'}" from the batch?\n\nUse this when a photo is stuck on "processing" because the n8n callback never arrived. The photo will be removed from the batch and (best-effort) from Drive. If n8n later sends a callback for it, the lead will still be created without an image link.`)) return
+    try {
+      const res = await fetch(`/api/fair-assistant/images/${imageId}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to delete image')
+      await loadBatchDetails(activeBatchId)
+      showToast('✓ Photo removed from batch')
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [activeBatchId, loadBatchDetails, showToast])
+
   const toggleAttachment = useCallback((path) => {
     if (!batch) return
     const current = Array.isArray(batch.attached_files) ? batch.attached_files : []
@@ -918,19 +932,40 @@ export default function FairAssistantClient() {
                     <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Photos in this batch</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {images.map((img, i) => {
+                        // If "processing" hasn't moved in >5 min, treat as
+                        // stuck — usually means the n8n callback never fired.
+                        const createdAtMs = img.created_at ? new Date(img.created_at).getTime() : Date.now()
+                        const ageMin = (Date.now() - createdAtMs) / 60000
+                        const isStuck = img.status === 'processing' && ageMin > 5
                         const statusColor =
                           img.status === 'processed' ? '#16a34a' :
                           img.status === 'failed' ? '#dc2626' :
+                          isStuck ? '#dc2626' :
                           img.status === 'processing' ? '#ca8a04' : colors.lovelabMuted
                         const statusLabel =
                           img.status === 'processed' ? '✓ done' :
                           img.status === 'failed' ? '✗ failed' :
+                          isStuck ? `⚠ stuck (${Math.floor(ageMin)}m)` :
                           img.status === 'processing' ? '⋯ processing' : img.status
+                        const canDelete = img.status !== 'processed' || isStuck
                         return (
-                          <div key={img.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, padding: '8px 10px', background: '#fafafa', borderRadius: 6 }}>
+                          <div key={img.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '8px 10px', background: isStuck ? '#fef2f2' : '#fafafa', borderRadius: 6, border: isStuck ? '1px solid #fecaca' : '1px solid transparent' }}>
                             <span style={{ color: colors.lovelabMuted, minWidth: 24 }}>#{i + 1}</span>
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.file_name || 'card.jpg'}</span>
                             <span style={{ color: statusColor, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{statusLabel}</span>
+                            {(canDelete || img.status === 'processed') && (
+                              <button
+                                onClick={() => handleDeleteImage(img.id, img.file_name)}
+                                title={isStuck ? 'Delete stuck photo' : 'Delete photo from batch'}
+                                aria-label="Delete photo"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4, minHeight: 28 }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="18" y1="6" x2="6" y2="18"/>
+                                  <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                              </button>
+                            )}
                           </div>
                         )
                       })}

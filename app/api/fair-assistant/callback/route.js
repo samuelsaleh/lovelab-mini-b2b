@@ -85,11 +85,28 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, duplicate: true, leadId: existing.id });
   }
 
+  // The user can delete an "processing" image from the UI before n8n's
+  // callback arrives (it's the only way to unstick a workflow that died
+  // mid-flight). If that happened, drop the image_id from the insert
+  // rather than failing the FK constraint — the lead still gets created.
+  let effectiveImageId = imageId;
+  if (imageId) {
+    const { data: imgRow } = await adminSupabase
+      .from('fair_images')
+      .select('id')
+      .eq('id', imageId)
+      .maybeSingle();
+    if (!imgRow) {
+      console.warn('[fair-callback] image_id no longer exists, inserting lead without it:', imageId);
+      effectiveImageId = null;
+    }
+  }
+
   const { data: inserted, error: insertErr } = await adminSupabase
     .from('fair_leads')
     .insert({
       batch_id: batchId,
-      image_id: imageId,
+      image_id: effectiveImageId,
       ...normalized,
       language: langs.join('+'),
       language_label: langs.map(languageLabel).join(' + '),
