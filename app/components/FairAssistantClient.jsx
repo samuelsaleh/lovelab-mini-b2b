@@ -536,11 +536,36 @@ export default function FairAssistantClient() {
     })
   }
 
+  // Force-flush the current batch form state to the server. Form fields save
+  // on onBlur, but on iOS Safari tapping a button often doesn't trigger blur
+  // on the previously-focused input — so the latest typed text never reaches
+  // the server before Generate / Send runs. Call this at the top of any
+  // action that depends on saved batch data.
+  const flushPendingEdits = useCallback(async () => {
+    if (!batch || !activeBatchId) return
+    await saveBatchFields({
+      headline: batch.headline ?? '',
+      paragraph1: batch.paragraph1 ?? '',
+      paragraph2: batch.paragraph2 ?? '',
+      signoff: batch.signoff ?? '',
+      cta_line: batch.cta_line ?? '',
+      button1_label: batch.button1_label ?? '',
+      button1_url: batch.button1_url ?? '',
+      button2_label: batch.button2_label ?? '',
+      button2_url: batch.button2_url ?? '',
+    }).catch((err) => {
+      // Don't block the action on a flush failure — log and continue with
+      // whatever the server already has.
+      console.warn('[flushPendingEdits] save failed (continuing):', err.message)
+    })
+  }, [batch, activeBatchId])
+
   const runPreview = async () => {
     if (!activeBatchId) return
     setBusyAction('preview')
     setError(null)
     try {
+      await flushPendingEdits()
       const res = await fetch('/api/fair-assistant/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -562,6 +587,7 @@ export default function FairAssistantClient() {
     setBusyAction('generate')
     setError(null)
     try {
+      await flushPendingEdits()
       const res = await fetch('/api/fair-assistant/generate-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -582,6 +608,7 @@ export default function FairAssistantClient() {
     setBusyAction('send')
     setError(null)
     try {
+      await flushPendingEdits()
       const genRes = await fetch('/api/fair-assistant/generate-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
