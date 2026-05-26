@@ -104,13 +104,20 @@ export default function FairAssistantClient() {
   const [savedTemplates, setSavedTemplates] = useState([])
   const [livePreviewHtml, setLivePreviewHtml] = useState('')
   const [livePreviewLoading, setLivePreviewLoading] = useState(false)
-  const [showLivePreview, setShowLivePreview] = useState(true)
+  // Default OFF on phones — the form should own the screen. User can toggle on.
+  const [showLivePreview, setShowLivePreview] = useState(false)
   const [imageLibrary, setImageLibrary] = useState({ groups: [], loaded: false, openGroup: null })
   const fileInputRef = useRef(null)
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 767px)')
-    const update = () => setIsMobile(mql.matches)
+    const update = () => {
+      const m = mql.matches
+      setIsMobile(m)
+      // Show the preview by default on desktop; collapse it on phones so
+      // the form has the screen. User can still toggle it open.
+      setShowLivePreview(!m)
+    }
     update()
     mql.addEventListener('change', update)
     return () => mql.removeEventListener('change', update)
@@ -595,13 +602,41 @@ export default function FairAssistantClient() {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 12px' : '24px 20px' }}>
+    <div className="fa-page" style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px calc(24px + env(safe-area-inset-bottom)) 12px' : '24px 20px', WebkitOverflowScrolling: 'touch' }}>
+      {/* iPhone polish — scoped to the Fair Assistant page only.
+          16px font-size prevents iOS Safari from auto-zooming on focus,
+          which made the form unusable on phones. */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 767px) {
+          .fa-page input,
+          .fa-page textarea,
+          .fa-page select {
+            font-size: 16px !important;
+          }
+          .fa-page button {
+            min-height: 40px;
+          }
+          .fa-modal-card {
+            border-radius: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            max-width: 100vw !important;
+          }
+          .fa-modal-overlay {
+            padding: 0 !important;
+            align-items: stretch !important;
+          }
+        }
+      ` }} />
       {editingLead && (
         <div
+          className="fa-modal-overlay"
           onClick={() => setEditingLead(null)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
         >
           <div
+            className="fa-modal-card"
             onClick={(e) => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 12, padding: 20, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
           >
@@ -928,75 +963,139 @@ export default function FairAssistantClient() {
             )}
 
             {tab === 'leads' && (
-              <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-                  <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${colors.border}` }}>
+              <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: isMobile ? 12 : 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, flex: isMobile ? '1 1 calc(50% - 4px)' : 'unset', fontSize: 14, background: '#fff' }}>
                     <option value="">All countries</option>
                     {countries.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${colors.border}` }}>
+                  <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, flex: isMobile ? '1 1 calc(50% - 4px)' : 'unset', fontSize: 14, background: '#fff' }}>
                     <option value="">All languages</option>
                     {languages.map((l) => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ textAlign: 'left', borderBottom: `1px solid ${colors.border}` }}>
-                        <th style={{ padding: 8 }}>Name</th>
-                        <th style={{ padding: 8 }}>Company</th>
-                        <th style={{ padding: 8 }}>Country</th>
-                        <th style={{ padding: 8 }}>Language</th>
-                        <th style={{ padding: 8 }}>Email</th>
-                        <th style={{ padding: 8 }}>Status</th>
-                        <th style={{ padding: 8, width: 50 }}></th>
-                        <th style={{ padding: 8, width: 40 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredLeads.map((lead) => (
-                        <tr
+
+                {/* Mobile: stacked tappable cards. Desktop: keep the table. */}
+                {isMobile ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filteredLeads.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 14 }}>
+                        No leads yet. Upload card photos to begin.
+                      </div>
+                    ) : filteredLeads.map((lead) => {
+                      const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'
+                      const typeColor = lead.lead_type === 'agent' ? { bg: '#fef3c7', fg: '#92400e' }
+                        : lead.lead_type === 'partner' ? { bg: '#dbeafe', fg: '#1e40af' }
+                        : { bg: '#f3f4f6', fg: '#374151' }
+                      return (
+                        <div
                           key={lead.id}
                           onClick={() => setEditingLead({ ...lead })}
-                          style={{ borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#faf8fc' }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                          style={{
+                            position: 'relative',
+                            padding: 14,
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: 10,
+                            background: '#fff',
+                            cursor: 'pointer',
+                          }}
                         >
-                          <td style={{ padding: 8 }}>
-                            {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                              {lead.company && <div style={{ fontSize: 13, color: colors.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.company}</div>}
+                            </div>
                             {lead.lead_type && lead.lead_type !== 'shop' && (
-                              <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px', background: lead.lead_type === 'agent' ? '#fef3c7' : lead.lead_type === 'partner' ? '#dbeafe' : '#f3f4f6', color: lead.lead_type === 'agent' ? '#92400e' : lead.lead_type === 'partner' ? '#1e40af' : '#374151', borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <span style={{ fontSize: 10, padding: '3px 8px', background: typeColor.bg, color: typeColor.fg, borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
                                 {lead.lead_type}
                               </span>
                             )}
-                          </td>
-                          <td style={{ padding: 8 }}>{lead.company || '—'}</td>
-                          <td style={{ padding: 8 }}>{lead.country || '—'}</td>
-                          <td style={{ padding: 8 }}>{lead.language_label || lead.language || '—'}</td>
-                          <td style={{ padding: 8 }}>{lead.email || '—'}</td>
-                          <td style={{ padding: 8 }}>{lead.status}</td>
-                          <td style={{ padding: 8, color: colors.inkPlum, fontSize: 12, fontWeight: 600 }}>Edit</td>
-                          <td style={{ padding: 4 }}>
+                          </div>
+                          <div style={{ fontSize: 13, color: colors.textLight, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {lead.email || '—'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: colors.lovelabMuted, flexWrap: 'wrap' }}>
+                            <span>📍 {lead.country || '—'}</span>
+                            <span>·</span>
+                            <span>🗣 {lead.language_label || lead.language || '—'}</span>
+                            <span>·</span>
+                            <span style={{ color: lead.status === 'extracted' ? '#16a34a' : lead.status === 'failed' ? '#dc2626' : colors.lovelabMuted, fontWeight: 600 }}>{lead.status}</span>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDeleteLead(lead.id) }}
                               title="Delete lead"
                               aria-label="Delete lead"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 6, display: 'flex', alignItems: 'center' }}
+                              style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 6, display: 'flex', alignItems: 'center', minHeight: 32 }}
                             >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="3 6 5 6 21 6"/>
                                 <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
                               </svg>
                             </button>
-                          </td>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: `1px solid ${colors.border}` }}>
+                          <th style={{ padding: 8 }}>Name</th>
+                          <th style={{ padding: 8 }}>Company</th>
+                          <th style={{ padding: 8 }}>Country</th>
+                          <th style={{ padding: 8 }}>Language</th>
+                          <th style={{ padding: 8 }}>Email</th>
+                          <th style={{ padding: 8 }}>Status</th>
+                          <th style={{ padding: 8, width: 50 }}></th>
+                          <th style={{ padding: 8, width: 40 }}></th>
                         </tr>
-                      ))}
-                      {!filteredLeads.length && (
-                        <tr><td colSpan={8} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {filteredLeads.map((lead) => (
+                          <tr
+                            key={lead.id}
+                            onClick={() => setEditingLead({ ...lead })}
+                            style={{ borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#faf8fc' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                          >
+                            <td style={{ padding: 8 }}>
+                              {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}
+                              {lead.lead_type && lead.lead_type !== 'shop' && (
+                                <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px', background: lead.lead_type === 'agent' ? '#fef3c7' : lead.lead_type === 'partner' ? '#dbeafe' : '#f3f4f6', color: lead.lead_type === 'agent' ? '#92400e' : lead.lead_type === 'partner' ? '#1e40af' : '#374151', borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                  {lead.lead_type}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: 8 }}>{lead.company || '—'}</td>
+                            <td style={{ padding: 8 }}>{lead.country || '—'}</td>
+                            <td style={{ padding: 8 }}>{lead.language_label || lead.language || '—'}</td>
+                            <td style={{ padding: 8 }}>{lead.email || '—'}</td>
+                            <td style={{ padding: 8 }}>{lead.status}</td>
+                            <td style={{ padding: 8, color: colors.inkPlum, fontSize: 12, fontWeight: 600 }}>Edit</td>
+                            <td style={{ padding: 4 }}>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteLead(lead.id) }}
+                                title="Delete lead"
+                                aria-label="Delete lead"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 6, display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6"/>
+                                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {!filteredLeads.length && (
+                          <tr><td colSpan={8} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1310,7 +1409,7 @@ export default function FairAssistantClient() {
                 </div>
               )
 
-              const previewColumn = (
+              const previewPanel = (
                 <div style={{
                   background: '#FDF7FA',
                   border: `1px solid ${colors.border}`,
@@ -1318,8 +1417,8 @@ export default function FairAssistantClient() {
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  height: isMobile ? 'auto' : 'calc(100vh - 180px)',
-                  position: isMobile ? 'static' : 'sticky',
+                  height: 'calc(100vh - 180px)',
+                  position: 'sticky',
                   top: 16,
                 }}>
                   <div style={{ padding: '10px 14px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1329,40 +1428,106 @@ export default function FairAssistantClient() {
                       onClick={() => setShowLivePreview((v) => !v)}
                       style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body, color: colors.text }}
                     >
-                      {showLivePreview ? 'Hide' : 'Show'}
+                      Hide
                     </button>
                   </div>
-                  {showLivePreview && (
+                  <div style={{ flex: 1, overflow: 'auto', background: '#FDF7FA' }}>
+                    {leads.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
+                        Upload at least one card and let n8n extract a lead — live preview needs a recipient to render the greeting.
+                      </div>
+                    ) : livePreviewHtml ? (
+                      <iframe
+                        title="Email live preview"
+                        srcDoc={livePreviewHtml}
+                        sandbox=""
+                        style={{ width: '100%', height: '100%', minHeight: '100%', border: 'none', background: '#FDF7FA' }}
+                      />
+                    ) : (
+                      <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>Loading preview…</div>
+                    )}
+                  </div>
+                </div>
+              )
+
+              const mobilePreviewSheet = showLivePreview && (
+                <div className="fa-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowLivePreview(false)}>
+                  <div className="fa-modal-card" style={{ background: '#fff', width: '100%', height: '92vh', borderRadius: '12px 12px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live preview</span>
+                      {livePreviewLoading && <span style={{ fontSize: 11, color: colors.lovelabMuted }}>• updating…</span>}
+                      <button
+                        onClick={() => setShowLivePreview(false)}
+                        style={{ marginLeft: 'auto', background: 'none', border: 'none', color: colors.text, fontSize: 24, cursor: 'pointer', lineHeight: 1 }}
+                      >×</button>
+                    </div>
                     <div style={{ flex: 1, overflow: 'auto', background: '#FDF7FA' }}>
                       {leads.length === 0 ? (
-                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
-                          Upload at least one card and let n8n extract a lead — live preview needs a recipient to render the greeting.
+                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 14 }}>
+                          Upload at least one card to enable the preview.
                         </div>
                       ) : livePreviewHtml ? (
                         <iframe
                           title="Email live preview"
                           srcDoc={livePreviewHtml}
                           sandbox=""
-                          style={{ width: '100%', height: '100%', minHeight: isMobile ? 600 : '100%', border: 'none', background: '#FDF7FA' }}
+                          style={{ width: '100%', height: '100%', border: 'none' }}
                         />
                       ) : (
-                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>Loading preview…</div>
+                        <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 14 }}>Loading preview…</div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
               )
 
+              const mobilePreviewFAB = isMobile && leads.length > 0 && !showLivePreview && (
+                <button
+                  onClick={() => setShowLivePreview(true)}
+                  style={{
+                    position: 'fixed',
+                    right: 16,
+                    bottom: `calc(20px + env(safe-area-inset-bottom))`,
+                    zIndex: 900,
+                    padding: '12px 18px',
+                    borderRadius: 28,
+                    border: 'none',
+                    background: colors.inkPlum,
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    boxShadow: '0 6px 20px rgba(93,58,94,0.4)',
+                    fontFamily: fonts.body,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  👁 Preview
+                </button>
+              )
+
               return (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)',
-                  gap: 16,
-                  alignItems: 'start',
-                }}>
-                  {formColumn}
-                  {previewColumn}
-                </div>
+                <>
+                  {isMobile ? (
+                    <>
+                      {formColumn}
+                      {mobilePreviewFAB}
+                      {mobilePreviewSheet}
+                    </>
+                  ) : (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                      gap: 16,
+                      alignItems: 'start',
+                    }}>
+                      {formColumn}
+                      {previewPanel}
+                    </div>
+                  )}
+                </>
               )
             })()}
           </>
@@ -1370,8 +1535,8 @@ export default function FairAssistantClient() {
       </div>
 
       {previewOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setPreviewOpen(false)}>
-          <div style={{ background: '#fff', width: 'min(720px, 100%)', maxHeight: '90vh', overflow: 'auto', borderRadius: 12 }} onClick={(e) => e.stopPropagation()}>
+        <div className="fa-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setPreviewOpen(false)}>
+          <div className="fa-modal-card" style={{ background: '#fff', width: 'min(720px, 100%)', maxHeight: '90vh', overflow: 'auto', borderRadius: 12 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between' }}>
               <strong>Email preview</strong>
               <button onClick={() => setPreviewOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18 }}>×</button>
