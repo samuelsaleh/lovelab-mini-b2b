@@ -222,7 +222,13 @@ export default function FairAssistantClient() {
           body: JSON.stringify({ batchId: activeBatchId, overrides, allowPlaceholder: true }),
         })
         const data = await res.json()
-        if (res.ok && data?.preview?.bodyHtml) setLivePreviewHtml(data.preview.bodyHtml)
+        if (res.ok && data?.preview?.bodyHtml) {
+          // Only toast on actual content change so we don't fire every keystroke.
+          setLivePreviewHtml((prev) => {
+            if (prev !== data.preview.bodyHtml) showToast('✓ Preview updated')
+            return data.preview.bodyHtml
+          })
+        }
       } catch {
         /* keep prior preview on error */
       } finally {
@@ -577,7 +583,10 @@ export default function FairAssistantClient() {
       const res = await fetch('/api/fair-assistant/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId: activeBatchId }),
+        // allowPlaceholder=true so the modal can render the brand shell even
+        // when the batch has 0 leads yet — otherwise Sam taps the button and
+        // gets a confusing "No leads available" error before he's uploaded.
+        body: JSON.stringify({ batchId: activeBatchId, allowPlaceholder: true }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Preview failed')
@@ -1451,7 +1460,7 @@ export default function FairAssistantClient() {
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, position: 'sticky', bottom: 8, boxShadow: '0 -4px 14px rgba(0,0,0,0.04)' }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 13 }}>
-                        {busyAction === 'preview' ? 'Loading…' : 'Open big preview'}
+                        {busyAction === 'preview' ? 'Loading…' : '👁 Preview email'}
                       </button>
                       <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={{ ...actionBtnStyle, fontSize: 13 }}>
                         {busyAction === 'generate' ? 'Generating…' : 'Generate drafts'}
