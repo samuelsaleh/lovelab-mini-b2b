@@ -82,6 +82,93 @@ export async function GET(request) {
     }
     events = events.map((e) => ({ ...e, doc_count: docCountByEvent.get(e.id) || 0 }));
 
+    // Enrich agent-type folders with REAL agent stats — orders / revenue /
+    // team counted across every document the agent (or their team in the
+    // same organization) actually created, not just the ones explicitly
+    // tagged to this folder. Without this, the Fairs page card for an
+    // agent only counts orders saved into the folder, which led to
+    // "Nicolas has 5 orders / €9k" while the agents admin page showed
+    // 20+ orders and €50k+ for the same person — same agent, two truths.
+    //
+    // Linkage: events.organization_id is auto-set when an agent folder is
+    // created (see POST below). Profiles in that organization are the
+    // agents this folder represents. Fair/partner/other folders are
+    // untouched and still use the per-event document tagging.
+    try {
+      const agentEvents = events.filter((e) => e.type === 'agent' && e.organization_id);
+      const orgIds = [...new Set(agentEvents.map((e) => e.organization_id))];
+      if (orgIds.length > 0) {
+        const { data: orgAgents, error: agentsErr } = await adminSupabase
+          .from('profiles')
+          .select('id, organization_id, full_name, agent_status, is_agent, avatar_url')
+          .in('organization_id', orgIds)
+          .or('is_agent.eq.true,agent_status.in.(invited,active,inactive)')
+          .is('agent_deleted_at', null);
+
+        if (agentsErr) {
+          console.error('[Events GET] org agents query failed:', agentsErr.message);
+        } else {
+          const agentsByOrg = new Map();
+          const userIdToOrg = new Map();
+          for (const p of orgAgents || []) {
+            if (!agentsByOrg.has(p.organization_id)) agentsByOrg.set(p.organization_id, []);
+            agentsByOrg.get(p.organization_id).push(p);
+            userIdToOrg.set(p.id, p.organization_id);
+          }
+
+          const allAgentIds = [...userIdToOrg.keys()];
+          const docsByOrg = new Map();
+          if (allAgentIds.length > 0) {
+            const { data: agentDocs, error: docsErr } = await adminSupabase
+              .from('documents')
+              .select('created_by, total_amount, document_type, order_channel')
+              .in('created_by', allAgentIds)
+              .eq('document_type', 'order')
+              .is('deleted_at', null)
+              .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+            if (docsErr) {
+              console.error('[Events GET] agent docs query failed:', docsErr.message);
+            } else {
+              for (const d of agentDocs || []) {
+                const orgId = userIdToOrg.get(d.created_by);
+                if (!orgId) continue;
+                if (!docsByOrg.has(orgId)) docsByOrg.set(orgId, { orders: 0, revenue: 0, creators: new Set() });
+                const agg = docsByOrg.get(orgId);
+                agg.orders++;
+                agg.revenue += Number(d.total_amount) || 0;
+                agg.creators.add(d.created_by);
+              }
+            }
+          }
+
+          const enrichedById = new Map();
+          for (const e of agentEvents) {
+            const agg = docsByOrg.get(e.organization_id) || { orders: 0, revenue: 0, creators: new Set() };
+            const orgAgentsList = agentsByOrg.get(e.organization_id) || [];
+            // Click-through target: when an org has exactly one agent, the
+            // card can deep-link to that agent's detail page. Otherwise
+            // we leave it null and the UI falls back to a multi-agent
+            // view.
+            const singleAgent = orgAgentsList.length === 1 ? orgAgentsList[0] : null;
+            enrichedById.set(e.id, {
+              agent_stats: {
+                orders: agg.orders,
+                revenue: agg.revenue,
+                team: agg.creators.size,
+                agent_count: orgAgentsList.length,
+              },
+              primary_agent_id: singleAgent?.id || null,
+              primary_agent_status: singleAgent?.agent_status || null,
+              primary_agent_avatar: singleAgent?.avatar_url || null,
+            });
+          }
+          events = events.map((e) => enrichedById.has(e.id) ? { ...e, ...enrichedById.get(e.id) } : e);
+        }
+      }
+    } catch (enrichErr) {
+      console.error('[Events GET] agent enrichment failed (non-blocking):', enrichErr?.message || enrichErr);
+    }
+
     return NextResponse.json({ events });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -51,20 +51,39 @@ export default function AdminFairsPage() {
       { key: 'other', label: 'Other', items: [] },
     ]
     for (const e of events) {
-      const stats = getEventStats(e.id)
+      const stats = getEventStats(e)
       const item = { ...e, stats }
       const group = groups.find(g => g.key === (e.type || 'other'))
       if (group) group.items.push(item)
       else groups[3].items.push(item)
     }
+    // Sort each group by revenue desc, then by start date desc. Surfaces the
+    // top-performing fairs / agents at the top of each section — much easier
+    // than scanning a name-sorted list to find who actually generated revenue.
     for (const g of groups) {
-      g.items.sort((a, b) => (b.start_date || '').localeCompare(a.start_date || ''))
+      g.items.sort((a, b) => {
+        const rev = (b.stats?.revenue || 0) - (a.stats?.revenue || 0)
+        if (rev !== 0) return rev
+        return (b.start_date || '').localeCompare(a.start_date || '')
+      })
     }
     return groups
   }, [events, documents])
 
-  function getEventStats(eventId) {
-    const docs = documents.filter(d => d.event_id === eventId)
+  // For agent-type folders, prefer the server-computed agent_stats (orders /
+  // revenue / team aggregated across the entire agent organization — what
+  // the user actually expects to see). For fairs / partners / other, fall
+  // back to per-event document tagging (the legacy behaviour, still correct
+  // for those types since they aggregate per-event by definition).
+  function getEventStats(event) {
+    if (event.type === 'agent' && event.agent_stats) {
+      return {
+        orders: event.agent_stats.orders,
+        revenue: event.agent_stats.revenue,
+        creators: event.agent_stats.team,
+      }
+    }
+    const docs = documents.filter(d => d.event_id === event.id)
     const revenue = docs.reduce((s, d) => s + (Number(d.total_amount) || 0), 0)
     const creators = new Set(docs.map(d => d.created_by).filter(Boolean))
     return { orders: docs.length, revenue, creators: creators.size }
@@ -186,26 +205,73 @@ function FairCard({ event }) {
     ? `${new Date(e.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}${e.end_date ? ` — ${new Date(e.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`
     : null
 
+  const isAgent = e.type === 'agent'
+  // Agent folders deep-link to the per-agent admin page when the org has a
+  // single agent. Multi-agent orgs and other folder types still go to
+  // analytics filtered by event.
+  const clickHref = isAgent && e.primary_agent_id
+    ? `/admin/agents/${e.primary_agent_id}`
+    : `/analytics?event=${e.id}`
+
+  const initials = (e.name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('') || '?'
+
   return (
     <div
-      onClick={() => router.push(`/analytics?event=${e.id}`)}
-      style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'box-shadow 0.15s', }}
+      onClick={() => router.push(clickHref)}
+      style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'box-shadow 0.15s', gap: 12 }}
       onMouseEnter={ev => ev.currentTarget.style.boxShadow = '0 4px 16px rgba(93,58,94,0.10)'}
       onMouseLeave={ev => ev.currentTarget.style.boxShadow = 'none'}
     >
-      <div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum }}>{e.name}</div>
-        <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>
-          {e.location && <span>{e.location} · </span>}
-          {dateStr}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+        {isAgent && (
+          e.primary_agent_avatar ? (
+            <img src={e.primary_agent_avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#fce7f3', color: '#9d174d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+          )
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
+            {isAgent && e.primary_agent_status && <AgentStatusBadge status={e.primary_agent_status} />}
+            {isAgent && e.agent_stats?.agent_count > 1 && (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#f3f4f6', color: '#6b7280' }}>
+                {e.agent_stats.agent_count} agents
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>
+            {e.location && <span>{e.location} · </span>}
+            {dateStr}
+          </div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexShrink: 0 }}>
         <Stat label="Orders" value={s.orders} />
         <Stat label="Revenue" value={fmt(s.revenue)} />
         <Stat label="Team" value={s.creators} />
       </div>
     </div>
+  )
+}
+
+function AgentStatusBadge({ status }) {
+  const styles = {
+    active:   { bg: '#dcfce7', fg: '#166534', label: 'Active' },
+    invited:  { bg: '#fef3c7', fg: '#b45309', label: 'Invited' },
+    paused:   { bg: '#fef9c3', fg: '#854d0e', label: 'Paused' },
+    inactive: { bg: '#f3f4f6', fg: '#6b7280', label: 'Inactive' },
+  }
+  const s = styles[status] || styles.inactive
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      {s.label}
+    </span>
   )
 }
 
