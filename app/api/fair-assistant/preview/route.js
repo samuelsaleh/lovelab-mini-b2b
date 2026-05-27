@@ -79,6 +79,7 @@ export async function POST(request) {
     ? (() => {
         const tpl = defaultTemplateForLeadType(lead.lead_type);
         return {
+          subject: batch.subject || tpl.headline,
           headline: tpl.headline,
           paragraph1: tpl.paragraph1,
           paragraph2: tpl.paragraph2,
@@ -88,6 +89,7 @@ export async function POST(request) {
         };
       })()
     : {
+        subject: batch.subject || batch.headline,
         headline: batch.headline,
         paragraph1: batch.paragraph1,
         paragraph2: batch.paragraph2,

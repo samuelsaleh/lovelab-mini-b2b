@@ -68,6 +68,7 @@ export async function POST(request) {
   // Per-lead-type templateSlots — leads with lead_type='agent' or 'partner'
   // get distinct subject/body; shops use the batch's edited template.
   const batchTemplate = {
+    subject: batch.subject || batch.headline,
     headline: batch.headline,
     paragraph1: batch.paragraph1,
     paragraph2: batch.paragraph2,
@@ -83,6 +84,7 @@ export async function POST(request) {
     // Agent and partner leads use a type-specific preset (still translated).
     const tpl = defaultTemplateForLeadType(lead.lead_type);
     return {
+      subject: batch.subject || tpl.headline,
       headline: tpl.headline,
       paragraph1: tpl.paragraph1,
       paragraph2: tpl.paragraph2,
