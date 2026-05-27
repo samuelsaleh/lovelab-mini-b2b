@@ -72,18 +72,25 @@ export async function POST(request) {
   const fairName = batch.fair_name || batch.name;
   const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.';
 
-  // Use batch's edited template for shops; agent/partner leads get the
-  // type-specific preset so the preview reflects what generate-all will send.
-  const useTypeTemplate = lead.lead_type && lead.lead_type !== 'shop' && lead.lead_type !== 'other';
+  // forceLeadType lets the Outreach tab preview a specific template (e.g. the
+  // user is editing the Agents tab — show the agent email even if the first
+  // lead is a shop). Defaults to the actual lead's type.
+  const renderedType = body.forceLeadType || lead.lead_type || 'shop';
+  const useTypeTemplate = renderedType && renderedType !== 'shop' && renderedType !== 'other';
   const templateSlots = useTypeTemplate
     ? (() => {
-        const tpl = defaultTemplateForLeadType(lead.lead_type);
+        const tpl = defaultTemplateForLeadType(renderedType);
+        const prefix = renderedType; // 'agent' or 'partner'
+        const pick = (field) => {
+          const overrideVal = batch[`${prefix}_${field}`];
+          return (overrideVal && String(overrideVal).trim()) ? overrideVal : tpl[field];
+        };
         return {
-          subject: batch.subject || tpl.headline,
-          headline: tpl.headline,
-          paragraph1: tpl.paragraph1,
-          paragraph2: tpl.paragraph2,
-          signoff: tpl.signoff,
+          subject: pick('subject') || pick('headline'),
+          headline: pick('headline'),
+          paragraph1: pick('paragraph1'),
+          paragraph2: pick('paragraph2'),
+          signoff: pick('signoff'),
           fairName,
           ctaLine,
         };

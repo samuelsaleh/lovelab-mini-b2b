@@ -81,14 +81,21 @@ export async function POST(request) {
     if (!lead.lead_type || lead.lead_type === 'shop' || lead.lead_type === 'other') {
       return { ...batchTemplate, fairName, ctaLine };
     }
-    // Agent and partner leads use a type-specific preset (still translated).
+    // Agent / partner leads: per-batch override columns win, with the
+    // hardcoded preset as a last-resort fallback. The user can leave any
+    // field blank and the preset value is used for just that slot.
     const tpl = defaultTemplateForLeadType(lead.lead_type);
+    const prefix = lead.lead_type; // 'agent' or 'partner'
+    const pick = (field) => {
+      const overrideVal = batch[`${prefix}_${field}`];
+      return (overrideVal && String(overrideVal).trim()) ? overrideVal : tpl[field];
+    };
     return {
-      subject: batch.subject || tpl.headline,
-      headline: tpl.headline,
-      paragraph1: tpl.paragraph1,
-      paragraph2: tpl.paragraph2,
-      signoff: tpl.signoff,
+      subject: pick('subject') || pick('headline'),
+      headline: pick('headline'),
+      paragraph1: pick('paragraph1'),
+      paragraph2: pick('paragraph2'),
+      signoff: pick('signoff'),
       fairName,
       ctaLine,
     };

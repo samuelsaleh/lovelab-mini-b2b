@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { createClient } from '@/lib/supabase/client'
-import { FAIR_OUTREACH_TEMPLATES, FAIR_LEAD_TYPES } from '@/lib/fair-assistant/templates'
+import { FAIR_OUTREACH_TEMPLATES, FAIR_LEAD_TYPES, defaultTemplateForLeadType } from '@/lib/fair-assistant/templates'
 import { B2B_RESOURCE_GROUPS } from '@/lib/b2b-files'
 import FairOutreachChatPanel from '@/app/components/FairOutreachChatPanel'
 
@@ -109,6 +109,11 @@ export default function FairAssistantClient() {
   const [showLivePreview, setShowLivePreview] = useState(false)
   const [imageLibrary, setImageLibrary] = useState({ groups: [], loaded: false, openGroup: null })
   const [toast, setToast] = useState(null)
+  // Which lead-type's email body the Outreach form is currently editing.
+  // shop → batch.{subject,headline,paragraph1,...}
+  // agent → batch.{agent_subject, agent_headline, ...} (fall through to preset on send)
+  // partner → batch.{partner_subject, ...}
+  const [editingType, setEditingType] = useState('shop')
   const fileInputRef = useRef(null)
 
   // Ephemeral confirmation messages (image copied, link copied, etc.) live in
@@ -202,12 +207,9 @@ export default function FairAssistantClient() {
     const t = setTimeout(async () => {
       setLivePreviewLoading(true)
       try {
+        // Overrides reflect the currently-editing tab's columns. Shared
+        // fields (buttons, attachments, cta_line) always come along.
         const overrides = {
-          subject: batch.subject,
-          headline: batch.headline,
-          paragraph1: batch.paragraph1,
-          paragraph2: batch.paragraph2,
-          signoff: batch.signoff,
           cta_line: batch.cta_line,
           button1_label: batch.button1_label,
           button1_url: batch.button1_url,
@@ -215,13 +217,25 @@ export default function FairAssistantClient() {
           button2_url: batch.button2_url,
           custom_html: batch.custom_html,
         }
+        for (const f of BODY_FIELDS) {
+          if (editingType === 'agent' || editingType === 'partner') {
+            overrides[`${editingType}_${f}`] = batch[`${editingType}_${f}`]
+          } else {
+            overrides[f] = batch[f]
+          }
+        }
         const res = await fetch('/api/fair-assistant/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // allowPlaceholder=true lets the server render the email shell with
-          // a generic recipient when no leads exist yet (otherwise the user
-          // sees a confusing "no leads available" error before uploading).
-          body: JSON.stringify({ batchId: activeBatchId, overrides, allowPlaceholder: true }),
+          // allowPlaceholder=true so we can render even without leads.
+          // forceLeadType=editingType so the preview matches the tab the
+          // user is on (otherwise it always shows the shop email).
+          body: JSON.stringify({
+            batchId: activeBatchId,
+            overrides,
+            allowPlaceholder: true,
+            forceLeadType: editingType,
+          }),
         })
         const data = await res.json()
         if (res.ok && data?.preview?.bodyHtml) {
@@ -255,6 +269,19 @@ export default function FairAssistantClient() {
     batch?.button2_label,
     batch?.button2_url,
     batch?.custom_html,
+    // Per-type body deps — switching the editing tab or editing within it
+    // should refresh the live preview.
+    editingType,
+    batch?.agent_subject,
+    batch?.agent_headline,
+    batch?.agent_paragraph1,
+    batch?.agent_paragraph2,
+    batch?.agent_signoff,
+    batch?.partner_subject,
+    batch?.partner_headline,
+    batch?.partner_paragraph1,
+    batch?.partner_paragraph2,
+    batch?.partner_signoff,
   ])
 
   const loadImageLibrary = useCallback(async () => {
@@ -315,6 +342,37 @@ export default function FairAssistantClient() {
       setError(err.message)
     }
   }, [activeBatchId, loadBatchDetails, showToast])
+
+  // Maps a "base" content field (subject, headline, paragraph1...) to the
+  // actual fair_batches column for the currently-active editing tab.
+  // Shop tab keeps the original column names; agent/partner tabs prefix.
+  const BODY_FIELDS = ['subject', 'headline', 'paragraph1', 'paragraph2', 'signoff']
+  const colKey = useCallback((baseKey) => {
+    if (editingType === 'shop' || editingType === 'other') return baseKey
+    if (!BODY_FIELDS.includes(baseKey)) return baseKey
+    return `${editingType}_${baseKey}`
+  }, [editingType])
+
+  // When the user switches to the Agents or Partners tab for the first time
+  // (no overrides saved yet), seed the form with the hardcoded preset so it's
+  // editable starting from the existing text instead of a blank page.
+  const seedTypeDefaults = useCallback(async (type) => {
+    if (type === 'shop' || type === 'other' || !batch) return
+    const overridesEmpty = BODY_FIELDS.every((f) => {
+      const v = batch[`${type}_${f}`]
+      return !v || !String(v).trim()
+    })
+    if (!overridesEmpty) return
+    const preset = defaultTemplateForLeadType(type)
+    if (!preset) return
+    const patch = {}
+    for (const f of BODY_FIELDS) {
+      if (f === 'subject') patch[`${type}_subject`] = preset.headline
+      else patch[`${type}_${f}`] = preset[f] || ''
+    }
+    setBatch({ ...batch, ...patch })
+    try { await saveBatchFields(patch) } catch {}
+  }, [batch])
 
   const toggleAttachment = useCallback((path) => {
     if (!batch) return
@@ -643,7 +701,10 @@ export default function FairAssistantClient() {
   // action that depends on saved batch data.
   const flushPendingEdits = useCallback(async () => {
     if (!batch || !activeBatchId) return
-    await saveBatchFields({
+    // Flush every per-type column we know about, not just shop. iOS doesn't
+    // always fire onBlur before a button tap, so the active-tab columns may
+    // be stale on the server right before Generate / Send.
+    const patch = {
       subject: batch.subject ?? '',
       headline: batch.headline ?? '',
       paragraph1: batch.paragraph1 ?? '',
@@ -654,7 +715,14 @@ export default function FairAssistantClient() {
       button1_url: batch.button1_url ?? '',
       button2_label: batch.button2_label ?? '',
       button2_url: batch.button2_url ?? '',
-    }).catch((err) => {
+    }
+    for (const t of ['agent', 'partner']) {
+      for (const f of ['subject', 'headline', 'paragraph1', 'paragraph2', 'signoff']) {
+        const k = `${t}_${f}`
+        if (batch[k] !== undefined) patch[k] = batch[k] ?? ''
+      }
+    }
+    await saveBatchFields(patch).catch((err) => {
       // Don't block the action on a flush failure — log and continue with
       // whatever the server already has.
       console.warn('[flushPendingEdits] save failed (continuing):', err.message)
@@ -1429,21 +1497,26 @@ export default function FairAssistantClient() {
               const attachedSet = new Set(Array.isArray(batch.attached_files) ? batch.attached_files : [])
               const attachedCount = attachedSet.size
 
+              // For body-text fields (subject/headline/paragraphs/signoff)
+              // we map field.key → the actual column for the active type tab.
+              // Buttons, cta_line, attachments etc. stay shared (colKey is a no-op).
+              const resolvedKey = (k) => colKey(k)
+
               const fieldInput = (field) => (
                 field.kind === 'textarea' ? (
                   <textarea
-                    value={batch[field.key] || ''}
-                    onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
-                    onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
+                    value={batch[resolvedKey(field.key)] || ''}
+                    onChange={(e) => setBatch({ ...batch, [resolvedKey(field.key)]: e.target.value })}
+                    onBlur={() => saveBatchFields({ [resolvedKey(field.key)]: batch[resolvedKey(field.key)] })}
                     rows={field.rows || 3}
                     placeholder={field.placeholder}
                     style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical', fontSize: 14, boxSizing: 'border-box' }}
                   />
                 ) : (
                   <input
-                    value={batch[field.key] || ''}
-                    onChange={(e) => setBatch({ ...batch, [field.key]: e.target.value })}
-                    onBlur={() => saveBatchFields({ [field.key]: batch[field.key] })}
+                    value={batch[resolvedKey(field.key)] || ''}
+                    onChange={(e) => setBatch({ ...batch, [resolvedKey(field.key)]: e.target.value })}
+                    onBlur={() => saveBatchFields({ [resolvedKey(field.key)]: batch[resolvedKey(field.key)] })}
                     placeholder={field.placeholder}
                     style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 14, boxSizing: 'border-box' }}
                   />
@@ -1542,6 +1615,49 @@ export default function FairAssistantClient() {
                         </ul>
                       </details>
                     )}
+                  </div>
+
+                  {/* Per-type editing tab strip — choose which template the
+                      content fields below are editing. Buttons/attachments
+                      stay shared across all three. */}
+                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Editing template for</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'shop',    label: '🏬 Shops',    sub: 'jewelers, concept stores', count: (leadTypeCounts.shop || 0) + (leadTypeCounts.other || 0) },
+                        { id: 'agent',   label: '🤝 Agents',   sub: 'wholesale reps, territory', count: leadTypeCounts.agent || 0 },
+                        { id: 'partner', label: '🌱 Partners', sub: 'collaboration, co-brand',   count: leadTypeCounts.partner || 0 },
+                      ].map((tabDef) => {
+                        const active = editingType === tabDef.id
+                        const hasOverrides = tabDef.id === 'shop' || BODY_FIELDS.some((f) => batch[`${tabDef.id}_${f}`])
+                        return (
+                          <button
+                            key={tabDef.id}
+                            onClick={async () => {
+                              setEditingType(tabDef.id)
+                              await seedTypeDefaults(tabDef.id)
+                            }}
+                            style={{
+                              flex: '1 1 130px', padding: '10px 12px', borderRadius: 10,
+                              border: `1.5px solid ${active ? colors.inkPlum : colors.border}`,
+                              background: active ? '#f8f0fa' : '#fff', cursor: 'pointer',
+                              fontFamily: fonts.body, textAlign: 'left', minHeight: 56,
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 700, color: active ? colors.inkPlum : colors.text, marginBottom: 2 }}>
+                              {tabDef.label}
+                              {tabDef.count > 0 && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', background: active ? colors.inkPlum : '#e5e7eb', color: active ? '#fff' : '#374151', borderRadius: 8, fontWeight: 700 }}>{tabDef.count}</span>}
+                            </div>
+                            <div style={{ fontSize: 10, color: colors.lovelabMuted }}>{tabDef.sub}</div>
+                            {!hasOverrides && tabDef.id !== 'shop' && (
+                              <div style={{ fontSize: 10, color: colors.lovelabMuted, marginTop: 2, fontStyle: 'italic' }}>uses preset until edited</div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
 
                   {/* Email content section — always visible, the primary editing surface */}

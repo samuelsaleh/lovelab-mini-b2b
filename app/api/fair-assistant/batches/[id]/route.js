@@ -44,7 +44,10 @@ export async function PATCH(request, { params }) {
   const allowed = ['headline', 'paragraph1', 'paragraph2', 'signoff', 'cta_line', 'template_id', 'status', 'fair_name',
                    'subject',
                    'button1_label', 'button1_url', 'button2_label', 'button2_url',
-                   'attached_files', 'custom_html'];
+                   'attached_files', 'custom_html',
+                   // Per-type body copy. Buttons/attachments are shared.
+                   'agent_subject', 'agent_headline', 'agent_paragraph1', 'agent_paragraph2', 'agent_signoff',
+                   'partner_subject', 'partner_headline', 'partner_paragraph1', 'partner_paragraph2', 'partner_signoff'];
   const patch = {};
   for (const key of allowed) {
     if (body[key] !== undefined) patch[key] = body[key];
