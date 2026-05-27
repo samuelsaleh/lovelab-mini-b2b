@@ -486,44 +486,83 @@ export default function FairAssistantClient() {
     setError(null)
     setUploadProgress({ done: 0, total: files.length, failed: 0 })
     const failures = []
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        setUploadProgress({ done: i, total: files.length, failed: failures.length })
-        let toSend = file
-        let compressError = null
-        try {
-          toSend = await compressImage(file)
-        } catch (err) {
-          compressError = err.message
-        }
-        const origKB = Math.round(file.size / 1024)
-        const sentKB = Math.round(toSend.size / 1024)
-        const form = new FormData()
-        form.append('batchId', activeBatchId)
-        form.append('file', toSend)
-        try {
-          const res = await fetch('/api/fair-assistant/upload', { method: 'POST', body: form })
-          let data
-          try {
-            data = await res.json()
-          } catch {
-            if (res.status === 413) {
-              throw new Error(
-                compressError
-                  ? `compression failed (${compressError}); original ${origKB} KB`
-                  : `sent ${sentKB} KB (original ${origKB} KB); Vercel limit ~4.5 MB`
-              )
-            }
-            throw new Error(`HTTP ${res.status}`)
-          }
-          if (!res.ok) throw new Error(data.error || 'upload failed')
-        } catch (err) {
-          failures.push({ name: file.name, error: err.message })
-        }
-        if (i % 3 === 2 || i === files.length - 1) await loadBatchDetails(activeBatchId)
+    let completed = 0
+
+    // Bound the number of in-flight uploads so we don't:
+    //   - Saturate Drive's per-second API quota with 30+ parallel writes
+    //   - Stall the browser keeping all FormData blobs in memory at once
+    //   - Hammer n8n with concurrent webhooks faster than it processes them
+    // 4 is the sweet spot found in testing: ~4x faster than serial, well
+    // under Drive's ~10 req/sec ceiling, and the browser stays responsive.
+    const CONCURRENCY = 4
+    // Per-file timeout — a single Drive call hanging on 503 shouldn't
+    // poison the whole batch. AbortController is cleaned up in `finally`.
+    const PER_FILE_TIMEOUT_MS = 45000
+
+    const uploadOne = async (file) => {
+      let toSend = file
+      let compressError = null
+      try {
+        toSend = await compressImage(file)
+      } catch (err) {
+        compressError = err.message
       }
-      setUploadProgress({ done: files.length, total: files.length, failed: failures.length })
+      const origKB = Math.round(file.size / 1024)
+      const sentKB = Math.round(toSend.size / 1024)
+      const form = new FormData()
+      form.append('batchId', activeBatchId)
+      form.append('file', toSend)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), PER_FILE_TIMEOUT_MS)
+      try {
+        const res = await fetch('/api/fair-assistant/upload', {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        })
+        let data
+        try {
+          data = await res.json()
+        } catch {
+          if (res.status === 413) {
+            throw new Error(
+              compressError
+                ? `compression failed (${compressError}); original ${origKB} KB`
+                : `sent ${sentKB} KB (original ${origKB} KB); Vercel limit ~4.5 MB`
+            )
+          }
+          throw new Error(`HTTP ${res.status}`)
+        }
+        if (!res.ok) throw new Error(data.error || 'upload failed')
+      } catch (err) {
+        const msg = err?.name === 'AbortError' ? `timed out after ${PER_FILE_TIMEOUT_MS / 1000}s` : err.message
+        failures.push({ name: file.name, error: msg })
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    // Worker-pool pattern: a shared cursor advances through the file list
+    // and each worker pulls the next file when it finishes. Cleaner than
+    // splitting the array into N fixed chunks (which leaves workers idle
+    // when their chunk has slow files) and avoids the all-or-nothing
+    // semantics of Promise.all on an early failure.
+    let cursor = 0
+    const worker = async () => {
+      while (true) {
+        const idx = cursor++
+        if (idx >= files.length) return
+        await uploadOne(files[idx])
+        completed++
+        setUploadProgress({ done: completed, total: files.length, failed: failures.length })
+      }
+    }
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, () => worker()))
+      // Single reload at the end — the old "every 3 files" cadence was
+      // firing three parallel Supabase queries each time, which compounded
+      // into a stall once the batch had >20 images.
       await loadBatchDetails(activeBatchId)
       if (failures.length) {
         const summary = failures.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join(' · ')

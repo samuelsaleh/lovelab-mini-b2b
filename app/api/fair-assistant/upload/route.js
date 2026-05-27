@@ -4,6 +4,11 @@ import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { uploadFileToDrive } from '@/lib/google-drive';
 import { triggerN8nCardWebhook } from '@/lib/fair-assistant/n8n';
 
+// Allow up to 60s per file. Drive uploads + n8n trigger can take
+// 5-15s under load; the default 10s timeout was killing ~1 in 20
+// uploads mid-batch when the user was sending 30+ pictures in a row.
+export const maxDuration = 60;
+
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 120, prefix: 'fair-upload' });
   if (rateLimitRes) return rateLimitRes;
