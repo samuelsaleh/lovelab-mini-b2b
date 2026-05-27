@@ -36,6 +36,29 @@ export async function POST(request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Sent by the IF Duplicate Found = TRUE branch in n8n once Sam wires that
+  // branch up. Marks the image as processed (so it stops showing "stuck")
+  // and annotates with the existing Salesforce lead id so we don't try to
+  // re-create. No app-side lead row is inserted — the contact already lives
+  // in Salesforce.
+  if (event === 'image_duplicate' || event === 'lead_duplicate') {
+    if (imageId) {
+      const salesforceId = parsed.value?.lead?.salesforceId || parsed.value?.salesforceId;
+      const note = salesforceId
+        ? `Duplicate — already in Salesforce (${salesforceId})`
+        : 'Duplicate — already in Salesforce';
+      await adminSupabase
+        .from('fair_images')
+        .update({
+          status: 'processed',
+          error: note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', imageId);
+    }
+    return NextResponse.json({ ok: true, marked: 'duplicate' });
+  }
+
   if (event === 'batch_complete' || event === 'extraction_complete') {
     await adminSupabase
       .from('fair_batches')
