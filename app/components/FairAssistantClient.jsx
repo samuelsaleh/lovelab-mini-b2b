@@ -86,6 +86,7 @@ export default function FairAssistantClient() {
   const [batch, setBatch] = useState(null)
   const [leads, setLeads] = useState([])
   const [images, setImages] = useState([])
+  const [drafts, setDrafts] = useState([])
   const [tab, setTab] = useState('upload')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -148,6 +149,7 @@ export default function FairAssistantClient() {
     setBatch(data.batch)
     setLeads(data.leads || [])
     setImages(data.images || [])
+    setDrafts(data.drafts || [])
   }, [])
 
   const loadSavedTemplates = useCallback(async () => {
@@ -324,6 +326,37 @@ export default function FairAssistantClient() {
     saveBatchFields({ attached_files: next }).catch(() => {})
   }, [batch])
 
+  // Per-lead draft index — keyed by lead_id so the Leads tab can show
+  // sent/failed/ready pills next to each card, plus the actual failure reason
+  // from Resend (rather than just an aggregate "5 failed" toast).
+  const draftsByLeadId = useMemo(() => {
+    const m = {}
+    for (const d of drafts || []) {
+      if (d?.lead_id) m[d.lead_id] = d
+    }
+    return m
+  }, [drafts])
+
+  const sendStats = useMemo(() => {
+    const stats = { sent: 0, failed: 0, ready: 0, total: 0 }
+    for (const d of drafts || []) {
+      stats.total++
+      if (d.status === 'sent') stats.sent++
+      else if (d.status === 'failed') stats.failed++
+      else if (d.status === 'draft_ready') stats.ready++
+    }
+    return stats
+  }, [drafts])
+
+  const leadTypeCounts = useMemo(() => {
+    const counts = { shop: 0, agent: 0, partner: 0, other: 0 }
+    for (const l of leads || []) {
+      const t = l.lead_type || 'shop'
+      counts[t] = (counts[t] || 0) + 1
+    }
+    return counts
+  }, [leads])
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       if (countryFilter && (lead.country || '') !== countryFilter) return false
@@ -450,6 +483,7 @@ export default function FairAssistantClient() {
       setBatch(null)
       setLeads([])
       setImages([])
+      setDrafts([])
       await loadBatches()
     } catch (err) {
       setError(err.message)
@@ -1118,6 +1152,34 @@ export default function FairAssistantClient() {
 
             {tab === 'leads' && (
               <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: isMobile ? 12 : 16 }}>
+                {/* Lead-type breakdown — explicitly shows that agents/partners are getting
+                    different emails than shops. Without this the per-type behavior was
+                    invisible and Sam thought everyone was getting the same email. */}
+                {(leadTypeCounts.agent > 0 || leadTypeCounts.partner > 0) && (
+                  <div style={{ marginBottom: 12, padding: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 12, color: '#075985' }}>
+                    <strong style={{ display: 'block', marginBottom: 4 }}>📨 This batch will send three different emails</strong>
+                    <div>
+                      <span style={{ color: '#374151', fontWeight: 600 }}>{leadTypeCounts.shop + (leadTypeCounts.other || 0)}</span> shop email{(leadTypeCounts.shop + (leadTypeCounts.other || 0)) === 1 ? '' : 's'} (the template you edit in Outreach)
+                      {leadTypeCounts.agent > 0 && <> · <span style={{ color: '#92400e', fontWeight: 700 }}>{leadTypeCounts.agent}</span> agent intro (partnership tone, no product push)</>}
+                      {leadTypeCounts.partner > 0 && <> · <span style={{ color: '#1e40af', fontWeight: 700 }}>{leadTypeCounts.partner}</span> partnership intro</>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Send results — surfaces failure count and lets Sam see WHICH leads
+                    bounced. The per-card pills below give the per-lead detail. */}
+                {sendStats.total > 0 && (sendStats.sent > 0 || sendStats.failed > 0) && (
+                  <div style={{ marginBottom: 12, padding: 10, background: sendStats.failed > 0 ? '#fef2f2' : '#f0fdf4', border: `1px solid ${sendStats.failed > 0 ? '#fecaca' : '#bbf7d0'}`, borderRadius: 8, fontSize: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, color: '#374151' }}>Last send:</span>
+                    <span style={{ color: '#166534' }}>✓ {sendStats.sent} sent</span>
+                    {sendStats.failed > 0 && <span style={{ color: '#991b1b', fontWeight: 700 }}>✗ {sendStats.failed} failed</span>}
+                    {sendStats.ready > 0 && <span style={{ color: '#6b21a8' }}>○ {sendStats.ready} pending</span>}
+                    {sendStats.failed > 0 && (
+                      <span style={{ color: '#6b7280', fontSize: 11 }}>Tap a red card below to see why each one failed.</span>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, flex: isMobile ? '1 1 calc(50% - 4px)' : 'unset', fontSize: 14, background: '#fff' }}>
                     <option value="">All countries</option>
@@ -1141,16 +1203,31 @@ export default function FairAssistantClient() {
                       const typeColor = lead.lead_type === 'agent' ? { bg: '#fef3c7', fg: '#92400e' }
                         : lead.lead_type === 'partner' ? { bg: '#dbeafe', fg: '#1e40af' }
                         : { bg: '#f3f4f6', fg: '#374151' }
+                      const draft = draftsByLeadId[lead.id]
+                      const draftStatus = draft?.status || null
+                      const draftError = draft?.error || null
+                      const sendPill = draftStatus === 'sent'
+                          ? { bg: '#dcfce7', fg: '#166534', label: '✓ sent' }
+                        : draftStatus === 'failed'
+                          ? { bg: '#fee2e2', fg: '#991b1b', label: '✗ send failed' }
+                        : draftStatus === 'draft_ready'
+                          ? { bg: '#f3e8ff', fg: '#6b21a8', label: '○ draft ready' }
+                        : null
                       return (
                         <div
                           key={lead.id}
-                          onClick={() => setEditingLead({ ...lead })}
+                          onClick={() => {
+                            if (draftStatus === 'failed' && draftError) {
+                              showToast(`Send failed: ${draftError.slice(0, 200)}`)
+                            }
+                            setEditingLead({ ...lead })
+                          }}
                           style={{
                             position: 'relative',
                             padding: 14,
-                            border: `1px solid ${colors.border}`,
+                            border: `1px solid ${draftStatus === 'failed' ? '#fecaca' : colors.border}`,
                             borderRadius: 10,
-                            background: '#fff',
+                            background: draftStatus === 'failed' ? '#fef2f2' : '#fff',
                             cursor: 'pointer',
                           }}
                         >
@@ -1159,15 +1236,27 @@ export default function FairAssistantClient() {
                               <div style={{ fontSize: 15, fontWeight: 700, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                               {lead.company && <div style={{ fontSize: 13, color: colors.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.company}</div>}
                             </div>
-                            {lead.lead_type && lead.lead_type !== 'shop' && (
-                              <span style={{ fontSize: 10, padding: '3px 8px', background: typeColor.bg, color: typeColor.fg, borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
-                                {lead.lead_type}
-                              </span>
-                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                              {lead.lead_type && lead.lead_type !== 'shop' && (
+                                <span style={{ fontSize: 10, padding: '3px 8px', background: typeColor.bg, color: typeColor.fg, borderRadius: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
+                                  {lead.lead_type}
+                                </span>
+                              )}
+                              {sendPill && (
+                                <span style={{ fontSize: 10, padding: '3px 8px', background: sendPill.bg, color: sendPill.fg, borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  {sendPill.label}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div style={{ fontSize: 13, color: colors.textLight, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {lead.email || '—'}
                           </div>
+                          {draftStatus === 'failed' && draftError && (
+                            <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 8, padding: '6px 8px', background: '#fee2e2', borderRadius: 6, lineHeight: 1.4 }}>
+                              <strong>Why it failed:</strong> {draftError.slice(0, 240)}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: colors.lovelabMuted, flexWrap: 'wrap' }}>
                             <span>📍 {lead.country || '—'}</span>
                             <span>·</span>
