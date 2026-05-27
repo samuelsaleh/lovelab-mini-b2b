@@ -1,7 +1,20 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+
+// Auth-related routes where the force-set-password gate must NOT fire.
+// Includes /set-password itself (would loop) and the public entry points
+// where a user without a password yet still has to be able to land.
+const AUTH_PAGES = [
+  '/login',
+  '/set-password',
+  '/forgot-password',
+  '/reset-password',
+  '/auth/callback',
+  '/request-access',
+];
 
 const AuthContext = createContext({
   user: null,
@@ -20,6 +33,8 @@ export function AuthProvider({ children }) {
   const [profileError, setProfileError] = useState(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const fetchFromServer = useCallback(async (signal) => {
     try {
@@ -91,6 +106,28 @@ export function AuthProvider({ children }) {
   const refreshProfile = useCallback(async () => {
     await fetchFromServer();
   }, [fetchFromServer]);
+
+  // Force-set-password gate. New agents arrive with a temp password emailed
+  // to them and has_password_set: false. The /auth/callback route handles
+  // this for magic-link / OAuth sign-ins, but direct email+password
+  // login (the new invite flow) bypasses that route entirely — the user
+  // would otherwise land in the app still using the temp credentials.
+  //
+  // This effect closes the loop: any agent whose has_password_set is
+  // falsy gets pushed to /set-password regardless of how they signed in.
+  // We skip the redirect on auth-related pages so /set-password itself
+  // doesn't try to redirect to itself.
+  useEffect(() => {
+    if (loading) return;
+    if (!profile) return;
+    if (!profile.is_agent) return;
+    if (profile.has_password_set) return;
+    if (!pathname) return;
+    if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) return;
+
+    const next = pathname && pathname !== '/' ? `?next=${encodeURIComponent(pathname)}` : '';
+    router.replace(`/set-password${next}`);
+  }, [profile, pathname, loading, router]);
 
   const signOut = async () => {
     setUser(null);

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { colors } from '@/lib/styles';
 import PasswordSetForm from '@/app/components/PasswordSetForm';
+import { useAuth } from '@/app/components/AuthProvider';
 
 export default function SetPasswordPage() {
   return (
@@ -44,6 +45,7 @@ function SetPasswordContent() {
   const searchParams = useSearchParams();
   const next = getSafeNext(searchParams.get('next'));
   const [authChecked, setAuthChecked] = useState(false);
+  const { refreshProfile } = useAuth();
 
   useEffect(() => {
     const supabase = createClient();
@@ -74,11 +76,18 @@ function SetPasswordContent() {
 
   return (
     <PasswordSetForm
-      headline="Set your password to secure your account"
-      subtext="Welcome! You must create a password to secure your account before continuing."
-      submitLabel="Set Password & Continue"
+      headline="Choose your password to finish setup"
+      subtext="Welcome to LoveLab! To keep your account secure, please replace the temporary password from the invite email with one only you know. You'll use it every time you sign in."
+      submitLabel="Save password & enter LoveLab"
       markPasswordSet
-      onSuccess={() => router.replace(next)}
+      onSuccess={async () => {
+        // Refresh the auth cache BEFORE navigating away so the
+        // AuthProvider's force-set-password gate sees has_password_set:true
+        // when the next page mounts. Without this, the gate would
+        // immediately redirect back to /set-password (loop).
+        await refreshProfile();
+        router.replace(next);
+      }}
     />
   );
 }
