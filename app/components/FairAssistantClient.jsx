@@ -949,6 +949,35 @@ export default function FairAssistantClient() {
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 16px', marginBottom: 16, color: '#dc2626', fontSize: 13 }}>
             {error}
             <button onClick={() => setError(null)} style={{ float: 'right', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}>×</button>
+            {(() => {
+              // Per-draft failure breakdown — surfaces fair_email_drafts.error so
+              // the user can see WHY each lead failed (bounce, Resend rate limit,
+              // invalid address, etc.) instead of just "5 failed". Only renders
+              // when there are actual failures in the current batch.
+              const failedDrafts = drafts.filter((d) => d.status === 'failed' && d.error)
+              if (failedDrafts.length === 0) return null
+              const leadById = new Map(leads.map((l) => [l.id, l]))
+              return (
+                <details style={{ marginTop: 8, fontSize: 12, color: '#7f1d1d' }} onClick={(e) => e.stopPropagation()}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+                    Show why {failedDrafts.length} failed
+                  </summary>
+                  <ul style={{ marginTop: 6, paddingLeft: 16, color: '#7f1d1d' }}>
+                    {failedDrafts.map((d) => {
+                      const lead = leadById.get(d.lead_id)
+                      const name = lead
+                        ? [lead.first_name, lead.last_name].filter(Boolean).join(' ').trim() || lead.company || lead.email || 'Unknown'
+                        : 'Unknown lead'
+                      return (
+                        <li key={d.id} style={{ marginBottom: 4 }}>
+                          <strong>{name}{lead?.email ? ` (${lead.email})` : ''}:</strong> {d.error}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </details>
+              )
+            })()}
           </div>
         )}
 

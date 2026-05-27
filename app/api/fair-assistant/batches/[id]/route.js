@@ -12,41 +12,23 @@ export async function GET(request, { params }) {
 
   const { id } = await params;
 
-  const [
-    { data: batch, error: batchErr },
-    { data: leads, error: leadsErr },
-    { data: images, error: imagesErr },
-    { data: drafts, error: draftsErr },
-  ] = await Promise.all([
-    auth.adminSupabase.from('fair_batches').select('*').eq('id', id).single(),
-    auth.adminSupabase.from('fair_leads').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
-    auth.adminSupabase.from('fair_images').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
-    // Lightweight per-lead send status — used by the Leads tab to show
-    // sent / failed pills and surface failure reasons without an extra round-trip.
-    auth.adminSupabase
-      .from('fair_email_drafts')
-      .select('id, lead_id, status, error, sent_at, message_id')
-      .eq('batch_id', id),
-  ]);
+  const [{ data: batch, error: batchErr }, { data: leads, error: leadsErr }, { data: images, error: imagesErr }, { data: drafts, error: draftsErr }] =
+    await Promise.all([
+      auth.adminSupabase.from('fair_batches').select('*').eq('id', id).single(),
+      auth.adminSupabase.from('fair_leads').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
+      auth.adminSupabase.from('fair_images').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
+      auth.adminSupabase.from('fair_email_drafts').select('id, lead_id, status, error, sent_at, message_id').eq('batch_id', id),
+    ]);
 
   if (batchErr || !batch) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
   }
-  if (leadsErr || imagesErr) {
-    console.error('[fair-batch GET]', leadsErr?.message, imagesErr?.message);
+  if (leadsErr || imagesErr || draftsErr) {
+    console.error('[fair-batch GET]', leadsErr?.message, imagesErr?.message, draftsErr?.message);
     return NextResponse.json({ error: 'Failed to load batch details' }, { status: 500 });
   }
-  if (draftsErr) {
-    // Don't fail the whole request over draft enrichment — just log and continue.
-    console.warn('[fair-batch GET] drafts query failed (continuing):', draftsErr.message);
-  }
 
-  return NextResponse.json({
-    batch,
-    leads: leads || [],
-    images: images || [],
-    drafts: drafts || [],
-  });
+  return NextResponse.json({ batch, leads: leads || [], images: images || [], drafts: drafts || [] });
 }
 
 export async function PATCH(request, { params }) {
