@@ -33,6 +33,8 @@ export default function AdminAgentsPage() {
   const [trashedAgents, setTrashedAgents] = useState([]);
   const [repairingId, setRepairingId] = useState(null);
   const [repairResult, setRepairResult] = useState(null);
+  const [resettingId, setResettingId] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
 
   const fetchAgents = async () => {
     setLoading(true);
@@ -149,6 +151,23 @@ export default function AdminAgentsPage() {
       setError(err.message);
     } finally {
       setRepairingId(null);
+    }
+  };
+
+  const handleResetPassword = async (agent) => {
+    const label = agent.full_name || agent.email;
+    if (!window.confirm(`Reset password for ${label}? A new password will be generated and emailed to ${agent.email}.`)) return;
+    setResettingId(agent.id);
+    setResetResult(null);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/reset-password`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Reset failed');
+      setResetResult({ agentId: agent.id, ...data });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -422,6 +441,14 @@ export default function AdminAgentsPage() {
                                   {repairingId === agent.id ? 'Repairing…' : 'Repair'}
                                 </button>
                               )}
+                              <button
+                                onClick={() => handleResetPassword(agent)}
+                                disabled={resettingId === agent.id}
+                                title="Generate a new temporary password and email it to the agent"
+                                style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #c4b5fd', background: '#f5f3ff', color: '#5b21b6', borderRadius: 8, fontWeight: 600, cursor: resettingId === agent.id ? 'not-allowed' : 'pointer', fontFamily: fonts.body, opacity: resettingId === agent.id ? 0.6 : 1 }}
+                              >
+                                {resettingId === agent.id ? 'Resetting…' : 'Reset Password'}
+                              </button>
                               <button onClick={() => setConfirmDelete(agent)} style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
                                 Delete
                               </button>
@@ -432,6 +459,11 @@ export default function AdminAgentsPage() {
                                 {repairResult.fixes?.length > 0 && (
                                   <span style={{ marginLeft: 8, color: '#065f46' }}>Fixed: {repairResult.fixes.map(f => f.item).join(', ')}</span>
                                 )}
+                              </div>
+                            )}
+                            {resetResult?.agentId === agent.id && (
+                              <div style={{ marginTop: 8, padding: '8px 12px', background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 12, color: '#5b21b6' }}>
+                                {resetResult.message}
                               </div>
                             )}
                           </div>

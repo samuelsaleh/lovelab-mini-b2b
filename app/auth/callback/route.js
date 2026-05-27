@@ -254,27 +254,31 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
         return null;
       }
     } else {
-      // Repair admin role if needed
+      // Repair admin role if needed.
+      // supabase-js returns { error } and does NOT throw on failure, so a
+      // try/catch alone silently swallows update errors. Check `error`
+      // explicitly and log the user id so we can debug from server logs.
       if (shouldBeAdmin && existingProfile.role !== 'admin') {
-        try {
-          await adminSupabase
-            .from('profiles')
-            .update({ role: 'admin' })
-            .eq('id', user.id);
-        } catch (roleErr) {
-          console.error('[auth/callback] Admin role repair error (non-blocking):', roleErr.message);
+        const { error: roleErr } = await adminSupabase
+          .from('profiles')
+          .update({ role: 'admin' })
+          .eq('id', user.id);
+        if (roleErr) {
+          console.error('[auth/callback] Admin role repair failed:', roleErr.message, 'user:', user.id);
         }
       }
 
-      // Activate invited agents on first login
+      // Activate invited agents on first login. Same pattern — supabase-js
+      // doesn't throw, so we MUST inspect `error`. The pre-fix silent
+      // swallow here was the bug that left 5 agents stuck at "invited"
+      // even after they successfully logged in.
       if (existingProfile.is_agent && existingProfile.agent_status === 'invited') {
-        try {
-          await adminSupabase
-            .from('profiles')
-            .update({ agent_status: 'active' })
-            .eq('id', user.id);
-        } catch (agentErr) {
-          console.error('[auth/callback] Agent activation error (non-blocking):', agentErr.message);
+        const { error: activateErr } = await adminSupabase
+          .from('profiles')
+          .update({ agent_status: 'active' })
+          .eq('id', user.id);
+        if (activateErr) {
+          console.error('[auth/callback] Agent activation failed:', activateErr.message, 'user:', user.id);
         }
       }
       return null;

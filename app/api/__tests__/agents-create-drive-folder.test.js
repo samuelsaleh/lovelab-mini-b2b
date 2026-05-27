@@ -107,7 +107,7 @@ jest.mock('@/lib/organizations/authz', () => ({
 }));
 
 jest.mock('@/lib/email-templates', () => ({
-  welcomeAgentEmail: jest.fn(() => ({ subject: 'hi', html: '<p/>' })),
+  welcomeAgentWithPasswordEmail: jest.fn(() => ({ subject: 'hi', html: '<p/>' })),
   upgradeAgentEmail: jest.fn(() => ({ subject: 'upgrade', html: '<p/>' })),
 }));
 

@@ -1,11 +1,12 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { welcomeAgentEmail, upgradeAgentEmail } from '@/lib/email-templates';
+import { welcomeAgentWithPasswordEmail, upgradeAgentEmail } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
 import { grantAccess } from '@/lib/agents/access';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
+import { generateTempPassword } from '@/lib/auth/generateTempPassword';
 import { ensureAgentDriveFolder } from '@/lib/agentDriveFolder';
 import { NextResponse } from 'next/server';
 
@@ -347,7 +348,11 @@ export async function POST(request) {
         console.error('[Agents POST] grantAccess error (non-blocking):', grantErr.message);
       }
     } else {
-      // New user -- add to allowed_emails and create auth account with magic link
+      // New user -- add to allowed_emails and create auth account with a
+      // temp password. Replaces the old magic-link flow which kept breaking
+      // because email scanners pre-fetched the OTP and burned it before the
+      // agent could click. The temp password has no expiry, no token to
+      // consume, and works from any device after any delay.
       try {
         await grantAccess(adminSupabase, emailLower);
       } catch (grantErr) {
@@ -355,7 +360,7 @@ export async function POST(request) {
       }
 
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-      let magicLinkUrl = null;
+      const tempPassword = generateTempPassword(full_name);
 
       // Check if an auth user already exists for this email (e.g. via Google OAuth)
       // to prevent creating a duplicate auth user with a different ID.
@@ -373,67 +378,57 @@ export async function POST(request) {
         console.warn('[Agents POST] Auth user lookup warning:', lookupErr.message);
       }
 
-      if (send_invite) {
-        const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
-          type: 'magiclink',
-          email: emailLower,
-          options: {
-            data: { full_name: full_name?.trim() || '' },
-            redirectTo: `${siteUrl}/auth/callback`,
-          },
+      if (authUser) {
+        // Auth user already exists (likely from prior Google OAuth) — just
+        // set the temp password on the existing record.
+        const { error: pwErr } = await adminSupabase.auth.admin.updateUserById(authUser.id, {
+          password: tempPassword,
         });
-        if (magicError) {
-          console.warn('[Agents POST] Magic link warning:', magicError.message);
-        } else {
-          if (magicData?.properties?.action_link) {
-            magicLinkUrl = magicData.properties.action_link;
-          }
-          // Only use the generateLink user if we haven't found an existing one
-          if (!authUser && magicData?.user) {
-            authUser = magicData.user;
-          }
+        if (pwErr) {
+          console.error('[Agents POST] Password update error:', pwErr.message);
+          return NextResponse.json({ error: 'Failed to set temporary password' }, { status: 500 });
         }
-      }
-
-      if (!authUser) {
-        // No existing auth user found; create one now
+      } else {
         const { data: createData, error: createErr } = await adminSupabase.auth.admin.createUser({
           email: emailLower,
+          password: tempPassword,
           email_confirm: true,
           user_metadata: { full_name: full_name?.trim() || '' },
         });
-        if (!createErr && createData?.user) {
-          authUser = createData.user;
+        if (createErr || !createData?.user) {
+          console.error('[Agents POST] Could not create auth user:', createErr?.message);
+          return NextResponse.json({ error: 'Failed to create account. Please try again or check if the email already exists.' }, { status: 500 });
         }
+        authUser = createData.user;
       }
 
-      if (authUser) {
-        const { data, error } = await adminSupabase
-          .from('profiles')
-          .upsert({
-            id: authUser.id,
-            email: emailLower,
-            full_name: full_name?.trim() || '',
-            has_password_set: false,
-            ...agentFields,
-          }, { onConflict: 'id' })
-          .select()
-          .single();
+      const { data, error } = await adminSupabase
+        .from('profiles')
+        .upsert({
+          id: authUser.id,
+          email: emailLower,
+          full_name: full_name?.trim() || '',
+          has_password_set: false,
+          ...agentFields,
+        }, { onConflict: 'id' })
+        .select()
+        .single();
 
-        if (error) {
-          console.error('[Agents POST] Profile upsert error:', error.message);
-          return NextResponse.json({ error: 'Failed to create agent profile' }, { status: 500 });
-        }
-        agentProfile = data;
-      } else {
-        console.error('[Agents POST] Could not create auth user for:', emailLower);
-        return NextResponse.json({ error: 'Failed to create account. Please try again or check if the email already exists.' }, { status: 500 });
+      if (error) {
+        console.error('[Agents POST] Profile upsert error:', error.message);
+        return NextResponse.json({ error: 'Failed to create agent profile' }, { status: 500 });
       }
+      agentProfile = data;
 
       if (send_invite) {
         const agentName = full_name?.trim() || emailLower;
-        const signInUrl = magicLinkUrl || `${siteUrl}/login`;
-        const { subject, html } = welcomeAgentEmail(agentName, signInUrl, siteUrl);
+        const { subject, html } = welcomeAgentWithPasswordEmail(
+          agentName,
+          emailLower,
+          tempPassword,
+          `${siteUrl}/login`,
+          siteUrl,
+        );
         await sendEmail({ to: emailLower, subject, html });
       }
     }

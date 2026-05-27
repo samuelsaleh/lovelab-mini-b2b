@@ -45,17 +45,11 @@ const mockAdminSupabase = {
   auth: {
     admin: {
       listUsers: jest.fn().mockResolvedValue({ data: { users: [] }, error: null }),
-      generateLink: jest.fn().mockResolvedValue({
-        data: {
-          user: { id: 'auth-1', email: 'new@test.com' },
-          properties: { action_link: 'https://example.com/magic' },
-        },
-        error: null,
-      }),
       createUser: jest.fn().mockResolvedValue({
         data: { user: { id: 'auth-1', email: 'new@test.com' } },
         error: null,
       }),
+      updateUserById: jest.fn().mockResolvedValue({ data: { user: {} }, error: null }),
     },
   },
   rpc: jest.fn().mockResolvedValue({ data: [], error: null }),
@@ -87,8 +81,12 @@ jest.mock('@/lib/agents/access', () => ({
 }));
 
 jest.mock('@/lib/email-templates', () => ({
-  welcomeAgentEmail: jest.fn(() => ({ subject: 'Welcome', html: '<p>Welcome</p>' })),
+  welcomeAgentWithPasswordEmail: jest.fn(() => ({ subject: 'Welcome', html: '<p>Welcome</p>' })),
   upgradeAgentEmail: jest.fn(() => ({ subject: 'Upgraded', html: '<p>Upgraded</p>' })),
+}));
+
+jest.mock('@/lib/auth/generateTempPassword', () => ({
+  generateTempPassword: jest.fn(() => 'Test1234!'),
 }));
 
 jest.mock('@/lib/send-email', () => ({
@@ -208,6 +206,60 @@ describe('POST /api/agents — new user', () => {
     if (capturedUpsertArgs) {
       expect(capturedUpsertArgs.agent_status).toBe('invited');
     }
+  });
+
+  it('creates the auth user with a temporary password (no magic link)', async () => {
+    await POST(makePostRequest({
+      email: 'new@test.com',
+      commission_rate: 15,
+      full_name: 'Michaela',
+    }));
+
+    expect(mockAdminSupabase.auth.admin.createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'new@test.com',
+        password: expect.any(String),
+        email_confirm: true,
+      })
+    );
+  });
+
+  it('sends the welcome-with-password email containing the temp credentials', async () => {
+    const { welcomeAgentWithPasswordEmail } = require('@/lib/email-templates');
+    const { sendEmail } = require('@/lib/send-email');
+
+    await POST(makePostRequest({
+      email: 'new@test.com',
+      commission_rate: 15,
+      full_name: 'Michaela',
+    }));
+
+    expect(welcomeAgentWithPasswordEmail).toHaveBeenCalledWith(
+      'Michaela',
+      'new@test.com',
+      expect.any(String),
+      expect.stringContaining('/login'),
+      expect.any(String),
+    );
+    expect(sendEmail).toHaveBeenCalled();
+  });
+
+  it('updates the password on an existing auth user instead of creating a duplicate', async () => {
+    mockAdminSupabase.auth.admin.listUsers.mockResolvedValue({
+      data: { users: [{ id: 'existing-auth-id', email: 'new@test.com' }] },
+      error: null,
+    });
+
+    await POST(makePostRequest({
+      email: 'new@test.com',
+      commission_rate: 15,
+    }));
+
+    expect(mockAdminSupabase.auth.admin.updateUserById).toHaveBeenCalledWith(
+      'existing-auth-id',
+      expect.objectContaining({ password: expect.any(String) }),
+    );
+    expect(mockAdminSupabase.auth.admin.createUser).not.toHaveBeenCalled();
   });
 });
 
