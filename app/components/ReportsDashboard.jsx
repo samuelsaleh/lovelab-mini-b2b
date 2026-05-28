@@ -107,8 +107,9 @@ export default function ReportsDashboard() {
   useEffect(() => { loadReports() }, [])
 
   const documentRows = useMemo(() => {
-    // Internal (supplier) orders are excluded from the reports view — they live in the Internal Orders tab
-    return documents.filter(d => d.order_channel !== 'internal').map((d) => ({
+    // Internal (supplier) orders are excluded from the reports view — they live in the Internal Orders tab.
+    // Drafts (parked, unsent orders) are also excluded — they aren't committed revenue yet.
+    return documents.filter(d => d.order_channel !== 'internal' && d.status !== 'draft').map((d) => ({
       ...d,
       rowType: 'document',
       sourceLabel: 'Order',

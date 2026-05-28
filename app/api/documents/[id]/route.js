@@ -3,6 +3,8 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
+import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
+import { orderNotificationEmail } from '@/lib/email-templates';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
@@ -78,7 +80,7 @@ export async function PUT(request, { params }) {
     // First, get the old document to delete old file
     const { data: oldDoc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by, event_id')
+      .select('file_path, created_by, event_id, status')
       .eq('id', id)
       .single();
 
@@ -105,6 +107,13 @@ export async function PUT(request, { params }) {
       }
     }
 
+    // Resolve draft/sent status. body.status wins when valid, otherwise keep
+    // whatever the row already had. A draft→sent change is a "promotion": the
+    // commission/bonus block below runs for any non-draft order, and the
+    // internal notification email fires once on the transition (mirroring POST).
+    const newStatus = (body.status === 'draft' || body.status === 'sent') ? body.status : oldDoc.status;
+    const promotedToSent = oldDoc.status === 'draft' && newStatus === 'sent';
+
     // Update the document record
     const updatePayload = {
       event_id: body.event_id || null,
@@ -119,6 +128,9 @@ export async function PUT(request, { params }) {
     };
     if (['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)) {
       updatePayload.order_channel = body.order_channel;
+    }
+    if (newStatus) {
+      updatePayload.status = newStatus;
     }
     if (body.order_channel === 'consignment') {
       updatePayload.consignment_agent_id = body.consignment_agent_id || null;
@@ -141,7 +153,7 @@ export async function PUT(request, { params }) {
     // Recalculate commission when total_amount changes (skip for internal and consignment orders)
     // Attribution logic shared with POST — see lib/commissionAttribution.js.
     try {
-      if (doc?.total_amount > 0 && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
+      if (doc?.total_amount > 0 && doc?.status !== 'draft' && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
         const attribution = await resolveCommissionAgent(adminSupabase, doc);
         if (attribution) {
           await upsertCommissionForDocument(adminSupabase, {
@@ -186,6 +198,45 @@ export async function PUT(request, { params }) {
           details: commErr.details || null,
         },
       });
+    }
+
+    // Internal notification on the draft→sent promotion only. A plain edit of
+    // an already-sent order does not re-notify (matches POST's create-only
+    // behaviour). Non-blocking — the document is already updated.
+    if (promotedToSent) {
+      try {
+        const resendApiKey =
+          doc?.order_channel === 'internal' || doc?.order_channel === 'consignment' || doc?.order_channel === 'delete_from_stock'
+            ? null
+            : process.env.RESEND_API_KEY;
+        if (resendApiKey) {
+          const eventName = doc.event_id
+            ? (await adminSupabase.from('events').select('name').eq('id', doc.event_id).single())?.data?.name
+            : null;
+          const creatorName =
+            (await adminSupabase.from('profiles').select('full_name').eq('id', doc.created_by).single())?.data?.full_name ||
+            user.email;
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+          const { subject, html } = orderNotificationEmail({
+            documentType: doc.document_type,
+            clientCompany: doc.client_company,
+            clientName: doc.client_name,
+            totalAmount: doc.total_amount,
+            eventName,
+            creatorName,
+          }, siteUrl);
+          const { Resend } = await import('resend');
+          const resend = new Resend(resendApiKey);
+          await resend.emails.send({
+            from: getSenderFrom(),
+            to: getOrderNotificationRecipients(),
+            subject,
+            html,
+          });
+        }
+      } catch (emailErr) {
+        console.error('[Documents PUT] Promotion notification email error (non-blocking):', emailErr.message);
+      }
     }
 
     return NextResponse.json({ document: doc });

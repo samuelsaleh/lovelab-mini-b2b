@@ -89,6 +89,13 @@ export default function DocumentRow({
                 color: doc.document_type === 'order' ? '#2d6a4f' : '#1e40af',
                 fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
               }}>{doc.document_type}</span>
+              {doc.status === 'draft' && (
+                <span style={{
+                  padding: '1px 6px', borderRadius: 4,
+                  background: '#fff4e5', color: '#b9770e',
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                }}>Draft</span>
+              )}
               {doc.order_channel === 'internal' && (
                 <span style={{
                   padding: '1px 6px', borderRadius: 4,

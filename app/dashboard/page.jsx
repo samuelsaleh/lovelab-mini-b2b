@@ -39,6 +39,7 @@ function VitrineSummaryCard({ docs, eventName }) {
   const [open, setOpen] = useState(true)
 
   const rows = docs
+    .filter(doc => doc.status !== 'draft')
     .map(doc => ({
       company: doc.client_company || doc.client_name || 'Unknown',
       qty: resolveVitrineQty(doc),

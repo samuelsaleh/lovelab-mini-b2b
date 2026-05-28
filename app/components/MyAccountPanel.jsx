@@ -53,8 +53,8 @@ function AdminContent({ onClose }) {
 
   useEffect(() => { load() }, [])
 
-  // Exclude internal (supplier) orders from all revenue analytics
-  const billableDocs = useMemo(() => documents.filter(d => d.order_channel !== 'internal'), [documents])
+  // Exclude internal (supplier) orders and drafts (parked, unsent) from all revenue analytics
+  const billableDocs = useMemo(() => documents.filter(d => d.order_channel !== 'internal' && d.status !== 'draft'), [documents])
   const orderDocs = useMemo(() => billableDocs.filter(d => d.document_type === 'order'), [billableDocs])
   const b2bDocs   = useMemo(() => orderDocs.filter(d => !d.order_channel || d.order_channel === 'b2b'), [orderDocs])
   const b2cDocs   = useMemo(() => orderDocs.filter(d => d.order_channel === 'b2c'), [orderDocs])

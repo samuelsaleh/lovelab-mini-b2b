@@ -289,8 +289,11 @@ export default function AnalyticsDashboard({ initialEventId = null }) {
 
   // ─── Filtered docs based on event selector ────────────────────────────
   const docs = useMemo(() => {
-    if (!selectedEventId) return documents
-    return documents.filter(d => d.event_id === selectedEventId)
+    // Drafts (parked, unsent orders) are not real activity yet — keep them out
+    // of every analytics KPI, chart, and breakdown.
+    const base = documents.filter(d => d.status !== 'draft')
+    if (!selectedEventId) return base
+    return base.filter(d => d.event_id === selectedEventId)
   }, [documents, selectedEventId])
 
   // ─── KPIs ─────────────────────────────────────────────────────────────

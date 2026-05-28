@@ -8,14 +8,18 @@ import { useI18n } from '@/lib/i18n'
 export default function DocumentsAnalytics({ filteredDocs, currentEventName, mobile }) {
   const { t } = useI18n()
 
+  // Drafts (parked, unsent orders) are not committed revenue — keep them out
+  // of the total and the by-date roll-up.
+  const billableDocs = useMemo(() => filteredDocs.filter(d => d.status !== 'draft'), [filteredDocs])
+
   const currentTotal = useMemo(
-    () => filteredDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0),
-    [filteredDocs],
+    () => billableDocs.reduce((sum, d) => sum + (d.total_amount || 0), 0),
+    [billableDocs],
   )
 
   const salesByDate = useMemo(() => {
     const byDate = {}
-    filteredDocs.forEach(doc => {
+    billableDocs.forEach(doc => {
       const key = new Date(doc.created_at).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'short', year: 'numeric',
       })
@@ -24,9 +28,9 @@ export default function DocumentsAnalytics({ filteredDocs, currentEventName, mob
       byDate[key].total += doc.total_amount || 0
     })
     return Object.entries(byDate).sort((a, b) => new Date(b[0]) - new Date(a[0]))
-  }, [filteredDocs])
+  }, [billableDocs])
 
-  if (filteredDocs.length === 0) return null
+  if (billableDocs.length === 0) return null
 
   return (
     <div style={{

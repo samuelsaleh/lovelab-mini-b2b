@@ -590,7 +590,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
   // OrderForm reads `pricelistYear` from (in priority): the saved doc's
   // metadata.formState (handled in the formState init below), the parent
   // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
@@ -1579,6 +1579,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
         editingDocumentId={editingDocumentId}
+        isDraftOrder={editingDocStatus === 'draft'}
         onSaveSuccess={deleteDraft}
         initialOrderChannel={initialOrderChannel}
         metadata={{

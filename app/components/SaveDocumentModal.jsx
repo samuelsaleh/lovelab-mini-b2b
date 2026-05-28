@@ -54,6 +54,7 @@ export default function SaveDocumentModal({
   onAfterPrint,
   metadata = {},
   editingDocumentId = null, // ID of document being re-edited (for replacement)
+  isDraftOrder = false, // True when the document being edited is currently a draft (parked) order
   onSaveSuccess = null, // Callback when save completes successfully
   initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
@@ -76,6 +77,7 @@ export default function SaveDocumentModal({
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingAs, setSavingAs] = useState(null); // 'sent' | 'draft' while a save is in flight
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   // orderChannel: 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
@@ -265,13 +267,14 @@ export default function SaveDocumentModal({
     setLoading(false);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (targetStatus = 'sent') => {
     if (!elementRef?.current) {
       setError('Nothing to save - element not found');
       return;
     }
 
     setSaving(true);
+    setSavingAs(targetStatus);
     setError(null);
 
     try {
@@ -432,6 +435,7 @@ export default function SaveDocumentModal({
             ...(orderChannel === 'delete_from_stock' ? { writeOffComment: writeOffComment.trim() } : {}),
           },
           order_channel: orderChannel,
+          status: targetStatus,
           consignment_agent_id: orderChannel === 'consignment' && consignmentData?.recipient_type === 'agent'
             ? (consignmentData?.agent_id || null)
             : null,
@@ -447,7 +451,8 @@ export default function SaveDocumentModal({
       // We always show the save as successful even if the email leg fails;
       // the email error surfaces as a small warning under the success message.
       const savedDoc = data.document || null;
-      if (emailEnabled) {
+      // Never email the client for a draft — it isn't a committed order yet.
+      if (emailEnabled && targetStatus !== 'draft') {
         const trimmedTo = (recipientEmail || '').trim();
         if (!savedDoc?.id) {
           setEmailStatus({ kind: 'failed', message: 'Document ID missing — could not send email.' });
@@ -508,9 +513,18 @@ export default function SaveDocumentModal({
       setError(err.message || 'Failed to save document');
     }
     setSaving(false);
+    setSavingAs(null);
   };
 
   const mobile = useIsMobile();
+
+  // Draft (parked order) affordance: only for ordinary b2b/b2c orders, when
+  // creating a new one or editing one that is still a draft. Editing an
+  // already-sent order keeps today's Save/Update behaviour with no draft option.
+  const canDraft = documentType === 'order' && (orderChannel === 'b2b' || orderChannel === 'b2c');
+  const showSaveAsDraft = canDraft && (!editingDocumentId || isDraftOrder);
+  // When editing a draft, the primary button promotes it to a sent order.
+  const promoteOnPrimary = !!editingDocumentId && isDraftOrder;
 
   // ─── Localised defaults for every editable email field ───
   // Keep these as plain strings (no JSX) so we can feed them straight back into
@@ -1185,6 +1199,29 @@ export default function SaveDocumentModal({
               >
                 Cancel
               </button>
+              {showSaveAsDraft && (
+                <button
+                  onClick={() => handleSave('draft')}
+                  disabled={saving}
+                  title="Save this order as a draft you can finish and send later"
+                  style={{
+                    padding: mobile ? '12px 20px' : '10px 20px',
+                    borderRadius: 8,
+                    border: `1px solid ${colors.inkPlum}`,
+                    background: '#fff',
+                    color: colors.inkPlum,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontFamily: fonts.body,
+                    opacity: saving && savingAs !== 'draft' ? 0.5 : 1,
+                    minHeight: mobile ? 48 : 'auto',
+                    width: mobile ? '100%' : 'auto',
+                  }}
+                >
+                  {saving && savingAs === 'draft' ? 'Saving draft…' : 'Save as draft'}
+                </button>
+              )}
               {(() => {
                 const writeOffMissing = orderChannel === 'delete_from_stock' && !writeOffComment.trim();
                 const emailMissing = emailEnabled && !recipientLooksValid;
@@ -1195,7 +1232,7 @@ export default function SaveDocumentModal({
                 const disabled = saving || writeOffMissing || emailMissing;
                 return (
                   <button
-                    onClick={handleSave}
+                    onClick={() => handleSave('sent')}
                     disabled={disabled}
                     style={{
                       padding: mobile ? '12px 24px' : '10px 24px',
@@ -1212,15 +1249,17 @@ export default function SaveDocumentModal({
                       width: mobile ? '100%' : 'auto',
                     }}
                   >
-                    {saving
-                      ? (emailEnabled ? t('email.sending') : (editingDocumentId ? 'Updating...' : 'Saving...'))
+                    {saving && savingAs === 'sent'
+                      ? (promoteOnPrimary ? 'Sending…' : (emailEnabled ? t('email.sending') : (editingDocumentId ? 'Updating...' : 'Saving...')))
                       : orderChannel === 'internal'
                         ? 'Save as Internal Order'
                         : orderChannel === 'consignment'
                           ? 'Save Consignment Order'
                           : orderChannel === 'delete_from_stock'
                             ? 'Save Write-off'
-                            : (editingDocumentId ? 'Update Document' : 'Save Document')}
+                            : promoteOnPrimary
+                              ? 'Send Order'
+                              : (editingDocumentId ? 'Update Document' : 'Save Document')}
                   </button>
                 );
               })()}

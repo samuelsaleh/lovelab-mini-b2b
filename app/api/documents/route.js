@@ -41,7 +41,7 @@ export async function GET(request) {
     // We must hint which FK to use for the profiles embed since documents now has two
     // FK columns pointing at profiles (created_by and consignment_agent_id).
     const selectFields = summaryOnly
-      ? 'id, created_at, client_name, client_company, total_amount, order_channel, file_path, file_name, consignment_agent_id, metadata, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)'
+      ? 'id, created_at, client_name, client_company, total_amount, order_channel, status, file_path, file_name, consignment_agent_id, metadata, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)'
       : '*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)';
 
     let query = adminSupabase
@@ -204,6 +204,7 @@ export async function POST(request) {
       metadata,
       order_channel,
       consignment_agent_id,
+      status,
     } = body;
 
     // file_path is optional for admin-created auto-generated records (e.g. invoices
@@ -223,6 +224,12 @@ export async function POST(request) {
     const isInternalOrder = safeOrderChannel === 'internal';
     const isConsignmentOrder = safeOrderChannel === 'consignment';
     const isWriteOffOrder = safeOrderChannel === 'delete_from_stock';
+
+    // Draft (parked) orders: a real, reopenable row that is NOT yet committed.
+    // No commission, no bonus, no notification email, no LoveLab sync, and
+    // excluded from revenue. Promoted to 'sent' later via PUT.
+    const safeStatus = status === 'draft' ? 'draft' : 'sent';
+    const isDraft = safeStatus === 'draft';
 
     // Validate consignment-specific fields
     if (isConsignmentOrder) {
@@ -275,6 +282,7 @@ export async function POST(request) {
         metadata: metadata || {},
         order_channel: safeOrderChannel,
         consignment_agent_id: isConsignmentOrder ? (consignment_agent_id || null) : null,
+        status: safeStatus,
       })
       .select()
       .single();
@@ -290,7 +298,7 @@ export async function POST(request) {
     // Attribution logic lives in lib/commissionAttribution.js so PUT and POST
     // resolve the same way.
     try {
-      if (document?.total_amount > 0 && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
+      if (document?.total_amount > 0 && !isDraft && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
         const commSupabase = createAdminClient();
         const attribution = await resolveCommissionAgent(commSupabase, document);
         if (attribution) {
@@ -345,7 +353,7 @@ export async function POST(request) {
     // Skipped for internal and consignment orders — not revenue-bearing.
     // Non-blocking — document is already saved at this point.
     try {
-      const resendApiKey = isInternalOrder || isConsignmentOrder || isWriteOffOrder ? null : process.env.RESEND_API_KEY;
+      const resendApiKey = isDraft || isInternalOrder || isConsignmentOrder || isWriteOffOrder ? null : process.env.RESEND_API_KEY;
       if (resendApiKey) {
         const adminSupabase2 = createAdminClient();
         const eventName = event_id
@@ -378,12 +386,13 @@ export async function POST(request) {
       console.error('[Documents POST] Notification email error (non-blocking):', emailErr.message);
     }
 
-    // Lovelab Sync: Sync consignment orders to main system
-    if (isConsignmentOrder) {
+    // Lovelab Sync: Sync consignment orders to main system.
+    // Skipped for drafts — a parked order hasn't been committed yet.
+    if (isConsignmentOrder && !isDraft) {
       // Non-blocking
       syncConsignmentToLovelab(document).catch(err => console.error('[Lovelab Sync POST] error:', err));
     }
-    if (isWriteOffOrder) {
+    if (isWriteOffOrder && !isDraft) {
       syncGiftLostToLovelab(document).catch(err => console.error('[Lovelab Sync POST] gift lost error:', err));
     }
 

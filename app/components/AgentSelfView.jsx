@@ -137,7 +137,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
   );
 
   const orderDocs = useMemo(
-    () => orgDocuments.filter((d) => d.document_type === 'order' && !d.deleted_at),
+    () => orgDocuments.filter((d) => d.document_type === 'order' && !d.deleted_at && d.status !== 'draft'),
     [orgDocuments]
   );
 

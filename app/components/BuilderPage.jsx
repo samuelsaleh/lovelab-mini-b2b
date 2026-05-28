@@ -9,6 +9,7 @@ import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 import { sendBuilderChat } from '@/lib/api'
 import { findPackshot } from '@/lib/packshot-lookup'
+import PackBuilderModal from './PackBuilderModal'
 
 let _uidCounter = 0
 export function uniqueId() {
@@ -239,6 +240,22 @@ function computePackTotal(pack, pricelistYear) {
   }, 0)
 }
 
+// Adapt a DB pack row (snake_case, from /api/packs) into the shape the
+// hardcoded PACKS use and that applyPack consumes. form_rows already match
+// the PACK*_ROWS shape because PackBuilderModal builds them via
+// linesToFormRows, the exact inverse of applyPack.
+function dbPackToDisplay(p) {
+  return {
+    id: p.id,
+    label: p.label,
+    description: Array.isArray(p.description) ? p.description : [],
+    budget: p.budget_label || null,
+    fixedTotal: p.fixed_total != null ? Number(p.fixed_total) : null,
+    formRows: Array.isArray(p.form_rows) ? p.form_rows : [],
+    _custom: true,
+  }
+}
+
 // ─── Collapsible warnings: shows a compact summary when there are many ───
 function WarningsSummary({ warnings }) {
   const [expanded, setExpanded] = useState(false)
@@ -292,7 +309,7 @@ const CHANNEL_BANNER = {
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear }) {
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false }) {
   const mobile = useIsMobile()
   const tablet = useIsTablet()
   const { t } = useI18n()
@@ -311,7 +328,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
-  
+  // Custom packs the agent has saved (private) + any global packs, fetched
+  // from /api/packs. Seed packs are filtered out to avoid duplicating the
+  // hardcoded PACKS below.
+  const [customPacks, setCustomPacks] = useState([])
+  const [showPackBuilder, setShowPackBuilder] = useState(false)
+
   // Selection state for multi-select feature
   const [selectedConfigs, setSelectedConfigs] = useState(new Set())
   // Track recently duplicated configs for highlight effect
@@ -329,6 +351,29 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Resolve once per render so every downstream getter / calculator sees the
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
+
+  // Load the agent's saved packs once on mount. RLS already scopes the
+  // response to global packs + this user's own private packs.
+  useEffect(() => {
+    if (typeof fetch !== 'function') return
+    let cancelled = false
+    fetch('/api/packs')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data?.packs) return
+        setCustomPacks(data.packs.filter(p => !p.is_seed).map(dbPackToDisplay))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Hardcoded quick-start packs first, then the agent's own saved packs.
+  const allPacks = useMemo(() => [...PACKS, ...customPacks], [customPacks])
+  // The build is saveable as a pack once at least one config has a carat set.
+  const hasBuild = useMemo(
+    () => lines.some(l => (l.colorConfigs || []).some(c => c.caratIdx != null)),
+    [lines],
+  )
 
   // Pending pricelist switch — set to a year string when the agent clicks the
   // other toggle button while there are non-empty lines. Confirms via modal,
@@ -983,7 +1028,29 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
               {showPacks && (
                 <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'none' }}>
-                  {PACKS.map(pack => (
+                  <button
+                    type="button"
+                    onClick={() => { if (hasBuild) setShowPackBuilder(true) }}
+                    disabled={!hasBuild}
+                    title={hasBuild ? 'Save your current build as a reusable pack' : 'Configure at least one item first'}
+                    style={{
+                      minWidth: 180, maxWidth: 220, flexShrink: 0,
+                      border: `1.5px dashed ${hasBuild ? colors.inkPlum : '#d8d0db'}`,
+                      borderRadius: 10, padding: '12px 14px',
+                      background: hasBuild ? '#fdf7fa' : '#fafafa',
+                      cursor: hasBuild ? 'pointer' : 'not-allowed',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      justifyContent: 'center', gap: 6, fontFamily: 'inherit',
+                      color: hasBuild ? colors.inkPlum : '#bbb', textAlign: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>Save current build</span>
+                    <span style={{ fontSize: 10, color: hasBuild ? '#9a7fa8' : '#ccc' }}>
+                      {hasBuild ? 'as your own pack' : 'add items first'}
+                    </span>
+                  </button>
+                  {allPacks.map(pack => (
                     <div key={pack.id} style={{
                       minWidth: 180, maxWidth: 220, flexShrink: 0,
                       border: '1px solid #e4dded', borderRadius: 10,
@@ -991,8 +1058,19 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
                       display: 'flex', flexDirection: 'column',
                     }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: colors.inkPlum, marginBottom: 6 }}>
-                        {pack.label}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: colors.inkPlum }}>
+                          {pack.label}
+                        </div>
+                        {pack._custom && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                            letterSpacing: 0.3, color: '#9a7fa8', background: '#f5eef7',
+                            borderRadius: 5, padding: '1px 5px',
+                          }}>
+                            Your pack
+                          </span>
+                        )}
                       </div>
                       <div style={{ flex: 1 }}>
                         {pack.description.map((line, i) => (
@@ -1798,6 +1876,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       )}
 
       </div>
+
+      <PackBuilderModal
+        open={showPackBuilder}
+        onClose={() => setShowPackBuilder(false)}
+        lines={lines}
+        pricelistYear={activePricelist}
+        isAdmin={isAdmin}
+        onSaved={(pack) => { if (pack) setCustomPacks(prev => [...prev, dbPackToDisplay(pack)]) }}
+      />
 
       {/* Pricelist switch confirmation — only mounts when a switch is pending */}
       {pendingPricelistSwitch && (
