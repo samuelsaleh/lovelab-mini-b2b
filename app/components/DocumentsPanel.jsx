@@ -44,6 +44,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [selectedOrgId, setSelectedOrgId] = useState(null)
   const [showInternal, setShowInternal] = useState(false)
   const [showConsignment, setShowConsignment] = useState(false)
+  // Draft (parked orders) view — its own "Draft" folder, separate from the
+  // agent's event folders. Drafts come from the main documents load.
+  const [showDrafts, setShowDrafts] = useState(false)
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const [internalDocs, setInternalDocs] = useState([])
@@ -221,6 +224,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowInternal = (val) => {
     setShowInternal(val)
+    if (val) setShowDrafts(false)
     if (val && internalDocs.length === 0) fetchInternalDocs()
   }
 
@@ -240,6 +244,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowConsignment = (val) => {
     setShowConsignment(val)
+    if (val) setShowDrafts(false)
     if (val && consignmentDocs.length === 0) fetchConsignmentDocs()
   }
 
@@ -554,8 +559,11 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }, [selectedOrgId, orgFolders])
 
   const filteredDocs = useMemo(() => {
-    if (showInternal || showConsignment) return []
+    if (showInternal || showConsignment || showDrafts) return []
     return documents.filter(doc => {
+      // Drafts (parked orders) never appear in All Documents or event folders —
+      // they live only in the dedicated Draft folder until promoted to sent.
+      if (doc.status === 'draft') return false
       if (selectedOrgId) {
         const byMember = selectedOrgMemberIds?.has(doc.created_by)
         const byEvent = doc.events?.organization_id === selectedOrgId
@@ -576,9 +584,24 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(search.toLowerCase())
       )
     })
-  }, [documents, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment])
+  }, [documents, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts])
+
+  // Drafts live in their own "Draft" folder — never mixed into All Documents or
+  // the agent's own event folders. Search still applies within the folder.
+  const draftDocs = useMemo(() => {
+    return documents.filter(doc => {
+      if (doc.status !== 'draft') return false
+      return (
+        !search ||
+        doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
+        doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
+        doc.file_name?.toLowerCase().includes(search.toLowerCase())
+      )
+    })
+  }, [documents, search])
 
   const currentEventName = useMemo(() => {
+    if (showDrafts) return 'Draft'
     if (showInternal) return 'Internal Orders'
     if (showConsignment) return 'Consignment Orders'
     if (selectedOrgId) {
@@ -589,7 +612,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
+  }, [showDrafts, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -603,6 +626,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (search) return {
       title: 'No documents match your search',
       subtitle: 'Try a different client name, company, or file name.',
+    }
+    if (showDrafts) return {
+      title: 'No drafts yet',
+      subtitle: 'Save an order as a draft to park it here until it’s ready to send.',
     }
     if (selectedEventId && selectedEventId !== 'none') return {
       title: `No documents in ${currentEventName}`,
@@ -628,8 +655,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const emptyState = getEmptyState()
 
   // ── Display list ──────────────────────────────────────────────────────────
-  const displayDocs = showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
-  const displayLoading = showInternal ? internalLoading : showConsignment ? consignmentLoading : loading
+  const displayDocs = showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
+  const displayLoading = showDrafts ? loading : showInternal ? internalLoading : showConsignment ? consignmentLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -674,6 +701,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         setShowInternal={handleSetShowInternal}
         showConsignment={showConsignment}
         setShowConsignment={handleSetShowConsignment}
+        showDrafts={showDrafts}
+        setShowDrafts={setShowDrafts}
+        draftCount={documents.filter(d => d.status === 'draft').length}
         renamingEventId={renamingEventId}
         renameValue={renameValue}
         setRenameValue={setRenameValue}

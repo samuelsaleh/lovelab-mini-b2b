@@ -242,8 +242,12 @@ export async function POST(request) {
       }
     }
 
-    if (event_id) {
-      const { allowed } = await requireEventPermission(adminSupabase, event_id, user.id, 'edit', isAdmin);
+    // Drafts are never filed into a folder — they live only in the Draft view
+    // until promoted to a sent order, at which point the agent picks the folder.
+    const effectiveEventId = isDraft ? null : (event_id || null);
+
+    if (effectiveEventId) {
+      const { allowed } = await requireEventPermission(adminSupabase, effectiveEventId, user.id, 'edit', isAdmin);
       if (!allowed) {
         return NextResponse.json({ error: 'Forbidden: no edit access to this folder' }, { status: 403 });
       }
@@ -270,7 +274,7 @@ export async function POST(request) {
     const { data: document, error } = await adminSupabase
       .from('documents')
       .insert({
-        event_id: event_id || null,
+        event_id: effectiveEventId,
         client_name,
         client_company: client_company || null,
         document_type,

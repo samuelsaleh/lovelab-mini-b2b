@@ -375,6 +375,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     [lines],
   )
 
+  // Delete one of the agent's own saved packs. Seed/quick-start packs have no
+  // delete control, and the API blocks seed deletion server-side as a backstop.
+  const deletePack = useCallback(async (pack) => {
+    if (!pack?._custom || !pack.id) return
+    if (typeof window !== 'undefined' && !window.confirm(`Delete your pack "${pack.label}"?`)) return
+    try {
+      const res = await fetch(`/api/packs/${pack.id}`, { method: 'DELETE' })
+      if (res.ok) setCustomPacks(prev => prev.filter(p => p.id !== pack.id))
+    } catch { /* non-fatal — leave the card in place if the request fails */ }
+  }, [])
+
   // Pending pricelist switch — set to a year string when the agent clicks the
   // other toggle button while there are non-empty lines. Confirms via modal,
   // then commits via setPricelistYear. Empty builder → silent (no modal).
@@ -1070,6 +1081,21 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           }}>
                             Your pack
                           </span>
+                        )}
+                        {pack._custom && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); deletePack(pack) }}
+                            title="Delete this pack"
+                            aria-label={`Delete pack ${pack.label}`}
+                            style={{
+                              marginLeft: 'auto', width: 20, height: 20, borderRadius: 5,
+                              border: 'none', background: 'transparent', color: '#c9b3d1',
+                              fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = '#c9b3d1' }}
+                          >×</button>
                         )}
                       </div>
                       <div style={{ flex: 1 }}>

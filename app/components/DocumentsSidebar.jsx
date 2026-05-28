@@ -28,6 +28,9 @@ export default function DocumentsSidebar({
   setShowInternal,
   showConsignment,
   setShowConsignment,
+  showDrafts,
+  setShowDrafts,
+  draftCount = 0,
   renamingEventId,
   renameValue,
   setRenameValue,
@@ -74,14 +77,16 @@ export default function DocumentsSidebar({
     if (typeof fromServer === 'number') return fromServer
     return documents.filter(d => d.events?.organization_id === organizationId).length
   }
-  const allDocsCount = documents.length
+  // Drafts are excluded from the All Documents count — they have their own folder.
+  const allDocsCount = documents.filter(d => d.status !== 'draft').length
 
   const eventFolders = (events || []).filter(e => (e.type || 'other') !== 'agent')
-  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment
+  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts
 
   const selectAll = () => {
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setShowDrafts?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -89,6 +94,7 @@ export default function DocumentsSidebar({
   const selectEvent = (eventId) => {
     setSelectedEventId(eventId)
     setSelectedOrgId?.(null)
+    setShowDrafts?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -96,6 +102,7 @@ export default function DocumentsSidebar({
   const selectOrg = (orgId) => {
     setSelectedOrgId?.(orgId)
     setSelectedEventId(null)
+    setShowDrafts?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -104,6 +111,7 @@ export default function DocumentsSidebar({
     setShowInternal(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setShowDrafts?.(false)
     if (showConsignment) setShowConsignment?.(false)
   }
 
@@ -111,7 +119,16 @@ export default function DocumentsSidebar({
     setShowConsignment?.(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setShowDrafts?.(false)
     if (showInternal) setShowInternal(false)
+  }
+
+  const selectDrafts = () => {
+    setShowDrafts?.(true)
+    setSelectedEventId(null)
+    setSelectedOrgId?.(null)
+    if (showInternal) setShowInternal(false)
+    if (showConsignment) setShowConsignment?.(false)
   }
 
   return (
@@ -231,6 +248,27 @@ export default function DocumentsSidebar({
         >
           <span>All Documents</span>
           <span style={{ fontSize: 11, color: '#999' }}>{allDocsCount}</span>
+        </button>
+      </div>
+
+      {/* Draft — parked orders not yet sent. Available to everyone. */}
+      <div style={{ padding: '0 8px' }}>
+        <button
+          onClick={selectDrafts}
+          style={{
+            width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
+            background: showDrafts ? '#fff4e5' : 'transparent',
+            color: showDrafts ? '#b9770e' : '#555',
+            fontSize: 13, fontWeight: showDrafts ? 600 : 400,
+            cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+            marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12 }}>📝</span>
+            <span>Draft</span>
+          </span>
+          <span style={{ fontSize: 11, color: '#999' }}>{draftCount}</span>
         </button>
       </div>
 
