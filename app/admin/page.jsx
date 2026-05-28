@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ResourcesCard from '../components/ResourcesCard'
+import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 
 const fmt = (n) => {
   if (n == null) return '—'
@@ -24,14 +25,16 @@ export default function AdminDashboard() {
     setLoading(true)
     setFetchError(null)
     try {
-      const [agentsData, docsData, eventsData, commData] = await Promise.all([
+      // Fetch EVERY document (not just the first 50-row page) so the KPIs
+      // reflect all orders. See lib/fetchAllDocuments.
+      const [allDocs, agentsData, eventsData, commData] = await Promise.all([
+        fetchAllDocuments(),
         fetch('/api/agents').then(r => r.json()),
-        fetch('/api/documents').then(r => r.json()),
         fetch('/api/events').then(r => r.json()),
         fetch('/api/commissions').then(r => r.json()),
       ])
       setAgents(agentsData.agents || [])
-      setDocuments(docsData.documents || [])
+      setDocuments(allDocs)
       setEvents(eventsData.events || [])
       setCommissions(commData)
     } catch {
@@ -42,15 +45,23 @@ export default function AdminDashboard() {
 
   useEffect(() => { loadDashboard() }, [])
 
-  const totalRevenue = useMemo(() =>
-    documents.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
+  // Revenue = real orders only (quotes aren't revenue) and excludes drafts
+  // (parked, uncommitted). Internal/consignment/write-off are already excluded
+  // by the API's default document list.
+  const orderDocs = useMemo(() =>
+    documents.filter(d => d.document_type === 'order' && d.status !== 'draft'),
   [documents])
+
+  const totalRevenue = useMemo(() =>
+    orderDocs.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
+  [orderDocs])
 
   const activeAgents = agents.filter(a => a.agent_status === 'active' || a.agent_status === 'invited')
   const upcomingEvents = events.filter(e => e.end_date && new Date(e.end_date) >= new Date())
   const pendingCommission = commissions.summary?.pending_amount || 0
 
-  const recentDocs = documents.slice(0, 10)
+  // Recent activity excludes drafts — they live in the Draft folder, not here.
+  const recentDocs = documents.filter(d => d.status !== 'draft').slice(0, 10)
 
   const topAgents = useMemo(() =>
     [...agents]
@@ -65,7 +76,7 @@ export default function AdminDashboard() {
 
   const revenueByEvent = useMemo(() => {
     const byEvent = {}
-    for (const d of documents) {
+    for (const d of orderDocs) {
       const eventName = d.events?.name || 'No Event'
       if (!byEvent[eventName]) byEvent[eventName] = 0
       byEvent[eventName] += Number(d.total_amount) || 0
@@ -74,7 +85,7 @@ export default function AdminDashboard() {
       .map(([name, total]) => ({ name: name.length > 20 ? name.slice(0, 18) + '...' : name, total: Math.round(total) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8)
-  }, [documents])
+  }, [orderDocs])
 
   if (loading) {
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>Loading dashboard...</div>
@@ -93,7 +104,7 @@ export default function AdminDashboard() {
 
         {/* Summary Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 28 }}>
-          <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${documents.length} orders`} accent={colors.inkPlum} />
+          <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${orderDocs.length} orders`} accent={colors.inkPlum} />
           <Card label="Active Agents" value={activeAgents.length} sub={`${agents.length} registered`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
           <Card label="Fairs" value={events.length} sub={upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming` : 'none upcoming'} accent={colors.luxeGold} onClick={() => router.push('/admin/fairs')} />
           <Card label="Commission Owed" value={fmt(pendingCommission)} sub="pending payouts" accent={colors.warning} />

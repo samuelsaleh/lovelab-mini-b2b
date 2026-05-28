@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
+import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { useAuth } from './AuthProvider'
 import { useI18n } from '@/lib/i18n'
 import KpiCard from './KpiCard'
@@ -37,13 +38,15 @@ function AdminContent({ onClose }) {
     setFetchError(null)
     const results = await Promise.allSettled([
       safeFetch('/api/agents').then(r => r.json()),
-      safeFetch('/api/documents').then(r => r.json()),
+      // Fetch EVERY document (not just the first 50-row page) so revenue +
+      // order counts reflect all orders. See lib/fetchAllDocuments.
+      fetchAllDocuments(safeFetch),
       safeFetch('/api/events').then(r => r.json()),
       safeFetch('/api/commissions').then(r => r.json()),
     ])
     const [agentsRes, docsRes, eventsRes, commRes] = results
     if (agentsRes.status === 'fulfilled') setAgents(agentsRes.value.agents || [])
-    if (docsRes.status   === 'fulfilled') setDocuments(docsRes.value.documents || [])
+    if (docsRes.status   === 'fulfilled') setDocuments(docsRes.value || [])
     if (eventsRes.status === 'fulfilled') setEvents(eventsRes.value.events || [])
     if (commRes.status   === 'fulfilled') setCommissions(commRes.value)
     const failed = results.filter(r => r.status === 'rejected')

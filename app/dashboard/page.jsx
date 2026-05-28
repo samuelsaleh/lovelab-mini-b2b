@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { fetchAllDocuments } from '@/lib/fetchAllDocuments';
 
 // ─── Vitrine helpers ───────────────────────────────────────────────────────
 
@@ -180,12 +181,9 @@ export default function DashboardPage() {
         setEvents(eventsData.events);
       }
 
-      // Fetch all documents
-      const docsRes = await fetch('/api/documents');
-      const docsData = await docsRes.json();
-      if (docsData.documents) {
-        setDocuments(docsData.documents);
-      }
+      // Fetch ALL documents (not just the first 50-row page). See lib/fetchAllDocuments.
+      const allDocs = await fetchAllDocuments();
+      setDocuments(allDocs);
     } catch (err) {
       setErrorMsg('Failed to load data. Please refresh.');
     }

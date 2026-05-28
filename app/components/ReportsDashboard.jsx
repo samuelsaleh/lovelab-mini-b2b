@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
+import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { normalizeCountry } from '@/lib/countries'
 
 // ─── Column config ─────────────────────────────────────────────────────────
@@ -84,17 +85,18 @@ export default function ReportsDashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [docsRes, eventsRes, reportsRes, clientsRes] = await Promise.all([
-        safeFetch('/api/documents'),
+      // Fetch EVERY document (not just the first 50-row page) so report totals
+      // cover all orders. See lib/fetchAllDocuments.
+      const [allDocs, eventsRes, reportsRes, clientsRes] = await Promise.all([
+        fetchAllDocuments(safeFetch),
         safeFetch('/api/events'),
         safeFetch('/api/reports'),
         safeFetch('/api/clients'),
       ])
-      const docsData = await docsRes.json().catch(() => ({}))
       const eventsData = await eventsRes.json().catch(() => ({}))
       const reportsData = await reportsRes.json().catch(() => ({}))
       const clientsData = await clientsRes.json().catch(() => ({}))
-      setDocuments(docsData.documents || [])
+      setDocuments(allDocs)
       setClients(clientsData.clients || [])
       setEvents(eventsData.events || [])
       setReports(reportsData.reports || [])

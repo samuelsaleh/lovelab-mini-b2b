@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
+import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 
 const fmt = (n) => {
   if (n == null || n === 0) return '—'
@@ -29,12 +30,14 @@ export default function AdminFairsPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [evRes, docsRes] = await Promise.all([
+      // Fetch EVERY document (not just the first 50-row page) so per-fair
+      // revenue covers all orders. See lib/fetchAllDocuments.
+      const [evRes, allDocs] = await Promise.all([
         fetch('/api/events').then(r => r.json()),
-        fetch('/api/documents').then(r => r.json()),
+        fetchAllDocuments(),
       ])
       setEvents(evRes.events || [])
-      setDocuments(docsRes.documents || [])
+      setDocuments(allDocs)
     } catch {
       setError('Failed to load data')
     }
