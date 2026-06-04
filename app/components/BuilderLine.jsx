@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef, useState } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, getPrice } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, getPrice, getVisibleCollections } from '@/lib/catalog'
 import { isLight } from '@/lib/utils'
 import { lbl, tag, qBtn, qInp, colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -409,7 +409,7 @@ function getPalette(col, cordType) {
 }
 
 // ─── Main BuilderLine ───
-export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate }) {
+export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate, isAdmin = false }) {
   const col = line.collectionId ? COLLECTIONS.find((c) => c.id === line.collectionId) : null
 
   const [activeSection, setActiveSection] = useState('collection')
@@ -665,7 +665,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
             isCompleted={!!col}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {COLLECTIONS.map((c) => (
+              {getVisibleCollections(isAdmin).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {

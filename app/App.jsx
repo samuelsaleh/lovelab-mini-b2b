@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, DEFAULT_PRICELIST, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getVisibleCollections, DEFAULT_PRICELIST, resolvePricelist } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -40,6 +40,9 @@ const AI_CHIPS = [
 
 export default function App() {
   const { user, profile, profileMissing, profileError, loading: authLoading, refreshProfile, signOut } = useAuth()
+  // Preview (admin-only) collections are gated on this flag across the builder,
+  // order form, AI advisor and packshot gallery.
+  const isAdmin = profile?.role === 'admin'
   const { t } = useI18n()
   const mobile = useIsMobile()
   
@@ -213,7 +216,7 @@ export default function App() {
     ).join('; ')
     const prompt = `The client has a budget of €${budgetNum}. They have already built an order worth €${spent} (after any discounts). They have €${remaining} remaining.\n\nCurrent order: ${currentItems || 'empty'}\n\nIMPORTANT: Do NOT change or remove anything from the current order. Only suggest what to ADD on top of it.\nBased on what they already like (their chosen collections, colors, carat sizes), suggest 3-5 smart additions they could make with the remaining €${remaining}. Consider:\n- Adding more pieces of collections they already chose (safe upsell)\n- Trying a new complementary collection\n- Upgrading carat size on an existing line\n- Adding new colors of something they already have\n\nFor each suggestion, give a short one-line description and the approximate cost.\nKeep it very concise — this is for a salesperson at a trade fair.`
     try {
-      const parsed = await sendRecommendationChat(prompt, { pricelistYear })
+      const parsed = await sendRecommendationChat(prompt, { pricelistYear, isAdmin })
       setBudgetRecommendations({ loading: false, message: parsed.message, suggestions: parsed.quote })
     } catch {
       setBudgetRecommendations({ loading: false, message: 'Could not generate recommendations. Please try again.', suggestions: null })
@@ -504,7 +507,7 @@ export default function App() {
     const apiMsgs = [...aiMsgs, apiMsg]
     setAiMsgs((prev) => [...prev, displayMsg])
     try {
-      const parsed = await sendChat(apiMsgs, { pricelistYear })
+      const parsed = await sendChat(apiMsgs, { pricelistYear, isAdmin })
       let expandedQuote = null
       if (parsed.quote && parsed.quote.lines && parsed.quote.lines.length > 0) {
         const linesByCollection = new Map()
@@ -994,7 +997,7 @@ export default function App() {
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: mobile ? 11 : 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.collections')}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 5 }}>
-                        {COLLECTIONS.map((col) => {
+                        {getVisibleCollections(isAdmin).map((col) => {
                           const active = aiCollections.includes(col.id)
                           return (
                             <button key={col.id} onClick={() => toggleAiCollection(col.id)} style={{ padding: mobile ? '8px 14px' : '5px 10px', borderRadius: 16, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #ddd', background: active ? `${colors.inkPlum}12` : '#fafafa', color: active ? colors.inkPlum : '#666', fontSize: mobile ? 12 : 11, fontWeight: active ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 36 : 'auto' }}>
@@ -1116,7 +1119,7 @@ export default function App() {
         )}
 
         {activeTab === 'photos' && (
-          <PackshotGallery inline />
+          <PackshotGallery inline isAdmin={isAdmin} />
         )}
 
       </main>

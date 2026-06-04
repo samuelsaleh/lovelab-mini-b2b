@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -764,7 +764,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       const response = await sendBuilderChat(
         [...aiMessages, { role: 'user', content: userMessage }],
         orderContext,
-        { pricelistYear: activePricelist },
+        { pricelistYear: activePricelist, isAdmin },
       )
 
       if (response.actions && response.actions.length > 0) {
@@ -1151,10 +1151,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   gap: 10,
                   marginBottom: 24,
                 }}>
-                  {[
-                    ...selectedCollections.map(id => COLLECTIONS.find(c => c.id === id)).filter(Boolean),
-                    ...COLLECTIONS.filter(c => !selectedCollections.includes(c.id)),
-                  ].map(col => {
+                  {(() => {
+                    // Preview (admin-only) collections are hidden from the grid
+                    // for non-admins.
+                    const visible = getVisibleCollections(isAdmin)
+                    return [
+                      ...selectedCollections.map(id => visible.find(c => c.id === id)).filter(Boolean),
+                      ...visible.filter(c => !selectedCollections.includes(c.id)),
+                    ]
+                  })().map(col => {
                     const isSelected = selectedCollections.includes(col.id)
                     const defaultCert = getDefaultCert(col)
                     const priceMin = `€${getPrice(col, 0, defaultCert, activePricelist)}`

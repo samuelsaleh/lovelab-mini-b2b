@@ -45,7 +45,7 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
         />
       )}
       {showGallery && (
-        <PackshotGallery onClose={() => setShowGallery(false)} />
+        <PackshotGallery onClose={() => setShowGallery(false)} isAdmin={isAdmin} />
       )}
 
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>

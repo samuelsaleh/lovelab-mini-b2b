@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, getVisibleCollections, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -596,6 +596,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
   // Phase 5 wires the "saved doc" path; for now the prop fallback is enough.
   const pricelistYear = resolvePricelist(pricelistYearProp)
+  // Preview (admin-only) collections are hidden from the collection dropdown
+  // for non-admins.
+  const isAdmin = currentUser?.role === 'admin'
+  const visibleCollections = getVisibleCollections(isAdmin)
   const { t } = useI18n()
   const mobile = useIsMobile()
   const printRef = useRef(null)
@@ -2458,7 +2462,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                 <CellSelect
                                   value={row.collection}
                                   onChange={(val) => updateCell(globalIdx, 'collection', val)}
-                                  options={COLLECTIONS.map(c => ({ value: c.label, label: c.label }))}
+                                  options={visibleCollections.map(c => ({ value: c.label, label: c.label }))}
                                   isPrinting={isPrinting}
                                   wrapText
                                 />
