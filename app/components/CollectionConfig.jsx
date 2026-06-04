@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, resolvePricelist } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, getThicknessOptions, resolvePricelist } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -192,15 +192,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const someSelected = selectedCount > 0 && selectedCount < line.colorConfigs.length
 
   useEffect(() => {
+    // Collections restricted to a single silk thickness (e.g. Thin-only Sienna
+    // and Iconix) auto-select it so colors can be added without an extra click.
+    const opts = getThicknessOptions(col)
+    const autoThickness = col.cord === 'silk' && opts.length === 1 ? opts[0] : null
     if (hasCordOptions) {
       const first = CORD_OPTIONS[col.cord][0]
       setSelectedCordType(first)
-      setSelectedSilkThickness(first === 'silk' ? null : null)
+      setSelectedSilkThickness(null)
     } else {
       setSelectedCordType(null)
-      setSelectedSilkThickness(null)
+      setSelectedSilkThickness(autoThickness)
     }
-  }, [hasCordOptions, col.cord])
+  }, [hasCordOptions, col.cord, col.id])
 
   // Add or remove a color (toggle: clicking a selected color removes the last instance)
   const addColor = (colorName) => {
@@ -224,6 +228,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     }
     if (col.cord === 'silk' || selectedCordType === 'silk') {
       newCfg = { ...newCfg, thickness: selectedSilkThickness || null }
+    }
+    // New collections use a combined metal+finish tile; default to the first
+    // tile (Yellow Gold) per the spec so the housing is pre-filled.
+    if ((col.housing === 'metalEight' || col.housing === 'metalThree') && !newCfg.housing) {
+      newCfg = { ...newCfg, housing: HOUSING[col.housing][0] }
     }
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
@@ -489,6 +498,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const hasShapes = col.shapes && col.shapes.length > 0
   const hasSizes = col.sizes && col.sizes.length > 0
   const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
+  // Allowed silk thicknesses for this collection. New silk collections (Sienna,
+  // Iconix) only ship in Thin, so they expose a single option.
+  const thicknessOpts = getThicknessOptions(col)
   // Bracelet thread closure column: shown for collections that opt-in via
   // hasClosure (currently CUTY, CUBIX). Lets the user pick "Braided" vs
   // "Non-braided" closure per row.
@@ -516,6 +528,20 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       )
     }
     if (col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') {
+      return (
+        <select
+          value={cfg.housing || ''}
+          onChange={(e) => patchFn({ housing: e.target.value || null })}
+          style={selectStyle}
+        >
+          <option value="">{t('collection.housingPlaceholder')}</option>
+          {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+      )
+    }
+    // New collections (Moonlight / Sienna / Iconix): single combined metal+finish
+    // tile. metalEight = 3 golds + 5 mattes; metalThree = 3 golds only.
+    if (col.housing === 'metalEight' || col.housing === 'metalThree') {
       return (
         <select
           value={cfg.housing || ''}
@@ -758,7 +784,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       Thickness
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {['Thin', 'Thick'].map((th) => (
+                      {thicknessOpts.map((th) => (
                         <button
                           key={th}
                           onClick={() => setSelectedSilkThickness(th)}
@@ -790,7 +816,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   Thickness
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {['Thin', 'Thick'].map((th) => (
+                  {thicknessOpts.map((th) => (
                     <button
                       key={th}
                       onClick={() => setSelectedSilkThickness(th)}
@@ -1014,6 +1040,16 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           </select>
                         )}
                         {!duplicateSettings[field].keepSame && field === 'housing' && (col.housing === 'goldMetal' || col.housing === 'goldMetalNoRose') && (
+                          <select
+                            value={duplicateSettings.housing.value || ''}
+                            onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
+                            style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
+                          >
+                            <option value="">{t('collection.housingPlaceholder')}</option>
+                            {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        )}
+                        {!duplicateSettings[field].keepSame && field === 'housing' && (col.housing === 'metalEight' || col.housing === 'metalThree') && (
                           <select
                             value={duplicateSettings.housing.value || ''}
                             onChange={(e) => updateDuplicateSetting('housing', { value: e.target.value || null })}
@@ -1507,8 +1543,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                 style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
                               >
                                 <option value="">-</option>
-                                <option value="Thin">Thin</option>
-                                <option value="Thick">Thick</option>
+                                {thicknessOpts.map((th) => (
+                                  <option key={th} value={th}>{th}</option>
+                                ))}
                               </select>
                             )}
                             {canFillThickness && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'thickness', line.colorConfigs, selectedConfigs)} />}

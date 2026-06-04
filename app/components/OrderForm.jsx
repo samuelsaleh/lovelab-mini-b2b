@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -2407,8 +2407,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             const cordTypes = rowCol.cord === 'silkBraided' ? (CORD_OPTIONS.silkBraided || ['silk']) : ['silk']
                             for (const ct of cordTypes) {
                               if (ct === 'silk') {
-                                opts.push({ value: buildMaterial('silk', 'Thin'), label: 'Silk (Thin)' })
-                                opts.push({ value: buildMaterial('silk', 'Thick'), label: 'Silk (Thick)' })
+                                // New silk collections (Sienna, Iconix) only offer Thin.
+                                for (const th of getThicknessOptions(rowCol)) {
+                                  opts.push({ value: buildMaterial('silk', th), label: `Silk (${th})` })
+                                }
                               } else {
                                 opts.push({ value: buildMaterial(ct, ''), label: CORD_TYPE_LABELS[ct] || ct })
                               }

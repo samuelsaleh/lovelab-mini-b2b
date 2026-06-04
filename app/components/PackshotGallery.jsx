@@ -5,7 +5,14 @@ import { colors, fonts } from '@/lib/styles'
 import { getAllCollectionIds, getCollectionLabel, getCollectionImages, getCollectionFilters } from '@/lib/packshot-lookup'
 import PackshotLightbox from './PackshotLightbox'
 
-const COLLECTION_ORDER = ['CUTY', 'CUBIX', 'M3', 'M4', 'M5', 'MF', 'SSF', 'SSPF']
+const COLLECTION_ORDER = [
+  'CUTY', 'CUBIX', 'M3', 'M4', 'M5', 'MF', 'SSF', 'SSPF',
+  // 2026 new collections (Moonlight, Sienna, Iconix). SI1 (Sienna One) has no
+  // photos yet, so it is filtered out automatically until images are added.
+  'MFM', 'MNO', 'MNH',
+  'SI1', 'SI2P', 'SI3', 'SI4', 'SI5',
+  'ZAHA', 'LUVA', 'LUMA', 'RIV4', 'RIV8', 'LIN3', 'LIN5',
+]
 
 export default function PackshotGallery({ onClose, inline = false }) {
   const availableIds = getAllCollectionIds()
