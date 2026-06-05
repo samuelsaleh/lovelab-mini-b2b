@@ -762,6 +762,13 @@ export default function AdminAgentDetailsPage() {
                               // rate so admins see a meaningful number for legacy rows.
                               const rowRate = Number(row.commission_rate) || 0;
                               const displayRate = isBonus ? null : (rowRate > 0 ? rowRate : commRate);
+                              // Link to edit the underlying order. Works for both
+                              // real commission rows (document_id) and doc-derived
+                              // rows (document.id). Opens the order in the main app
+                              // via the /?reEdit=<id> deep link so amounts/items can
+                              // be edited and re-saved (which recalculates commission).
+                              const docId = row.document_id || row.document?.id || null;
+                              const canEditOrder = row.type === 'order' && !isCancelled && !!docId;
                               return (
                                 <tr key={row.id} style={isCancelled ? { opacity: 0.55 } : undefined}>
                                   <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
@@ -772,6 +779,20 @@ export default function AdminAgentDetailsPage() {
                                     )}
                                     {row.document?.order_channel === 'b2c' && (
                                       <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
+                                    )}
+                                    {canEditOrder && (
+                                      <div style={{ marginTop: 3 }}>
+                                        <a
+                                          href={`/?reEdit=${docId}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="Open this order to edit its items and amount. Saving recalculates the commission."
+                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                        >
+                                          Edit order
+                                          <span aria-hidden="true">↗</span>
+                                        </a>
+                                      </div>
                                     )}
                                   </td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt(grossTotal)}</td>
