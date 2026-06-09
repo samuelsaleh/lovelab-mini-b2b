@@ -1,4 +1,4 @@
--- Phase 22: Cyclic rename of seed packs + chronological ordering.
+-- Phase 25: Cyclic rename of seed packs + chronological ordering.
 --
 -- Per Sam's request:
 --   old "Pack 3" (CUTY/CUBIX/MULTI THREE) -> "Pack 1"

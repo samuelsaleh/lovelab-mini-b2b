@@ -198,7 +198,7 @@ const PACK6_ROWS = [
 // internal `id`s stay tied to their original content; only the `label` and the
 // array order changed so the fallback matches the renamed DB seeds and lists
 // chronologically (Pack 1..4, then Pack 6). See
-// database-migrations/supabase-phase22-rename-packs.sql.
+// database-migrations/supabase-phase25-rename-packs.sql.
 const PACKS = [
   {
     id: 'pack-3',
