@@ -97,6 +97,76 @@ describe('PackBuilderModal — scope toggle', () => {
   })
 })
 
+describe('PackBuilderModal — restricted visibility', () => {
+  const AGENTS = [
+    { id: 'a-1', full_name: 'Emile', email: 'emile@example.com' },
+    { id: 'a-2', full_name: 'rsmus', email: 'rsmus@example.com' },
+  ]
+
+  function mockAgentsFetch() {
+    global.fetch.mockImplementation((url) => {
+      if (url === '/api/agents') {
+        return Promise.resolve({ ok: true, json: jest.fn().mockResolvedValue({ agents: AGENTS }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: jest.fn().mockResolvedValue({ pack: { id: 'p-1' } }) })
+    })
+  }
+
+  it('hides the Restricted option for agents (non-admins)', () => {
+    renderModal({ isAdmin: false, lines: [CUTYLine(25, 1)] })
+    expect(screen.queryByText('Only specific agents')).not.toBeInTheDocument()
+  })
+
+  it('reveals the agent checkbox list when an admin picks Restricted', async () => {
+    mockAgentsFetch()
+    renderModal({ isAdmin: true, lines: [CUTYLine(25, 1)] })
+
+    expect(screen.getByText('Only specific agents')).toBeInTheDocument()
+    // No checkbox list until Restricted is selected.
+    expect(screen.queryByTestId('pack-agent-list')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Only specific agents'))
+
+    await waitFor(() => expect(screen.getByLabelText('Emile')).toBeInTheDocument())
+    expect(screen.getByLabelText('rsmus')).toBeInTheDocument()
+    expect(global.fetch).toHaveBeenCalledWith('/api/agents')
+  })
+
+  it('pre-checks assigned agents from editingPack._agentIds', async () => {
+    mockAgentsFetch()
+    const editingPack = {
+      _dbId: 'p-55', _scope: 'restricted', _agentIds: ['a-1'],
+      label: 'Restricted pack', description: ['CUTY'],
+    }
+    renderModal({ isAdmin: true, lines: [CUTYLine(25, 1)], editingPack })
+
+    await waitFor(() => expect(screen.getByLabelText('Emile')).toBeInTheDocument())
+    expect(screen.getByLabelText('Emile')).toBeChecked()
+    expect(screen.getByLabelText('rsmus')).not.toBeChecked()
+  })
+
+  it('includes the selected agent_ids in the save payload', async () => {
+    mockAgentsFetch()
+    const onSaved = jest.fn()
+    renderModal({ isAdmin: true, lines: [CUTYLine(25, 1)], onSaved })
+
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'Restricted pack' } })
+    fireEvent.click(screen.getByLabelText('Only specific agents'))
+    await waitFor(() => expect(screen.getByLabelText('rsmus')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('rsmus'))
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => {
+      const saveCall = global.fetch.mock.calls.find((c) => c[0] === '/api/packs')
+      expect(saveCall).toBeTruthy()
+    })
+    const saveCall = global.fetch.mock.calls.find((c) => c[0] === '/api/packs')
+    const payload = JSON.parse(saveCall[1].body)
+    expect(payload.scope).toBe('restricted')
+    expect(payload.agent_ids).toEqual(['a-2'])
+  })
+})
+
 describe('PackBuilderModal — save flow', () => {
   it('POSTs to /api/packs with the right shape and calls onSaved', async () => {
     global.fetch.mockResolvedValueOnce({

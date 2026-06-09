@@ -38,6 +38,10 @@ export default function PackBuilderModal({
   const [scope, setScope] = useState('private')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Restricted-scope visibility: the full agent list (admin only) and the
+  // currently selected agent ids who may see this pack.
+  const [agents, setAgents] = useState([])
+  const [selectedAgentIds, setSelectedAgentIds] = useState([])
   const nameRef = useRef(null)
   // Tracks whether the user has hand-edited the description. While false we
   // keep the description in sync with the auto-generated summary so a pack is
@@ -56,16 +60,46 @@ export default function PackBuilderModal({
         setDescriptionText(
           Array.isArray(editingPack.description) ? editingPack.description.join('\n') : '',
         )
-        setScope(editingPack._scope === 'global' ? 'global' : 'private')
+        const validScopes = ['global', 'private', 'restricted']
+        setScope(validScopes.includes(editingPack._scope) ? editingPack._scope : 'private')
+        setSelectedAgentIds(Array.isArray(editingPack._agentIds) ? editingPack._agentIds : [])
       } else {
         setLabel('')
         setDescriptionText('')
         setScope(isAdmin ? 'global' : 'private')
+        setSelectedAgentIds([])
       }
       setSaving(false)
       setError('')
     }
   }, [open, isAdmin, editingPack])
+
+  // Lazily load the agent list the first time an admin actually picks the
+  // "Restricted" scope, so the per-agent checkboxes can be shown. Kept lazy so
+  // opening the modal for a normal global/private pack issues no extra request.
+  useEffect(() => {
+    if (!open || !isAdmin || scope !== 'restricted' || agents.length > 0) return
+    let cancelled = false
+    fetch('/api/agents')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        const list = Array.isArray(data.agents) ? data.agents : []
+        setAgents(
+          list
+            .filter((a) => a && a.id)
+            .map((a) => ({ id: a.id, name: a.full_name || a.email || a.id })),
+        )
+      })
+      .catch(() => { /* non-blocking: checkbox list just stays empty */ })
+    return () => { cancelled = true }
+  }, [open, isAdmin, scope, agents.length])
+
+  function toggleAgent(agentId) {
+    setSelectedAgentIds((prev) =>
+      prev.includes(agentId) ? prev.filter((x) => x !== agentId) : [...prev, agentId],
+    )
+  }
 
   // When editing, focus + select the name so it's obvious it can be renamed
   // right away (this is the field users come here to change).
@@ -118,6 +152,11 @@ export default function PackBuilderModal({
         fixed_total: total,
         form_rows: formRows,
         scope: isAdmin ? scope : 'private',
+      }
+
+      // Only admins can publish restricted packs; carry the assigned agents.
+      if (isAdmin && scope === 'restricted') {
+        payload.agent_ids = selectedAgentIds
       }
 
       // Edit mode → PUT the existing row; create mode → POST a new one.
@@ -245,7 +284,50 @@ export default function PackBuilderModal({
                 />
                 {t('pack.scopePrivate')}
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="pack-scope"
+                  value="restricted"
+                  checked={scope === 'restricted'}
+                  onChange={() => setScope('restricted')}
+                />
+                {t('pack.scopeRestricted')}
+              </label>
             </div>
+
+            {scope === 'restricted' && (
+              <div data-testid="pack-agent-list" style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 6, textTransform: 'uppercase' }}>
+                  {t('pack.visibleTo')}
+                </div>
+                {agents.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#888' }}>{t('pack.noAgents')}</div>
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: 160, overflowY: 'auto', border: '1px solid #eee',
+                      borderRadius: 8, padding: '6px 10px', display: 'flex',
+                      flexDirection: 'column', gap: 4,
+                    }}
+                  >
+                    {agents.map((a) => (
+                      <label
+                        key={a.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAgentIds.includes(a.id)}
+                          onChange={() => toggleAgent(a.id)}
+                        />
+                        {a.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

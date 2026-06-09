@@ -87,7 +87,10 @@ describe('documents/send-email/route.js — BCC + no reply_to', () => {
   })
 
   it('sets no reply_to header — replies fall back to From', () => {
-    expect(src).not.toMatch(/reply_to:/)
+    // Match the property literal precisely (start-of-line) so the explanatory
+    // "// No reply_to: ..." comments in the route don't false-positive — same
+    // approach as the cc: assertion above.
+    expect(src).not.toMatch(/^\s*reply_to:/m)
     expect(src).not.toMatch(/REPLY_TO_RECIPIENTS/)
   })
 

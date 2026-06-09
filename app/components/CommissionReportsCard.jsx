@@ -168,7 +168,7 @@ export default function CommissionReportsCard({ agentId, agentName }) {
           {busy ? 'Sending…' : 'Send report now'}
         </button>
         <span style={{ fontSize: 11, color: MUTED }}>
-          Sends every order ticked Paid that hasn’t been paid out yet — titled with today’s date.
+          Sends every order ticked Paid that hasn’t been paid out yet — then marks them settled so the next report only shows new ones.
         </span>
 
         {lastResult && (

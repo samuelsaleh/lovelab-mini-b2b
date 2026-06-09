@@ -825,7 +825,7 @@ export default function AdminAgentDetailsPage() {
                         </table>
                         </div>
                         <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, background: '#fafafa' }}>
-                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order — only ticked rows are included in the next monthly payout.
+                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order — those rows go into the next report. <strong style={{ color: colors.charcoal }}>Send report now</strong> marks them as paid to the agent; they will not appear again.
                         </div>
                       </>
                     );

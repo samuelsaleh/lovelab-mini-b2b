@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import SendResourcesModal from './SendResourcesModal'
@@ -13,16 +13,9 @@ const CATALOGUE_FILES = [
   { name: 'DE — LoveLab B2B Catalogue.pdf', path: '/catalogues/DE_LoveLab_B2B_Catalogue.pdf' },
 ]
 
-const PACKS_FILES = [
-  { name: 'LoveLab_Order_Template_Pack1.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack1.xlsx' },
-  { name: 'LoveLab_Order_Template_Pack1.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack1.pdf' },
-  { name: 'LoveLab_Order_Template_Pack2.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack2.xlsx' },
-  { name: 'LoveLab_Order_Template_Pack2.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack2.pdf' },
-  { name: 'LoveLab_Order_Template_Pack3.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack3.xlsx' },
-  { name: 'LoveLab_Order_Template_Pack3.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack3.pdf' },
-  { name: 'LoveLab_Order_Template_Pack4.xlsx', path: '/LoveLab Excel Packs/LoveLab_Order_Template_Pack4.xlsx' },
-  { name: 'LoveLab_Order_Template_Pack4.pdf',  path: '/Lovelab PDF Packs/LoveLab_Order_Template_Pack4.pdf' },
-]
+// Pack order templates are now generated per pack and served from
+// /api/pack-templates (see lib/packTemplates.js). The Packs folder fetches
+// them dynamically so filenames always track the pack's current label.
 
 const PRICE_LIST_FILES = [
   { name: 'Pricelist_LoveLab_2025.pdf', path: '/Price Lists/Pricelist_LoveLab_2025.pdf' },
@@ -162,6 +155,23 @@ export default function ResourcesCard({ isAdmin = false }) {
   const [selected, setSelected] = useState(() => new Set())
   const [modalOpen, setModalOpen] = useState(false)
 
+  // Pack order templates are generated per pack and listed dynamically, so the
+  // filenames always reflect each pack's current label (admin only).
+  const [packsFiles, setPacksFiles] = useState([])
+  useEffect(() => {
+    if (!isAdmin || typeof fetch !== 'function') return
+    let cancelled = false
+    fetch('/api/pack-templates')
+      .then((r) => (r.ok ? r.json() : { templates: [] }))
+      .then((d) => {
+        if (cancelled) return
+        const files = (d.templates || []).map((t) => ({ name: t.fileName, path: t.downloadUrl }))
+        setPacksFiles(files)
+      })
+      .catch(() => { if (!cancelled) setPacksFiles([]) })
+    return () => { cancelled = true }
+  }, [isAdmin])
+
   const toggle = (path) => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -173,7 +183,7 @@ export default function ResourcesCard({ isAdmin = false }) {
 
   // Flatten all folders into a single lookup so we can resolve selected paths
   // back to {name, path} regardless of which folder they came from.
-  const allFiles = [...CATALOGUE_FILES, ...PACKS_FILES, ...PRICE_LIST_FILES, ...EAN_FILES]
+  const allFiles = [...CATALOGUE_FILES, ...packsFiles, ...PRICE_LIST_FILES, ...EAN_FILES]
   const selectedFiles = allFiles.filter(f => selected.has(f.path))
   const count = selectedFiles.length
   const sendLabel = count === 1
@@ -183,7 +193,7 @@ export default function ResourcesCard({ isAdmin = false }) {
   // Build a human-readable "where these came from" string for the modal subtitle.
   const folderLabels = []
   if (selectedFiles.some(f => CATALOGUE_FILES.includes(f))) folderLabels.push(t('resources.catalogue'))
-  if (selectedFiles.some(f => PACKS_FILES.includes(f)))     folderLabels.push(t('resources.packs'))
+  if (selectedFiles.some(f => packsFiles.includes(f)))      folderLabels.push(t('resources.packs'))
   if (selectedFiles.some(f => PRICE_LIST_FILES.includes(f))) folderLabels.push(t('resources.priceList'))
   if (selectedFiles.some(f => EAN_FILES.includes(f)))       folderLabels.push(t('resources.eanCodes'))
   const folderSummary = folderLabels.join(' · ')
@@ -269,7 +279,7 @@ export default function ResourcesCard({ isAdmin = false }) {
                   {t('resources.documents')}
                 </div>
                 <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
-                <DownloadFolder label={t('resources.packs')}     files={PACKS_FILES}     selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
 

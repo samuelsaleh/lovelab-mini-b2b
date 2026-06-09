@@ -21,6 +21,7 @@
 const mockGenerateAgentReport = jest.fn();
 const mockGenerateAllAgents = jest.fn();
 const mockPreviousMonthPeriod = jest.fn();
+const mockSnapshotPeriod = jest.fn();
 const mockRecordHealthEvent = jest.fn().mockResolvedValue({ ok: true });
 
 let currentUser = { id: 'admin-user' };
@@ -49,6 +50,7 @@ jest.mock('@/lib/commissionReportService', () => ({
   generateAgentReport: (...args) => mockGenerateAgentReport(...args),
   generateAllAgents: (...args) => mockGenerateAllAgents(...args),
   previousMonthPeriod: (...args) => mockPreviousMonthPeriod(...args),
+  snapshotPeriod: (...args) => mockSnapshotPeriod(...args),
 }));
 
 jest.mock('@/lib/healthEvent', () => ({
@@ -72,12 +74,23 @@ const FIXED_PERIOD = {
   label: 'April 2026',
 };
 
+// The manual button uses a "ready to pay right now" snapshot period instead
+// of a calendar month (Sam's 2026-05-13 redesign).
+const SNAPSHOT_PERIOD = {
+  start: '2026-05-13T10:00:00.000Z',
+  end: '2026-05-13T10:00:00.000Z',
+  key: '2026-05-13-1000',
+  label: '13 May 2026',
+  snapshot: true,
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   currentUser = { id: 'admin-user' };
   currentRole = 'admin';
   delete process.env.CRON_SECRET;
   mockPreviousMonthPeriod.mockReturnValue(FIXED_PERIOD);
+  mockSnapshotPeriod.mockReturnValue(SNAPSHOT_PERIOD);
 });
 
 describe('/api/commission-reports/generate POST', () => {
@@ -202,14 +215,33 @@ describe('/api/commission-reports/generate POST', () => {
     expect(json.summary.skipped).toBe(1);
   });
 
-  test('defaults to previous calendar month when month is not given', async () => {
+  test('cron defaults to previous calendar month when month is not given', async () => {
+    process.env.CRON_SECRET = 'expected';
+    currentUser = null;
     mockGenerateAllAgents.mockResolvedValue({
       summary: { period: FIXED_PERIOD, total_agents: 0, sent: 0, skipped: 0, failed: 0 },
       results: [],
     });
 
-    await POST(makeRequest({ body: {} }));
+    await POST(makeRequest({
+      headers: { 'x-vercel-cron-secret': 'expected' },
+      body: {},
+    }));
     expect(mockPreviousMonthPeriod).toHaveBeenCalled();
+    expect(mockSnapshotPeriod).not.toHaveBeenCalled();
+  });
+
+  test('manual (admin) defaults to a "ready to pay now" snapshot when no month is given', async () => {
+    // 2026-05-13 redesign: the manual button no longer reports a calendar
+    // month — it snapshots everything ready to pay right now.
+    mockGenerateAllAgents.mockResolvedValue({
+      summary: { period: SNAPSHOT_PERIOD, total_agents: 0, sent: 0, skipped: 0, failed: 0 },
+      results: [],
+    });
+
+    await POST(makeRequest({ body: {} }));
+    expect(mockSnapshotPeriod).toHaveBeenCalled();
+    expect(mockPreviousMonthPeriod).not.toHaveBeenCalled();
   });
 
   test('skip flags & recipient pass through to service options', async () => {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { findB2BFileByPath } from '@/lib/b2b-files';
+import { packTemplateIdFromPath } from '@/lib/packTemplates';
 
 export async function GET(request, { params }) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'fair-batch' });
@@ -57,7 +58,9 @@ export async function PATCH(request, { params }) {
   // when send runs, so reject it up front instead of letting the user think
   // they've attached files that will silently no-op.
   if (Array.isArray(patch.attached_files)) {
-    const unknown = patch.attached_files.filter((p) => typeof p !== 'string' || !findB2BFileByPath(p));
+    const unknown = patch.attached_files.filter(
+      (p) => typeof p !== 'string' || (!findB2BFileByPath(p) && !packTemplateIdFromPath(p)),
+    );
     if (unknown.length) {
       return NextResponse.json({
         error: `Unknown attachment path(s): ${unknown.slice(0, 3).join(', ')}${unknown.length > 3 ? ` (+${unknown.length - 3} more)` : ''}`,

@@ -103,6 +103,9 @@ export default function FairAssistantClient() {
   const [uploadProgress, setUploadProgress] = useState(null)
   const [editingLead, setEditingLead] = useState(null)
   const [savedTemplates, setSavedTemplates] = useState([])
+  // Pack order templates are generated per pack and listed dynamically so the
+  // attachment picker always offers the live-named files.
+  const [packTemplateFiles, setPackTemplateFiles] = useState([])
   const [livePreviewHtml, setLivePreviewHtml] = useState('')
   const [livePreviewLoading, setLivePreviewLoading] = useState(false)
   // Default OFF on phones — the form should own the screen. User can toggle on.
@@ -123,6 +126,26 @@ export default function FairAssistantClient() {
     setToast(message)
     setTimeout(() => setToast((current) => (current === message ? null : current)), 2400)
   }, [])
+
+  // Load the dynamic pack order templates for the attachment picker.
+  useEffect(() => {
+    if (typeof fetch !== 'function') return
+    let cancelled = false
+    fetch('/api/pack-templates')
+      .then((r) => (r.ok ? r.json() : { templates: [] }))
+      .then((d) => {
+        if (cancelled) return
+        setPackTemplateFiles((d.templates || []).map((t) => ({ name: t.fileName, path: t.downloadUrl })))
+      })
+      .catch(() => { if (!cancelled) setPackTemplateFiles([]) })
+    return () => { cancelled = true }
+  }, [])
+
+  // B2B resource groups with the dynamic pack templates filled into `packs`.
+  const resourceGroups = useMemo(
+    () => B2B_RESOURCE_GROUPS.map((g) => (g.id === 'packs' ? { ...g, files: packTemplateFiles } : g)),
+    [packTemplateFiles],
+  )
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 767px)')
@@ -1721,7 +1744,7 @@ export default function FairAssistantClient() {
                       <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>Pick PDFs / Excels to attach to every email in this batch. Same files as your B2B home page.</p>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {B2B_RESOURCE_GROUPS.map((group) => (
+                      {resourceGroups.map((group) => (
                         <details key={group.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8 }}>
                           <summary style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
                             {group.label}

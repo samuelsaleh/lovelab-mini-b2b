@@ -39,6 +39,24 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [hasMoreDocs, setHasMoreDocs] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
 
+  // ── Folder view (server-fetched per event / agent folder) ──────────────────
+  // The sidebar counts are server-authoritative (see /api/events doc_count), but
+  // the main documents load is paginated (created_at DESC). Filtering that
+  // single page client-side made older folders show "No documents" once the
+  // total exceeded one page. When a folder is selected we fetch it straight from
+  // the server (which already supports event_id / organization_id) so the list
+  // always matches the count.
+  const [folderDocs, setFolderDocs] = useState([])
+  const [folderLoading, setFolderLoading] = useState(false)
+
+  // ── Analytics dataset ──────────────────────────────────────────────────────
+  // The document list stays paginated for performance, but the All Documents
+  // analytics widget must reflect EVERY document (total revenue, sales-by-date),
+  // not just the first loaded page. We fetch a complete, lightweight summary
+  // (summary=true strips the heavy formState) once on load and use it to drive
+  // the analytics totals.
+  const [summaryDocs, setSummaryDocs] = useState([])
+
   // ── Navigation selection ──────────────────────────────────────────────────
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [selectedOrgId, setSelectedOrgId] = useState(null)
@@ -108,7 +126,31 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   // ── Data fetch ────────────────────────────────────────────────────────────
-  useEffect(() => { fetchData() }, [refreshKey])
+  useEffect(() => { fetchData(); fetchSummaryDocs() }, [refreshKey])
+
+  // Fetch ALL documents (lightweight) for the analytics totals. Pages through
+  // the full result set so the All Documents revenue/sales-by-date covers every
+  // document, independent of the paginated list shown below.
+  const fetchSummaryDocs = async () => {
+    const perPage = 200
+    let all = []
+    let total = null
+    try {
+      for (let page = 1; page <= 100; page++) {
+        const res = await safeFetch(`/api/documents?summary=true&per_page=${perPage}&page=${page}`)
+        if (!res.ok) break
+        const data = await res.json().catch(() => ({}))
+        const docs = data.documents || []
+        all = all.concat(docs)
+        total = data.total_count ?? total
+        const done = total != null ? all.length >= total : docs.length < perPage
+        if (done) break
+      }
+      setSummaryDocs(all)
+    } catch {
+      // Non-fatal — analytics falls back to the paginated list when empty.
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -207,6 +249,44 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setLoadingMore(false)
   }
 
+  // ── Folder fetch ──────────────────────────────────────────────────────────
+  // Fetch a single event/agent folder's documents from the server so the panel
+  // shows the complete folder regardless of where its files fall in the global
+  // created_at ordering. Drafts are filtered out client-side (filteredDocs)
+  // exactly as for the All Documents view.
+  const fetchFolderDocs = async (eventId, orgId) => {
+    let url = null
+    if (orgId) {
+      url = `/api/documents?organization_id=${encodeURIComponent(orgId)}&per_page=200`
+    } else if (eventId && eventId !== 'none') {
+      url = `/api/documents?event_id=${encodeURIComponent(eventId)}&per_page=200`
+    }
+    if (!url) return
+    setFolderLoading(true)
+    try {
+      const res = await safeFetch(url)
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.documents) setFolderDocs(data.documents)
+      } else {
+        setErrorMsg('Failed to load folder documents')
+      }
+    } catch {
+      setErrorMsg('Failed to load folder documents')
+    }
+    setFolderLoading(false)
+  }
+
+  useEffect(() => {
+    if (showInternal || showConsignment || showDrafts) return
+    if (selectedOrgId || (selectedEventId && selectedEventId !== 'none')) {
+      fetchFolderDocs(selectedEventId, selectedOrgId)
+    } else {
+      setFolderDocs([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts])
+
   // ── Internal orders ───────────────────────────────────────────────────────
   const fetchInternalDocs = async () => {
     setInternalLoading(true)
@@ -262,6 +342,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       })
       if (res.ok) {
         setDocuments(prev => prev.filter(d => d.id !== doc.id))
+        setFolderDocs(prev => prev.filter(d => d.id !== doc.id))
+        setSummaryDocs(prev => prev.filter(d => d.id !== doc.id))
         if (showInternal) fetchInternalDocs()
       }
     } catch {
@@ -429,6 +511,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete')
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
+      setFolderDocs(prev => prev.filter(d => d.id !== doc.id))
+      setSummaryDocs(prev => prev.filter(d => d.id !== doc.id))
       setInternalDocs(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
       setErrorMsg(t('docs.deleteFailed') + ': ' + err.message)
@@ -456,6 +540,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         setErrorMsg(d.error || 'Failed to rename')
       } else {
         setDocuments(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
+        setFolderDocs(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
       }
     } catch {
       setErrorMsg('Failed to rename document')
@@ -558,9 +643,17 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     return new Set(org.members.map(m => m.user_id))
   }, [selectedOrgId, orgFolders])
 
+  // A specific event or agent folder is selected — drives whether we read from
+  // the server-fetched `folderDocs` (complete folder) or the paginated
+  // `documents` array (All Documents / No Event views).
+  const isFolderView =
+    !showInternal && !showConsignment && !showDrafts &&
+    (Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
+
   const filteredDocs = useMemo(() => {
     if (showInternal || showConsignment || showDrafts) return []
-    return documents.filter(doc => {
+    const sourceDocs = isFolderView ? folderDocs : documents
+    return sourceDocs.filter(doc => {
       // Drafts (parked orders) never appear in All Documents or event folders —
       // they live only in the dedicated Draft folder until promoted to sent.
       if (doc.status === 'draft') return false
@@ -584,7 +677,28 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(search.toLowerCase())
       )
     })
-  }, [documents, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts])
+  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts])
+
+  // Dataset for the analytics widget. Folder/agent views and the rare "No Event"
+  // view already have a complete dataset in filteredDocs. For All Documents we
+  // use the complete server summary (every document) so revenue and sales-by-date
+  // reflect everything, not just the first loaded page. Falls back to filteredDocs
+  // until the summary has loaded.
+  const analyticsDocs = useMemo(() => {
+    if (showInternal || showConsignment || showDrafts) return []
+    if (isFolderView || selectedEventId === 'none') return filteredDocs
+    if (summaryDocs.length === 0) return filteredDocs
+    const term = search.toLowerCase()
+    return summaryDocs.filter(doc => {
+      if (doc.status === 'draft') return false
+      return (
+        !search ||
+        doc.client_name?.toLowerCase().includes(term) ||
+        doc.client_company?.toLowerCase().includes(term) ||
+        doc.file_name?.toLowerCase().includes(term)
+      )
+    })
+  }, [showInternal, showConsignment, showDrafts, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
 
   // Drafts live in their own "Draft" folder — never mixed into All Documents or
   // the agent's own event folders. Search still applies within the folder.
@@ -656,7 +770,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   // ── Display list ──────────────────────────────────────────────────────────
   const displayDocs = showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
-  const displayLoading = showDrafts ? loading : showInternal ? internalLoading : showConsignment ? consignmentLoading : loading
+  const displayLoading = showDrafts ? loading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -769,7 +883,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         {/* Analytics widget — hidden in internal/consignment view */}
         {!displayLoading && !showInternal && !showConsignment && (
           <DocumentsAnalytics
-            filteredDocs={filteredDocs}
+            filteredDocs={analyticsDocs}
             currentEventName={currentEventName}
             mobile={mobile}
           />
@@ -888,7 +1002,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 docRenameLoading={docRenameLoading}
               />
             ))}
-            {!showInternal && !showConsignment && hasMoreDocs && (
+            {!showInternal && !showConsignment && !isFolderView && hasMoreDocs && (
               <button
                 onClick={loadMoreDocs}
                 disabled={loadingMore}

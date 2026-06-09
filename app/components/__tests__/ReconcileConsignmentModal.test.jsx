@@ -58,22 +58,6 @@ function makeOrder(overrides = {}) {
   }
 }
 
-function setupFetchMocks({ invoiceSuccess = true, patchSuccess = true } = {}) {
-  global.fetch
-    .mockResolvedValueOnce({
-      ok: invoiceSuccess,
-      json: async () => invoiceSuccess
-        ? { document: { id: 'invoice-1' } }
-        : { error: 'Invoice creation failed' },
-    })
-    .mockResolvedValueOnce({
-      ok: patchSuccess,
-      json: async () => patchSuccess
-        ? { document: { id: 'consignment-order-1' } }
-        : { error: 'Patch failed' },
-    })
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('ReconcileConsignmentModal', () => {
@@ -113,15 +97,19 @@ describe('ReconcileConsignmentModal', () => {
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1))
 
-    // Only one fetch: the PATCH
+    // Single reconcile call — the server handles the consignment update
+    // (and any invoice) behind one endpoint.
     expect(global.fetch).toHaveBeenCalledTimes(1)
     const [url, opts] = global.fetch.mock.calls[0]
-    expect(url).toBe('/api/documents/consignment-order-1')
-    expect(opts.method).toBe('PATCH')
+    expect(url).toBe('/api/consignment/reconcile')
+    expect(opts.method).toBe('POST')
   })
 
-  it('when items sold: POSTs invoice first, then PATCHes consignment', async () => {
-    setupFetchMocks()
+  it('when items sold: sends a single reconcile call with sold rows + client', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ document: { id: 'consignment-order-1' }, invoice_id: 'invoice-1' }),
+    })
 
     const onConfirmed = jest.fn()
     render(
@@ -145,34 +133,41 @@ describe('ReconcileConsignmentModal', () => {
       fireEvent.change(soldInput, { target: { value: '2' } })
     })
 
-    // Client name is pre-filled from order — click Confirm
+    // Selling something routes to the client-details step
     await act(async () => {
-      fireEvent.click(screen.getByText(/Confirm Return/i))
+      fireEvent.click(screen.getByText(/Review Customer/i))
+    })
+
+    // Fill the billing fields the order doesn't pre-fill (City/ZIP + Country)
+    fireEvent.change(screen.getByPlaceholderText('75002 Paris'), { target: { value: '75002 Paris' } })
+    fireEvent.change(screen.getByPlaceholderText('France'), { target: { value: 'France' } })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Confirm & Create Invoice/i))
     })
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1))
 
-    expect(global.fetch).toHaveBeenCalledTimes(2)
+    // One call to the dedicated reconcile endpoint
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [url, opts] = global.fetch.mock.calls[0]
+    expect(url).toBe('/api/consignment/reconcile')
+    expect(opts.method).toBe('POST')
 
-    // First call: POST invoice
-    const [invoiceUrl, invoiceOpts] = global.fetch.mock.calls[0]
-    expect(invoiceUrl).toBe('/api/documents')
-    expect(invoiceOpts.method).toBe('POST')
-    const invoiceBody = JSON.parse(invoiceOpts.body)
-    expect(invoiceBody.order_channel).toBe('b2b')
-    expect(invoiceBody.total_amount).toBeGreaterThan(0)
-
-    // Second call: PATCH consignment
-    const [patchUrl, patchOpts] = global.fetch.mock.calls[1]
-    expect(patchUrl).toBe('/api/documents/consignment-order-1')
-    expect(patchOpts.method).toBe('PATCH')
-    const patchBody = JSON.parse(patchOpts.body)
-    expect(patchBody.metadata.consignment.returned_at).toBeTruthy()
-    expect(patchBody.metadata.consignment.invoice_document_id).toBe('invoice-1')
+    const body = JSON.parse(opts.body)
+    expect(body.order_id).toBe('consignment-order-1')
+    expect(body.sold_value).toBeGreaterThan(0)
+    expect(body.client).not.toBeNull()
+    const soldRow = body.reconciliation.find((r) => r.sold > 0)
+    expect(soldRow).toBeTruthy()
+    expect(soldRow.sold).toBe(2)
   })
 
-  it('shows error if invoice creation fails', async () => {
-    setupFetchMocks({ invoiceSuccess: false })
+  it('shows error if the reconcile request fails', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Invoice creation failed' }),
+    })
 
     render(
       <ReconcileConsignmentModal
@@ -193,7 +188,12 @@ describe('ReconcileConsignmentModal', () => {
     })
 
     await act(async () => {
-      fireEvent.click(screen.getByText(/Confirm Return/i))
+      fireEvent.click(screen.getByText(/Review Customer/i))
+    })
+    fireEvent.change(screen.getByPlaceholderText('75002 Paris'), { target: { value: '75002 Paris' } })
+    fireEvent.change(screen.getByPlaceholderText('France'), { target: { value: 'France' } })
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Confirm & Create Invoice/i))
     })
 
     await waitFor(() => screen.getByText(/Invoice creation failed/i))

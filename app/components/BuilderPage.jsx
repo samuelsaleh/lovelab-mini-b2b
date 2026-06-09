@@ -296,6 +296,7 @@ function dbPackToDisplay(p) {
     id: p.id,
     _dbId: p.id,
     _scope: p.scope || 'global',
+    _agentIds: Array.isArray(p.agent_ids) ? p.agent_ids : [],
     _isSeed: !!p.is_seed,
     label: p.label,
     description: Array.isArray(p.description) ? p.description : [],

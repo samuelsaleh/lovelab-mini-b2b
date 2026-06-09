@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { sendEmail } from '@/lib/send-email';
 import { findB2BFileByPath } from '@/lib/b2b-files';
+import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 
 // Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
 // the batch size, we time-box the loop: each worker checks an 8.5s deadline
@@ -62,6 +63,32 @@ export async function POST(request) {
   let attachmentBytes = 0;
   const skippedAttachments = [];
   for (const path of attachmentPaths) {
+    // Pack templates are generated/private — resolve their bytes via the
+    // service role (no HTTP/auth round-trip), self-healing if missing.
+    const packTemplateId = packTemplateIdFromPath(path);
+    if (packTemplateId) {
+      try {
+        const resolved = await resolvePackTemplate(auth.adminSupabase, packTemplateId);
+        if (!resolved) {
+          skippedAttachments.push({ path, reason: 'unknown_path' });
+          continue;
+        }
+        if (attachmentBytes + resolved.buffer.length > RESEND_ATTACHMENT_BUDGET) {
+          return NextResponse.json({
+            error: `Attachments too large. Selected files total ${Math.round((attachmentBytes + resolved.buffer.length) / 1024 / 1024)} MB; Resend limit is ~40 MB per email. Deselect a few files in the Attachments panel and try again.`,
+            attachedBytes: attachmentBytes,
+            rejectedFile: resolved.fileName,
+          }, { status: 413 });
+        }
+        attachmentBytes += resolved.buffer.length;
+        attachments.push({ filename: resolved.fileName, content: resolved.buffer });
+      } catch (err) {
+        console.error('[fair-send] pack template resolve error', path, err.message);
+        skippedAttachments.push({ path, reason: 'fetch_error' });
+      }
+      continue;
+    }
+
     const file = findB2BFileByPath(path);
     if (!file) {
       // Unknown path — could be a stale reference. Surface in response.

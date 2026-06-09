@@ -42,6 +42,7 @@ function makeChain() {
     update(values) { calls.push({ op: 'update', values }); return chain },
     delete() { calls.push({ op: 'delete' }); return chain },
     eq(col, val) { calls.push({ op: 'eq', col, val }); return chain },
+    in(col, vals) { calls.push({ op: 'in', col, vals }); return chain },
     order(col, opts) { calls.push({ op: 'order', col, opts }); return chain },
     single() { return Promise.resolve(mockNextResult) },
     maybeSingle() { return Promise.resolve(mockNextResult) },
@@ -50,26 +51,32 @@ function makeChain() {
   return chain
 }
 
+function defaultUserFrom() {
+  return makeChain()
+}
+
+function defaultAdminFrom(table) {
+  // The /profiles role lookup uses the admin client. Return a profile
+  // with the test-controlled role for that one query.
+  if (table === 'profiles') {
+    const chain = {
+      select() { return chain },
+      eq() { return chain },
+      single() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
+      maybeSingle() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
+    }
+    return chain
+  }
+  return makeChain()
+}
+
 const mockSupabase = {
   auth: { getUser: jest.fn().mockImplementation(() => Promise.resolve(mockUser)) },
-  from: jest.fn().mockImplementation(() => makeChain()),
+  from: jest.fn().mockImplementation(defaultUserFrom),
 }
 
 const mockAdminSupabase = {
-  from: jest.fn().mockImplementation((table) => {
-    // The /profiles role lookup uses the admin client. Return a profile
-    // with the test-controlled role for that one query.
-    if (table === 'profiles') {
-      const chain = {
-        select() { return chain },
-        eq() { return chain },
-        single() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
-        maybeSingle() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
-      }
-      return chain
-    }
-    return makeChain()
-  }),
+  from: jest.fn().mockImplementation(defaultAdminFrom),
 }
 
 jest.mock('@/lib/supabase/server', () => ({
@@ -77,6 +84,15 @@ jest.mock('@/lib/supabase/server', () => ({
   createAdminClient: jest.fn().mockReturnValue(mockAdminSupabase),
 }))
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: () => null }))
+
+// Pack-template generation is a side-effect of CRUD; mock it so tests stay
+// hermetic and we can assert the hooks fire (and that a failure is swallowed).
+const mockRegen = jest.fn().mockResolvedValue({ ok: true })
+const mockDeleteTemplate = jest.fn().mockResolvedValue({ ok: true })
+jest.mock('@/lib/packTemplates', () => ({
+  regeneratePackTemplate: (...a) => mockRegen(...a),
+  deletePackTemplate: (...a) => mockDeleteTemplate(...a),
+}))
 
 const { GET, POST } = require('../packs/route')
 const { PUT, DELETE } = require('../packs/[id]/route')
@@ -94,9 +110,18 @@ beforeEach(() => {
   mockUser.data.user = null
   mockProfileRole = 'agent'
   mockNextResult = { data: null, error: null }
-  mockSupabase.auth.getUser.mockClear()
-  mockSupabase.from.mockClear()
-  mockAdminSupabase.from.mockClear()
+  // Reset implementations (not just call history) so tests that override the
+  // chain (e.g. the GET-admin and DELETE cases) stay hermetic.
+  mockSupabase.auth.getUser.mockReset()
+  mockSupabase.auth.getUser.mockImplementation(() => Promise.resolve(mockUser))
+  mockSupabase.from.mockReset()
+  mockSupabase.from.mockImplementation(defaultUserFrom)
+  mockAdminSupabase.from.mockReset()
+  mockAdminSupabase.from.mockImplementation(defaultAdminFrom)
+  mockRegen.mockClear()
+  mockRegen.mockResolvedValue({ ok: true })
+  mockDeleteTemplate.mockClear()
+  mockDeleteTemplate.mockResolvedValue({ ok: true })
 })
 
 describe('GET /api/packs', () => {
@@ -116,6 +141,63 @@ describe('GET /api/packs', () => {
     expect(body.packs[0].id).toBe('p-1')
     // The RLS-bearing query must run on the user-context client (mockSupabase).
     expect(mockSupabase.from).toHaveBeenCalledWith('packs')
+  })
+
+  it('attaches per-pack agent_ids for admins (from pack_visibility)', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+
+    // User client returns the visible packs.
+    mockSupabase.from.mockImplementation(() => {
+      const chain = {
+        from() { return chain }, select() { return chain }, eq() { return chain },
+        order() { return chain },
+        then(resolve) {
+          return Promise.resolve({
+            data: [{ id: 'p-1', scope: 'restricted' }, { id: 'p-2', scope: 'global' }],
+            error: null,
+          }).then(resolve)
+        },
+      }
+      return chain
+    })
+
+    // Admin client: profiles → admin role; pack_visibility → assignment rows.
+    mockAdminSupabase.from.mockImplementation((table) => {
+      if (table === 'profiles') {
+        return {
+          select() { return this }, eq() { return this },
+          single() { return Promise.resolve({ data: { role: 'admin' }, error: null }) },
+          maybeSingle() { return Promise.resolve({ data: { role: 'admin' }, error: null }) },
+        }
+      }
+      const chain = {
+        select() { return chain }, in() { return chain },
+        then(resolve) {
+          return Promise.resolve({ data: [{ pack_id: 'p-1', agent_id: 'a-1' }], error: null }).then(resolve)
+        },
+      }
+      return chain
+    })
+
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const p1 = body.packs.find((p) => p.id === 'p-1')
+    const p2 = body.packs.find((p) => p.id === 'p-2')
+    expect(p1.agent_ids).toEqual(['a-1'])
+    expect(p2.agent_ids).toEqual([]) // global pack: no restricted assignments
+  })
+
+  it('does NOT attach agent_ids for non-admins', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+    mockNextResult = { data: [{ id: 'p-1', scope: 'global' }], error: null }
+
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.packs[0].agent_ids).toBeUndefined()
   })
 })
 
@@ -183,6 +265,78 @@ describe('POST /api/packs', () => {
     const insertCall = calls.find(c => c.op === 'insert')
     expect(insertCall.values.scope).toBe('global')
   })
+
+  it('lets an admin create a restricted pack and syncs the agent_ids', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    mockNextResult = { data: { id: 'p-new', scope: 'restricted' }, error: null }
+
+    const res = await POST(req({ body: {
+      label: 'Restricted',
+      fixed_total: 1000,
+      form_rows: [{ collection: 'CUTY' }],
+      scope: 'restricted',
+      agent_ids: ['a-1', 'a-2'],
+    } }))
+    expect(res.status).toBe(201)
+
+    // The pack itself is inserted with scope = restricted.
+    const packInsert = calls.find(c => c.op === 'insert' && c.values && !Array.isArray(c.values))
+    expect(packInsert.values.scope).toBe('restricted')
+
+    // pack_visibility gets the two assignment rows.
+    const visInsert = calls.find(c => c.op === 'insert' && Array.isArray(c.values))
+    expect(visInsert).toBeTruthy()
+    expect(visInsert.values).toEqual([
+      { pack_id: 'p-new', agent_id: 'a-1' },
+      { pack_id: 'p-new', agent_id: 'a-2' },
+    ])
+  })
+
+  it('forces private and ignores agent_ids when a non-admin requests restricted', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+    mockNextResult = { data: { id: 'p-new', scope: 'private' }, error: null }
+
+    const res = await POST(req({ body: {
+      label: 'Sneaky',
+      fixed_total: 1000,
+      form_rows: [{ collection: 'CUTY' }],
+      scope: 'restricted',
+      agent_ids: ['a-1'],
+    } }))
+    expect(res.status).toBe(201)
+    const packInsert = calls.find(c => c.op === 'insert' && c.values && !Array.isArray(c.values))
+    expect(packInsert.values.scope).toBe('private')
+    // No visibility rows inserted because the pack isn't restricted.
+    const visInsert = calls.find(c => c.op === 'insert' && Array.isArray(c.values))
+    expect(visInsert).toBeFalsy()
+  })
+
+  it('regenerates the pack Excel template after a successful create', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    mockNextResult = { data: { id: 'p-new', label: 'Pack X', scope: 'global' }, error: null }
+
+    const res = await POST(req({ body: {
+      label: 'Pack X', fixed_total: 1000, form_rows: [{ collection: 'CUTY' }], scope: 'global',
+    } }))
+    expect(res.status).toBe(201)
+    expect(mockRegen).toHaveBeenCalledTimes(1)
+    expect(mockRegen.mock.calls[0][1]).toEqual(expect.objectContaining({ id: 'p-new' }))
+  })
+
+  it('still returns 201 when template generation throws (best-effort)', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    mockNextResult = { data: { id: 'p-new', scope: 'global' }, error: null }
+    mockRegen.mockRejectedValueOnce(new Error('storage down'))
+
+    const res = await POST(req({ body: {
+      label: 'Pack X', fixed_total: 1000, form_rows: [{ collection: 'CUTY' }], scope: 'global',
+    } }))
+    expect(res.status).toBe(201)
+  })
 })
 
 describe('PUT /api/packs/[id]', () => {
@@ -244,6 +398,68 @@ describe('PUT /api/packs/[id]', () => {
     expect(updateCall.values.form_rows).toEqual([{ collection: 'CUTY' }])
     // The RLS-bearing update must run on the user-context client.
     expect(mockSupabase.from).toHaveBeenCalledWith('packs')
+    // And the Excel template is regenerated from the updated pack.
+    expect(mockRegen).toHaveBeenCalledTimes(1)
+    expect(mockRegen.mock.calls[0][1]).toEqual(expect.objectContaining({ id: 'p-1' }))
+  })
+
+  it('lets an admin flip a pack to restricted and syncs the agent_ids', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    mockNextResult = { data: { id: 'p-1', scope: 'restricted' }, error: null }
+
+    const res = await PUT(
+      req({ body: { scope: 'restricted', agent_ids: ['a-1'] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    const updateCall = calls.find(c => c.op === 'update')
+    expect(updateCall.values.scope).toBe('restricted')
+    const visInsert = calls.find(c => c.op === 'insert' && Array.isArray(c.values))
+    expect(visInsert.values).toEqual([{ pack_id: 'p-1', agent_id: 'a-1' }])
+  })
+
+  it('returns 403 when a non-admin sets agent_ids', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+
+    const res = await PUT(
+      req({ body: { agent_ids: ['a-1'] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('updates agent_ids alone (no column change) on a restricted pack', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    // The existence/scope lookup (select *) returns the restricted pack.
+    mockNextResult = { data: { id: 'p-1', scope: 'restricted' }, error: null }
+
+    const res = await PUT(
+      req({ body: { agent_ids: ['a-2'] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    // No column update was issued (only the visibility set changed).
+    expect(calls.find(c => c.op === 'update')).toBeFalsy()
+    const visInsert = calls.find(c => c.op === 'insert' && Array.isArray(c.values))
+    expect(visInsert.values).toEqual([{ pack_id: 'p-1', agent_id: 'a-2' }])
+  })
+
+  it('clears the visibility set when scope moves away from restricted', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    mockNextResult = { data: { id: 'p-1', scope: 'global' }, error: null }
+
+    const res = await PUT(
+      req({ body: { scope: 'global' } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    // A delete on pack_visibility ran, but no new assignment rows were inserted.
+    expect(calls.find(c => c.op === 'delete')).toBeTruthy()
+    expect(calls.find(c => c.op === 'insert' && Array.isArray(c.values))).toBeFalsy()
   })
 
   it('returns 404 when RLS blocks the update (e.g. a non-admin editing a global/seed pack)', async () => {
@@ -323,5 +539,7 @@ describe('DELETE /api/packs/[id]', () => {
     )
     expect(res.status).toBe(200)
     expect(stage).toBeGreaterThan(0)
+    // The pack's stored Excel template is removed too.
+    expect(mockDeleteTemplate).toHaveBeenCalledWith(expect.anything(), 'p-1')
   })
 })

@@ -14,6 +14,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { regeneratePackTemplate } from '@/lib/packTemplates'
+import { syncPackVisibility, fetchAgentIdsForPacks } from '@/lib/packVisibility'
 
 const MIN_PACK_TOTAL = 970
 
@@ -54,7 +56,7 @@ export async function GET(request) {
 
     const supabase = await createClient()
     const adminSupabase = createAdminClient()
-    const { user } = await getCaller(supabase, adminSupabase)
+    const { user, isAdmin } = await getCaller(supabase, adminSupabase)
     if (!user) return badRequest('Unauthorized', 401)
 
     // Use the user-context client so RLS filters rows automatically.
@@ -69,7 +71,21 @@ export async function GET(request) {
       return badRequest('Failed to load packs', 500)
     }
 
-    return NextResponse.json({ packs: data || [] })
+    let packs = data || []
+
+    // Only admins need the per-pack agent assignments (to pre-check the editor
+    // checkboxes). We never leak the visibility list to agents. Best-effort —
+    // a failure here must not break the pack list.
+    if (isAdmin && packs.length > 0) {
+      try {
+        const map = await fetchAgentIdsForPacks(adminSupabase, packs.map((p) => p.id))
+        packs = packs.map((p) => ({ ...p, agent_ids: map[p.id] || [] }))
+      } catch (e) {
+        console.warn('[packs GET] failed to load pack_visibility:', e?.message)
+      }
+    }
+
+    return NextResponse.json({ packs })
   } catch (err) {
     console.error('[packs GET] Exception:', err)
     return badRequest('Internal server error', 500)
@@ -96,6 +112,7 @@ export async function POST(request) {
       fixed_total,
       form_rows,
       scope: requestedScope,
+      agent_ids: requestedAgentIds,
     } = body
 
     if (!label || typeof label !== 'string' || !label.trim()) {
@@ -111,9 +128,15 @@ export async function POST(request) {
     if (formRowsErr) return badRequest(formRowsErr)
 
     // Force scope = 'private' for non-admins so an agent can never publish a
-    // global pack. RLS would also reject this, but we want a clean error.
-    let scope = requestedScope === 'global' ? 'global' : 'private'
-    if (!isAdmin) scope = 'private'
+    // global/restricted pack. Admins may choose any of the three scopes.
+    // RLS would also reject a bad combo, but we want a clean error.
+    let scope = 'private'
+    if (isAdmin && ['global', 'private', 'restricted'].includes(requestedScope)) {
+      scope = requestedScope
+    }
+    if (scope === 'restricted' && requestedAgentIds !== undefined && !Array.isArray(requestedAgentIds)) {
+      return badRequest('agent_ids must be an array')
+    }
 
     // Use the user-context client so RLS WITH CHECK runs.
     const { data: pack, error } = await supabase
@@ -139,6 +162,24 @@ export async function POST(request) {
         return badRequest(`Pack minimum is €${MIN_PACK_TOTAL}`, 422)
       }
       return badRequest('Failed to create pack', 500)
+    }
+
+    // Assign visible agents for restricted packs (best-effort; admins can
+    // re-edit the assignment from the pack editor).
+    if (scope === 'restricted') {
+      try {
+        await syncPackVisibility(adminSupabase, pack.id, requestedAgentIds || [])
+      } catch (e) {
+        console.warn('[packs POST] visibility sync failed:', e?.message)
+      }
+    }
+
+    // Generate the pack's Excel order template (best-effort — a failure here
+    // must not fail pack creation; the download route self-heals if missing).
+    try {
+      await regeneratePackTemplate(adminSupabase, pack)
+    } catch (e) {
+      console.warn('[packs POST] template generation failed:', e?.message)
     }
 
     return NextResponse.json({ pack }, { status: 201 })

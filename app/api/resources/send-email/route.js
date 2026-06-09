@@ -1,9 +1,10 @@
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
+import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 
 export const runtime = 'nodejs';
 
@@ -32,7 +33,9 @@ function pickOverrides(body) {
 // Hard whitelist for outbound resource sends. Only files under these
 // public/ subfolders may be attached. Prevents path traversal or arbitrary
 // file exfiltration from the server.
-const ALLOWED_PATH_RE = /^\/(LoveLab Excel Packs|Lovelab PDF Packs|Price Lists|catalogues)\/[^/]+\.(xlsx|pdf)$/i;
+// Pack templates are no longer static (resolved via packTemplateIdFromPath
+// above), so this only covers the remaining static public assets.
+const ALLOWED_PATH_RE = /^\/(Price Lists|catalogues)\/[^/]+\.(xlsx|pdf)$/i;
 // Cap matches "select everything across Catalogue + Packs + Price List" with
 // some headroom for future additions.
 const MAX_FILES_PER_SEND = 20;
@@ -109,10 +112,33 @@ export async function POST(request) {
     const attachments = [];
     let totalBytes = 0;
     const fileNames = [];
+    const admin = createAdminClient();
 
     for (const f of files) {
       const filePath = typeof f?.path === 'string' ? f.path : null;
-      if (!filePath || !ALLOWED_PATH_RE.test(filePath)) {
+      if (!filePath) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+
+      // Pack templates are generated/private — resolve their bytes via the
+      // service role (self-healing if missing) instead of an HTTP fetch.
+      const packTemplateId = packTemplateIdFromPath(filePath);
+      if (packTemplateId) {
+        const resolved = await resolvePackTemplate(admin, packTemplateId);
+        if (!resolved) {
+          return NextResponse.json({ error: `Pack template not found: ${filePath}` }, { status: 404 });
+        }
+        totalBytes += resolved.buffer.length;
+        if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+          const mb = (MAX_TOTAL_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(0);
+          return NextResponse.json({ error: `Attachments exceed ${mb} MB total` }, { status: 413 });
+        }
+        attachments.push({ filename: resolved.fileName, content: resolved.buffer.toString('base64') });
+        fileNames.push(resolved.fileName);
+        continue;
+      }
+
+      if (!ALLOWED_PATH_RE.test(filePath)) {
         return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
       }
 

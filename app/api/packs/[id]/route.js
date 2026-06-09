@@ -12,6 +12,8 @@
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
+import { regeneratePackTemplate, deletePackTemplate } from '@/lib/packTemplates'
+import { syncPackVisibility } from '@/lib/packVisibility'
 
 const MIN_PACK_TOTAL = 970
 
@@ -79,43 +81,98 @@ export async function PUT(request, { params }) {
       updates.form_rows = body.form_rows
     }
     if (body.scope !== undefined) {
-      // Only admins can flip a pack to/from global. Agents are stuck with
-      // private packs (RLS would also block this, but we want a friendly
-      // 403 instead of an opaque 500).
+      // Only admins can flip a pack to/from global or restricted. Agents are
+      // stuck with private packs (RLS would also block this, but we want a
+      // friendly 403 instead of an opaque 500).
       if (!isAdmin && body.scope !== 'private') {
-        return badRequest('Forbidden: only admins can publish global packs', 403)
+        return badRequest('Forbidden: only admins can publish global or restricted packs', 403)
       }
-      if (!['global', 'private'].includes(body.scope)) {
-        return badRequest("scope must be 'global' or 'private'")
+      if (!['global', 'private', 'restricted'].includes(body.scope)) {
+        return badRequest("scope must be 'global', 'private' or 'restricted'")
       }
       updates.scope = body.scope
     }
 
-    if (Object.keys(updates).length === 0) {
+    // agent_ids drives the restricted-pack assignment set. Admin-only.
+    let agentIds
+    if (body.agent_ids !== undefined) {
+      if (!isAdmin) {
+        return badRequest('Forbidden: only admins can set pack visibility', 403)
+      }
+      if (!Array.isArray(body.agent_ids)) {
+        return badRequest('agent_ids must be an array')
+      }
+      agentIds = body.agent_ids
+    }
+
+    if (Object.keys(updates).length === 0 && agentIds === undefined) {
       return badRequest('No updates provided')
     }
 
-    const { data: pack, error } = await supabase
-      .from('packs')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
+    let pack
+    if (Object.keys(updates).length > 0) {
+      const { data, error } = await supabase
+        .from('packs')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
 
-    if (error) {
-      console.error('[packs PUT]', error.message)
-      if (error.message?.toLowerCase().includes('check constraint')) {
-        return badRequest(`Pack minimum is €${MIN_PACK_TOTAL}`, 422)
+      if (error) {
+        console.error('[packs PUT]', error.message)
+        if (error.message?.toLowerCase().includes('check constraint')) {
+          return badRequest(`Pack minimum is €${MIN_PACK_TOTAL}`, 422)
+        }
+        // PGRST116 = "no rows returned" → RLS blocked the update (e.g. a
+        // non-admin trying to edit a global/seed pack, or a pack the caller
+        // doesn't own). Surface a clean 404 instead of an opaque 500.
+        if (error.code === 'PGRST116') {
+          return badRequest('Pack not found or not editable', 404)
+        }
+        return badRequest('Failed to update pack', 500)
       }
-      // PGRST116 = "no rows returned" → RLS blocked the update (e.g. a
-      // non-admin trying to edit a global/seed pack, or a pack the caller
-      // doesn't own). Surface a clean 404 instead of an opaque 500.
-      if (error.code === 'PGRST116') {
+      if (!data) return badRequest('Pack not found or not editable', 404)
+      pack = data
+    } else {
+      // agent_ids-only change: confirm the pack exists and is visible/editable
+      // to the caller (RLS) before touching the assignment set.
+      const { data, error } = await supabase
+        .from('packs')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (error || !data) {
         return badRequest('Pack not found or not editable', 404)
       }
-      return badRequest('Failed to update pack', 500)
+      pack = data
     }
-    if (!pack) return badRequest('Pack not found or not editable', 404)
+
+    // Keep the restricted-pack assignment set in sync.
+    //   - agent_ids provided + pack is restricted → replace the set.
+    //   - scope moved away from restricted → clear any stale assignments.
+    const effectiveScope = updates.scope !== undefined ? updates.scope : pack.scope
+    try {
+      if (agentIds !== undefined && effectiveScope === 'restricted') {
+        await syncPackVisibility(adminSupabase, id, agentIds)
+        pack = { ...pack, agent_ids: [...new Set(agentIds.filter(Boolean))] }
+      } else if (updates.scope !== undefined && updates.scope !== 'restricted') {
+        await syncPackVisibility(adminSupabase, id, [])
+        pack = { ...pack, agent_ids: [] }
+      }
+    } catch (e) {
+      console.warn('[packs PUT] visibility sync failed:', e?.message)
+    }
+
+    // Regenerate the pack's Excel order template so the Packs folder reflects
+    // the latest contents (best-effort; the download route self-heals if this
+    // fails or never ran). Skip when only the visibility set changed.
+    if (Object.keys(updates).length > 0) {
+      try {
+        await regeneratePackTemplate(adminSupabase, pack)
+      } catch (e) {
+        console.warn('[packs PUT] template regeneration failed:', e?.message)
+      }
+    }
 
     return NextResponse.json({ pack })
   } catch (err) {
@@ -169,6 +226,13 @@ export async function DELETE(request, { params }) {
       }
       console.error('[packs DELETE]', error.message)
       return badRequest('Failed to delete pack', 500)
+    }
+
+    // Remove the pack's stored Excel template (best-effort).
+    try {
+      await deletePackTemplate(adminSupabase, id)
+    } catch (e) {
+      console.warn('[packs DELETE] template removal failed:', e?.message)
     }
 
     return NextResponse.json({ ok: true })
