@@ -16,11 +16,11 @@
  *     non-admins; the scope is forced to 'private' on submit.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
-import { linesToFormRows, totalForFormRows, MIN_PACK_TOTAL } from '@/lib/packBuild'
+import { linesToFormRows, totalForFormRows, summarizeFormRows, MIN_PACK_TOTAL } from '@/lib/packBuild'
 
 export default function PackBuilderModal({
   open,
@@ -28,7 +28,9 @@ export default function PackBuilderModal({
   lines,
   isAdmin = false,
   onSaved = () => {},
+  onUpdated = () => {},
   pricelistYear,
+  editingPack = null,
 }) {
   const { t } = useI18n()
   const [label, setLabel] = useState('')
@@ -36,44 +38,100 @@ export default function PackBuilderModal({
   const [scope, setScope] = useState('private')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const nameRef = useRef(null)
+  // Tracks whether the user has hand-edited the description. While false we
+  // keep the description in sync with the auto-generated summary so a pack is
+  // never saved empty; once the user types we stop touching it.
+  const descTouchedRef = useRef(false)
 
-  // Reset on open so reopening with different lines doesn't keep stale data.
+  const isEditing = !!(editingPack && editingPack._dbId)
+
+  // Reset on open. In edit mode we seed the fields from the pack being edited
+  // (so the user can tweak its name/description); otherwise start blank.
   useEffect(() => {
     if (open) {
-      setLabel('')
-      setDescriptionText('')
-      setScope(isAdmin ? 'global' : 'private')
+      descTouchedRef.current = false
+      if (editingPack && editingPack._dbId) {
+        setLabel(editingPack.label || '')
+        setDescriptionText(
+          Array.isArray(editingPack.description) ? editingPack.description.join('\n') : '',
+        )
+        setScope(editingPack._scope === 'global' ? 'global' : 'private')
+      } else {
+        setLabel('')
+        setDescriptionText('')
+        setScope(isAdmin ? 'global' : 'private')
+      }
       setSaving(false)
       setError('')
     }
-  }, [open, isAdmin])
+  }, [open, isAdmin, editingPack])
+
+  // When editing, focus + select the name so it's obvious it can be renamed
+  // right away (this is the field users come here to change).
+  useEffect(() => {
+    if (open && isEditing && nameRef.current) {
+      const id = setTimeout(() => {
+        nameRef.current?.focus()
+        nameRef.current?.select()
+      }, 50)
+      return () => clearTimeout(id)
+    }
+  }, [open, isEditing])
 
   const formRows = useMemo(() => linesToFormRows(lines, { pricelistYear }), [lines, pricelistYear])
   const total = useMemo(() => totalForFormRows(formRows), [formRows])
+  // Auto-generated, human-readable summary of the build: per-collection
+  // description bullets + the per-bracelet price range. Used to pre-fill the
+  // (editable) description and to set the pack's budget label.
+  const summary = useMemo(() => summarizeFormRows(formRows), [formRows])
   const meetsMin = total >= MIN_PACK_TOTAL && formRows.length > 0
   const canSave = !!label.trim() && meetsMin && !saving
+
+  // Pre-fill the description from the auto-summary while the user hasn't
+  // hand-edited it and the box is empty. This covers both create mode (blank
+  // start) and editing a pack that was saved without a description.
+  useEffect(() => {
+    if (!open || descTouchedRef.current) return
+    setDescriptionText(prev => (prev.trim() ? prev : summary.description.join('\n')))
+  }, [open, summary])
 
   async function handleSave() {
     if (!canSave) return
     setSaving(true)
     setError('')
     try {
-      const description = descriptionText
+      let description = descriptionText
         .split('\n')
         .map(s => s.trim())
         .filter(Boolean)
+      // Never persist an empty pack: fall back to the auto-generated summary
+      // if the user cleared the description.
+      if (description.length === 0) description = summary.description
 
-      const res = await fetch('/api/packs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: label.trim(),
-          description,
-          fixed_total: total,
-          form_rows: formRows,
-          scope: isAdmin ? scope : 'private',
-        }),
-      })
+      const payload = {
+        label: label.trim(),
+        description,
+        // Auto price-range so the pack card always shows a budget, recomputed
+        // from the current contents.
+        budget_label: summary.budgetLabel || null,
+        fixed_total: total,
+        form_rows: formRows,
+        scope: isAdmin ? scope : 'private',
+      }
+
+      // Edit mode → PUT the existing row; create mode → POST a new one.
+      const res = isEditing
+        ? await fetch(`/api/packs/${editingPack._dbId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/packs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
 
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -88,7 +146,11 @@ export default function PackBuilderModal({
         return
       }
 
-      onSaved(data.pack)
+      if (isEditing) {
+        onUpdated(data.pack)
+      } else {
+        onSaved(data.pack)
+      }
       onClose()
     } catch (err) {
       console.error('[PackBuilderModal] save', err)
@@ -123,13 +185,14 @@ export default function PackBuilderModal({
           id="pack-builder-modal-title"
           style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 14px' }}
         >
-          {t('pack.modalTitle')}
+          {isEditing ? t('pack.editTitle') : t('pack.modalTitle')}
         </h2>
 
         <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 4, textTransform: 'uppercase' }}>
           {t('pack.namePlaceholder').replace(/\s*\(.*\)\s*$/, '')}
         </label>
         <input
+          ref={nameRef}
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
@@ -146,7 +209,7 @@ export default function PackBuilderModal({
         </label>
         <textarea
           value={descriptionText}
-          onChange={(e) => setDescriptionText(e.target.value)}
+          onChange={(e) => { descTouchedRef.current = true; setDescriptionText(e.target.value) }}
           placeholder={t('pack.descriptionPlaceholder')}
           rows={4}
           style={{
@@ -194,9 +257,16 @@ export default function PackBuilderModal({
             padding: '10px 12px', borderRadius: 8, marginBottom: 12,
           }}
         >
-          <span style={{ fontSize: 12, color: '#666' }}>
-            {t('pack.liveTotal').replace('{total}', fmt(total))}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 12, color: '#666' }}>
+              {t('pack.liveTotal').replace('{total}', fmt(total))}
+            </span>
+            {summary.budgetLabel && (
+              <span data-testid="pack-budget-range" style={{ fontSize: 11, color: '#888' }}>
+                {summary.budgetLabel}
+              </span>
+            )}
+          </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: meetsMin ? colors.inkPlum : '#c0392b' }}>
             {meetsMin ? '✓' : `≥ €${MIN_PACK_TOTAL}`}
           </span>

@@ -145,6 +145,118 @@ describe('PackBuilderModal — save flow', () => {
   })
 })
 
+describe('PackBuilderModal — edit mode', () => {
+  const editingPack = {
+    _dbId: 'p-99',
+    _scope: 'global',
+    label: 'Pack 1',
+    description: ['SHAPY SHINE FANCY', 'MULTI FIVE'],
+  }
+
+  it('shows the edit title and pre-fills name + description from editingPack', () => {
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: true, editingPack })
+    expect(screen.getByText('Edit pack')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Pack 1')).toBeInTheDocument()
+    // Description textarea is the array joined with newlines. getByDisplayValue
+    // collapses whitespace, so assert the raw textarea value directly.
+    const desc = screen.getByPlaceholderText(/one short bullet/i)
+    expect(desc.value).toBe('SHAPY SHINE FANCY\nMULTI FIVE')
+  })
+
+  it('PUTs to /api/packs/{id} (not POST) and calls onUpdated', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: jest.fn().mockResolvedValue({ pack: { id: 'p-99', label: 'Pack 1 (edited)' } }),
+    })
+    const onUpdated = jest.fn()
+    const onSaved = jest.fn()
+    const onClose = jest.fn()
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: true, editingPack, onUpdated, onSaved, onClose })
+
+    fireEvent.change(screen.getByDisplayValue('Pack 1'), { target: { value: 'Pack 1 (edited)' } })
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [url, init] = global.fetch.mock.calls[0]
+    expect(url).toBe('/api/packs/p-99')
+    expect(init.method).toBe('PUT')
+    const payload = JSON.parse(init.body)
+    expect(payload.label).toBe('Pack 1 (edited)')
+    expect(Array.isArray(payload.form_rows)).toBe(true)
+    expect(payload.form_rows.length).toBeGreaterThan(0)
+
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith({ id: 'p-99', label: 'Pack 1 (edited)' }))
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+  })
+})
+
+// ─── Auto-summary (no empty packs) ────────────────────────────────────────
+//
+// When the user hasn't written a description, the modal pre-fills it from the
+// build contents and always sends a budget_label (price range), so a saved
+// pack is never empty.
+
+describe('PackBuilderModal — auto summary', () => {
+  it('pre-fills the description from the build when creating a pack', () => {
+    renderModal({ lines: [CUTYLine(25, 1)] })
+    const desc = screen.getByPlaceholderText(/one short bullet/i)
+    // CUTY @ 0.10 ct, Yellow housing, size M, braided.
+    expect(desc.value).toMatch(/CUTY/)
+    expect(desc.value).toMatch(/0\.10 ct/)
+  })
+
+  it('shows the auto price range in the live-total box', () => {
+    renderModal({ lines: [CUTYLine(25, 1)] })
+    // CUTY 0.10 IGI 2026 = €40 → single price (no range).
+    expect(screen.getByTestId('pack-budget-range')).toHaveTextContent('€40/bracelet')
+  })
+
+  it('sends a generated description + budget_label when the user leaves the box untouched', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: jest.fn().mockResolvedValue({ pack: { id: 'p-new' } }),
+    })
+    renderModal({ lines: [CUTYLine(25, 1)], onSaved: jest.fn() })
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'Auto pack' } })
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const payload = JSON.parse(global.fetch.mock.calls[0][1].body)
+    expect(payload.budget_label).toBe('€40/bracelet')
+    expect(Array.isArray(payload.description)).toBe(true)
+    expect(payload.description.length).toBeGreaterThan(0)
+    expect(payload.description[0]).toMatch(/CUTY/)
+  })
+
+  it('does NOT overwrite a description the user typed', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: jest.fn().mockResolvedValue({ pack: { id: 'p-new' } }),
+    })
+    renderModal({ lines: [CUTYLine(25, 1)], onSaved: jest.fn() })
+
+    const desc = screen.getByPlaceholderText(/one short bullet/i)
+    fireEvent.change(desc, { target: { value: 'My own words' } })
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'Custom pack' } })
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const payload = JSON.parse(global.fetch.mock.calls[0][1].body)
+    expect(payload.description).toEqual(['My own words'])
+  })
+
+  it('auto-fills the description when editing a pack saved without one', () => {
+    const emptyPack = { _dbId: 'p-77', _scope: 'global', label: 'Pack 5', description: [] }
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: true, editingPack: emptyPack })
+    const desc = screen.getByPlaceholderText(/one short bullet/i)
+    expect(desc.value).toMatch(/CUTY/)
+  })
+})
+
 // ─── linesToFormRows / applyPack regression ──────────────────────────────
 //
 // Pinned in this test file too (rather than as a separate one) so any

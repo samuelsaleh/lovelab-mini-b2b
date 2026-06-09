@@ -216,6 +216,48 @@ describe('PUT /api/packs/[id]', () => {
     )
     expect(res.status).toBe(400)
   })
+
+  it('updates label, description and form_rows for an owned pack', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockNextResult = {
+      data: { id: 'p-1', label: 'Renamed', description: ['New line'] },
+      error: null,
+    }
+
+    const res = await PUT(
+      req({ body: {
+        label: 'Renamed',
+        description: ['New line'],
+        fixed_total: 1200,
+        form_rows: [{ collection: 'CUTY' }],
+      } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.pack.label).toBe('Renamed')
+
+    const updateCall = calls.find(c => c.op === 'update')
+    expect(updateCall).toBeTruthy()
+    expect(updateCall.values.label).toBe('Renamed')
+    expect(updateCall.values.description).toEqual(['New line'])
+    expect(updateCall.values.form_rows).toEqual([{ collection: 'CUTY' }])
+    // The RLS-bearing update must run on the user-context client.
+    expect(mockSupabase.from).toHaveBeenCalledWith('packs')
+  })
+
+  it('returns 404 when RLS blocks the update (e.g. a non-admin editing a global/seed pack)', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+    // RLS filtered the row out → Supabase .single() resolves with PGRST116.
+    mockNextResult = { data: null, error: { code: 'PGRST116', message: 'no rows returned' } }
+
+    const res = await PUT(
+      req({ body: { label: 'Hijack a standard pack' } }),
+      { params: Promise.resolve({ id: 'seed-1' }) },
+    )
+    expect(res.status).toBe(404)
+  })
 })
 
 describe('DELETE /api/packs/[id]', () => {

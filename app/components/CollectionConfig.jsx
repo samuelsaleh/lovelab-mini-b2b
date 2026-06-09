@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, getThicknessOptions, resolvePricelist } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -245,9 +245,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Update a color config
   const updateConfig = (cfgId, updates) => {
     set({
-      colorConfigs: line.colorConfigs.map(c =>
-        c.id === cfgId ? { ...c, ...updates } : c
-      ),
+      colorConfigs: line.colorConfigs.map(c => {
+        if (c.id !== cfgId) return c
+        const merged = { ...c, ...updates }
+        // Closure drives the available sizes (CUTY/CUBIX). If the change makes
+        // the picked size invalid for the new closure, clear it so the agent
+        // re-picks from the correct list rather than keeping an off-list value.
+        if ('closureType' in updates) {
+          const opts = sizeOptionsForClosure(col, merged.closureType)
+          if (merged.size && !opts.includes(merged.size)) merged.size = null
+        }
+        return merged
+      }),
     })
   }
 
@@ -313,10 +322,24 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Update shared settings and propagate to all configs
   const updateShared = (updates) => {
     const next = { ...sharedSettings, ...updates }
+    // Closure drives the available sizes (CUTY/CUBIX). When the shared closure
+    // changes and the shared size is no longer valid, clear it across the
+    // shared settings and every config so nothing keeps an off-list size.
+    if ('closureType' in updates) {
+      const opts = sizeOptionsForClosure(col, next.closureType)
+      if (next.size && !opts.includes(next.size)) next.size = null
+    }
     set({ sharedSettings: next })
     if (line.colorConfigs.length > 0) {
       set({
-        colorConfigs: line.colorConfigs.map(cfg => ({ ...cfg, ...updates })),
+        colorConfigs: line.colorConfigs.map(cfg => {
+          const merged = { ...cfg, ...updates }
+          if ('closureType' in updates) {
+            const opts = sizeOptionsForClosure(col, merged.closureType)
+            if (merged.size && !opts.includes(merged.size)) merged.size = null
+          }
+          return merged
+        }),
       })
     }
   }
@@ -1130,7 +1153,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                           >
                             <option value="">{t('collection.sizePlaceholder')}</option>
-                            {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                            {sizeOptionsForClosure(col, duplicateSettings.closure.value).map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         )}
                         {!duplicateSettings[field].keepSame && field === 'shape' && (
@@ -1278,7 +1301,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     style={selectStyle}
                   >
                     <option value="">{t('collection.sizePlaceholder')}</option>
-                    {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                    {sizeOptionsForClosure(col, sharedSettings.closureType).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 )}
 
@@ -1504,7 +1527,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
                                 <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
-                                  {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                                  {sizeOptionsForClosure(col, cfg.closureType).map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                             {canFillSize && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'size', line.colorConfigs, selectedConfigs)} />}
@@ -1823,7 +1846,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.size')}</span>
                           <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
-                            {col.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                            {sizeOptionsForClosure(col, cfg.closureType).map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                       )}

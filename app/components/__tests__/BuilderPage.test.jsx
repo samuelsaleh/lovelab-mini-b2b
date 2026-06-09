@@ -11,7 +11,7 @@
  */
 
 import React from 'react'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { renderWithI18n, mockColorConfig } from './testUtils'
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -182,5 +182,158 @@ describe('BuilderPage — collections selected display', () => {
     // The key should contain {count} once
     const occurrences = (key.match(/\{count\}/g) || []).length
     expect(occurrences).toBe(1)
+  })
+})
+
+// ─── Editable packs ──────────────────────────────────────────────────────────
+
+describe('BuilderPage — editable packs', () => {
+  const seedPack = {
+    id: 'seed-1', label: 'Standard Pack', description: ['SHAPY'],
+    budget_label: '€55', fixed_total: 970, scope: 'global', is_seed: true,
+    form_rows: [{ collection: 'CUTY', carat: '0.10', colorCord: 'Black', quantity: '1', size: 'M', bpColor: 'Yellow', setting: '', shape: '', cert: 'In-house' }],
+  }
+  const privatePack = {
+    id: 'priv-1', label: 'My Private Pack', description: ['mine'],
+    budget_label: '€40', fixed_total: 1000, scope: 'private', is_seed: false,
+    form_rows: [{ collection: 'CUTY', carat: '0.10', colorCord: 'Red', quantity: '1', size: 'M', bpColor: 'Yellow', setting: '', shape: '', cert: 'In-house' }],
+  }
+
+  let originalFetch
+  beforeEach(() => {
+    originalFetch = global.fetch
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ packs: [seedPack, privatePack] }),
+    })
+  })
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  function renderBuilderAdmin(isAdmin, { lines = [], setLines = jest.fn() } = {}) {
+    return renderWithI18n(
+      <BuilderPage
+        lines={lines}
+        setLines={setLines}
+        onGenerateQuote={jest.fn()}
+        budget=""
+        setBudget={jest.fn()}
+        budgetRecommendations={null}
+        showRecommendations={false}
+        setShowRecommendations={jest.fn()}
+        onRequestRecommendations={jest.fn()}
+        isAdmin={isAdmin}
+      />
+    )
+  }
+
+  async function openPacksDrawer() {
+    fireEvent.click(screen.getByText('Packs').closest('button'))
+    // Wait for the fetch to resolve and DB packs to render.
+    await screen.findByText('My Private Pack')
+  }
+
+  it('shows Edit on both standard and private packs for an admin', async () => {
+    renderBuilderAdmin(true)
+    await openPacksDrawer()
+    expect(screen.getByLabelText('Edit pack — Standard Pack')).toBeInTheDocument()
+    expect(screen.getByLabelText('Edit pack — My Private Pack')).toBeInTheDocument()
+  })
+
+  it('hides Edit on standard packs for a non-admin but keeps it on their own pack', async () => {
+    renderBuilderAdmin(false)
+    await openPacksDrawer()
+    expect(screen.queryByLabelText('Edit pack — Standard Pack')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Edit pack — My Private Pack')).toBeInTheDocument()
+  })
+
+  it('clicking Edit loads the pack into the builder and shows the editing banner', async () => {
+    const setLines = jest.fn()
+    renderBuilderAdmin(true, { setLines })
+    await openPacksDrawer()
+
+    fireEvent.click(screen.getByLabelText('Edit pack — My Private Pack'))
+
+    // applyPack loads the pack's rows into the builder.
+    expect(setLines).toHaveBeenCalled()
+    // The editing banner appears, naming the pack being edited.
+    const banner = await screen.findByTestId('pack-editing-banner')
+    expect(banner).toHaveTextContent('My Private Pack')
+  })
+
+  it('the banner button opens the edit dialog with the pre-filled, editable name', async () => {
+    renderBuilderAdmin(true, { setLines: jest.fn() })
+    await openPacksDrawer()
+    fireEvent.click(screen.getByLabelText('Edit pack — My Private Pack'))
+    await screen.findByTestId('pack-editing-banner')
+
+    // The banner's primary action makes editing the name discoverable.
+    fireEvent.click(screen.getByText('Edit name & details'))
+
+    // The edit dialog opens with the pack's name pre-filled and editable.
+    expect(screen.getByText('Edit pack')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('My Private Pack')).toBeInTheDocument()
+  })
+})
+
+// ─── PACK 6-RB-SYN + applyPack closure/cert round-trip ────────────────────────
+
+describe('BuilderPage — PACK 6-RB-SYN', () => {
+  let originalFetch
+  beforeEach(() => {
+    originalFetch = global.fetch
+    // No seed packs returned → the hardcoded fallback PACKS (incl. Pack 6) render.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ packs: [] }),
+    })
+  })
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  async function openFallbackPacks() {
+    fireEvent.click(screen.getByText('Packs').closest('button'))
+    await screen.findByText('PACK 6-RB-SYN')
+  }
+
+  it('renders the PACK 6-RB-SYN quick-start card from the fallback', async () => {
+    renderBuilder([])
+    await openFallbackPacks()
+    expect(screen.getByText('PACK 6-RB-SYN')).toBeInTheDocument()
+  })
+
+  it('applying it restores non-braided closure on CUTY/CUBIX and IGI cert', async () => {
+    const setLines = jest.fn()
+    renderBuilder([], setLines)
+    await openFallbackPacks()
+
+    // Pick the "Use this pack" button that belongs to the Pack 6 card.
+    // Navigate from the label up to its card (label -> header div -> card div),
+    // then scope the button query to that card.
+    const labelEl = screen.getByText('PACK 6-RB-SYN')
+    const pack6Card = labelEl.parentElement.parentElement
+    const pack6Btn = within(pack6Card).getByText('Use this pack')
+    expect(pack6Btn).toBeTruthy()
+    act(() => { fireEvent.click(pack6Btn) })
+
+    expect(setLines).toHaveBeenCalled()
+    // applyPack calls setLines(newLines) with a plain array (not an updater).
+    const newLines = setLines.mock.calls[setLines.mock.calls.length - 1][0]
+    expect(Array.isArray(newLines)).toBe(true)
+
+    const cutyLine = newLines.find(l => l.collectionId === 'CUTY')
+    const cubixLine = newLines.find(l => l.collectionId === 'CUBIX')
+    const m3Line = newLines.find(l => l.collectionId === 'M3')
+
+    expect(cutyLine.colorConfigs.every(c => c.closureType === 'nonBraided')).toBe(true)
+    expect(cubixLine.colorConfigs.every(c => c.closureType === 'nonBraided')).toBe(true)
+    expect(cutyLine.colorConfigs.every(c => c.certType === 'igi')).toBe(true)
+    // MULTI THREE doesn't opt into closure, so it stays null, but cert restores.
+    expect(m3Line.colorConfigs.every(c => c.closureType === null)).toBe(true)
+    expect(m3Line.colorConfigs.every(c => c.certType === 'igi')).toBe(true)
+    // Royal Blue cord throughout.
+    expect(cutyLine.colorConfigs.every(c => c.colorName === 'Royal Blue')).toBe(true)
   })
 })

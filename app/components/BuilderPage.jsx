@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -170,10 +170,51 @@ const PACK4_ROWS = [
   { collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '40', shape: '', cert: 'IGI' },
 ]
 
+// Pack 6 — "Royal Blue / Synthetic" (RB-SYN). Built from two client order
+// sheets (White + Yellow) merged into one pack. All CUTY/CUBIX are
+// non-braided; cord is Royal Blue throughout. Prices are the IGI 2026 values
+// exactly as written on the order. Total = €1500 (≥ €970 minimum).
+const PACK6_ROWS = [
+  // ─ White ─
+  { collection: 'CUTY', carat: '0.05', bpColor: 'White', setting: '', size: 'M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '30', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'White', setting: '', size: 'M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '40', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '30', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'White', setting: '', size: 'S/M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '40', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Royal Blue', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'WWW', setting: 'F', size: 'M', colorCord: 'Royal Blue', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  // ─ Yellow ─
+  { collection: 'CUTY', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Royal Blue', quantity: '2', unitPrice: '30', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUTY', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'M', colorCord: 'Royal Blue', quantity: '2', unitPrice: '40', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUBIX', carat: '0.05', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Royal Blue', quantity: '2', unitPrice: '30', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'CUBIX', carat: '0.10', bpColor: 'Yellow', setting: '', size: 'S/M', colorCord: 'Royal Blue', quantity: '2', unitPrice: '40', shape: '', cert: 'IGI', closure: 'nonBraided' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YWP', setting: 'LO', size: 'M', colorCord: 'Royal Blue', quantity: '3', unitPrice: '95', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.15', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Royal Blue', quantity: '1', unitPrice: '65', shape: '', cert: 'IGI' },
+  { collection: 'MULTI THREE', carat: '0.30', bpColor: 'YYY', setting: 'F', size: 'M', colorCord: 'Royal Blue', quantity: '1', unitPrice: '95', shape: '', cert: 'IGI' },
+]
+
+// NOTE: the displayed pack numbers were reshuffled per Sam's request
+// (old Pack 3 -> Pack 1, old Pack 1 -> Pack 2, old Pack 2 -> Pack 3). The
+// internal `id`s stay tied to their original content; only the `label` and the
+// array order changed so the fallback matches the renamed DB seeds and lists
+// chronologically (Pack 1..4, then Pack 6). See
+// database-migrations/supabase-phase22-rename-packs.sql.
 const PACKS = [
   {
-    id: 'pack-1',
+    id: 'pack-3',
     label: 'Pack 1',
+    fixedTotal: 1856,
+    description: [
+      'CUTY — 0.05 & 0.10 ct, size M (In-house)',
+      'CUBIX — 0.05 & 0.10 ct, size S/M (In-house)',
+      'MULTI THREE — 0.15 & 0.30 ct, mixed housing, size M (IGI)',
+    ],
+    budget: '€24 – €95/bracelet',
+    formRows: PACK3_ROWS,
+  },
+  {
+    id: 'pack-1',
+    label: 'Pack 2',
     fixedTotal: 970,
     description: [
       'SHAPY SHINE FANCY — 0.10 ct, Bezel, 5 shapes',
@@ -185,7 +226,7 @@ const PACKS = [
   },
   {
     id: 'pack-2',
-    label: 'Pack 2',
+    label: 'Pack 3',
     fixedTotal: 1520,
     description: [
       'SHAPY SHINE FANCY — 0.30 & 0.50 ct, 5 shapes',
@@ -193,18 +234,6 @@ const PACKS = [
     ],
     budget: '€100 – €310/bracelet',
     formRows: PACK2_ROWS,
-  },
-  {
-    id: 'pack-3',
-    label: 'Pack 3',
-    fixedTotal: 1856,
-    description: [
-      'CUTY — 0.05 & 0.10 ct, size M (In-house)',
-      'CUBIX — 0.05 & 0.10 ct, size S/M (In-house)',
-      'MULTI THREE — 0.15 & 0.30 ct, mixed housing, size M (IGI)',
-    ],
-    budget: '€24 – €95/bracelet',
-    formRows: PACK3_ROWS,
   },
   {
     id: 'pack-4',
@@ -219,6 +248,19 @@ const PACKS = [
     ],
     budget: '€30 – €100/bracelet',
     formRows: PACK4_ROWS,
+  },
+  {
+    id: 'pack-6-rb-syn',
+    label: 'PACK 6-RB-SYN',
+    fixedTotal: 1500,
+    description: [
+      'CUTY — 0.05 & 0.10 ct, White & Yellow, size M, non-braided',
+      'CUBIX — 0.05 & 0.10 ct, White & Yellow, size S/M, non-braided',
+      'MULTI THREE — 0.15 & 0.30 ct, WWW / YWP / YYY housing',
+      'Royal Blue cord throughout · IGI certified',
+    ],
+    budget: '€30 – €95/bracelet',
+    formRows: PACK6_ROWS,
   },
 ]
 
@@ -244,15 +286,23 @@ function computePackTotal(pack, pricelistYear) {
 // hardcoded PACKS use and that applyPack consumes. form_rows already match
 // the PACK*_ROWS shape because PackBuilderModal builds them via
 // linesToFormRows, the exact inverse of applyPack.
+//
+// We carry the DB id, scope and is_seed flag through (prefixed with `_`) so
+// the UI can decide which packs are editable/deletable:
+//   - `_custom` (private, owned) → "Your pack" badge + delete control.
+//   - `_isSeed` / global → editable only by admins (matches the RLS policy).
 function dbPackToDisplay(p) {
   return {
     id: p.id,
+    _dbId: p.id,
+    _scope: p.scope || 'global',
+    _isSeed: !!p.is_seed,
     label: p.label,
     description: Array.isArray(p.description) ? p.description : [],
     budget: p.budget_label || null,
     fixedTotal: p.fixed_total != null ? Number(p.fixed_total) : null,
     formRows: Array.isArray(p.form_rows) ? p.form_rows : [],
-    _custom: true,
+    _custom: p.scope === 'private',
   }
 }
 
@@ -328,11 +378,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
-  // Custom packs the agent has saved (private) + any global packs, fetched
-  // from /api/packs. Seed packs are filtered out to avoid duplicating the
-  // hardcoded PACKS below.
-  const [customPacks, setCustomPacks] = useState([])
+  // Every pack the caller can see, fetched from /api/packs: the global/seed
+  // standard packs (Pack 1..4) plus the agent's own private packs. RLS scopes
+  // the response. We render these directly so edits persist; the hardcoded
+  // PACKS constant is only a fallback when the DB has no seed rows yet.
+  const [dbPacks, setDbPacks] = useState([])
   const [showPackBuilder, setShowPackBuilder] = useState(false)
+  // The pack currently being edited (its contents are loaded into the builder).
+  // null when creating a brand-new pack or not editing.
+  const [editingPack, setEditingPack] = useState(null)
 
   // Selection state for multi-select feature
   const [selectedConfigs, setSelectedConfigs] = useState(new Set())
@@ -352,8 +406,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
 
-  // Load the agent's saved packs once on mount. RLS already scopes the
-  // response to global packs + this user's own private packs.
+  // Load every visible pack once on mount. RLS already scopes the response to
+  // global/seed packs + this user's own private packs.
   useEffect(() => {
     if (typeof fetch !== 'function') return
     let cancelled = false
@@ -361,14 +415,20 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled || !data?.packs) return
-        setCustomPacks(data.packs.filter(p => !p.is_seed).map(dbPackToDisplay))
+        setDbPacks(data.packs.map(dbPackToDisplay))
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
 
-  // Hardcoded quick-start packs first, then the agent's own saved packs.
-  const allPacks = useMemo(() => [...PACKS, ...customPacks], [customPacks])
+  // Prefer the DB rows (seeds first, then private) so standard packs are
+  // editable. Fall back to the hardcoded read-only PACKS only when the DB has
+  // no seed rows yet (e.g. the seed migration hasn't run) so the standard
+  // quick-start cards never disappear.
+  const allPacks = useMemo(() => {
+    const hasSeed = dbPacks.some(p => p._isSeed)
+    return hasSeed ? dbPacks : [...PACKS, ...dbPacks]
+  }, [dbPacks])
   // The build is saveable as a pack once at least one config has a carat set.
   const hasBuild = useMemo(
     () => lines.some(l => (l.colorConfigs || []).some(c => c.caratIdx != null)),
@@ -378,11 +438,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Delete one of the agent's own saved packs. Seed/quick-start packs have no
   // delete control, and the API blocks seed deletion server-side as a backstop.
   const deletePack = useCallback(async (pack) => {
-    if (!pack?._custom || !pack.id) return
+    if (!pack?._custom || !pack._dbId) return
     if (typeof window !== 'undefined' && !window.confirm(`Delete your pack "${pack.label}"?`)) return
     try {
-      const res = await fetch(`/api/packs/${pack.id}`, { method: 'DELETE' })
-      if (res.ok) setCustomPacks(prev => prev.filter(p => p.id !== pack.id))
+      const res = await fetch(`/api/packs/${pack._dbId}`, { method: 'DELETE' })
+      if (res.ok) setDbPacks(prev => prev.filter(p => p._dbId !== pack._dbId))
     } catch { /* non-fatal — leave the card in place if the request fails */ }
   }, [])
 
@@ -833,6 +893,20 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             else if (row.setting === 'LO') multiAttached = false
             else if (housing) multiAttached = HOUSING.multiThree.attached.includes(housing)
           }
+          // Restore the bracelet-thread closure (CUTY/CUBIX) and the certificate
+          // from the stored row so a pack round-trips faithfully. form_rows store
+          // closure as 'braided'|'nonBraided' and cert as its label ('IGI' /
+          // 'In-house') — map the label back to the certType key.
+          const closureType = col.hasClosure
+            ? (row.closure === 'braided' || row.closure === 'nonBraided' ? row.closure : null)
+            : null
+          let certType = null
+          if (row.cert) {
+            const match = Object.entries(CERT_LABELS).find(
+              ([, lbl]) => lbl.toLowerCase() === String(row.cert).toLowerCase(),
+            )
+            certType = match ? match[0] : (String(row.cert).toLowerCase().includes('house') ? 'inhouse' : 'igi')
+          }
           return {
             id: uniqueId(),
             colorName: row.colorCord || '',
@@ -846,6 +920,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             cordType: null,
             thickness: null,
             priceOverride: null,
+            closureType,
+            certType,
           }
         })
         return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
@@ -882,6 +958,26 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       setStep('configure')
     }
   }, [setLines, setSelectedCollections])
+
+  // Begin editing an existing pack: load its contents into the builder so the
+  // user can tweak items, remember which pack we're editing, and close the
+  // packs drawer. The editing banner (Configure view) then drives the save.
+  const startEditPack = useCallback((pack) => {
+    if (!pack?._dbId) return
+    applyPack(pack)
+    setEditingPack(pack)
+    setShowPacks(false)
+  }, [applyPack])
+
+  // After a successful PUT: swap the updated row into the list and exit edit
+  // mode. The build stays in the builder so the user can keep working.
+  const handlePackUpdated = useCallback((pack) => {
+    if (pack?.id) {
+      setDbPacks(prev => prev.map(p => (p._dbId === pack.id ? dbPackToDisplay(pack) : p)))
+    }
+    setEditingPack(null)
+    setShowPackBuilder(false)
+  }, [])
 
   const channelBanner = CHANNEL_BANNER[orderChannel]
 
@@ -1041,7 +1137,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'none' }}>
                   <button
                     type="button"
-                    onClick={() => { if (hasBuild) setShowPackBuilder(true) }}
+                    onClick={() => { if (hasBuild) { setEditingPack(null); setShowPackBuilder(true) } }}
                     disabled={!hasBuild}
                     title={hasBuild ? 'Save your current build as a reusable pack' : 'Configure at least one item first'}
                     style={{
@@ -1061,7 +1157,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       {hasBuild ? 'as your own pack' : 'add items first'}
                     </span>
                   </button>
-                  {allPacks.map(pack => (
+                  {allPacks.map(pack => {
+                    // Private packs are always owned by the caller (RLS only
+                    // returns the user's own), so they're editable. Global/seed
+                    // standard packs are editable only by admins.
+                    const editable = !!pack._dbId && (pack._scope === 'private' || isAdmin)
+                    return (
                     <div key={pack.id} style={{
                       minWidth: 180, maxWidth: 220, flexShrink: 0,
                       border: '1px solid #e4dded', borderRadius: 10,
@@ -1086,15 +1187,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); deletePack(pack) }}
-                            title="Delete this pack"
-                            aria-label={`Delete pack ${pack.label}`}
+                            title={t('pack.delete')}
+                            aria-label={`${t('pack.delete')} — ${pack.label}`}
                             style={{
-                              marginLeft: 'auto', width: 20, height: 20, borderRadius: 5,
-                              border: 'none', background: 'transparent', color: '#c9b3d1',
+                              marginLeft: 'auto', width: 22, height: 22, borderRadius: 6,
+                              border: '1px solid #f0d7d7', background: '#fff', color: '#dc2626',
                               fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = '#c9b3d1' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#fdeaea' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
                           >×</button>
                         )}
                       </div>
@@ -1113,22 +1214,44 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           </div>
                         </div>
                       )}
-                      <button
-                        onClick={() => { applyPack(pack); setShowPacks(false) }}
-                        style={{
-                          marginTop: 10, width: '100%', padding: '6px 0',
-                          borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`,
-                          background: colors.inkPlum, color: '#fff', fontSize: 12,
-                          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                          transition: 'opacity .1s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
-                      >
-                        Use this pack
-                      </button>
+                      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+                        <button
+                          onClick={() => { applyPack(pack); setShowPacks(false) }}
+                          style={{
+                            flex: 1, padding: '7px 0',
+                            borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`,
+                            background: colors.inkPlum, color: '#fff', fontSize: 12,
+                            fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            transition: 'opacity .1s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                        >
+                          Use this pack
+                        </button>
+                        {editable && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); startEditPack(pack) }}
+                            title={t('pack.edit')}
+                            aria-label={`${t('pack.edit')} — ${pack.label}`}
+                            style={{
+                              padding: '7px 12px', borderRadius: 8,
+                              border: `1.5px solid ${colors.inkPlum}`,
+                              background: '#fff', color: colors.inkPlum, fontSize: 12,
+                              fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                              whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                          >
+                            ✎ {t('pack.editShort')}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1291,6 +1414,45 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             ) : (
               /* ═══ STEP 2: Configuration View ═══ */
               <div>
+                {/* Editing banner — shown while the user is editing an existing
+                    pack. Items can be tweaked below; saving PUTs the changes. */}
+                {editingPack && (
+                  <div
+                    data-testid="pack-editing-banner"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      marginBottom: 14, padding: '10px 14px', borderRadius: 10,
+                      border: `1px solid ${colors.inkPlum}30`, background: '#f5eef7',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum, flex: 1, minWidth: 140 }}>
+                      {t('pack.editingBanner').replace('{label}', editingPack.label)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPackBuilder(true)}
+                      title={t('pack.editDetails')}
+                      style={{
+                        padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                        borderRadius: 8, border: 'none', background: colors.inkPlum,
+                        color: '#fff', cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      {t('pack.editDetails')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPack(null)}
+                      style={{
+                        padding: '7px 14px', fontSize: 12, fontWeight: 600,
+                        borderRadius: 8, border: '1px solid #ddd', background: '#fff',
+                        color: '#666', cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      {t('pack.cancelEditing')}
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 10 : 0, marginBottom: 14 }}>
                   <div style={{ minWidth: 0 }}>
                     <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
@@ -1914,7 +2076,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         lines={lines}
         pricelistYear={activePricelist}
         isAdmin={isAdmin}
-        onSaved={(pack) => { if (pack) setCustomPacks(prev => [...prev, dbPackToDisplay(pack)]) }}
+        editingPack={editingPack}
+        onSaved={(pack) => { if (pack) setDbPacks(prev => [...prev, dbPackToDisplay(pack)]) }}
+        onUpdated={handlePackUpdated}
       />
 
       {/* Pricelist switch confirmation — only mounts when a switch is pending */}

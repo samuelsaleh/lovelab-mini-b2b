@@ -275,3 +275,104 @@ describe('CollectionConfig — Duplicate panel: Closure row', () => {
     expect(closureRadios.length).toBe(0)
   })
 })
+
+// ─── Closure-driven size options ────────────────────────────────────────────
+// CUTY/CUBIX sizes depend on the closure: braided keeps the collection's
+// individual sizes; non-braided only offers the grouped silk sizes (S/M, L/XL).
+// Switching closure must clear an off-list size.
+
+describe('CollectionConfig — closure-driven sizes', () => {
+  // Helper: the per-row size <select> is the combobox whose options include the
+  // given sentinel size (e.g. 'XS' for braided, 'S/M' for non-braided).
+  function findSizeSelect(sentinel) {
+    return screen
+      .getAllByRole('combobox')
+      .find(sel => Array.from(sel.options || []).some(o => o.text === sentinel))
+  }
+
+  it('offers the individual sizes (XS..XL) for a braided CUTY row', () => {
+    const line = mockLine(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: null, closureType: 'braided' }),
+    ])
+    renderConfig(CUTY, line)
+
+    const sizeSelect = findSizeSelect('XS')
+    expect(sizeSelect).toBeTruthy()
+    const texts = Array.from(sizeSelect.options).map(o => o.text)
+    expect(texts).toEqual(expect.arrayContaining(['XS', 'S', 'M', 'L', 'XL']))
+    expect(texts).not.toContain('S/M')
+  })
+
+  it('offers only the grouped sizes (S/M, L/XL) for a non-braided CUTY row', () => {
+    const line = mockLine(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: null, closureType: 'nonBraided' }),
+    ])
+    renderConfig(CUTY, line)
+
+    const sizeSelect = findSizeSelect('S/M')
+    expect(sizeSelect).toBeTruthy()
+    const texts = Array.from(sizeSelect.options).map(o => o.text).filter(Boolean)
+    // Only the placeholder + the two grouped sizes should be present.
+    expect(texts).toEqual(expect.arrayContaining(['S/M', 'L/XL']))
+    expect(texts).not.toContain('XS')
+    expect(texts).not.toContain('M')
+  })
+
+  it('clears an off-list size when switching a per-row CUTY from braided to non-braided', () => {
+    const onChange = jest.fn()
+    const line = mockLine(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M', closureType: 'braided' }),
+    ])
+    renderConfig(CUTY, line, onChange)
+
+    const selects = screen.getAllByRole('combobox')
+    const closureSelect = selects.find(s => Array.from(s.options || []).some(o => o.text === 'Non-braided'))
+    expect(closureSelect).toBeTruthy()
+    fireEvent.change(closureSelect, { target: { value: 'nonBraided' } })
+
+    const call = onChange.mock.calls.find(c => c[1]?.colorConfigs)
+    expect(call).toBeTruthy()
+    expect(call[1].colorConfigs).toEqual([
+      expect.objectContaining({ id: 'cfg-1', closureType: 'nonBraided', size: null }),
+    ])
+  })
+
+  it('keeps a still-valid size when switching closure (S/M stays on non-braided)', () => {
+    const onChange = jest.fn()
+    const line = mockLine(CUBIX, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'S/M', closureType: 'braided' }),
+    ])
+    renderConfig(CUBIX, line, onChange)
+
+    const selects = screen.getAllByRole('combobox')
+    const closureSelect = selects.find(s => Array.from(s.options || []).some(o => o.text === 'Non-braided'))
+    fireEvent.change(closureSelect, { target: { value: 'nonBraided' } })
+
+    const call = onChange.mock.calls.find(c => c[1]?.colorConfigs)
+    expect(call).toBeTruthy()
+    // S/M is valid for non-braided, so it must NOT be cleared.
+    expect(call[1].colorConfigs).toEqual([
+      expect.objectContaining({ id: 'cfg-1', closureType: 'nonBraided', size: 'S/M' }),
+    ])
+  })
+
+  it('clears the shared size for all configs when the shared closure switches to non-braided', () => {
+    const onChange = jest.fn()
+    const line = mockLineSameForAll(CUTY, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M', closureType: 'braided' }),
+      mockColorConfig({ id: 'cfg-2', caratIdx: 0, housing: 'Yellow', size: 'M', closureType: 'braided' }),
+    ])
+    renderConfig(CUTY, line, onChange)
+
+    const selects = screen.getAllByRole('combobox')
+    const sharedClosure = selects.find(s => Array.from(s.options || []).some(o => o.text === 'Non-braided'))
+    fireEvent.change(sharedClosure, { target: { value: 'nonBraided' } })
+
+    const call = onChange.mock.calls.find(c => c[1]?.colorConfigs)
+    expect(call).toBeTruthy()
+    expect(call[1].colorConfigs).toEqual([
+      expect.objectContaining({ id: 'cfg-1', closureType: 'nonBraided', size: null }),
+      expect.objectContaining({ id: 'cfg-2', closureType: 'nonBraided', size: null }),
+    ])
+  })
+})

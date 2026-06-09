@@ -107,6 +107,12 @@ export async function PUT(request, { params }) {
       if (error.message?.toLowerCase().includes('check constraint')) {
         return badRequest(`Pack minimum is €${MIN_PACK_TOTAL}`, 422)
       }
+      // PGRST116 = "no rows returned" → RLS blocked the update (e.g. a
+      // non-admin trying to edit a global/seed pack, or a pack the caller
+      // doesn't own). Surface a clean 404 instead of an opaque 500.
+      if (error.code === 'PGRST116') {
+        return badRequest('Pack not found or not editable', 404)
+      }
       return badRequest('Failed to update pack', 500)
     }
     if (!pack) return badRequest('Pack not found or not editable', 404)
