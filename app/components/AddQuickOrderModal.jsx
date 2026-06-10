@@ -21,6 +21,7 @@
 
 import { useState } from 'react';
 import { colors, fonts } from '@/lib/styles';
+import { parseAmount } from '@/lib/parseAmount';
 
 export default function AddQuickOrderModal({ agent, onClose, onSuccess }) {
   const [clientLabel, setClientLabel] = useState('');
@@ -35,7 +36,7 @@ export default function AddQuickOrderModal({ agent, onClose, onSuccess }) {
   if (!agent) return null;
 
   const rate = Number(agent.commission_rate) || 0;
-  const numericAmount = Number(amount);
+  const numericAmount = parseAmount(amount);
   const validAmount = !Number.isNaN(numericAmount) && numericAmount > 0;
   // Live preview of what the agent will be paid.
   const computedCommission = validAmount
@@ -167,12 +168,11 @@ export default function AddQuickOrderModal({ agent, onClose, onSuccess }) {
           <div style={{ marginBottom: 14 }}>
             <label style={fieldLabel}>Amount (€)</label>
             <input
-              type="number"
-              min={0.01}
-              step={0.01}
+              type="text"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder="0,00"
               required
               style={input}
             />

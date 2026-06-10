@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
+import { parseAmount } from '@/lib/parseAmount';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
@@ -11,6 +12,20 @@ import AddBonusModal from '@/app/components/AddBonusModal';
 import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
+
+// Money formatter that ALWAYS shows the cents (e.g. "1 469,55 €", "1 469,00 €").
+// The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
+// comma/cents on every commission and payment amount.
+const fmt2 = (n) => {
+  const num = Number(n);
+  if (Number.isNaN(num)) return '0,00 €';
+  return new Intl.NumberFormat('fr-BE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
 
 export default function AdminAgentDetailsPage() {
   const router = useRouter();
@@ -268,7 +283,8 @@ export default function AdminAgentDetailsPage() {
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
-    if (!paymentAmount || Number(paymentAmount) <= 0) return;
+    const amt = parseAmount(paymentAmount);
+    if (Number.isNaN(amt) || amt <= 0) return;
     setSavingPayment(true);
     try {
       const url = editingPayment
@@ -277,13 +293,13 @@ export default function AdminAgentDetailsPage() {
       const method = editingPayment ? 'PATCH' : 'POST';
       const body = editingPayment
         ? {
-            amount: Number(paymentAmount),
+            amount: amt,
             notes: paymentNotes,
             payment_date: paymentDate,
           }
         : {
             agent_id: agentId,
-            amount: paymentAmount,
+            amount: amt,
             notes: paymentNotes,
             payment_date: new Date(paymentDate).toISOString(),
           };
@@ -417,6 +433,28 @@ export default function AdminAgentDetailsPage() {
       setTogglingCommissionId(null);
     }
   }, [load, commissions, togglingCommissionId]);
+
+  // Delete a manual commission entry (quick order or ad-hoc bonus). Used to
+  // remove a mistakenly-added row. The API refuses order-linked and paid-out
+  // rows, so we only surface this button on safe-to-delete manual entries.
+  const handleDeleteCommission = useCallback(async (commissionId) => {
+    if (!commissionId || togglingCommissionId === commissionId) return;
+    const ok = typeof window !== 'undefined'
+      ? window.confirm('Delete this entry? This cannot be undone.')
+      : true;
+    if (!ok) return;
+    setTogglingCommissionId(commissionId);
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to delete entry');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Failed to delete entry');
+    } finally {
+      setTogglingCommissionId(null);
+    }
+  }, [load, togglingCommissionId]);
 
   const handleSaveOrg = async () => {
     if (!agent?.organization_id) return;
@@ -604,7 +642,7 @@ export default function AdminAgentDetailsPage() {
               {[
                 {
                   label: 'READY TO PAY',
-                  value: fmt(s.ready_to_pay || 0),
+                  value: fmt2(s.ready_to_pay || 0),
                   sub: s.ready_to_pay_count ? `${s.ready_to_pay_count} commission${s.ready_to_pay_count === 1 ? '' : 's'}` : 'customer paid',
                   accent: '#16a34a',
                   background: '#f0fdf4',
@@ -612,7 +650,7 @@ export default function AdminAgentDetailsPage() {
                 },
                 {
                   label: 'AWAITING CUSTOMER',
-                  value: fmt(s.awaiting_customer || 0),
+                  value: fmt2(s.awaiting_customer || 0),
                   sub: s.awaiting_customer_count ? `${s.awaiting_customer_count} on hold` : 'customer not paid yet',
                   accent: '#c2410c',
                   background: '#fff7ed',
@@ -620,7 +658,7 @@ export default function AdminAgentDetailsPage() {
                 },
                 {
                   label: 'PAID OUT',
-                  value: fmt(s.paid_amount || s.total_paid_out || 0),
+                  value: fmt2(s.paid_amount || s.total_paid_out || 0),
                   sub: 'transferred',
                   accent: colors.charcoal,
                   background: '#fff',
@@ -628,7 +666,7 @@ export default function AdminAgentDetailsPage() {
                 },
                 {
                   label: 'REVENUE',
-                  value: fmt(orderRevenue),
+                  value: fmt2(orderRevenue),
                   sub: `${orderDocsList.length} order${orderDocsList.length === 1 ? '' : 's'}`,
                   accent: colors.charcoal,
                   background: '#fff',
@@ -775,6 +813,11 @@ export default function AdminAgentDetailsPage() {
                               const isPaidOut = row.status === 'paid';
                               const isCancelled = row.status === 'cancelled';
                               const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
+                              // Any real commission row can be deleted (quick order,
+                              // bonus, order commission, paid-out, cancelled…).
+                              // Doc-derived placeholder rows aren't real DB rows so
+                              // there's nothing to delete.
+                              const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
@@ -833,10 +876,10 @@ export default function AdminAgentDetailsPage() {
                                       </div>
                                     )}
                                   </td>
-                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt(grossTotal)}</td>
-                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt(netTotal)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt2(grossTotal)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt2(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt2(netTotal)}</td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
-                                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.commission_amount)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.commission_amount)}</td>
                                   <td style={{ ...td, textAlign: 'center' }}>
                                     {canToggle ? (
                                       <input
@@ -865,6 +908,19 @@ export default function AdminAgentDetailsPage() {
                                           style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: togglingCommissionId === row.id ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: togglingCommissionId === row.id ? 0.5 : 1 }}
                                         >
                                           Undo
+                                        </button>
+                                      </div>
+                                    )}
+                                    {canDelete && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteCommission(row.id)}
+                                          disabled={togglingCommissionId === row.id}
+                                          title="Delete this entry permanently"
+                                          style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', background: 'none', border: 'none', cursor: togglingCommissionId === row.id ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: togglingCommissionId === row.id ? 0.5 : 1 }}
+                                        >
+                                          {togglingCommissionId === row.id ? '…' : 'Delete'}
                                         </button>
                                       </div>
                                     )}
@@ -906,7 +962,7 @@ export default function AdminAgentDetailsPage() {
                           return (
                             <tr key={row.id}>
                               <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt(row.amount)}</td>
+                              <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.amount)}</td>
                               <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
                               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 <button
@@ -989,7 +1045,7 @@ export default function AdminAgentDetailsPage() {
                               <div style={{ fontWeight: 600 }}>{c.recipient_name || o.client_name || '—'}</div>
                               {(c.recipient_company || o.client_company) && <div style={{ fontSize: 11, color: '#aaa' }}>{c.recipient_company || o.client_company}</div>}
                             </td>
-                            <td style={{ ...td, fontWeight: 700 }}>{o.total_amount != null ? fmt(o.total_amount) : '—'}</td>
+                            <td style={{ ...td, fontWeight: 700 }}>{o.total_amount != null ? fmt2(o.total_amount) : '—'}</td>
                             <td style={td}>
                               {c.return_date ? (
                                 <>
@@ -1093,9 +1149,9 @@ export default function AdminAgentDetailsPage() {
                                 )}
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                                <Stat label="Earned" value={fmt(displayEarned)} />
-                                <Stat label="Paid" value={fmt(displayPaid)} />
-                                <Stat label="Pending" value={fmt(displayPending)} />
+                                <Stat label="Earned" value={fmt2(displayEarned)} />
+                                <Stat label="Paid" value={fmt2(displayPaid)} />
+                                <Stat label="Pending" value={fmt2(displayPending)} />
                               </div>
                             </>
                           )
@@ -1116,9 +1172,9 @@ export default function AdminAgentDetailsPage() {
                                 {(organizationLedger.per_member || []).map((m) => (
                                   <tr key={m.user_id}>
                                     <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_commission_earned || 0)}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.total_paid_out || 0)}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt(m.pending_balance || 0)}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.total_commission_earned || 0)}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.total_paid_out || 0)}</td>
+                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.pending_balance || 0)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -1194,7 +1250,7 @@ export default function AdminAgentDetailsPage() {
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Amount (€)</label>
-                      <input type="number" step="0.01" min="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" required style={inputStyle} />
+                      <input type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0,00" required style={inputStyle} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Notes (optional)</label>

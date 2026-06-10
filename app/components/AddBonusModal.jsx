@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import { colors, fonts } from '@/lib/styles';
+import { parseAmount } from '@/lib/parseAmount';
 
 export default function AddBonusModal({ agent, onClose, onSuccess }) {
   const [amount, setAmount] = useState('');
@@ -29,7 +30,7 @@ export default function AddBonusModal({ agent, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const amt = Number(amount);
+    const amt = parseAmount(amount);
     if (Number.isNaN(amt) || amt <= 0) {
       setError('Enter a valid amount');
       return;
@@ -117,12 +118,11 @@ export default function AddBonusModal({ agent, onClose, onSuccess }) {
               Amount (€)
             </label>
             <input
-              type="number"
-              min={0.01}
-              step={0.01}
+              type="text"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder="0,00"
               required
               autoFocus
               style={{
