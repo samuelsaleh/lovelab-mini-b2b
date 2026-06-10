@@ -388,6 +388,36 @@ export default function AdminAgentDetailsPage() {
     }
   }, [load, togglingCommissionId]);
 
+  // Undo a payout: revert a PAID commission back to 'pending' (keeping the
+  // customer-paid tick) so it returns to "Ready to pay" and re-enters the next
+  // payout. For "we marked it paid but didn't actually pay the agent".
+  const handleRevertPaid = useCallback(async (commissionId) => {
+    if (!commissionId || togglingCommissionId === commissionId) return;
+    setTogglingCommissionId(commissionId);
+    // Optimistic: flip the row back to pending immediately.
+    const prevRows = commissions;
+    setCommissions((prev) =>
+      prev.map((c) =>
+        c.id === commissionId ? { ...c, status: 'pending', paid_at: null } : c,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}/revert-paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to undo payout');
+      // Refresh the summary KPIs from the source of truth.
+      await load();
+    } catch (err) {
+      setCommissions(prevRows);
+      setError(err.message || 'Failed to undo payout');
+    } finally {
+      setTogglingCommissionId(null);
+    }
+  }, [load, commissions, togglingCommissionId]);
+
   const handleSaveOrg = async () => {
     if (!agent?.organization_id) return;
     setSavingOrg(true);
@@ -825,6 +855,19 @@ export default function AdminAgentDetailsPage() {
                                     <span style={{ fontSize: 10, fontWeight: 700, color: status.fg, background: status.bg, borderRadius: 12, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                       {status.label}
                                     </span>
+                                    {isPaidOut && !!row.id && !String(row.id).startsWith('doc-') && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRevertPaid(row.id)}
+                                          disabled={togglingCommissionId === row.id}
+                                          title="Mark unpaid — returns to Ready to pay and re-enters the next payout"
+                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: togglingCommissionId === row.id ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: togglingCommissionId === row.id ? 0.5 : 1 }}
+                                        >
+                                          Undo
+                                        </button>
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
                               );

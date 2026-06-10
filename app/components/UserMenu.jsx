@@ -152,36 +152,6 @@ export default function UserMenu({ onOpenAccount }) {
             </div>
           )}
 
-          {/* My Account — opens MyAccountPanel (admins) or navigates to /agent (agents) */}
-          {user && (
-            <button
-              data-testid="my-account-button"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                setOpen(false)
-                if (profile?.role === 'admin') {
-                  onOpenAccount?.()
-                } else if (profile?.is_agent) {
-                  router.push('/agent')
-                }
-              }}
-              style={{
-                ...menuItemStyle,
-                color: colors.inkPlum,
-                fontWeight: 600,
-                background: `${colors.inkPlum}08`,
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = `${colors.inkPlum}14`}
-              onMouseLeave={(e) => e.currentTarget.style.background = `${colors.inkPlum}08`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              {t('nav.myAccount')}
-            </button>
-          )}
-
           {/* Agent Portal — agents only */}
           {profile?.is_agent && profile?.role !== 'admin' && (
             <button
