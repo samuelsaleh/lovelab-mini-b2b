@@ -135,15 +135,20 @@ describe('AgentSelfView — layout mirrors admin agent-detail', () => {
     expect(screen.getByText('REVENUE')).toBeInTheDocument()
   })
 
-  it('renders all 5 tabs (Financials, Reports, Consignment, Organisation, Documents)', async () => {
+  // Phase 22 (2026-05-13): the standalone "Reports" tab was merged into
+  // Financials (it renders as the <AgentReportsPanel/> "Commission Reports"
+  // card inside the Financials body). So the tab strip now has 4 entries.
+  it('renders the 4 tabs (Financials, Consignment, Organisation, Documents) — no standalone Reports tab', async () => {
     await act(async () => {
       render(<AgentSelfView defaultTab="financials" />)
     })
     await waitFor(() => expect(screen.getByText('Financials')).toBeInTheDocument())
-    expect(screen.getByText('Reports')).toBeInTheDocument()
     expect(screen.getByText(/Consignment/)).toBeInTheDocument()
     expect(screen.getByText('Organisation')).toBeInTheDocument()
     expect(screen.getByText('Documents')).toBeInTheDocument()
+    // No standalone "Reports" tab button (the reports list lives in Financials
+    // under the "Commission Reports" heading, which is exact-matched separately).
+    expect(screen.queryByText('Reports')).not.toBeInTheDocument()
   })
 
   it('renders the Commission History table on the Financials tab', async () => {
@@ -155,11 +160,11 @@ describe('AgentSelfView — layout mirrors admin agent-detail', () => {
     expect(screen.getByText('Acme')).toBeInTheDocument()
   })
 
-  it('renders the Reports tab content when defaultTab="reports"', async () => {
+  it('renders the Commission Reports panel inside the Financials tab', async () => {
     await act(async () => {
-      render(<AgentSelfView defaultTab="reports" />)
+      render(<AgentSelfView defaultTab="financials" />)
     })
-    await waitFor(() => expect(screen.getByText('Monthly Commission Reports')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Commission Reports')).toBeInTheDocument())
     expect(screen.getByText(/no reports yet/i)).toBeInTheDocument()
   })
 
@@ -206,9 +211,9 @@ describe('AgentSelfView — layout mirrors admin agent-detail', () => {
 
   it('does NOT redirect to / for active agents (regression: previous strict agent_status check broke /agent/reports)', async () => {
     await act(async () => {
-      render(<AgentSelfView defaultTab="reports" />)
+      render(<AgentSelfView defaultTab="financials" focused pageTitle="Reports" />)
     })
-    await waitFor(() => expect(screen.getByText('Monthly Commission Reports')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Commission Reports')).toBeInTheDocument())
     expect(mockPush).not.toHaveBeenCalledWith('/')
   })
 })
@@ -225,9 +230,9 @@ describe('AgentSelfView — focused mode (single-purpose pages)', () => {
 
   it('hides the hero card, KPI strip and tab strip when focused=true', async () => {
     await act(async () => {
-      render(<AgentSelfView defaultTab="reports" focused pageTitle="Reports" />)
+      render(<AgentSelfView defaultTab="financials" focused pageTitle="Reports" />)
     })
-    await waitFor(() => expect(screen.getByText('Monthly Commission Reports')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Commission Reports')).toBeInTheDocument())
 
     // Hero card is hidden
     expect(screen.queryByText('Agent Test')).not.toBeInTheDocument()
@@ -244,7 +249,7 @@ describe('AgentSelfView — focused mode (single-purpose pages)', () => {
 
   it('shows the pageTitle heading when focused=true', async () => {
     await act(async () => {
-      render(<AgentSelfView defaultTab="reports" focused pageTitle="Reports" />)
+      render(<AgentSelfView defaultTab="financials" focused pageTitle="Reports" />)
     })
     await waitFor(() => {
       const heading = screen.getByRole('heading', { level: 1 })
@@ -254,9 +259,9 @@ describe('AgentSelfView — focused mode (single-purpose pages)', () => {
 
   it('still renders the active section content in focused mode (Reports)', async () => {
     await act(async () => {
-      render(<AgentSelfView defaultTab="reports" focused pageTitle="Reports" />)
+      render(<AgentSelfView defaultTab="financials" focused pageTitle="Reports" />)
     })
-    await waitFor(() => expect(screen.getByText('Monthly Commission Reports')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Commission Reports')).toBeInTheDocument())
     expect(screen.getByText(/no reports yet/i)).toBeInTheDocument()
   })
 

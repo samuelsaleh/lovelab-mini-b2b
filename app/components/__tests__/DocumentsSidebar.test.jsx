@@ -81,20 +81,21 @@ describe('DocumentsSidebar', () => {
     expect(screen.getByText('Documents')).toBeInTheDocument()
   })
 
-  test('renders all 4 event type group labels', () => {
+  // Non-agent events (fair / partner / other) are now grouped flat under a
+  // single "Events" section. Agent-type events are excluded here — agents get
+  // their own dedicated area, so they no longer appear as event folders.
+  test('renders the "Events" section for non-agent events', () => {
     render(<DocumentsSidebar {...buildProps()} />)
-    expect(screen.getByText('Fairs')).toBeInTheDocument()
-    expect(screen.getByText('Agents')).toBeInTheDocument()
-    expect(screen.getByText('Partners')).toBeInTheDocument()
-    expect(screen.getByText('Other')).toBeInTheDocument()
+    expect(screen.getByText('Events')).toBeInTheDocument()
   })
 
-  test('renders event names under their correct groups', () => {
+  test('renders non-agent event names; agent-type events are excluded', () => {
     render(<DocumentsSidebar {...buildProps()} />)
     expect(screen.getByText('Paris Première Classe')).toBeInTheDocument()
-    expect(screen.getByText('Agent Berlin')).toBeInTheDocument()
     expect(screen.getByText('Partner London')).toBeInTheDocument()
     expect(screen.getByText('Other Event')).toBeInTheDocument()
+    // 'agent'-type events are filtered out of the event folder list.
+    expect(screen.queryByText('Agent Berlin')).not.toBeInTheDocument()
   })
 
   test('shows "Internal Orders" button for admins', () => {

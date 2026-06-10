@@ -25,7 +25,7 @@ jest.mock('@/lib/useIsMobile', () => ({
 }))
 
 // catalog is NOT mocked — we use real collection data
-const { COLLECTIONS } = require('@/lib/catalog')
+const { COLLECTIONS, CORD_COLORS } = require('@/lib/catalog')
 const CUTY = COLLECTIONS.find(c => c.id === 'CUTY')
 // M3 has multiThree housing and minC=2
 const M3 = COLLECTIONS.find(c => c.id === 'M3')
@@ -84,17 +84,17 @@ describe('CollectionConfig — color palette', () => {
     const onChange = jest.fn()
     const line = mockLine(CUTY)
     renderConfig(CUTY, line, onChange)
-    // Find first color swatch button by title attribute pattern
-    const swatches = screen.getAllByTitle(/Add|add/)
-    if (swatches.length === 0) {
-      // Fallback: click first circle-shaped button in the palette area
-      const buttons = screen.getAllByRole('button')
-      // Filter to buttons that look like color swatches (have a background style)
-      fireEvent.click(buttons[0])
-    } else {
-      fireEvent.click(swatches[0])
-    }
-    expect(onChange).toHaveBeenCalled()
+    // Swatches are circular buttons titled with the color name (title={c.n}).
+    const firstColor = CORD_COLORS[CUTY.cord][0].n
+    fireEvent.click(screen.getByTitle(firstColor))
+    expect(onChange).toHaveBeenCalledWith(
+      'line-1',
+      expect.objectContaining({
+        colorConfigs: expect.arrayContaining([
+          expect.objectContaining({ colorName: firstColor }),
+        ]),
+      })
+    )
   })
 })
 
@@ -203,19 +203,12 @@ describe('CollectionConfig — duplicateAllWithVariations', () => {
 
     fireEvent.click(screen.getByText(/Duplicate all with variations/i))
 
-    // Select "Change to" for shape
-    const changeToRadios = screen.getAllByRole('radio', { name: /change to/i })
-    // shape is after carat, housing in the list
-    const shapeRadio = changeToRadios.find((_, i) => {
-      const row = changeToRadios[i].closest('[data-field]') || changeToRadios[i].closest('div')
-      return row && row.textContent.toLowerCase().includes('shape')
-    }) || changeToRadios[2]
-    fireEvent.click(shapeRadio)
-
-    // Pick 'Pear' from the shape select
-    const selects = screen.getAllByRole('combobox')
-    const shapeSelect = selects[selects.length - 1]
-    fireEvent.change(shapeSelect, { target: { value: 'Pear' } })
+    // Scope to the SHAPE variation row (each row carries data-field={field}).
+    const shapeRow = document.querySelector('[data-field="shape"]')
+    expect(shapeRow).toBeTruthy()
+    // Select "Change to" for shape, then pick 'Pear' from that row's select.
+    fireEvent.click(within(shapeRow).getByRole('radio', { name: /change to/i }))
+    fireEvent.change(within(shapeRow).getByRole('combobox'), { target: { value: 'Pear' } })
 
     fireEvent.click(screen.getByRole('button', { name: /Duplicate 1/i }))
 
@@ -225,36 +218,39 @@ describe('CollectionConfig — duplicateAllWithVariations', () => {
   })
 })
 
-describe('CollectionConfig — qty minimum enforcement', () => {
-  it('decrement clamps at col.minC (M3 minC=2)', () => {
+describe('CollectionConfig — qty floor', () => {
+  // Per commit 63d8e4d ("Fix builder decrement interactions for bracelet
+  // quantities") the per-row qty decrement intentionally floors at 1 — NOT at
+  // col.minC — so an agent can reduce e.g. 3 → 2 → 1 without being blocked.
+  // (col.minC is still used as the *starting* qty and as the pack-total
+  // multiplier in BuilderPage.computePackTotal.)
+  it('decrement on M3 (minC=2) steps down toward 1, not blocked at minC', () => {
     const onChange = jest.fn()
     const line = mockLine(M3, [
       mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'WWW', multiAttached: true, size: 'M', qty: 2 }),
     ])
     renderConfig(M3, line, onChange)
 
-    const decrementBtns = screen.getAllByText('-')
-    fireEvent.click(decrementBtns[0])
+    fireEvent.click(screen.getByRole('button', { name: '-' }))
 
     expect(onChange).toHaveBeenCalledWith(
       'line-1',
       expect.objectContaining({
         colorConfigs: expect.arrayContaining([
-          expect.objectContaining({ qty: 2 }), // stays at minC=2, not goes to 1
+          expect.objectContaining({ qty: 1 }),
         ]),
       })
     )
   })
 
-  it('decrement clamps at 1 for CUTY (minC=1)', () => {
+  it('decrement never goes below 1 (CUTY)', () => {
     const onChange = jest.fn()
     const line = mockLine(CUTY, [
       mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M', qty: 1 }),
     ])
     renderConfig(CUTY, line, onChange)
 
-    const decrementBtns = screen.getAllByText('-')
-    fireEvent.click(decrementBtns[0])
+    fireEvent.click(screen.getByRole('button', { name: '-' }))
 
     expect(onChange).toHaveBeenCalledWith(
       'line-1',

@@ -98,18 +98,22 @@ describe('BuilderPage — Collapse / Expand All', () => {
 })
 
 describe('BuilderPage — Multi-select action bar', () => {
+  // Selection is driven by styled <button> toggles, not <input type=checkbox>.
+  // The per-line "Select all" button (title="Select all") selects every config
+  // in the line, which surfaces the sticky multi-select action bar.
   it('selecting configs shows the action bar', () => {
     const cfg = mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'M' })
     const line = makeLine(CUTY, [cfg])
     renderBuilder([line])
 
-    // Click the selection checkbox for the row
-    const checkboxes = screen.getAllByRole('checkbox')
-    if (checkboxes.length > 0) {
-      fireEvent.click(checkboxes[0])
-      // Action bar should appear with "Duplicate" button
-      expect(screen.getByText(/duplicate/i)).toBeInTheDocument()
-    }
+    fireEvent.click(screen.getByTitle('Select all'))
+
+    // Action bar shows the "N selected" count and a Duplicate button.
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    const dupBtns = screen.getAllByRole('button').filter(b =>
+      b.textContent?.toLowerCase().includes('duplicate')
+    )
+    expect(dupBtns.length).toBeGreaterThan(0)
   })
 
   it('"Duplicate" button duplicates selected configs via setLines', () => {
@@ -118,20 +122,15 @@ describe('BuilderPage — Multi-select action bar', () => {
     const setLines = jest.fn()
     renderBuilder([line], setLines)
 
-    // Click the row selection checkbox
-    const checkboxes = screen.getAllByRole('checkbox')
-    if (checkboxes.length > 0) {
-      fireEvent.click(checkboxes[0])
-      // Click Duplicate button in action bar
-      const dupBtn = screen.getAllByRole('button').find(b =>
-        b.textContent?.toLowerCase().includes('duplicate') && !b.textContent?.includes('variation')
-      )
-      if (dupBtn) {
-        fireEvent.click(dupBtn)
-        // setLines should have been called to add the copy
-        expect(setLines).toHaveBeenCalled()
-      }
-    }
+    fireEvent.click(screen.getByTitle('Select all'))
+
+    // The action bar's plain "Duplicate" button (not "...with variations").
+    const dupBtn = screen.getAllByRole('button').find(b =>
+      b.textContent?.toLowerCase().includes('duplicate') && !b.textContent?.toLowerCase().includes('variation')
+    )
+    expect(dupBtn).toBeTruthy()
+    fireEvent.click(dupBtn)
+    expect(setLines).toHaveBeenCalled()
   })
 })
 

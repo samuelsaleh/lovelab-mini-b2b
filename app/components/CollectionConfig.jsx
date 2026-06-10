@@ -999,7 +999,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     { field: 'closure', label: t('quote.closure'), show: hasClosure },
                     { field: 'qty', label: t('quote.qty'), show: true },
                   ].filter(r => r.show).map(({ field, label }) => (
-                    <div key={field} style={{
+                    <div key={field} data-field={field} style={{
                       display: 'flex', flexDirection: mobile ? 'column' : 'row',
                       alignItems: mobile ? 'flex-start' : 'center',
                       gap: mobile ? 6 : 12, marginBottom: mobile ? 14 : 10,
