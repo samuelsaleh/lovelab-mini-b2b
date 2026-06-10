@@ -53,11 +53,14 @@ export async function GET(request) {
       return q;
     };
 
-    // Paginated detail query
-    let detailQuery = applyFilters(
+    // Paginated detail query. `client_label` is added by the Phase 27 migration;
+    // tolerate it being absent so the agents page keeps working even if this
+    // code is deployed before the migration has run on a given environment.
+    const DETAIL_COLS_BASE = 'id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at, customer_paid_at';
+    const buildDetailQuery = (cols) => applyFilters(
       adminSupabase
         .from('agent_commissions')
-        .select('id, agent_id, document_id, type, order_total, commission_rate, commission_amount, status, paid_at, notes, created_at, customer_paid_at, client_label', { count: 'exact' })
+        .select(cols, { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(offset, offset + perPage - 1)
     );
@@ -69,8 +72,19 @@ export async function GET(request) {
         .select('commission_amount, status, type, customer_paid_at')
     );
 
-    const [{ data: commissions, error, count: totalCount }, { data: allForSummary }] =
-      await Promise.all([detailQuery, summaryQuery]);
+    let [detailRes, { data: allForSummary }] = await Promise.all([
+      buildDetailQuery(`${DETAIL_COLS_BASE}, client_label`),
+      summaryQuery,
+    ]);
+
+    // Forward-deploy safety net: if the client_label column hasn't been migrated
+    // yet, retry without it rather than 500-ing the entire commissions view.
+    if (detailRes.error && /client_label/.test(detailRes.error.message || '')) {
+      console.warn('[Commissions GET] client_label column missing — run Phase 27 migration. Falling back.');
+      detailRes = await buildDetailQuery(DETAIL_COLS_BASE);
+    }
+
+    const { data: commissions, error, count: totalCount } = detailRes;
 
     if (error) {
       console.error('[Commissions GET] Error:', error.message);
