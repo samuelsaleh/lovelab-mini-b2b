@@ -8,6 +8,7 @@ import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
 import AddBonusModal from '@/app/components/AddBonusModal';
+import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 
@@ -37,6 +38,7 @@ export default function AdminAgentDetailsPage() {
   const [editingPayment, setEditingPayment] = useState(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [showBonusModal, setShowBonusModal] = useState(false);
+  const [showQuickOrderModal, setShowQuickOrderModal] = useState(false);
   const [showNewClientBonusModal, setShowNewClientBonusModal] = useState(false);
 
   // Contract Q&A panel
@@ -538,6 +540,12 @@ export default function AdminAgentDetailsPage() {
                   </button>
                 )}
                 <button
+                  onClick={() => setShowQuickOrderModal(true)}
+                  style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+                >
+                  Add Quick Order
+                </button>
+                <button
                   onClick={() => setShowBonusModal(true)}
                   style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
                 >
@@ -748,7 +756,7 @@ export default function AdminAgentDetailsPage() {
                                 ? `New client bonus${row.document?.client_company ? ` — ${row.document.client_company}` : ''}`
                                 : row.type === 'bonus'
                                 ? 'Bonus'
-                                : (row.document?.client_company || row.document?.client_name || 'Order');
+                                : (row.document?.client_company || row.document?.client_name || row.client_label || 'Order');
                               // Resolve gross total: doc-derived rows pre-compute it; real
                               // commission rows get it from the joined document. Fallback
                               // to net total when shipping data isn't available.
@@ -1158,6 +1166,14 @@ export default function AdminAgentDetailsPage() {
                   </form>
                 </div>
               </div>
+            )}
+
+            {showQuickOrderModal && agent && (
+              <AddQuickOrderModal
+                agent={agent}
+                onClose={() => setShowQuickOrderModal(false)}
+                onSuccess={() => { setShowQuickOrderModal(false); load(); }}
+              />
             )}
 
             {showBonusModal && agent && (
