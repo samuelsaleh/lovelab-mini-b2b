@@ -370,6 +370,7 @@ export default function AdminAgentDetailsPage() {
   // instantly, then revalidates from the server. On failure, reverts and
   // surfaces the error.
   const [togglingCommissionId, setTogglingCommissionId] = useState(null);
+  const [savingInvoiceId, setSavingInvoiceId] = useState(null);
   const handleToggleCustomerPaid = useCallback(async (commissionId, nextPaid) => {
     if (!commissionId || togglingCommissionId === commissionId) return;
     setTogglingCommissionId(commissionId);
@@ -455,6 +456,39 @@ export default function AdminAgentDetailsPage() {
       setTogglingCommissionId(null);
     }
   }, [load, togglingCommissionId]);
+
+  // Save the manual invoice number an admin types against a commission row.
+  // Optimistic + fire-on-blur: writes the local row immediately so the field
+  // keeps what was typed, then persists. No full reload (would steal focus /
+  // reset other inputs) — KPIs don't depend on the invoice note.
+  const handleSaveInvoice = useCallback(async (commissionId, rawValue) => {
+    if (!commissionId || String(commissionId).startsWith('doc-')) return;
+    const value = (rawValue || '').trim();
+    const current = commissions.find((c) => c.id === commissionId);
+    // No-op when unchanged (avoids a write on every blur).
+    if (current && (current.invoice_number || '') === value) return;
+    setSavingInvoiceId(commissionId);
+    const prevRows = commissions;
+    setCommissions((prev) =>
+      prev.map((c) =>
+        c.id === commissionId ? { ...c, invoice_number: value || null } : c,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_number: value }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to save invoice number');
+    } catch (err) {
+      setCommissions(prevRows);
+      setError(err.message || 'Failed to save invoice number');
+    } finally {
+      setSavingInvoiceId(null);
+    }
+  }, [commissions]);
 
   const handleSaveOrg = async () => {
     if (!agent?.organization_id) return;
@@ -793,7 +827,7 @@ export default function AdminAgentDetailsPage() {
                           </div>
                         )}
                         <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
                               <th style={th}>Date</th>
@@ -802,6 +836,7 @@ export default function AdminAgentDetailsPage() {
                               <th style={{ ...th, textAlign: 'right' }} title="Order total minus shipping. Commission is a % of this number.">Net</th>
                               <th style={{ ...th, textAlign: 'right' }}>Rate</th>
                               <th style={{ ...th, textAlign: 'right' }}>Commission</th>
+                              <th style={th} title="Optional: type the matching invoice number so you can reconcile this commission against your accounting. Saves automatically.">Invoice #</th>
                               <th style={{ ...th, textAlign: 'center' }} title="Tick when the customer has paid this order. Only ticked rows are included in the next monthly payout.">Paid?</th>
                               <th style={{ ...th, textAlign: 'center' }}>Status</th>
                             </tr>
@@ -880,6 +915,22 @@ export default function AdminAgentDetailsPage() {
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt2(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt2(netTotal)}</td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
                                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.commission_amount)}</td>
+                                  <td style={td}>
+                                    {canDelete ? (
+                                      <input
+                                        type="text"
+                                        defaultValue={row.invoice_number || ''}
+                                        placeholder="—"
+                                        disabled={savingInvoiceId === row.id}
+                                        onBlur={(e) => handleSaveInvoice(row.id, e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                        title="Type the matching invoice number and click away (or press Enter) to save."
+                                        style={{ width: 100, fontSize: 11, padding: '3px 6px', border: `1px solid ${colors.lineGray}`, borderRadius: 4, fontFamily: 'inherit', color: colors.charcoal, background: savingInvoiceId === row.id ? '#f5f5f5' : '#fff' }}
+                                      />
+                                    ) : (
+                                      <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{row.invoice_number || '—'}</span>
+                                    )}
+                                  </td>
                                   <td style={{ ...td, textAlign: 'center' }}>
                                     {canToggle ? (
                                       <input

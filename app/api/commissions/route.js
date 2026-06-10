@@ -73,12 +73,18 @@ export async function GET(request) {
     );
 
     let [detailRes, { data: allForSummary }] = await Promise.all([
-      buildDetailQuery(`${DETAIL_COLS_BASE}, client_label`),
+      buildDetailQuery(`${DETAIL_COLS_BASE}, client_label, invoice_number`),
       summaryQuery,
     ]);
 
-    // Forward-deploy safety net: if the client_label column hasn't been migrated
-    // yet, retry without it rather than 500-ing the entire commissions view.
+    // Forward-deploy safety net: optional columns (client_label = Phase 27,
+    // invoice_number = Phase 28) may not be migrated yet on a given environment.
+    // Retry progressively so a missing column degrades gracefully instead of
+    // 500-ing the entire commissions view.
+    if (detailRes.error && /invoice_number/.test(detailRes.error.message || '')) {
+      console.warn('[Commissions GET] invoice_number column missing — run Phase 28 migration. Falling back.');
+      detailRes = await buildDetailQuery(`${DETAIL_COLS_BASE}, client_label`);
+    }
     if (detailRes.error && /client_label/.test(detailRes.error.message || '')) {
       console.warn('[Commissions GET] client_label column missing — run Phase 27 migration. Falling back.');
       detailRes = await buildDetailQuery(DETAIL_COLS_BASE);
