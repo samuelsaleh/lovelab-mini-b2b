@@ -944,7 +944,7 @@ export default function AdminAgentDetailsPage() {
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
-                                ? { label: 'Paid', bg: '#f3f4f6', fg: '#374151' }
+                                ? { label: 'Paid', bg: '#16a34a', fg: '#ffffff' }
                                 : isReported
                                 ? { label: 'Reported', bg: '#eef2ff', fg: '#3730a3' }
                                 : isCustomerPaid
