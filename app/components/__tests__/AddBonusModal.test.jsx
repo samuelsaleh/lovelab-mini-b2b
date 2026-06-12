@@ -48,7 +48,7 @@ describe('AddBonusModal', () => {
     const onSuccess = jest.fn();
     render(<AddBonusModal agent={agent} onClose={jest.fn()} onSuccess={onSuccess} />);
 
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+    fireEvent.change(screen.getByPlaceholderText('0,00'), { target: { value: '100' } });
     fireEvent.change(screen.getByPlaceholderText('Optional'), {
       target: { value: 'Q1 push' },
     });
@@ -77,7 +77,7 @@ describe('AddBonusModal', () => {
     const onSuccess = jest.fn();
     render(<AddBonusModal agent={agent} onClose={jest.fn()} onSuccess={onSuccess} />);
 
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50' } });
+    fireEvent.change(screen.getByPlaceholderText('0,00'), { target: { value: '50' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Add Bonus/i }));
       await flushPromises();
@@ -93,7 +93,7 @@ describe('AddBonusModal', () => {
     render(<AddBonusModal agent={agent} onClose={jest.fn()} onSuccess={jest.fn()} />);
     // Bypass the native min validation by submitting via the form button.
     // We assert no network call occurred for amount = 0.
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '0' } });
+    fireEvent.change(screen.getByPlaceholderText('0,00'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: /Add Bonus/i }));
     await flushPromises();
     // HTML5 min=0.01 prevents the form from submitting; fetch must not fire.

@@ -39,6 +39,8 @@ export default function AdminAgentDetailsPage() {
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState(null);
   const [docDerivedRows, setDocDerivedRows] = useState([]);
+  // Commission History status filter ('all' | awaiting | ready | reported | paid | cancelled)
+  const [commissionFilter, setCommissionFilter] = useState('all');
   const [organizationLedger, setOrganizationLedger] = useState(null);
   const [organizationMembers, setOrganizationMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState('');
@@ -49,6 +51,10 @@ export default function AdminAgentDetailsPage() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [savingPayment, setSavingPayment] = useState(false);
+  // Phase 29: Record Payment can settle a commission report + stamp an invoice.
+  const [reports, setReports] = useState([]);
+  const [paymentReportId, setPaymentReportId] = useState('');
+  const [paymentInvoice, setPaymentInvoice] = useState('');
   // When non-null, the Record Payment modal is in edit mode for this row.
   const [editingPayment, setEditingPayment] = useState(null);
   const [deletingPaymentId, setDeletingPaymentId] = useState(null);
@@ -82,14 +88,16 @@ export default function AdminAgentDetailsPage() {
     setLoading(true);
     setError('');
     try {
-      const [agentsRes, commRes, payRes] = await Promise.all([
+      const [agentsRes, commRes, payRes, reportsRes] = await Promise.all([
         fetch('/api/agents'),
         fetch(`/api/commissions?agent_id=${encodeURIComponent(agentId)}`),
-        fetch(`/api/agent-payments?agent_id=${encodeURIComponent(agentId)}`)
+        fetch(`/api/agent-payments?agent_id=${encodeURIComponent(agentId)}`),
+        fetch(`/api/commission-reports?agent_id=${encodeURIComponent(agentId)}&limit=24`)
       ]);
       const agentsJson = await agentsRes.json().catch(() => ({}));
       const commJson = await commRes.json().catch(() => ({}));
       const payJson = await payRes.json().catch(() => ({}));
+      const reportsJson = await reportsRes.json().catch(() => ({}));
 
       if (!agentsRes.ok) throw new Error(agentsJson?.error || 'Failed to load agent');
       if (!commRes.ok) throw new Error(commJson?.error || 'Failed to load commissions');
@@ -101,6 +109,7 @@ export default function AdminAgentDetailsPage() {
       setCommissions(commJson.commissions || []);
       setSummary(commJson.summary || null);
       setPayments(payJson.payments || []);
+      setReports(reportsRes.ok ? (reportsJson.reports || []) : []);
 
       if (found.organization_id) {
         const [ledgerRes, membersRes, orgRes] = await Promise.all([
@@ -262,6 +271,8 @@ export default function AdminAgentDetailsPage() {
     setEditingPayment(null);
     setPaymentAmount('');
     setPaymentNotes('');
+    setPaymentReportId('');
+    setPaymentInvoice('');
     setPaymentDate(new Date().toISOString().split('T')[0]);
     setShowPaymentModal(true);
   };
@@ -270,6 +281,8 @@ export default function AdminAgentDetailsPage() {
     setEditingPayment(row);
     setPaymentAmount(String(row.amount ?? ''));
     setPaymentNotes(row.notes || '');
+    setPaymentReportId(row.report_id || '');
+    setPaymentInvoice(row.invoice_number || '');
     // payment_date may be a full ISO timestamp; the date input wants YYYY-MM-DD
     const d = row.payment_date ? new Date(row.payment_date) : new Date();
     setPaymentDate(d.toISOString().split('T')[0]);
@@ -279,6 +292,29 @@ export default function AdminAgentDetailsPage() {
   const closePaymentModal = () => {
     setShowPaymentModal(false);
     setEditingPayment(null);
+  };
+
+  // Report ids that have already been settled by a recorded payment — so the
+  // dropdown can flag them and mom doesn't accidentally pay the same report twice.
+  const paidReportIds = useMemo(
+    () => new Set((payments || []).map((p) => p.report_id).filter(Boolean)),
+    [payments],
+  );
+
+  const reportsById = useMemo(() => {
+    const m = {};
+    for (const r of reports || []) m[r.id] = r;
+    return m;
+  }, [reports]);
+
+  // Picking a report in the modal prefills the amount with its total so mom
+  // just confirms. She can still override before saving.
+  const handleSelectPaymentReport = (reportId) => {
+    setPaymentReportId(reportId);
+    const r = (reports || []).find((x) => x.id === reportId);
+    if (r && r.total_due != null) {
+      setPaymentAmount(String(r.total_due).replace('.', ','));
+    }
   };
 
   const handleRecordPayment = async (e) => {
@@ -302,6 +338,8 @@ export default function AdminAgentDetailsPage() {
             amount: amt,
             notes: paymentNotes,
             payment_date: new Date(paymentDate).toISOString(),
+            report_id: paymentReportId || null,
+            invoice_number: paymentInvoice.trim() || null,
           };
       const res = await fetch(url, {
         method,
@@ -315,6 +353,8 @@ export default function AdminAgentDetailsPage() {
       closePaymentModal();
       setPaymentAmount('');
       setPaymentNotes('');
+      setPaymentReportId('');
+      setPaymentInvoice('');
       await load();
     } catch (err) {
       setError(err.message || 'Failed to save payment');
@@ -819,6 +859,17 @@ export default function AdminAgentDetailsPage() {
                     if (allRows.length === 0) return (
                       <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions yet.</div>
                     );
+                    // Counts per status for the filter chips; only render a chip
+                    // when it has at least one row (keeps the bar uncluttered).
+                    const counts = allRows.reduce((acc, r) => {
+                      const k = commissionStatusKey(r);
+                      acc[k] = (acc[k] || 0) + 1;
+                      return acc;
+                    }, {});
+                    const activeFilter = commissionFilter;
+                    const visibleRows = activeFilter === 'all'
+                      ? allRows
+                      : allRows.filter((r) => commissionStatusKey(r) === activeFilter);
                     return (
                       <>
                         {isDerived && (
@@ -826,8 +877,40 @@ export default function AdminAgentDetailsPage() {
                             Estimated from order documents — save an order to create real commission rows.
                           </div>
                         )}
+                        {/* Status filter chips */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 14px', borderBottom: `1px solid ${colors.lineGray}`, background: '#fcfbfe' }}>
+                          {COMMISSION_FILTERS.filter((f) => f.key === 'all' || counts[f.key] > 0).map((f) => {
+                            const count = f.key === 'all' ? allRows.length : (counts[f.key] || 0);
+                            const isActive = activeFilter === f.key;
+                            return (
+                              <button
+                                key={f.key}
+                                type="button"
+                                onClick={() => setCommissionFilter(f.key)}
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: '4px 10px',
+                                  borderRadius: 20,
+                                  cursor: 'pointer',
+                                  fontFamily: fonts.body,
+                                  border: `1px solid ${isActive ? colors.inkPlum : colors.lineGray}`,
+                                  background: isActive ? colors.inkPlum : '#fff',
+                                  color: isActive ? '#fff' : colors.charcoal,
+                                }}
+                              >
+                                {f.label} <span style={{ opacity: 0.7 }}>{count}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {visibleRows.length === 0 ? (
+                          <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>
+                            No {activeFilter} commissions.
+                          </div>
+                        ) : (
                         <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
                               <th style={th}>Date</th>
@@ -842,7 +925,7 @@ export default function AdminAgentDetailsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {allRows.map((row) => {
+                            {visibleRows.map((row) => {
                               const isBonus = row.type === 'new_client_bonus' || row.type === 'bonus';
                               const isCustomerPaid = !!row.customer_paid_at;
                               const isPaidOut = row.status === 'paid';
@@ -853,10 +936,17 @@ export default function AdminAgentDetailsPage() {
                               // Doc-derived placeholder rows aren't real DB rows so
                               // there's nothing to delete.
                               const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
+                              // Phase 29: a customer-paid row that's been pulled
+                              // into a report (report_id set) but not yet paid out
+                              // is "Reported" — sent to the agent, awaiting the
+                              // Record Payment step.
+                              const isReported = !isPaidOut && !isCancelled && isCustomerPaid && !!row.report_id;
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
                                 ? { label: 'Paid', bg: '#f3f4f6', fg: '#374151' }
+                                : isReported
+                                ? { label: 'Reported', bg: '#eef2ff', fg: '#3730a3' }
                                 : isCustomerPaid
                                 ? { label: 'Ready', bg: '#f0fdf4', fg: '#166534' }
                                 : { label: 'Awaiting', bg: '#fff7ed', fg: '#9a3412' };
@@ -982,8 +1072,9 @@ export default function AdminAgentDetailsPage() {
                           </tbody>
                         </table>
                         </div>
+                        )}
                         <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, background: '#fafafa' }}>
-                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order — those rows go into the next report. <strong style={{ color: colors.charcoal }}>Send report now</strong> marks them as paid to the agent; they will not appear again.
+                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>). <strong style={{ color: colors.charcoal }}>Send report now</strong> emails the agent and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>. Then <strong style={{ color: colors.charcoal }}>Record Payment</strong> (pick the report + invoice) settles them as <strong style={{ color: colors.charcoal }}>Paid</strong>.
                         </div>
                       </>
                     );
@@ -1003,6 +1094,8 @@ export default function AdminAgentDetailsPage() {
                         <tr style={{ background: '#faf8fc' }}>
                           <th style={th}>Date</th>
                           <th style={{ ...th, textAlign: 'right' }}>Amount</th>
+                          <th style={th}>Invoice #</th>
+                          <th style={th}>Report</th>
                           <th style={th}>Notes</th>
                           <th style={{ ...th, textAlign: 'right', width: 120 }}>Actions</th>
                         </tr>
@@ -1010,10 +1103,13 @@ export default function AdminAgentDetailsPage() {
                       <tbody>
                         {payments.map((row) => {
                           const isDeleting = deletingPaymentId === row.id;
+                          const linkedReport = row.report_id ? reportsById[row.report_id] : null;
                           return (
                             <tr key={row.id}>
                               <td style={td}>{new Date(row.payment_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                               <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.amount)}</td>
+                              <td style={{ ...td, fontSize: 12 }}>{row.invoice_number || '—'}</td>
+                              <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{linkedReport ? (linkedReport.period_label || linkedReport.period_key) : (row.report_id ? 'Report' : '—')}</td>
                               <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{row.notes || '—'}</td>
                               <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 <button
@@ -1295,6 +1391,31 @@ export default function AdminAgentDetailsPage() {
                     {editingPayment ? 'Edit Payment' : 'Record Payment'}
                   </h3>
                   <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {!editingPayment && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Commission report (optional)</label>
+                        <select
+                          value={paymentReportId}
+                          onChange={e => handleSelectPaymentReport(e.target.value)}
+                          style={inputStyle}
+                        >
+                          <option value="">— No report (plain payment) —</option>
+                          {reports.map((r) => {
+                            const isPaid = paidReportIds.has(r.id);
+                            return (
+                              <option key={r.id} value={r.id} disabled={isPaid}>
+                                {(r.period_label || r.period_key)} · {fmt2(r.total_due)}{isPaid ? ' (already paid)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {paymentReportId && (
+                          <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 4 }}>
+                            Saving marks every order in this report as paid and stamps the invoice number below on each.
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Date</label>
                       <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} required style={inputStyle} />
@@ -1303,6 +1424,12 @@ export default function AdminAgentDetailsPage() {
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Amount (€)</label>
                       <input type="text" inputMode="decimal" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0,00" required style={inputStyle} />
                     </div>
+                    {!editingPayment && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Invoice number (optional)</label>
+                        <input type="text" value={paymentInvoice} onChange={e => setPaymentInvoice(e.target.value)} placeholder="e.g. INV-2026-042" style={inputStyle} />
+                      </div>
+                    )}
                     <div>
                       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 4 }}>Notes (optional)</label>
                       <input type="text" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="e.g. bank transfer" style={inputStyle} />
@@ -1354,6 +1481,27 @@ export default function AdminAgentDetailsPage() {
     </div>
   );
 }
+
+// Classify a commission row into a single status bucket. Mirrors the status
+// pill logic so the filter chips and the pills always agree.
+function commissionStatusKey(row) {
+  if (!row) return 'awaiting';
+  if (row.status === 'cancelled') return 'cancelled';
+  if (row.status === 'paid') return 'paid';
+  const customerPaid = !!row.customer_paid_at;
+  if (customerPaid && row.report_id) return 'reported';
+  if (customerPaid) return 'ready';
+  return 'awaiting';
+}
+
+const COMMISSION_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'awaiting', label: 'Awaiting' },
+  { key: 'ready', label: 'Ready' },
+  { key: 'reported', label: 'Reported' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
 
 function Stat({ label, value, color }) {
   return (

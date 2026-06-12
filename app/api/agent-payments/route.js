@@ -2,6 +2,9 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { resolveAgentIds } from '@/app/api/_lib/access';
+import { settleReportPayment } from '@/lib/commissionPaidOut';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request) {
   try {
@@ -61,10 +64,13 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { agent_id, amount, notes, payment_date } = body;
+    const { agent_id, amount, notes, payment_date, report_id, invoice_number } = body;
 
     if (!agent_id || !amount) {
       return NextResponse.json({ error: 'Missing agent_id or amount' }, { status: 400 });
+    }
+    if (report_id != null && !UUID_REGEX.test(String(report_id))) {
+      return NextResponse.json({ error: 'report_id must be a UUID' }, { status: 400 });
     }
 
     const adminSupabase = createAdminClient();
@@ -78,6 +84,35 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
+    const cleanInvoice = invoice_number == null
+      ? null
+      : (String(invoice_number).trim().slice(0, 100) || null);
+
+    // Phase 29: when a report is selected, settle it — flip its still-pending
+    // commissions to paid and stamp the matched invoice on each — before we
+    // record the payout row that links back to that report.
+    let settled = null;
+    if (report_id) {
+      const { data: report, error: reportErr } = await adminSupabase
+        .from('commission_reports')
+        .select('id, agent_id, snapshot_data')
+        .eq('id', report_id)
+        .maybeSingle();
+      if (reportErr) {
+        return NextResponse.json({ error: reportErr.message }, { status: 500 });
+      }
+      if (!report) {
+        return NextResponse.json({ error: 'Commission report not found' }, { status: 404 });
+      }
+      if (report.agent_id !== agent_id) {
+        return NextResponse.json({ error: 'Report does not belong to this agent' }, { status: 400 });
+      }
+      settled = await settleReportPayment(adminSupabase, {
+        report,
+        invoiceNumber: cleanInvoice,
+      });
+    }
+
     const { data: payment, error } = await adminSupabase
       .from('agent_payments')
       .insert({
@@ -85,13 +120,15 @@ export async function POST(request) {
         amount: Number(amount),
         notes: notes?.trim() || null,
         payment_date: payment_date || new Date().toISOString(),
+        report_id: report_id || null,
+        invoice_number: cleanInvoice,
         created_by: user.id
       })
       .select()
       .single();
 
     if (error) throw error;
-    return NextResponse.json({ payment });
+    return NextResponse.json({ payment, settled });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
