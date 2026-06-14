@@ -4,15 +4,15 @@
  * /api/commissions/[id]/revert-paid  PATCH
  *
  * Admin-only "undo a payout": reverts a PAID commission back to 'pending'
- * (clearing paid_at, keeping customer_paid_at) so it returns to "Ready to pay"
- * and re-enters the next payout. Includes the cascade onto the linked
+ * (clearing paid_at/report_id, keeping customer_paid_at) so it returns to
+ * "Ready to pay" and re-enters the next payout. Includes the cascade onto the linked
  * type='new_client_bonus' row.
  *
  * Coverage:
  *   ✓ 401 when no session
  *   ✓ 403 when caller is not admin
  *   ✓ 400 when commission id is malformed (not a UUID)
- *   ✓ 200 reverts status→pending, paid_at→null, scoped to status='paid'
+ *   ✓ 200 reverts status→pending, paid_at/report_id→null, scoped to status='paid'
  *   ✓ customer_paid_at is preserved (not touched) in the update payload
  *   ✓ 404 when no paid row matches (not found / not paid)
  *   ✓ Cascade: order with document_id reverts the linked bonus too
@@ -152,7 +152,7 @@ describe('PATCH /api/commissions/[id]/revert-paid', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.commission.id).toBe(VALID_ID);
-    expect(primaryUpdatePayload).toEqual({ status: 'pending', paid_at: null });
+    expect(primaryUpdatePayload).toEqual({ status: 'pending', paid_at: null, report_id: null });
     // Only flips rows currently paid, addressed by id.
     expect(primaryUpdateFilters).toEqual({ id: VALID_ID, status: 'paid' });
   });
@@ -180,7 +180,7 @@ describe('PATCH /api/commissions/[id]/revert-paid', () => {
     const res = await PATCH(makeRequest(), { params: { id: VALID_ID } });
     expect(res.status).toBe(200);
     expect(cascadeCalled).toBe(true);
-    expect(cascadeUpdatePayload).toEqual({ status: 'pending', paid_at: null });
+    expect(cascadeUpdatePayload).toEqual({ status: 'pending', paid_at: null, report_id: null });
     expect(cascadeUpdateFilters).toEqual({
       agent_id: 'agent-1',
       document_id: 'doc-1',

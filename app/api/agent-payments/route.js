@@ -66,8 +66,12 @@ export async function POST(request) {
     const body = await request.json();
     const { agent_id, amount, notes, payment_date, report_id, invoice_number } = body;
 
-    if (!agent_id || !amount) {
+    if (!agent_id || amount === undefined || amount === null || amount === '') {
       return NextResponse.json({ error: 'Missing agent_id or amount' }, { status: 400 });
+    }
+    const paymentAmount = Number(amount);
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
     }
     if (report_id != null && !UUID_REGEX.test(String(report_id))) {
       return NextResponse.json({ error: 'report_id must be a UUID' }, { status: 400 });
@@ -117,7 +121,7 @@ export async function POST(request) {
       .from('agent_payments')
       .insert({
         agent_id,
-        amount: Number(amount),
+        amount: paymentAmount,
         notes: notes?.trim() || null,
         payment_date: payment_date || new Date().toISOString(),
         report_id: report_id || null,

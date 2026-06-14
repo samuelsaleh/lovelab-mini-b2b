@@ -1,15 +1,13 @@
 /**
  * DELETE /api/commissions/[id]
  *
- * Permanently removes a single commission row from the agent's history —
- * any type (quick order, ad-hoc bonus, real order commission, new-client
- * bonus) and any status (including paid out). Used to clean up entries that
- * are no longer relevant.
+ * Permanently removes a manually-entered commission row from the agent's
+ * history: quick orders (type='order', document_id=NULL) and ad-hoc bonuses
+ * (type='bonus', document_id=NULL) that have not been reported or paid out.
  *
- * Note: this only removes the commission row. For an order-linked commission
- * the underlying order document is left untouched (re-saving that order could
- * recreate the commission). Deleting a paid-out row does NOT touch the
- * agent_payments ledger or any commission_reports history.
+ * Order-linked, reported, and paid rows are protected because deleting them
+ * would sever the commission/report/payment audit trail and can allow the same
+ * order to be settled again after a re-save.
  *
  * Access: admin only.
  */
@@ -119,10 +117,41 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Invalid commission id' }, { status: 400 });
     }
 
-    const { data: deleted, error: delErr } = await adminSupabase
+    const { data: commission, error: lookupErr } = await adminSupabase
+      .from('agent_commissions')
+      .select('id, status, report_id, document_id, type')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupErr) {
+      console.error('[Commissions DELETE] Lookup error:', lookupErr.message);
+      return NextResponse.json({ error: 'Failed to load commission' }, { status: 500 });
+    }
+    if (!commission) {
+      return NextResponse.json({ error: 'Commission not found' }, { status: 404 });
+    }
+
+    const isManualBonus = commission.type === 'bonus' && !commission.document_id;
+    const isManualQuickOrder = commission.type === 'order' && !commission.document_id;
+    if (commission.status === 'paid' || commission.report_id || (!isManualBonus && !isManualQuickOrder)) {
+      return NextResponse.json(
+        { error: 'Only unpaid, unreported manual commission entries can be deleted' },
+        { status: 409 },
+      );
+    }
+
+    let deleteQuery = adminSupabase
       .from('agent_commissions')
       .delete()
       .eq('id', id)
+      .neq('status', 'paid')
+      .is('report_id', null);
+
+    deleteQuery = isManualBonus
+      ? deleteQuery.eq('type', 'bonus').is('document_id', null)
+      : deleteQuery.eq('type', 'order').is('document_id', null);
+
+    const { data: deleted, error: delErr } = await deleteQuery
       .select('id')
       .maybeSingle();
 
@@ -131,7 +160,10 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Failed to delete commission' }, { status: 500 });
     }
     if (!deleted) {
-      return NextResponse.json({ error: 'Commission not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Commission changed and is no longer safe to delete' },
+        { status: 409 },
+      );
     }
 
     return NextResponse.json({ success: true, id });

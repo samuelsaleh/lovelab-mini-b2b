@@ -1,10 +1,9 @@
 /**
  * PATCH /api/commissions/[id]/revert-paid
  *
- * Reverts a commission that was marked PAID (status='paid', set when a report
- * is sent via lib/commissionPaidOut.js) back to 'pending' and clears paid_at.
- * `customer_paid_at` is intentionally preserved, so the row returns to the
- * "Ready to pay" bucket and re-enters the next monthly payout.
+ * Reverts a commission that was marked PAID back to 'pending' and clears the
+ * payout/report linkage. `customer_paid_at` is intentionally preserved, so the
+ * row returns to the "Ready to pay" bucket and re-enters the next payout.
  *
  * Use case: an admin marked a payout as done ("Send report now") but didn't
  * actually pay the agent — this puts the commission back in the pool.
@@ -49,13 +48,14 @@ export async function PATCH(request, { params }) {
     }
 
     // Only revert rows that are currently paid out. Keep customer_paid_at so the
-    // row lands back in "Ready to pay" rather than "Awaiting customer".
+    // row lands back in "Ready to pay" rather than "Awaiting customer"; clear
+    // report_id so it is no longer classified as "Reported" and skipped forever.
     const { data: updated, error } = await adminSupabase
       .from('agent_commissions')
-      .update({ status: 'pending', paid_at: null })
+      .update({ status: 'pending', paid_at: null, report_id: null })
       .eq('id', id)
       .eq('status', 'paid')
-      .select('id, status, paid_at, customer_paid_at, agent_id, document_id, type')
+      .select('id, status, paid_at, customer_paid_at, report_id, agent_id, document_id, type')
       .maybeSingle();
 
     if (error) {
@@ -76,7 +76,7 @@ export async function PATCH(request, { params }) {
     if (updated.type === 'order' && updated.document_id && updated.agent_id) {
       const { data: cascadedRows, error: cascadeErr } = await adminSupabase
         .from('agent_commissions')
-        .update({ status: 'pending', paid_at: null })
+        .update({ status: 'pending', paid_at: null, report_id: null })
         .eq('agent_id', updated.agent_id)
         .eq('document_id', updated.document_id)
         .eq('type', 'new_client_bonus')
