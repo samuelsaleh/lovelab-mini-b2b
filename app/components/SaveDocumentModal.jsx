@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { generatePDF, formatDocumentFilename } from '@/lib/pdf';
+import { withTimeout } from '@/lib/withTimeout';
 import { colors, fonts } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { useI18n } from '@/lib/i18n';
@@ -18,6 +19,14 @@ const EMAIL_LANGUAGES = [
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Hard upper bounds so the Save modal can never hang forever. On some mobile
+// browsers html2canvas stalls indefinitely (low memory / backgrounded tab /
+// in-app webviews); without these the spinner spins with no error and nothing
+// is ever uploaded or saved. Generous enough for the largest real orders
+// (~200 rows / ~20 pages still render well under these).
+const PDF_GEN_TIMEOUT_MS = 90000; // 90s per generation pass
+const SAVE_FETCH_TIMEOUT_MS = 45000; // 45s for the final document-save request
 
 // Safe JSON parser that gracefully handles non-JSON server responses.
 // When the API returns plain text like "Internal Server Error", we surface a
@@ -302,11 +311,17 @@ export default function SaveDocumentModal({
 
         for (let i = 0; i < profiles.length; i++) {
           const cfg = profiles[i];
-          pdfBlob = await generatePDF(elementRef.current, filename, {
-            orientation: 'landscape',
-            scale: cfg.scale,
-            quality: cfg.quality,
-          });
+          // Bound each generation pass so a stalled html2canvas render can't
+          // hang the modal forever — surfaces a clear, actionable error instead.
+          pdfBlob = await withTimeout(
+            generatePDF(elementRef.current, filename, {
+              orientation: 'landscape',
+              scale: cfg.scale,
+              quality: cfg.quality,
+            }),
+            PDF_GEN_TIMEOUT_MS,
+            'PDF generation timed out on this device. Try a different browser (open Chrome or Safari directly, not from inside another app), or save from a computer.',
+          );
 
           if (pdfBlob.size <= MAX_UPLOAD_BYTES) break;
         }
@@ -413,13 +428,20 @@ export default function SaveDocumentModal({
           ? (consignmentData?.recipient_name || consignmentData?.recipient_company || 'Consignment Order')
           : (clientName || 'Unknown');
 
-      // Save document metadata (update if re-editing, create if new)
+      // Save document metadata (update if re-editing, create if new).
+      // Bounded with an AbortController so a stalled server response can't
+      // leave the modal spinning forever — it surfaces a clear error instead.
       const isUpdate = !!editingDocumentId;
       const apiUrl = isUpdate ? `/api/documents/${editingDocumentId}` : '/api/documents';
-      const res = await fetch(apiUrl, {
-        method: isUpdate ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const saveController = new AbortController();
+      const saveTimeoutId = setTimeout(() => saveController.abort(), SAVE_FETCH_TIMEOUT_MS);
+      let res;
+      try {
+        res = await fetch(apiUrl, {
+          method: isUpdate ? 'PUT' : 'POST',
+          signal: saveController.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
           event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
           client_name: resolvedClientName,
           client_company: clientCompany || null,
@@ -439,8 +461,16 @@ export default function SaveDocumentModal({
           consignment_agent_id: orderChannel === 'consignment' && consignmentData?.recipient_type === 'agent'
             ? (consignmentData?.agent_id || null)
             : null,
-        }),
-      });
+          }),
+        });
+      } catch (saveErr) {
+        if (saveErr?.name === 'AbortError') {
+          throw new Error('Saving the order timed out — check your internet connection and try again.');
+        }
+        throw saveErr;
+      } finally {
+        clearTimeout(saveTimeoutId);
+      }
 
       const data = await safeJson(res);
       if (!res.ok || data.error) {
