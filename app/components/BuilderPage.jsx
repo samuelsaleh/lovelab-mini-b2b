@@ -379,6 +379,49 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
+  // Horizontal pack carousel: the row scrolls sideways. Trackpad/touch users
+  // can swipe, but mouse-only users have no affordance — so we add prev/next
+  // arrows + mouse-wheel-to-horizontal scrolling. These track whether more
+  // packs exist off-screen in each direction so we can dim the dead arrow.
+  const packsScrollRef = useRef(null)
+  const [packArrows, setPackArrows] = useState({ left: false, right: false })
+  const updatePackArrows = useCallback(() => {
+    const el = packsScrollRef.current
+    if (!el) return
+    const { scrollLeft, scrollWidth, clientWidth } = el
+    setPackArrows({
+      left: scrollLeft > 4,
+      right: scrollLeft + clientWidth < scrollWidth - 4,
+    })
+  }, [])
+  const scrollPacks = useCallback((direction) => {
+    const el = packsScrollRef.current
+    if (!el) return
+    // Jump by ~80% of the visible width so a full set of cards comes into view.
+    el.scrollBy({ left: direction * Math.max(220, el.clientWidth * 0.8), behavior: 'smooth' })
+  }, [])
+  const handlePacksWheel = useCallback((e) => {
+    const el = packsScrollRef.current
+    if (!el) return
+    // Translate a vertical mouse wheel into horizontal scroll (mice only emit
+    // deltaY). Trackpads already send deltaX, so leave those alone.
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      el.scrollLeft += e.deltaY
+    }
+  }, [])
+  // Recompute arrow visibility when the panel opens (measure a couple of times
+  // in case packs are still loading) and whenever the window resizes.
+  useEffect(() => {
+    if (!showPacks) return
+    const t1 = setTimeout(updatePackArrows, 50)
+    const t2 = setTimeout(updatePackArrows, 350)
+    window.addEventListener('resize', updatePackArrows)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      window.removeEventListener('resize', updatePackArrows)
+    }
+  }, [showPacks, updatePackArrows])
   // Every pack the caller can see, fetched from /api/packs: the global/seed
   // standard packs (Pack 1..4) plus the agent's own private packs. RLS scopes
   // the response. We render these directly so edits persist; the hardcoded
@@ -1135,7 +1178,45 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               </button>
 
               {showPacks && (
-                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'none' }}>
+                <div style={{ position: 'relative' }}>
+                {/* Prev arrow — for mouse users who can't swipe the row */}
+                {packArrows.left && (
+                  <button
+                    type="button"
+                    onClick={() => scrollPacks(-1)}
+                    aria-label="Show previous packs"
+                    style={{
+                      position: 'absolute', left: -6, top: '50%', transform: 'translateY(-50%)',
+                      zIndex: 5, width: 34, height: 34, borderRadius: '50%',
+                      border: '1px solid #e4dded', background: '#fff', color: colors.inkPlum,
+                      fontSize: 18, lineHeight: 1, cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(93,58,94,0.18)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >‹</button>
+                )}
+                {/* Next arrow */}
+                {packArrows.right && (
+                  <button
+                    type="button"
+                    onClick={() => scrollPacks(1)}
+                    aria-label="Show more packs"
+                    style={{
+                      position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)',
+                      zIndex: 5, width: 34, height: 34, borderRadius: '50%',
+                      border: '1px solid #e4dded', background: '#fff', color: colors.inkPlum,
+                      fontSize: 18, lineHeight: 1, cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(93,58,94,0.18)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >›</button>
+                )}
+                <div
+                  ref={packsScrollRef}
+                  onScroll={updatePackArrows}
+                  onWheel={handlePacksWheel}
+                  style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}
+                >
                   <button
                     type="button"
                     onClick={() => { if (hasBuild) { setEditingPack(null); setShowPackBuilder(true) } }}
@@ -1253,6 +1334,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </div>
                     )
                   })}
+                </div>
                 </div>
               )}
             </div>
