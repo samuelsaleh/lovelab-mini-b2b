@@ -1,16 +1,16 @@
 /**
  * PATCH /api/commissions/[id]/revert-paid
  *
- * Reverts a commission that was marked PAID (status='paid', set when a report
- * is sent via lib/commissionPaidOut.js) back to 'pending' and clears paid_at.
- * `customer_paid_at` is intentionally preserved, so the row returns to the
- * "Ready to pay" bucket and re-enters the next monthly payout.
+ * Reverts a legacy commission that was marked PAID back to 'pending' and clears
+ * paid_at. `customer_paid_at` is intentionally preserved, so the row returns to
+ * the "Ready to pay" bucket and re-enters the next monthly payout.
  *
  * Use case: an admin marked a payout as done ("Send report now") but didn't
  * actually pay the agent — this puts the commission back in the pool.
  *
- * Note: this does NOT delete the historical commission_reports row or any
- * agent_payments ledger entry; it only re-opens the commission for payout.
+ * Report-linked paid commissions are refused here. Re-opening one row from a
+ * settled report without reversing its agent_payments ledger row would corrupt
+ * payout reconciliation.
  *
  * Access: admin only.
  */
@@ -48,8 +48,28 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Invalid commission id' }, { status: 400 });
     }
 
-    // Only revert rows that are currently paid out. Keep customer_paid_at so the
-    // row lands back in "Ready to pay" rather than "Awaiting customer".
+    const { data: commission, error: lookupErr } = await adminSupabase
+      .from('agent_commissions')
+      .select('id, status, report_id, customer_paid_at, agent_id, document_id, type')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupErr) {
+      console.error('[revert-paid PATCH] Lookup error:', lookupErr.message);
+      return NextResponse.json({ error: 'Failed to load commission' }, { status: 500 });
+    }
+    if (!commission || commission.status !== 'paid') {
+      return NextResponse.json({ error: 'Commission not found or not paid' }, { status: 404 });
+    }
+    if (commission.report_id) {
+      return NextResponse.json(
+        { error: 'Report-settled commissions cannot be individually undone' },
+        { status: 409 },
+      );
+    }
+
+    // Only revert legacy rows that are currently paid out. Keep customer_paid_at
+    // so the row lands back in "Ready to pay" rather than "Awaiting customer".
     const { data: updated, error } = await adminSupabase
       .from('agent_commissions')
       .update({ status: 'pending', paid_at: null })

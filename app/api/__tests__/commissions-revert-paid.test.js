@@ -3,16 +3,17 @@
  *
  * /api/commissions/[id]/revert-paid  PATCH
  *
- * Admin-only "undo a payout": reverts a PAID commission back to 'pending'
- * (clearing paid_at, keeping customer_paid_at) so it returns to "Ready to pay"
- * and re-enters the next payout. Includes the cascade onto the linked
- * type='new_client_bonus' row.
+ * Admin-only "undo a payout" for legacy paid rows: reverts a PAID commission
+ * back to 'pending' (clearing paid_at, keeping customer_paid_at) so it returns
+ * to "Ready to pay" and re-enters the next payout. Report-linked paid rows are
+ * refused because one-row undo would corrupt report/payment reconciliation.
  *
  * Coverage:
  *   ✓ 401 when no session
  *   ✓ 403 when caller is not admin
  *   ✓ 400 when commission id is malformed (not a UUID)
  *   ✓ 200 reverts status→pending, paid_at→null, scoped to status='paid'
+ *   ✓ 409 when the paid row belongs to a report payment
  *   ✓ customer_paid_at is preserved (not touched) in the update payload
  *   ✓ 404 when no paid row matches (not found / not paid)
  *   ✓ Cascade: order with document_id reverts the linked bonus too
@@ -24,6 +25,9 @@
 
 let currentUser = { id: 'admin-user' };
 let currentRole = 'admin';
+
+let lookupRow = null;
+let lookupError = null;
 
 // First update (the row addressed by `id`)
 let primaryUpdatePayload = null;
@@ -54,6 +58,14 @@ const mockAdminSupabase = {
     if (table === 'agent_commissions') {
       const isPrimary = primaryUpdatePayload === null && !cascadeCalled;
       return {
+        select: jest.fn(() => {
+          const chain = {};
+          chain.eq = jest.fn(() => chain);
+          chain.maybeSingle = jest.fn(() =>
+            Promise.resolve({ data: lookupError ? null : lookupRow, error: lookupError }),
+          );
+          return chain;
+        }),
         update: jest.fn((payload) => {
           if (isPrimary) {
             primaryUpdatePayload = payload;
@@ -108,6 +120,16 @@ function makeRequest() {
 beforeEach(() => {
   currentUser = { id: 'admin-user' };
   currentRole = 'admin';
+  lookupRow = {
+    id: VALID_ID,
+    status: 'paid',
+    report_id: null,
+    customer_paid_at: '2026-04-01T10:00:00.000Z',
+    agent_id: 'agent-1',
+    document_id: 'doc-1',
+    type: 'order',
+  };
+  lookupError = null;
   primaryUpdatePayload = null;
   primaryUpdateFilters = null;
   primaryReturnsRow = {
@@ -166,11 +188,21 @@ describe('PATCH /api/commissions/[id]/revert-paid', () => {
   });
 
   test('404 when no paid row matches', async () => {
-    primaryReturnsRow = null;
+    lookupRow = { ...lookupRow, status: 'pending' };
     const res = await PATCH(makeRequest(), { params: { id: VALID_ID } });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toMatch(/not found or not paid/i);
+    expect(primaryUpdatePayload).toBeNull();
+  });
+
+  test('409 when a paid row is already linked to a report payment', async () => {
+    lookupRow = { ...lookupRow, report_id: 'report-1' };
+    const res = await PATCH(makeRequest(), { params: { id: VALID_ID } });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/report-settled/i);
+    expect(primaryUpdatePayload).toBeNull();
   });
 
   // ── Cascade tests ──────────────────────────────────────────────────

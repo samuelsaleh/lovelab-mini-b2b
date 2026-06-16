@@ -22,6 +22,9 @@ let reportRow = null;
 let acQueue = [];
 let acChains = [];
 let insertedPaymentPayload = null;
+let existingReportPayment = null;
+let paymentInsertError = null;
+let paymentDeleteFilters = null;
 
 const AGENT = '11111111-1111-1111-1111-111111111111';
 const REPORT = '22222222-2222-2222-2222-222222222222';
@@ -58,11 +61,24 @@ const mockAdminSupabase = {
     }
     if (table === 'agent_payments') {
       return {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn(() => Promise.resolve({ data: existingReportPayment, error: null })),
         insert: jest.fn((payload) => {
           insertedPaymentPayload = payload;
           const chain = {};
           chain.select = jest.fn().mockReturnValue(chain);
-          chain.single = jest.fn(() => Promise.resolve({ data: { id: 'pay-1', ...payload }, error: null }));
+          chain.single = jest.fn(() => Promise.resolve({
+            data: paymentInsertError ? null : { id: 'pay-1', ...payload },
+            error: paymentInsertError,
+          }));
+          return chain;
+        }),
+        delete: jest.fn(() => {
+          paymentDeleteFilters = {};
+          const chain = {};
+          chain.eq = jest.fn((col, val) => { paymentDeleteFilters[col] = val; return chain; });
+          chain.then = (resolve) => resolve({ data: null, error: null });
           return chain;
         }),
       };
@@ -102,10 +118,13 @@ beforeEach(() => {
   currentUser = { id: 'admin-user' };
   currentRole = 'admin';
   agentRow = { id: AGENT, is_agent: true, agent_deleted_at: null };
-  reportRow = { id: REPORT, agent_id: AGENT, snapshot_data: {} };
+  reportRow = { id: REPORT, agent_id: AGENT, total_due: 1500, snapshot_data: {} };
   acQueue = [];
   acChains = [];
   insertedPaymentPayload = null;
+  existingReportPayment = null;
+  paymentInsertError = null;
+  paymentDeleteFilters = null;
   jest.clearAllMocks();
 });
 
@@ -154,6 +173,23 @@ describe('POST /api/agent-payments', () => {
     expect(body.error).toMatch(/does not belong/i);
   });
 
+  test('400 when report payment amount does not match total_due', async () => {
+    const res = await POST(makeRequest({ agent_id: AGENT, amount: 1, report_id: REPORT }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/match the selected report total/i);
+    expect(insertedPaymentPayload).toBeNull();
+  });
+
+  test('409 when the selected report already has a payment', async () => {
+    existingReportPayment = { id: 'existing-pay' };
+    const res = await POST(makeRequest({ agent_id: AGENT, amount: 1500, report_id: REPORT }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/already has a recorded payment/i);
+    expect(insertedPaymentPayload).toBeNull();
+  });
+
   test('report payment settles commissions + stamps invoice + links the payout', async () => {
     acQueue = [
       { data: [{ id: 'c1' }, { id: 'c2' }], error: null }, // resolution by report_id
@@ -179,5 +215,18 @@ describe('POST /api/agent-payments', () => {
     expect(insertedPaymentPayload.report_id).toBe(REPORT);
     expect(insertedPaymentPayload.invoice_number).toBe('INV-42');
     expect(insertedPaymentPayload.amount).toBe(1500);
+  });
+
+  test('409 rolls back payment insert when the report has no unsettled commissions', async () => {
+    acQueue = [
+      { data: [], error: null }, // no linked pending rows
+      { data: [], error: null }, // no legacy snapshot rows either
+    ];
+    const res = await POST(makeRequest({ agent_id: AGENT, amount: 1500, report_id: REPORT }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/no unsettled commissions/i);
+    expect(insertedPaymentPayload.report_id).toBe(REPORT);
+    expect(paymentDeleteFilters).toEqual({ id: 'pay-1' });
   });
 });
