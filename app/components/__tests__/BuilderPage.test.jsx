@@ -308,18 +308,20 @@ describe('BuilderPage — PACK 6-RB-SYN', () => {
     renderBuilder([], setLines)
     await openFallbackPacks()
 
-    // Pick the "Use this pack" button that belongs to the Pack 6 card.
+    // Pick the "+ Add pack" button that belongs to the Pack 6 card.
     // Navigate from the label up to its card (label -> header div -> card div),
     // then scope the button query to that card.
     const labelEl = screen.getByText('PACK 6-RB-SYN')
     const pack6Card = labelEl.parentElement.parentElement
-    const pack6Btn = within(pack6Card).getByText('Use this pack')
+    const pack6Btn = within(pack6Card).getByText('+ Add pack')
     expect(pack6Btn).toBeTruthy()
     act(() => { fireEvent.click(pack6Btn) })
 
     expect(setLines).toHaveBeenCalled()
-    // applyPack calls setLines(newLines) with a plain array (not an updater).
-    const newLines = setLines.mock.calls[setLines.mock.calls.length - 1][0]
+    // Packs now apply additively (merge:true), so setLines is called with a
+    // functional updater. Invoke it with an empty build to get the new lines.
+    const updater = setLines.mock.calls[setLines.mock.calls.length - 1][0]
+    const newLines = typeof updater === 'function' ? updater([]) : updater
     expect(Array.isArray(newLines)).toBe(true)
 
     const cutyLine = newLines.find(l => l.collectionId === 'CUTY')
@@ -334,5 +336,33 @@ describe('BuilderPage — PACK 6-RB-SYN', () => {
     expect(m3Line.colorConfigs.every(c => c.certType === 'igi')).toBe(true)
     // Royal Blue cord throughout.
     expect(cutyLine.colorConfigs.every(c => c.colorName === 'Royal Blue')).toBe(true)
+  })
+
+  it('adds a pack to the existing build instead of replacing it (multiple packs per order)', async () => {
+    const setLines = jest.fn()
+    renderBuilder([], setLines)
+    await openFallbackPacks()
+
+    const labelEl = screen.getByText('PACK 6-RB-SYN')
+    const pack6Card = labelEl.parentElement.parentElement
+    const pack6Btn = within(pack6Card).getByText('+ Add pack')
+    act(() => { fireEvent.click(pack6Btn) })
+
+    const updater = setLines.mock.calls[setLines.mock.calls.length - 1][0]
+    expect(typeof updater).toBe('function')
+
+    // 1) A different collection already in the order is preserved (not wiped).
+    const prevDifferent = [{ uid: 'pre', collectionId: 'SSF', colorConfigs: [{ id: 'keep' }], expanded: false }]
+    const merged = updater(prevDifferent)
+    expect(merged.find(l => l.collectionId === 'SSF')).toBeTruthy() // kept
+    expect(merged.find(l => l.collectionId === 'CUTY')).toBeTruthy() // added from pack
+    expect(merged.find(l => l.collectionId === 'CUBIX')).toBeTruthy()
+
+    // 2) The SAME collection already in the order gets the pack's colours appended.
+    const prevSame = [{ uid: 'cuty1', collectionId: 'CUTY', colorConfigs: [{ id: 'existing' }], expanded: false }]
+    const mergedSame = updater(prevSame)
+    const cutyLine = mergedSame.find(l => l.collectionId === 'CUTY')
+    expect(cutyLine.colorConfigs[0].id).toBe('existing') // original kept first
+    expect(cutyLine.colorConfigs.length).toBeGreaterThan(1) // pack colours appended
   })
 })

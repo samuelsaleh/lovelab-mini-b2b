@@ -379,6 +379,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
+  // Packs the user has added to the current order (several can be combined).
+  // Drives the "✓ Added" affordance on each pack card.
+  const [addedPackIds, setAddedPackIds] = useState([])
   // Horizontal pack carousel: the row scrolls sideways. Trackpad/touch users
   // can swipe, but mouse-only users have no affordance — so we add prev/next
   // arrows + mouse-wheel-to-horizontal scrolling. These track whether more
@@ -907,8 +910,44 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   }, [showAiChat])
 
 
-  // Apply a standard pack (fully replaces current lines with editable prefilled configs)
-  const applyPack = useCallback((pack) => {
+  // Apply a standard pack as editable prefilled configs.
+  //   merge:false (default) → replace the current build (used when editing a pack).
+  //   merge:true            → ADD this pack's items to the current build so
+  //                           several packs can be combined into one order.
+  //                           Items of a collection already in the build are
+  //                           appended to that collection's line.
+  const applyPack = useCallback((pack, { merge = false } = {}) => {
+    // Fold freshly-built pack lines into the existing build (or replace it).
+    const commitLines = (newLines) => {
+      if (newLines.length === 0) return
+      if (merge) {
+        setLines(prev => {
+          const byId = new Map(prev.map(l => [l.collectionId, l]))
+          for (const nl of newLines) {
+            const existing = byId.get(nl.collectionId)
+            if (existing) {
+              // Same collection already in the order — append its colours.
+              byId.set(nl.collectionId, {
+                ...existing,
+                colorConfigs: [...existing.colorConfigs, ...nl.colorConfigs],
+                expanded: true,
+              })
+            } else {
+              byId.set(nl.collectionId, nl)
+            }
+          }
+          return Array.from(byId.values())
+        })
+        setSelectedCollections(prev =>
+          Array.from(new Set([...prev, ...newLines.map(l => l.collectionId)])),
+        )
+      } else {
+        setLines(newLines)
+        setSelectedCollections(newLines.map(l => l.collectionId))
+      }
+      setStep('configure')
+    }
+
     if (pack.formRows) {
       const byCollection = new Map()
       for (const row of pack.formRows) {
@@ -970,11 +1009,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         })
         return { uid: uniqueId(), collectionId: colId, colorConfigs, expanded: true }
       })
-      if (newLines.length > 0) {
-        setLines(newLines)
-        setSelectedCollections(newLines.map(l => l.collectionId))
-        setStep('configure')
-      }
+      commitLines(newLines)
       return
     }
 
@@ -996,11 +1031,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       return { uid: uniqueId(), collectionId: packLine.collectionId, colorConfigs: configs, expanded: true }
     }).filter(Boolean)
 
-    if (newLines.length > 0) {
-      setLines(newLines)
-      setSelectedCollections(newLines.map(l => l.collectionId))
-      setStep('configure')
-    }
+    commitLines(newLines)
   }, [setLines, setSelectedCollections])
 
   // Begin editing an existing pack: load its contents into the builder so the
@@ -1297,20 +1328,30 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         </div>
                       )}
                       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+                        {(() => {
+                          const added = addedPackIds.includes(pack.id)
+                          return (
                         <button
-                          onClick={() => { applyPack(pack); setShowPacks(false) }}
+                          onClick={() => {
+                            // Additive: combine multiple packs into one order.
+                            applyPack(pack, { merge: true })
+                            setAddedPackIds(prev => prev.includes(pack.id) ? prev : [...prev, pack.id])
+                          }}
+                          title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
                           style={{
                             flex: 1, padding: '7px 0',
-                            borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`,
-                            background: colors.inkPlum, color: '#fff', fontSize: 12,
+                            borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
+                            background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 12,
                             fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                             transition: 'opacity .1s',
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
                           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
                         >
-                          Use this pack
+                          {added ? '✓ Added — add again' : '+ Add pack'}
                         </button>
+                          )
+                        })()}
                         {editable && (
                           <button
                             type="button"
