@@ -1,15 +1,10 @@
 /**
  * DELETE /api/commissions/[id]
  *
- * Permanently removes a single commission row from the agent's history —
- * any type (quick order, ad-hoc bonus, real order commission, new-client
- * bonus) and any status (including paid out). Used to clean up entries that
- * are no longer relevant.
- *
- * Note: this only removes the commission row. For an order-linked commission
- * the underlying order document is left untouched (re-saving that order could
- * recreate the commission). Deleting a paid-out row does NOT touch the
- * agent_payments ledger or any commission_reports history.
+ * Permanently removes a manual, unsettled commission row from the agent's
+ * history (quick order or ad-hoc bonus). Paid, reported, and order-linked
+ * rows are immutable here because they feed commission reports and payment
+ * reconciliation.
  *
  * Access: admin only.
  */
@@ -117,6 +112,26 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     if (!id || !UUID_REGEX.test(id)) {
       return NextResponse.json({ error: 'Invalid commission id' }, { status: 400 });
+    }
+
+    const { data: existing, error: lookupErr } = await adminSupabase
+      .from('agent_commissions')
+      .select('id, status, report_id, document_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupErr) {
+      console.error('[Commissions DELETE] Lookup error:', lookupErr.message);
+      return NextResponse.json({ error: 'Failed to load commission' }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: 'Commission not found' }, { status: 404 });
+    }
+    if (existing.status === 'paid' || existing.report_id || existing.document_id) {
+      return NextResponse.json(
+        { error: 'Cannot delete paid, reported, or order-linked commissions' },
+        { status: 409 },
+      );
     }
 
     const { data: deleted, error: delErr } = await adminSupabase

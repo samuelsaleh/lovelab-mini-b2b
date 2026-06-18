@@ -932,17 +932,16 @@ export default function AdminAgentDetailsPage() {
                               const isCustomerPaid = !!row.customer_paid_at;
                               const isPaidOut = row.status === 'paid';
                               const isCancelled = row.status === 'cancelled';
-                              const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
-                              // Any real commission row can be deleted (quick order,
-                              // bonus, order commission, paid-out, cancelled…).
-                              // Doc-derived placeholder rows aren't real DB rows so
-                              // there's nothing to delete.
-                              const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
                               // Phase 29: a customer-paid row that's been pulled
                               // into a report (report_id set) but not yet paid out
                               // is "Reported" — sent to the agent, awaiting the
                               // Record Payment step.
                               const isReported = !isPaidOut && !isCancelled && isCustomerPaid && !!row.report_id;
+                              const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
+                              const hasRealId = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
+                              // Only manual rows that have not entered reporting or
+                              // payout history are safe to hard-delete.
+                              const canDelete = hasRealId && !isPaidOut && !isReported && !row.document_id;
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
@@ -1041,7 +1040,7 @@ export default function AdminAgentDetailsPage() {
                                     <span style={{ fontSize: 10, fontWeight: 700, color: status.fg, background: status.bg, borderRadius: 12, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                       {status.label}
                                     </span>
-                                    {isPaidOut && !!row.id && !String(row.id).startsWith('doc-') && (
+                                    {isPaidOut && !row.report_id && !!row.id && !String(row.id).startsWith('doc-') && (
                                       <div style={{ marginTop: 4 }}>
                                         <button
                                           type="button"
