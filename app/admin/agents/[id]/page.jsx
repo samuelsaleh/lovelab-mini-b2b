@@ -932,12 +932,16 @@ export default function AdminAgentDetailsPage() {
                               const isCustomerPaid = !!row.customer_paid_at;
                               const isPaidOut = row.status === 'paid';
                               const isCancelled = row.status === 'cancelled';
-                              const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
-                              // Any real commission row can be deleted (quick order,
-                              // bonus, order commission, paid-out, cancelled…).
-                              // Doc-derived placeholder rows aren't real DB rows so
-                              // there's nothing to delete.
-                              const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
+                              const isPersistedCommission = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
+                              const canToggle = isPersistedCommission && !isPaidOut && !isCancelled;
+                              // Only manual entries can be hard-deleted safely.
+                              // Order-linked/reported/paid rows must keep their
+                              // audit trail intact for report/payment settlement.
+                              const canDelete = isPersistedCommission
+                                && !isPaidOut
+                                && !row.report_id
+                                && !row.document_id
+                                && (row.type === 'bonus' || row.type === 'order');
                               // Phase 29: a customer-paid row that's been pulled
                               // into a report (report_id set) but not yet paid out
                               // is "Reported" — sent to the agent, awaiting the
@@ -1008,7 +1012,7 @@ export default function AdminAgentDetailsPage() {
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
                                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.commission_amount)}</td>
                                   <td style={td}>
-                                    {canDelete ? (
+                                    {isPersistedCommission ? (
                                       <input
                                         type="text"
                                         defaultValue={row.invoice_number || ''}

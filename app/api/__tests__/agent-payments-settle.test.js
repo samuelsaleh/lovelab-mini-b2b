@@ -7,6 +7,7 @@
  *   ✓ 401 when no session
  *   ✓ 403 when caller is not admin
  *   ✓ 400 when report_id is not a UUID
+ *   ✓ 400 when amount is invalid before settlement runs
  *   ✓ 400 when the report belongs to a different agent
  *   ✓ 404 when the report does not exist
  *   ✓ plain payment (no report_id) records a payout, settles nothing
@@ -127,6 +128,15 @@ describe('POST /api/agent-payments', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/report_id must be a UUID/i);
+  });
+
+  test('400 when amount is invalid before settlement runs', async () => {
+    const res = await POST(makeRequest({ agent_id: AGENT, amount: 'not-a-number', report_id: REPORT }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/positive number/i);
+    expect(acChains.length).toBe(0);
+    expect(insertedPaymentPayload).toBeNull();
   });
 
   test('plain payment (no report) records the payout and settles nothing', async () => {
