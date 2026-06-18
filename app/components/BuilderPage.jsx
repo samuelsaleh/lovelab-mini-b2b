@@ -19,6 +19,34 @@ export function uniqueId() {
   return `${Date.now()}-${++_uidCounter}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+// ─── Shape cards on the selection grid ───
+// For these collections we expand the single grid card into one card per shape
+// (e.g. SHAPY SHINE NECKLACE → Heart / Pear / Marquise / …) so the sales user can
+// pick the shape directly on the selection page. Each card carries a selection
+// "key" of the form `${collectionId}::${shape}`. Every other collection keeps a
+// plain `collectionId` key, so their behaviour is unchanged.
+export const SHAPE_CARD_IDS = new Set(['SSF_NECK'])
+const CARD_KEY_SEP = '::'
+
+export function cardKey(collectionId, shape) {
+  return shape ? `${collectionId}${CARD_KEY_SEP}${shape}` : collectionId
+}
+
+export function parseCardKey(key) {
+  const idx = key.indexOf(CARD_KEY_SEP)
+  if (idx === -1) return { id: key, shape: null }
+  return { id: key.slice(0, idx), shape: key.slice(idx + CARD_KEY_SEP.length) }
+}
+
+// Turn a collection into one-or-many grid cards. Shape-card collections yield
+// one card per available shape; everything else yields a single card.
+export function cardsForCollection(col) {
+  if (SHAPE_CARD_IDS.has(col.id) && col.shapes && col.shapes.length > 0) {
+    return col.shapes.map(shape => ({ key: cardKey(col.id, shape), col, shape }))
+  }
+  return [{ key: col.id, col, shape: null }]
+}
+
 // ─── Exported helpers (used by App.jsx) ───
 export function mkColorConfig(colorName, minC = 1) {
   return {
@@ -373,8 +401,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     return lines.some(l => l.collectionId) ? 'configure' : 'select'
   })
   const [selectedCollections, setSelectedCollections] = useState(() => {
-    // Init from existing lines
-    return lines.filter(l => l.collectionId).map(l => l.collectionId)
+    // Init from existing lines. Shape-locked lines map back to their shape card key.
+    return lines.filter(l => l.collectionId).map(l => cardKey(l.collectionId, l.presetShape))
   })
   // Bracelet vs Necklace tab on the selection grid. Default to whichever type
   // the already-selected lines belong to (so editing a necklace order opens on
@@ -559,23 +587,30 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const pct = hasBudget ? Math.min(100, Math.round((spent / budgetNum) * 100)) : 0
   const overBudget = hasBudget && spent > budgetNum
 
-  // Toggle collection selection
-  const toggleCollection = (colId) => {
+  // Toggle collection selection. `key` is a card key: a plain collection id, or
+  // `${collectionId}::${shape}` for shape-card collections (e.g. SSF_NECK).
+  const toggleCollection = (key) => {
     setSelectedCollections(prev =>
-      prev.includes(colId) ? prev.filter(id => id !== colId) : [colId, ...prev]
+      prev.includes(key) ? prev.filter(k => k !== key) : [key, ...prev]
     )
   }
 
   // Move from grid to configure step
   const goToConfigure = () => {
-    // Create/update lines for selected collections
+    // Create/update lines for selected collections. Each selection key maps to a
+    // line; shape-card keys produce a shape-locked line (presetShape).
     setLines(prev => {
-      const existingIds = prev.filter(l => l.collectionId).map(l => l.collectionId)
-      const newLines = [...prev.filter(l => selectedCollections.includes(l.collectionId))]
-      // Add new lines for newly selected collections
-      selectedCollections.forEach(colId => {
-        if (!existingIds.includes(colId)) {
-          newLines.push({ uid: uniqueId(), collectionId: colId, colorConfigs: [], expanded: true })
+      const lineKey = (l) => cardKey(l.collectionId, l.presetShape)
+      const existingKeys = prev.filter(l => l.collectionId).map(lineKey)
+      // Keep lines whose key is still selected.
+      const newLines = [...prev.filter(l => selectedCollections.includes(lineKey(l)))]
+      // Add new lines for newly selected keys.
+      selectedCollections.forEach(key => {
+        if (!existingKeys.includes(key)) {
+          const { id, shape } = parseCardKey(key)
+          const line = { uid: uniqueId(), collectionId: id, colorConfigs: [], expanded: true }
+          if (shape) line.presetShape = shape
+          newLines.push(line)
         }
       })
       return newLines.length > 0 ? newLines : [mkLine()]
@@ -585,7 +620,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
   // Go back to grid
   const goToSelect = () => {
-    setSelectedCollections(lines.filter(l => l.collectionId).map(l => l.collectionId))
+    setSelectedCollections(lines.filter(l => l.collectionId).map(l => cardKey(l.collectionId, l.presetShape)))
     setStep('select')
   }
 
@@ -1412,8 +1447,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       { type: 'necklace', label: t('builder.necklaces') },
                     ].map(({ type, label }) => {
                       const active = productTypeTab === type
-                      const selCount = selectedCollections.filter(id => {
-                        const c = visibleAll.find(x => x.id === id)
+                      const selCount = selectedCollections.filter(key => {
+                        const c = visibleAll.find(x => x.id === parseCardKey(key).id)
                         return c && getProductType(c) === type
                       }).length
                       return (
@@ -1447,21 +1482,26 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     // for non-admins. The active Bracelet/Necklace tab filters
                     // further; selection state stays global across tabs.
                     const visible = getCollectionsByType(getVisibleCollections(isAdmin), productTypeTab)
+                    // Expand shape-card collections (e.g. SSF_NECK) into one card
+                    // per shape, then order selected cards first.
+                    const allCards = visible.flatMap(cardsForCollection)
                     return [
-                      ...selectedCollections.map(id => visible.find(c => c.id === id)).filter(Boolean),
-                      ...visible.filter(c => !selectedCollections.includes(c.id)),
+                      ...selectedCollections.map(key => allCards.find(c => c.key === key)).filter(Boolean),
+                      ...allCards.filter(c => !selectedCollections.includes(c.key)),
                     ]
-                  })().map(col => {
-                    const isSelected = selectedCollections.includes(col.id)
+                  })().map(card => {
+                    const col = card.col
+                    const isSelected = selectedCollections.includes(card.key)
                     const defaultCert = getDefaultCert(col)
                     const priceMin = `€${getPrice(col, 0, defaultCert, activePricelist)}`
                     const priceMax = col.carats.length > 1 ? ` – €${getPrice(col, col.carats.length - 1, defaultCert, activePricelist)}` : ''
                     const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
+                    const cardLabel = card.shape ? `${col.label} — ${card.shape}` : col.label
 
                     return (
                       <button
-                        key={col.id}
-                        onClick={() => toggleCollection(col.id)}
+                        key={card.key}
+                        onClick={() => toggleCollection(card.key)}
                         style={{
                           position: 'relative',
                           padding: '14px 14px 12px',
@@ -1501,13 +1541,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
                         {/* Product photo */}
                         {(() => {
-                          const thumbUrl = col.id === 'SSPF'
-                            ? findPackshot(col.id)
-                            : findPackshot(col.id, { color: 'Bordeaux' })
+                          const thumbUrl = card.shape
+                            ? findPackshot(col.id, { shape: card.shape, color: 'Bordeaux' })
+                            : col.id === 'SSPF'
+                              ? findPackshot(col.id)
+                              : findPackshot(col.id, { color: 'Bordeaux' })
                           return thumbUrl ? (
                             <img
                               src={thumbUrl}
-                              alt={col.label}
+                              alt={cardLabel}
                               loading="lazy"
                               style={{
                                 width: '100%', height: 120,
@@ -1526,7 +1568,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           color: isSelected ? colors.inkPlum : '#2a2a2a',
                           marginBottom: 6, paddingRight: 28, lineHeight: 1.3,
                         }}>
-                          {col.label}
+                          {cardLabel}
                         </div>
 
                         {/* Price range — prominent */}

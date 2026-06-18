@@ -90,6 +90,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const mobile = useIsMobile()
   const expanded = line.expanded ?? true
   const sameForAll = line.sameForAll ?? false
+  // Shape-locked line: the shape was chosen on the selection grid (shape cards,
+  // e.g. SHAPY SHINE NECKLACE — Heart). Every colour row inherits this shape and
+  // the per-row shape picker / "Shapes available" strip are hidden.
+  const presetShape = line.presetShape || null
   const sharedSettings = line.sharedSettings ?? {
     caratIdx: null, housing: null, housingType: null,
     multiAttached: null, shape: null, size: null, cordType: null, thickness: null,
@@ -233,6 +237,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     // tile (Yellow Gold) per the spec so the housing is pre-filled.
     if ((col.housing === 'metalEight' || col.housing === 'metalThree') && !newCfg.housing) {
       newCfg = { ...newCfg, housing: HOUSING[col.housing][0] }
+    }
+    // Shape-locked line (chosen on the grid): every new colour inherits the shape.
+    if (presetShape) {
+      newCfg = { ...newCfg, shape: presetShape }
     }
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
@@ -519,6 +527,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const hasHousing = !!col.housing
   const isImplicitHousing = col.housing === 'sparkleProng'
   const hasShapes = col.shapes && col.shapes.length > 0
+  // When the shape is preset from the grid, hide every shape-picking UI element
+  // (strip, shared selector, table column, row dropdowns). Gating logic that uses
+  // `hasShapes` for the size column still works because each row's shape is
+  // pre-filled to the preset value.
+  const showShapeSelector = hasShapes && !presetShape
   const hasSizes = col.sizes && col.sizes.length > 0
   const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
   // Allowed silk thicknesses for this collection. New silk collections (Sienna,
@@ -735,7 +748,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
               color: line.colorConfigs.length > 0 ? colors.inkPlum : '#333',
             }}>
-            {col.label}
+            {presetShape ? `${col.label} — ${presetShape}` : col.label}
           </span>
           <span style={{
             fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
@@ -865,6 +878,32 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     >
                       {th}
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Shapes available for this collection — shown upfront so the user
+                sees every shape immediately (the per-row Shape dropdown still
+                drives the actual selection once a colour + carat are picked).
+                Hidden when the shape is already locked from the grid. */}
+            {showShapeSelector && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  {t('collection.shapesAvailable') || 'Shapes available'}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {col.shapes.map(s => (
+                    <span
+                      key={s}
+                      style={{
+                        padding: '4px 10px', borderRadius: 999,
+                        border: '1px solid #e0d6ea', background: '#f6f1fa',
+                        color: colors.inkPlum, fontSize: 11, fontWeight: 600,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {s}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -1003,7 +1042,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     { field: 'cert', label: t('cert.label'), show: col.certificate === 'both' },
                     { field: 'housing', label: t('quote.housing'), show: hasHousing },
                     { field: 'size', label: t('quote.size'), show: hasSizes },
-                    { field: 'shape', label: t('quote.shape'), show: hasShapes },
+                    { field: 'shape', label: t('quote.shape'), show: showShapeSelector },
                     { field: 'closure', label: t('quote.closure'), show: hasClosure },
                     { field: 'qty', label: t('quote.qty'), show: true },
                   ].filter(r => r.show).map(({ field, label }) => (
@@ -1290,7 +1329,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )}
 
                 {/* Shape */}
-                {hasShapes && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (
+                {showShapeSelector && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (
                   <select
                     value={sharedSettings.shape || ''}
                     onChange={(e) => updateShared({ shape: e.target.value || null })}
@@ -1376,7 +1415,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {col.certificate && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('cert.label')}</th>}
                     <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.carat')}</th>
                     {hasHousing && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.housing')}</th>}
-                    {hasShapes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.shape')}</th>}
+                    {showShapeSelector && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.shape')}</th>}
                     {hasSizes && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.size')}</th>}
                     {hasThickness && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{hasCordOptions ? 'Material' : 'Thickness'}</th>}
                     {hasClosure && <th style={{ ...thStyle, borderBottom: '2px solid #eee' }}>{t('quote.closure')}</th>}
@@ -1517,7 +1556,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             {canFillHousing && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'housing', line.colorConfigs, selectedConfigs)} />}
                           </td>
                         )}
-                        {hasShapes && (
+                        {showShapeSelector && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.shape ?? sharedSettings.shape) || '-'}</span>
                               : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) ? (
@@ -1839,7 +1878,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         </div>
                       )}
                       {/* Shape */}
-                      {hasShapes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (
+                      {showShapeSelector && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.shape')}</span>
                           <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
