@@ -2,7 +2,7 @@
 
 import { fmt, today } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { COLLECTIONS, CERT_LABELS, getProductType } from '@/lib/catalog'
 import { findPackshot } from '@/lib/packshot-lookup'
@@ -38,7 +38,8 @@ function isBelgian(client) {
 }
 
 export default function QuoteModal({ quote, client, onClose, onFinalize }) {
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → card line items, not the wide table.
+  const { isCompact: mobile } = useResponsive()
   const { t } = useI18n()
   
   if (!quote) return null

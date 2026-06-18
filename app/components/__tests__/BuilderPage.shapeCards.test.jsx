@@ -23,6 +23,7 @@ import { renderWithI18n } from './testUtils'
 jest.mock('@/lib/useIsMobile', () => ({
   useIsMobile: () => false,
   useIsTablet: () => false,
+  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 
 jest.mock('@/lib/api', () => ({

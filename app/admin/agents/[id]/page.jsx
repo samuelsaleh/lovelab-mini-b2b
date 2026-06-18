@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
+import { useResponsive } from '@/lib/useIsMobile';
 import { fmt } from '@/lib/utils';
 import { parseAmount } from '@/lib/parseAmount';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
@@ -31,6 +32,7 @@ export default function AdminAgentDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const agentId = params?.id;
+  const { isCompact } = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -712,7 +714,7 @@ export default function AdminAgentDetailsPage() {
                 PAID OUT          = already transferred to the agent.
                 REVENUE           = total post-shipping revenue brought in.
             */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isCompact ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
               {[
                 {
                   label: 'READY TO PAY',

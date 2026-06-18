@@ -2,10 +2,10 @@
 
 import { fmt } from '@/lib/utils'
 import { colors } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 
 export default function MiniQuote({ q, onView }) {
-  const mobile = useIsMobile()
+  const { isCompact: mobile } = useResponsive()
   if (!q || !q.lines) return null
   return (
     <div style={{ 
@@ -14,7 +14,7 @@ export default function MiniQuote({ q, onView }) {
       background: colors.lumiereIvory, 
       borderRadius: 10, 
       border: `1px solid ${colors.lineGray}`, 
-      fontSize: mobile ? 11 : 12 
+      fontSize: mobile ? 12 : 12 
     }}>
       {q.lines.map((ln, i) => {
         const details = [ln.housing, ln.shape, ln.size].filter(Boolean).join(' · ')
@@ -24,12 +24,12 @@ export default function MiniQuote({ q, onView }) {
             borderBottom: i < q.lines.length - 1 ? `1px solid ${colors.lineGray}` : 'none',
             color: colors.charcoal
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600 }}>{ln.product} {ln.carat}ct{ln.colorName ? ` · ${ln.colorName}` : ''}</span>
-              <span style={{ fontSize: mobile ? 10 : 11, flexShrink: 0, marginLeft: 8 }}>{ln.qty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
+              <span style={{ fontSize: mobile ? 11 : 11, flexShrink: 0, marginLeft: 'auto' }}>{ln.qty}pcs × {fmt(ln.unitB2B)} = <strong>{fmt(ln.lineTotal)}</strong></span>
             </div>
             {details && (
-              <div style={{ fontSize: 9, color: colors.lovelabMuted, marginTop: 1 }}>{details}</div>
+              <div style={{ fontSize: mobile ? 11 : 9, color: colors.lovelabMuted, marginTop: 1 }}>{details}</div>
             )}
           </div>
         )
@@ -46,7 +46,7 @@ export default function MiniQuote({ q, onView }) {
           {fmt(q.total)}
           {q.discountAmount > 0 && <span style={{ fontSize: 10, color: colors.luxeGold, marginLeft: 6 }}>−{q.discountPercent}%</span>}
         </span>
-        <span style={{ fontSize: 10, color: colors.lovelabMuted }}>{q.totalPieces}pcs · Retail {fmt(q.totalRetail)}</span>
+        <span style={{ fontSize: mobile ? 11 : 10, color: colors.lovelabMuted }}>{q.totalPieces}pcs · Retail {fmt(q.totalRetail)}</span>
       </div>
       {(q.warnings || []).map((w, i) => (
         <div key={i} style={{ fontSize: 10, color: colors.lovelabMuted, marginTop: 4 }}>⚠ {w}</div>
@@ -66,7 +66,7 @@ export default function MiniQuote({ q, onView }) {
           color: colors.inkPlum, 
           fontFamily: 'inherit',
           transition: 'all .12s',
-          minHeight: mobile ? 36 : 'auto'
+          minHeight: mobile ? 44 : 'auto'
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = colors.inkPlum; e.currentTarget.style.color = colors.porcelain }}
         onMouseLeave={(e) => { e.currentTarget.style.background = colors.porcelain; e.currentTarget.style.color = colors.inkPlum }}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
@@ -15,7 +15,9 @@ import DocumentsAnalytics from './DocumentsAnalytics'
 
 export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const router = useRouter()
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → event sidebar becomes a drawer so the
+  // documents list keeps full width on tablets.
+  const { isCompact: mobile } = useResponsive()
   const { t } = useI18n()
   const { user, profile, profileMissing, profileError } = useAuth()
 

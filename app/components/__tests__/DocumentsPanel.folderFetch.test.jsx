@@ -26,7 +26,11 @@ jest.mock('@/lib/styles', () => ({
   fonts: { body: 'inherit' },
 }))
 
-jest.mock('@/lib/useIsMobile', () => ({ useIsMobile: () => false }))
+jest.mock('@/lib/useIsMobile', () => ({
+  useIsMobile: () => false,
+  useIsTablet: () => false,
+  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
+}))
 jest.mock('@/lib/i18n', () => ({ useI18n: () => ({ t: (k) => k }) }))
 jest.mock('@/lib/utils', () => ({ fmt: (n) => `€${n}` }))
 

@@ -216,6 +216,7 @@ export default function PackBuilderModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480,
+          maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto',
           padding: 22, fontFamily: fonts.body,
           boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
         }}
@@ -263,8 +264,8 @@ export default function PackBuilderModal({
             <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 6, textTransform: 'uppercase' }}>
               {t('pack.scopeLabel')}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>
                 <input
                   type="radio"
                   name="pack-scope"
@@ -274,7 +275,7 @@ export default function PackBuilderModal({
                 />
                 {t('pack.scopeGlobal')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>
                 <input
                   type="radio"
                   name="pack-scope"
@@ -284,7 +285,7 @@ export default function PackBuilderModal({
                 />
                 {t('pack.scopePrivate')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', minHeight: 44 }}>
                 <input
                   type="radio"
                   name="pack-scope"
@@ -374,7 +375,7 @@ export default function PackBuilderModal({
             onClick={onClose}
             type="button"
             style={{
-              padding: '8px 14px', borderRadius: 8, border: '1px solid #ddd',
+              padding: '11px 16px', minHeight: 44, borderRadius: 8, border: '1px solid #ddd',
               background: '#fff', color: '#666', fontSize: 12, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit',
             }}
@@ -386,7 +387,7 @@ export default function PackBuilderModal({
             disabled={!canSave}
             type="button"
             style={{
-              padding: '8px 16px', borderRadius: 8, border: 'none',
+              padding: '11px 18px', minHeight: 44, borderRadius: 8, border: 'none',
               background: canSave ? colors.inkPlum : '#cbb',
               color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: canSave ? 'pointer' : 'not-allowed',

@@ -27,6 +27,7 @@ if (typeof window !== 'undefined' && window.HTMLElement) {
 jest.mock('@/lib/useIsMobile', () => ({
   useIsMobile: () => false,
   useIsTablet: () => false,
+  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 
 const sendBuilderChat = jest.fn()

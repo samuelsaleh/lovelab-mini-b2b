@@ -16,6 +16,17 @@ body {
   overscroll-behavior: none;
 }
 
+/* Full-height app shells: prefer dynamic viewport height on supporting
+   browsers (iOS Safari) so the URL bar doesn't crop fixed bottom bars. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* iOS safe-area helpers (notch / home indicator) */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;

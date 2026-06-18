@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import UserMenu from './UserMenu'
 import { useAuth } from './AuthProvider'
@@ -21,7 +21,7 @@ import { useAuth } from './AuthProvider'
 export default function TopNav({ client, onEditClient, onNewClient, hideClientBar, onOpenSidebar, onOpenAccount }) {
   const router = useRouter()
   const pathname = usePathname()
-  const mobile = useIsMobile()
+  const { isCompact: mobile } = useResponsive()
   const { t } = useI18n()
   const { user, profile, loading: authLoading } = useAuth()
 
@@ -80,7 +80,7 @@ export default function TopNav({ client, onEditClient, onNewClient, hideClientBa
           )}
 
           {/* Logo — always visible in TopNav */}
-          <img src="/logo.png" alt="LoveLab" style={{ height: 128, marginTop: -32, marginBottom: -32, filter: 'brightness(0) invert(1)' }} />
+          <img src="/logo.png" alt="LoveLab" style={{ height: mobile ? 80 : 128, marginTop: mobile ? -20 : -32, marginBottom: mobile ? -20 : -32, filter: 'brightness(0) invert(1)' }} />
 
           {/* Back button — desktop only, shown when not at root */}
           {!mobile && canGoBack && (

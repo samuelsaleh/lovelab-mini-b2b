@@ -4,7 +4,7 @@ import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
 import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, getCollectionsByType, getProductType, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import CollectionConfig from './CollectionConfig'
 import { useI18n } from '@/lib/i18n'
 import { sendBuilderChat } from '@/lib/api'
@@ -389,8 +389,10 @@ const CHANNEL_BANNER = {
 }
 
 export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false }) {
-  const mobile = useIsMobile()
-  const tablet = useIsTablet()
+  // Compact = phone OR iPad portrait (< 1024px). The summary becomes a FAB +
+  // drawer, toolbars stack, and the pack carousel wraps on compact. `tablet`
+  // is kept only to fine-tune the collection grid card size.
+  const { isTablet: tablet, isCompact: mobile } = useResponsive()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
   const mobileSafeBottom = mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)' : 0
@@ -1116,8 +1118,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
       )}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {/* Mobile Summary Toggle Button */}
-      {mobile && (
+      {/* Mobile Summary Toggle Button — only on the configure step; on step 1
+          the fixed Continue bar owns the bottom of the screen. */}
+      {mobile && step !== 'select' && (
         <button
           onClick={() => setShowSidebar(!showSidebar)}
           style={{
@@ -1131,6 +1134,45 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           <span>{fmt(quote.total)}</span>
           <span style={{ fontSize: 10, opacity: 0.8 }}>{quote.totalPieces} pcs</span>
         </button>
+      )}
+
+      {/* Step 1 — fixed Continue bar on compact so agents never have to scroll
+          past the collection grid to proceed (iPhone + iPad portrait). */}
+      {mobile && step === 'select' && (
+        <div
+          data-testid="continue-to-configure-bar"
+          style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 140,
+            padding: `12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px)`,
+            background: '#fff', borderTop: '1px solid #eaeaea',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#888', textAlign: 'center' }}>
+            {selectedCollections.length === 0 ? (
+              t('builder.selectAtLeastOne')
+            ) : (
+              <strong style={{ color: colors.inkPlum }}>
+                {t('builder.collectionsSelected').replace('{count}', selectedCollections.length)}
+              </strong>
+            )}
+          </div>
+          <button
+            onClick={goToConfigure}
+            disabled={selectedCollections.length === 0}
+            aria-label={t('builder.continueConfig')}
+            style={{
+              ...btnPrimary,
+              width: '100%',
+              minHeight: 48,
+              opacity: selectedCollections.length === 0 ? 0.4 : 1,
+              cursor: selectedCollections.length === 0 ? 'default' : 'pointer',
+            }}
+          >
+            {t('builder.continueConfig')} →
+          </button>
+        </div>
       )}
       
       {/* Mobile Sidebar Overlay */}
@@ -1226,7 +1268,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
 
         {/* ─── Step Content ─── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? '16px 16px calc(env(safe-area-inset-bottom, 0px) + 98px)' : '20px 20px 32px' }}>
+        <div style={{
+          flex: 1, overflowY: 'auto',
+          padding: mobile
+            ? `16px 16px calc(env(safe-area-inset-bottom, 0px) + ${step === 'select' ? 120 : 98}px)`
+            : '20px 20px 32px',
+        }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
             {/* ─── Packs Collapsible ─── */}
@@ -1256,15 +1303,16 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
               {showPacks && (
                 <div style={{ position: 'relative' }}>
-                {/* Prev arrow — for mouse users who can't swipe the row */}
-                {packArrows.left && (
+                {/* Prev arrow — for mouse users who can't swipe the row.
+                    Hidden on compact (touch) where packs wrap instead. */}
+                {!mobile && packArrows.left && (
                   <button
                     type="button"
                     onClick={() => scrollPacks(-1)}
                     aria-label="Show previous packs"
                     style={{
                       position: 'absolute', left: -6, top: '50%', transform: 'translateY(-50%)',
-                      zIndex: 5, width: 34, height: 34, borderRadius: '50%',
+                      zIndex: 5, width: 44, height: 44, borderRadius: '50%',
                       border: '1px solid #e4dded', background: '#fff', color: colors.inkPlum,
                       fontSize: 18, lineHeight: 1, cursor: 'pointer',
                       boxShadow: '0 2px 8px rgba(93,58,94,0.18)',
@@ -1273,14 +1321,14 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   >‹</button>
                 )}
                 {/* Next arrow */}
-                {packArrows.right && (
+                {!mobile && packArrows.right && (
                   <button
                     type="button"
                     onClick={() => scrollPacks(1)}
                     aria-label="Show more packs"
                     style={{
                       position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)',
-                      zIndex: 5, width: 34, height: 34, borderRadius: '50%',
+                      zIndex: 5, width: 44, height: 44, borderRadius: '50%',
                       border: '1px solid #e4dded', background: '#fff', color: colors.inkPlum,
                       fontSize: 18, lineHeight: 1, cursor: 'pointer',
                       boxShadow: '0 2px 8px rgba(93,58,94,0.18)',
@@ -1291,8 +1339,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <div
                   ref={packsScrollRef}
                   onScroll={updatePackArrows}
-                  onWheel={handlePacksWheel}
-                  style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 2px 4px', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}
+                  onWheel={mobile ? undefined : handlePacksWheel}
+                  style={{ display: 'flex', flexWrap: mobile ? 'wrap' : 'nowrap', gap: 10, overflowX: mobile ? 'visible' : 'auto', padding: '12px 2px 4px', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}
                 >
                   <button
                     type="button"
@@ -1300,7 +1348,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     disabled={!hasBuild}
                     title={hasBuild ? 'Save your current build as a reusable pack' : 'Configure at least one item first'}
                     style={{
-                      minWidth: 180, maxWidth: 220, flexShrink: 0,
+                      minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 160px' : '0 0 auto',
                       border: `1.5px dashed ${hasBuild ? colors.inkPlum : '#d8d0db'}`,
                       borderRadius: 10, padding: '12px 14px',
                       background: hasBuild ? '#fdf7fa' : '#fafafa',
@@ -1323,7 +1371,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     const editable = !!pack._dbId && (pack._scope === 'private' || isAdmin)
                     return (
                     <div key={pack.id} style={{
-                      minWidth: 180, maxWidth: 220, flexShrink: 0,
+                      minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 240px' : '0 0 auto',
                       border: '1px solid #e4dded', borderRadius: 10,
                       padding: '12px 14px', background: '#fff',
                       boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
@@ -1385,7 +1433,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           }}
                           title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
                           style={{
-                            flex: 1, padding: '7px 0',
+                            flex: 1, padding: mobile ? '11px 0' : '7px 0', minHeight: mobile ? 44 : 'auto',
                             borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
                             background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 12,
                             fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
@@ -1405,11 +1453,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             title={t('pack.edit')}
                             aria-label={`${t('pack.edit')} — ${pack.label}`}
                             style={{
-                              padding: '7px 12px', borderRadius: 8,
+                              padding: mobile ? '10px 14px' : '7px 12px', minHeight: mobile ? 44 : 'auto', borderRadius: 8,
                               border: `1.5px solid ${colors.inkPlum}`,
                               background: '#fff', color: colors.inkPlum, fontSize: 12,
                               fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                              whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4,
+                              whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                             }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
@@ -1596,8 +1644,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   })}
                 </div>
 
-                {/* Bottom action */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
+                {/* Bottom action — desktop only; compact uses the fixed bar above */}
+                {!mobile && (
+                <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 0, padding: '16px 0' }}>
                   <div style={{ fontSize: 13, color: '#888' }}>
                     {selectedCollections.length === 0 ? (
                       t('builder.selectAtLeastOne')
@@ -1621,6 +1670,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     {t('builder.continueConfig')} →
                   </button>
                 </div>
+                )}
               </div>
             ) : (
               /* ═══ STEP 2: Configuration View ═══ */
@@ -1702,7 +1752,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             data-testid={`pricelist-toggle-${year}`}
                             onClick={() => requestPricelistSwitch(year)}
                             style={{
-                              padding: '7px 12px', fontSize: 11, fontWeight: 700,
+                              padding: mobile ? '11px 16px' : '7px 12px', minHeight: mobile ? 44 : 'auto', fontSize: 11, fontWeight: 700,
                               border: 'none',
                               borderRadius: 7,
                               background: isActive ? colors.inkPlum : 'transparent',
@@ -1724,7 +1774,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         <button
                           onClick={() => setLines(prev => prev.map(l => ({ ...l, expanded: !allExpanded })))}
                           style={{
-                            padding: '7px 12px', fontSize: 11, fontWeight: 600,
+                            padding: mobile ? '11px 14px' : '7px 12px', minHeight: mobile ? 44 : 'auto', fontSize: 11, fontWeight: 600,
                             borderRadius: 8, border: '1px solid #ddd',
                             background: '#fafafa', color: '#666',
                             cursor: 'pointer', fontFamily: 'inherit',
@@ -1741,7 +1791,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     <button
                       onClick={() => setShowAiChat(v => !v)}
                       style={{
-                        padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                        padding: mobile ? '11px 14px' : '8px 14px', minHeight: mobile ? 44 : 'auto', fontSize: 12, fontWeight: 700,
                         borderRadius: 10,
                         border: showAiChat ? 'none' : `1.5px solid ${colors.inkPlum}`,
                         background: showAiChat ? colors.inkPlum : '#fff',
@@ -1756,7 +1806,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     >
                       ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
                     </button>
-                    <button onClick={goToSelect} style={btnGhost}>
+                    <button onClick={goToSelect} style={{ ...btnGhost, padding: mobile ? '11px 16px' : '8px 16px', minHeight: mobile ? 44 : 'auto' }}>
                       ← {t('builder.editCollections')}
                     </button>
                   </div>
@@ -1830,7 +1880,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         <button
                           onClick={clearSelection}
                           style={{
-                            padding: '8px 16px', borderRadius: 8,
+                            padding: mobile ? '11px 16px' : '8px 16px', minHeight: mobile ? 44 : 'auto', borderRadius: 8,
                             border: '1px solid #e0e0e0', background: '#fff',
                             color: '#666', fontSize: 12, fontWeight: 600,
                             cursor: 'pointer', fontFamily: 'inherit',
@@ -1841,7 +1891,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         <button
                           onClick={() => duplicateSelected()}
                           style={{
-                            padding: '8px 16px', borderRadius: 8,
+                            padding: mobile ? '11px 16px' : '8px 16px', minHeight: mobile ? 44 : 'auto', borderRadius: 8,
                             border: `1px solid ${colors.inkPlum}`, background: '#fff',
                             color: colors.inkPlum, fontSize: 12, fontWeight: 600,
                             cursor: 'pointer', fontFamily: 'inherit',
@@ -1923,10 +1973,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         {mobile && (
           <button
             onClick={() => setShowSidebar(false)}
+            aria-label="Close summary"
             style={{
               position: 'absolute', top: 12, right: 12, zIndex: 1,
-              width: 32, height: 32, borderRadius: '50%', border: 'none',
-              background: '#f0f0f0', color: '#666', fontSize: 16,
+              width: 44, height: 44, borderRadius: '50%', border: 'none',
+              background: '#f0f0f0', color: '#666', fontSize: 20,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >×</button>
@@ -2039,9 +2090,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               position: 'fixed',
               bottom: mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 74px)' : 24,
               right: 24,
-              width: mobile ? 'calc(100% - 48px)' : 380,
+              width: mobile ? 'calc(100% - 32px)' : 380,
               maxWidth: 420,
-              maxHeight: mobile ? 'calc(100vh - 140px)' : '70vh',
+              maxHeight: mobile ? 'calc(100dvh - 160px)' : '70vh',
               background: '#fff',
               borderRadius: 16,
               boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
@@ -2049,7 +2100,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              zIndex: 150,
+              zIndex: 220,
             }}>
               {/* Header */}
               <div style={{
@@ -2070,10 +2121,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 </div>
                 <button
                   onClick={() => setShowAiChat(false)}
+                  aria-label="Close AI advisor"
                   style={{
-                    width: 28, height: 28, borderRadius: '50%',
+                    width: 44, height: 44, borderRadius: '50%',
                     border: 'none', background: '#f0f0f0', color: '#666',
-                    fontSize: 14, cursor: 'pointer',
+                    fontSize: 18, cursor: 'pointer', flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >×</button>

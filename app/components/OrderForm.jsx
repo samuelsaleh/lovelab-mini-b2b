@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
@@ -606,7 +606,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const isAdmin = currentUser?.role === 'admin'
   const visibleCollections = getVisibleCollections(isAdmin)
   const { t } = useI18n()
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → card rows + stacked calculator.
+  const { isCompact: mobile } = useResponsive()
   const printRef = useRef(null)
   const scrollAreaRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)

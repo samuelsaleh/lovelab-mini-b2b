@@ -34,6 +34,7 @@ export default function OrderTypePicker({ onSelect, onClose }) {
         style={{
           background: '#fff', borderRadius: 16,
           padding: 28, width: '100%', maxWidth: 480,
+          maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto',
           boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
           fontFamily: fonts.body,
         }}
@@ -81,7 +82,7 @@ export default function OrderTypePicker({ onSelect, onClose }) {
         <button
           onClick={onClose}
           style={{
-            marginTop: 18, width: '100%', padding: '10px 0',
+            marginTop: 18, width: '100%', padding: '12px 0', minHeight: 44,
             borderRadius: 8, border: `1px solid ${colors.lineGray}`,
             background: '#fff', color: '#888', fontSize: 13,
             cursor: 'pointer', fontFamily: fonts.body,

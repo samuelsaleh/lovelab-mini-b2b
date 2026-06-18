@@ -237,9 +237,9 @@ export default function InternalOrdersPanel({ onReEdit, onDuplicate }) {
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by supplier or company..."
             style={{
-              padding: '9px 12px', fontSize: 13, fontFamily: fonts.body,
+              padding: '11px 12px', minHeight: 44, fontSize: 13, fontFamily: fonts.body,
               border: `1px solid ${colors.lineGray}`, borderRadius: 8,
-              width: 280, outline: 'none',
+              width: '100%', maxWidth: 360, outline: 'none', boxSizing: 'border-box',
             }}
           />
         </div>

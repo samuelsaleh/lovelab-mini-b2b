@@ -22,6 +22,7 @@ import { renderWithI18n, mockColorConfig } from './testUtils'
 jest.mock('@/lib/useIsMobile', () => ({
   useIsMobile: () => false,
   useIsTablet: () => false,
+  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 
 // catalog is NOT mocked — we use real collection data

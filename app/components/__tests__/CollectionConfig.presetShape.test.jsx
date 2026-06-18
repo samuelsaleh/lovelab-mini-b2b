@@ -17,6 +17,7 @@ import { renderWithI18n } from './testUtils'
 jest.mock('@/lib/useIsMobile', () => ({
   useIsMobile: () => false,
   useIsTablet: () => false,
+  useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 
 const CollectionConfig = require('../CollectionConfig').default
@@ -24,9 +25,10 @@ const { COLLECTIONS, CORD_COLORS, calculateQuote } = require('@/lib/catalog')
 
 const SSF_NECK = COLLECTIONS.find(c => c.id === 'SSF_NECK')
 
-// A cord colour that exists both in the 'shine' palette and SSF_NECK.allowedColors.
+// SSF_NECK now exposes the full Shine palette (no allowedColors cap), so pick
+// the first colour straight from the Shine palette.
 const SHINE_COLORS = CORD_COLORS['shine'] || []
-const FIRST_ALLOWED = SSF_NECK.allowedColors.find(n => SHINE_COLORS.some(c => c.n === n))
+const FIRST_ALLOWED = (SHINE_COLORS[0] || {}).n
 
 function mockLine(configs = [], overrides = {}) {
   return {
@@ -97,6 +99,37 @@ describe('CollectionConfig — addColor inherits the preset shape', () => {
       expect.objectContaining({
         colorConfigs: expect.arrayContaining([
           expect.objectContaining({ colorName: FIRST_ALLOWED, shape: 'Heart' }),
+        ]),
+      })
+    )
+  })
+})
+
+describe('CollectionConfig — size stays selectable on a shape-locked line', () => {
+  it('renders the size dropdown once carat + housing are chosen, even before cfg.shape is set', () => {
+    // cfg.shape intentionally null: the size selector must NOT be gated off by
+    // the shape requirement, because the line shape is preset on the grid.
+    // Housing is set (SSF_NECK has shapyShine housing) so the housing gate passes.
+    const line = mockLine([
+      { id: 'c1', colorName: FIRST_ALLOWED, caratIdx: 0, housing: 'Bezel Yellow', housingType: 'bezel', shape: null, size: null, qty: 1 },
+    ], { presetShape: 'Heart' })
+    renderConfig(line)
+    // Necklace size options render their cm metadata (e.g. "22 cm (max 62 cm)").
+    expect(screen.getAllByText(/cm/).length).toBeGreaterThan(0)
+  })
+
+  it('backfills cfg.shape = presetShape for a row missing it (heals stale/restored lines)', () => {
+    const onChange = jest.fn()
+    const line = mockLine([
+      { id: 'c1', colorName: FIRST_ALLOWED, caratIdx: 0, housing: null, shape: null, size: null, qty: 1 },
+    ], { presetShape: 'Heart' })
+    renderConfig(line, onChange)
+    // The normalization effect rewrites the config with the preset shape.
+    expect(onChange).toHaveBeenCalledWith(
+      'line-1',
+      expect.objectContaining({
+        colorConfigs: expect.arrayContaining([
+          expect.objectContaining({ id: 'c1', shape: 'Heart' }),
         ]),
       })
     )

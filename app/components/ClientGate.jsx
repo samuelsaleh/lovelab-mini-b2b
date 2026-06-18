@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import { colors, fonts, inp, lbl } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '@/lib/vat'
 import { lookupCompany } from '@/lib/api'
@@ -187,7 +187,8 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
     onComplete()
   }, [onComplete, client])
 
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → stacked, larger-target layout.
+  const { isCompact: mobile } = useResponsive()
 
   const filteredCountries = useMemo(() => {
     const q = (client.country || '').trim().toLowerCase()
@@ -241,8 +242,8 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           onClick={onGoHome}
           style={{
             position: 'absolute', top: 16, left: 16,
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 13px', borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: mobile ? '10px 14px' : '7px 13px', minHeight: mobile ? 44 : 'auto', borderRadius: 8,
             border: `1px solid ${colors.lineGray}`, background: '#fff',
             color: colors.inkPlum, fontSize: 12, fontWeight: 700,
             cursor: 'pointer', fontFamily: fonts.body,
@@ -266,7 +267,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       <div style={{ fontSize: mobile ? 20 : 24, fontFamily: fonts.heading, color: colors.inkPlum, marginBottom: 4, fontWeight: 600, textAlign: 'center' }}>
         {t('client.title')}
       </div>
-      <div style={{ fontSize: 11, color: colors.lovelabMuted, marginBottom: 24, textAlign: 'center' }}>
+      <div style={{ fontSize: mobile ? 13 : 11, color: colors.lovelabMuted, marginBottom: 24, textAlign: 'center' }}>
         {t('client.subtitle')}
       </div>
 
@@ -463,10 +464,11 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
                       onClick={() => selectCountry(name)}
                       onMouseEnter={() => setCountryHi(idx)}
                       style={{
-                        width: '100%', textAlign: 'left', padding: '8px 10px',
+                        width: '100%', textAlign: 'left', padding: mobile ? '12px 12px' : '8px 10px',
+                        minHeight: mobile ? 44 : 'auto',
                         borderRadius: 8, border: 'none', cursor: 'pointer',
                         background: idx === countryHi ? 'rgba(93, 58, 94, 0.10)' : 'transparent',
-                        color: '#333', fontFamily: 'inherit', fontSize: 12,
+                        color: '#333', fontFamily: 'inherit', fontSize: mobile ? 14 : 12,
                       }}
                     >{name}</button>
                   ))
@@ -657,7 +659,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <button
             onClick={handleSkip}
-            style={{ background: 'none', border: 'none', color: colors.lovelabMuted, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}
+            style={{ background: 'none', border: 'none', color: colors.lovelabMuted, fontSize: mobile ? 13 : 11, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: mobile ? '10px 16px' : 0, minHeight: mobile ? 44 : 'auto' }}
           >
             {t('client.skip')}
           </button>

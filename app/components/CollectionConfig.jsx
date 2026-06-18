@@ -6,7 +6,7 @@ import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
 import { useI18n } from '@/lib/i18n'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { findPackshot } from '@/lib/packshot-lookup'
 
 const QTY_PRESETS = [1, 3, 5, 10]
@@ -87,7 +87,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // into a getPrice call inside this huge component.
   const yr = resolvePricelist(pricelistYear)
   const { t } = useI18n()
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → use the card layout (not the wide table).
+  const { isCompact: mobile } = useResponsive()
   const expanded = line.expanded ?? true
   const sameForAll = line.sameForAll ?? false
   // Shape-locked line: the shape was chosen on the selection grid (shape cards,
@@ -154,6 +155,19 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.colorConfigs])
+
+  // Shape-locked lines (chosen on the grid): guarantee every colour carries the
+  // preset shape — even rows restored from a saved order/draft or added before
+  // the shape was locked. Without this, cfg.shape stays null, the size selector
+  // is gated off and the row never reaches "complete".
+  useEffect(() => {
+    const ps = line.presetShape || null
+    if (!ps) return
+    const configs = line.colorConfigs || []
+    if (configs.length === 0 || configs.every(c => c.shape === ps)) return
+    set({ colorConfigs: configs.map(c => (c.shape === ps ? c : { ...c, shape: ps })) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.presetShape, line.colorConfigs])
 
   // Color counts
   const colorCounts = {}
@@ -532,6 +546,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // `hasShapes` for the size column still works because each row's shape is
   // pre-filled to the preset value.
   const showShapeSelector = hasShapes && !presetShape
+  // A preset shape (chosen on the grid) satisfies the shape requirement for the
+  // whole line, so fields gated behind shape (e.g. size) stay selectable even
+  // before each row's cfg.shape has been backfilled.
+  const shapeReqMet = !hasShapes || !!presetShape
   const hasSizes = col.sizes && col.sizes.length > 0
   const hasThickness = col.cord === 'silk' || col.cord === 'silkBraided'
   // Allowed silk thicknesses for this collection. New silk collections (Sienna,
@@ -722,9 +740,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           background: expanded ? '#fafafa' : '#fff',
           borderBottom: expanded ? '1px solid #eee' : 'none',
           transition: 'background .15s',
+          gap: 8, flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
           {/* Line selection checkbox */}
           {line.colorConfigs.length > 0 && onToggleLineSelect && (
             <button
@@ -782,13 +801,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           >x</button>
           <button
             onClick={() => set({ expanded: !expanded })}
+            aria-label={expanded ? 'Collapse' : 'Expand'}
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 4,
               fontSize: 10, color: '#ccc',
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform .2s', display: 'inline-block',
+              minWidth: mobile ? 44 : 'auto', minHeight: mobile ? 44 : 'auto',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-          >▼</button>
+          ><span style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s', display: 'inline-block' }}>▼</span></button>
         </div>
       </div>
 
@@ -1341,7 +1361,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 )}
 
                 {/* Size */}
-                {hasSizes && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (!hasShapes || !!sharedSettings.shape) && (
+                {hasSizes && sharedSettings.caratIdx !== null && (!hasHousing || isImplicitHousing || !!sharedSettings.housing) && (shapeReqMet || !!sharedSettings.shape) && (
                   <select
                     value={sharedSettings.size || ''}
                     onChange={(e) => updateShared({ size: e.target.value || null })}
@@ -1571,7 +1591,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         {hasSizes && (
                           <td className="fill-cell" style={{ ...tdStyle, position: 'relative' }}>
                             {sameForAll ? <span style={{ color: '#888', fontSize: 11 }}>{(cfg.size ?? sharedSettings.size) || '-'}</span>
-                              : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) ? (
+                              : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (shapeReqMet || !!cfg.shape) ? (
                                 <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
                                   {sizeOptionsForClosure(col, cfg.closureType).map(s => <option key={s} value={s}>{sizeDisplayLabel(col, s)}</option>)}
@@ -1817,8 +1837,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             <span style={{ fontSize: 9, color: '#aaa', fontStyle: 'italic' }}>B2C: €{retailPriceMobile}</span>
                           )}
                         </div>
-                        <button onClick={() => duplicateConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fff', color: '#999', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                        <button onClick={() => removeConfig(cfg.id)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#e74c3c', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+                        <button onClick={() => duplicateConfig(cfg.id)} aria-label="Duplicate row" style={{ width: 44, height: 44, borderRadius: 8, border: '1px solid #e0e0e0', background: '#fff', color: '#999', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
+                        <button onClick={() => removeConfig(cfg.id)} aria-label="Remove row" style={{ width: 44, height: 44, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#e74c3c', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>x</button>
                       </div>
                     </div>
 
@@ -1888,13 +1908,51 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         </div>
                       )}
                       {/* Size */}
-                      {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (!hasShapes || !!cfg.shape) && (
+                      {hasSizes && !sameForAll && cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) && (shapeReqMet || !!cfg.shape) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.size')}</span>
                           <select value={cfg.size || ''} onChange={(e) => updateConfig(cfg.id, { size: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-size`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
                             {sizeOptionsForClosure(col, cfg.closureType).map(s => <option key={s} value={s}>{sizeDisplayLabel(col, s)}</option>)}
                           </select>
+                        </div>
+                      )}
+                      {/* Material / Thickness (silk + silkBraided) — previously
+                          only available in the desktop table, leaving silk
+                          collections unconfigurable on touch. */}
+                      {hasThickness && !sameForAll && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }} className="fill-cell">
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{hasCordOptions ? 'Material' : 'Thickness'}</span>
+                          {hasCordOptions ? (
+                            <select
+                              value={cfg.cordType === 'braidedNylon' ? 'braidedNylon' : (cfg.thickness || '')}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                if (val === 'braidedNylon') {
+                                  updateConfig(cfg.id, { cordType: 'braidedNylon', thickness: null })
+                                } else {
+                                  updateConfig(cfg.id, { cordType: 'silk', thickness: val || null })
+                                }
+                              }}
+                              style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                            >
+                              <option value="">-</option>
+                              <option value="Thin">Silk Thin</option>
+                              <option value="Thick">Silk Thick</option>
+                              <option value="braidedNylon">Braided Nylon</option>
+                            </select>
+                          ) : (
+                            <select
+                              value={cfg.thickness || ''}
+                              onChange={(e) => updateConfig(cfg.id, { thickness: e.target.value || null })}
+                              style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-thickness`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}
+                            >
+                              <option value="">-</option>
+                              {thicknessOpts.map((th) => (
+                                <option key={th} value={th}>{th}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       )}
                       {/* Closure (CUTY/CUBIX) */}
@@ -1917,7 +1975,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                         <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.qty')}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: recentlyFilled.has(`${cfg.id}-qty`) ? '#c8e6c9' : undefined, transition: 'background 0.3s', borderRadius: 4 }}>
                           <button onClick={() => updateConfig(cfg.id, { qty: Math.max(1, cfg.qty - 1) })} style={mobileQtyBtnStyle}>-</button>
-                          <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 44, height: 36, fontSize: 14 }} />
+                          <input type="number" value={cfg.qty} onChange={(e) => updateConfig(cfg.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })} style={{ ...qtyInputStyle, width: 48, height: 44, fontSize: 15 }} />
                           <button onClick={() => updateConfig(cfg.id, { qty: cfg.qty + 1 })} style={mobileQtyBtnStyle}>+</button>
                         </div>
                       </div>
@@ -1998,12 +2056,12 @@ const qtyInputStyle = {
 }
 
 const mobileSelectOverride = {
-  padding: '8px 10px', fontSize: 13, minHeight: 36,
+  padding: '10px 10px', fontSize: 14, minHeight: 44,
 }
 
 const mobileQtyBtnStyle = {
-  width: 36, height: 36, borderRadius: 6, border: '1px solid #e0e0e0',
-  background: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 600,
+  width: 44, height: 44, borderRadius: 6, border: '1px solid #e0e0e0',
+  background: '#fff', cursor: 'pointer', fontSize: 18, fontWeight: 600,
   display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555',
   fontFamily: 'inherit',
 }

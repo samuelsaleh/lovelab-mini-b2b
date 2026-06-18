@@ -24,7 +24,7 @@ import PackshotGallery from './components/PackshotGallery'
 import { findPackshot } from '@/lib/packshot-lookup'
 
 import { useAuth } from './components/AuthProvider'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 
 const MyAccountPanel = lazy(() => import('./components/MyAccountPanel'))
 
@@ -44,7 +44,9 @@ export default function App() {
   // order form, AI advisor and packshot gallery.
   const isAdmin = profile?.role === 'admin'
   const { t } = useI18n()
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait (< 1024px). The whole app shell (sidebar
+  // drawer, stacked layouts, bigger tap targets) treats tablets like phones.
+  const { isCompact: mobile } = useResponsive()
   
   // Active tab: 'home' | 'builder' | 'ai' | 'orderform' | 'documents'
   const [activeTab, setActiveTab] = useState('home')
@@ -765,7 +767,7 @@ export default function App() {
   const navItems = getMainNavItems(profile)
 
   return (
-    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column', color: '#333' }}>
+    <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
       {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 
@@ -800,6 +802,7 @@ export default function App() {
             background: client.vatValidating ? '#f7f7f7' : vatStatus === 'INVALID' ? '#f8d7da' : '#fff3cd',
             color: client.vatValidating ? '#555' : vatStatus === 'INVALID' ? '#721c24' : '#856404',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12,
+            flexWrap: 'wrap',
           }}>
             <span style={{ fontWeight: 600 }}>
               {client.vatValidating
@@ -811,9 +814,9 @@ export default function App() {
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               {!client.vatValidating && (
-                <button onClick={retryVatValidation} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
+                <button onClick={retryVatValidation} style={{ padding: mobile ? '10px 14px' : '5px 12px', minHeight: mobile ? 44 : 'auto', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: mobile ? 13 : 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('client.retry')}</button>
               )}
-              <button onClick={() => setClientReady(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('vat.editVat')}</button>
+              <button onClick={() => setClientReady(false)} style={{ padding: mobile ? '10px 14px' : '5px 12px', minHeight: mobile ? 44 : 'auto', borderRadius: 6, border: `1px solid ${colors.inkPlum}`, background: 'transparent', color: colors.inkPlum, fontSize: mobile ? 13 : 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t('vat.editVat')}</button>
             </div>
           </div>
         </div>

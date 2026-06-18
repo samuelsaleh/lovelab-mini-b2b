@@ -19,27 +19,16 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
 
-    // Admins see all clients; members see only their own
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-    const isAdmin = profile?.role === 'admin';
     const adminSupabase = createAdminClient();
-    const queryClient = isAdmin ? adminSupabase : adminSupabase;
 
-    let query = queryClient
+    // Clients are a shared pool: every authenticated user (agents + admins)
+    // can browse the full directory so an order can always be matched to an
+    // existing client, even when that client was first created by an admin or
+    // a different agent. Write access stays owner-scoped (see POST below).
+    let query = adminSupabase
       .from('clients')
       .select('*')
       .order('updated_at', { ascending: false });
-
-    if (!isAdmin) {
-      const userIds = await resolveAgentIds(adminSupabase, user.id);
-      query = userIds.length === 1
-        ? query.eq('created_by', userIds[0])
-        : query.in('created_by', userIds);
-    }
 
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters (commas, dots, parentheses)
@@ -49,7 +38,7 @@ export async function GET(request) {
       }
     }
 
-    const { data: clients, error } = await query.limit(isAdmin ? 2000 : 50);
+    const { data: clients, error } = await query.limit(2000);
 
     if (error) {
       console.error('[Clients GET] Error:', error.message);
@@ -135,11 +124,29 @@ export async function POST(request) {
         query = query.in('created_by', agentIds);
       }
 
-      const { data: client, error } = await query.select().single();
+      // maybeSingle (not single): for a non-admin trying to update a client
+      // they don't own, the ownership filter matches 0 rows. That is expected
+      // now that the directory is shared — we must not 500 on it.
+      const { data: client, error } = await query.select().maybeSingle();
 
       if (error) {
         console.error('[Clients POST update] Error:', error.message);
         return NextResponse.json({ error: 'Failed to update client' }, { status: 500 });
+      }
+
+      // No row updated → the client exists but is owned by someone else
+      // (shared directory). Return the existing record read-only so the order
+      // flow keeps the selected client without overwriting another owner's data.
+      if (!client) {
+        const { data: existing } = await adminSupabase
+          .from('clients')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (existing) {
+          return NextResponse.json({ client: existing, readOnly: true });
+        }
+        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
       }
 
       return NextResponse.json({ client });

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
+import { useResponsive } from '@/lib/useIsMobile'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ResourcesCard from '../components/ResourcesCard'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
@@ -14,6 +15,7 @@ const fmt = (n) => {
 
 export default function AdminDashboard() {
   const router = useRouter()
+  const { isCompact } = useResponsive()
   const [agents, setAgents] = useState([])
   const [documents, setDocuments] = useState([])
   const [events, setEvents] = useState([])
@@ -110,7 +112,7 @@ export default function AdminDashboard() {
           <Card label="Commission Owed" value={fmt(pendingCommission)} sub="pending payouts" accent={colors.warning} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 28 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 320px', gap: 20, marginBottom: 28 }}>
           {/* Recent Orders */}
           <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden' }}>
             <div style={{ padding: '14px 18px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -35,6 +35,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
+import { useResponsive } from '@/lib/useIsMobile';
 import { fmt } from '@/lib/utils';
 import { useAuth } from './AuthProvider';
 import { useOrgData } from '@/app/hooks/useOrgData';
@@ -57,6 +58,8 @@ function fmtDate(str) {
 export default function AgentSelfView({ defaultTab = 'financials', focused = false, pageTitle = null }) {
   const router = useRouter();
   const { profile, user, loading: authLoading } = useAuth();
+  // Compact = phone OR iPad portrait → tighter padding, stacked grids, 44px tabs.
+  const { isCompact: compact } = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -228,7 +231,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
   ];
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', fontFamily: fonts.body, background: '#f8f7fb' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: compact ? '16px 12px' : '24px 28px', fontFamily: fonts.body, background: '#f8f7fb' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
 
         {/* ── Focused page header (only when scaffold is hidden) ──────── */}
@@ -335,7 +338,8 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
               key={t.id}
               onClick={() => setActiveTab(t.id)}
               style={{
-                padding: '10px 18px',
+                padding: '12px 18px',
+                minHeight: 44,
                 border: 'none',
                 borderBottom: activeTab === t.id ? `2px solid ${colors.inkPlum}` : '2px solid transparent',
                 marginBottom: -2,
@@ -461,6 +465,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
               {payments.length === 0 ? (
                 <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No payments recorded yet.</div>
               ) : (
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#faf8fc' }}>
@@ -479,6 +484,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </div>
@@ -510,7 +516,8 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                 No consignment orders assigned to you yet.
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: compact ? 560 : 'auto' }}>
                 <thead>
                   <tr style={{ background: '#faf8fc' }}>
                     {['Date', 'Recipient', 'Amount', 'Return Date', 'Status'].map((h) => (
@@ -559,6 +566,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}
@@ -581,7 +589,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                 {orgLedger?.organization_summary && (
                   <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 10 }}>Company Totals</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr 1fr 1fr' : 'repeat(3, 1fr)', gap: 10 }}>
                       <Stat label="Earned" value={fmt(orgLedger.organization_summary.total_commission_earned || 0)} />
                       <Stat label="Paid" value={fmt(orgLedger.organization_summary.total_paid_out || 0)} />
                       <Stat label="Pending" value={fmt(orgLedger.organization_summary.pending_balance || 0)} />
@@ -591,7 +599,8 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                 {orgMembers && orgMembers.length > 0 && (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 8 }}>Team Members</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: compact ? 420 : 'auto' }}>
                       <thead>
                         <tr style={{ background: '#faf8fc' }}>
                           <th style={th}>Name</th>
@@ -614,6 +623,7 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -783,7 +793,7 @@ function AgentReportsPanel({ reports }) {
                             href={r.drive_view_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, padding: '4px 8px', border: `1px solid ${colors.lineGray}`, borderRadius: 6, textDecoration: 'none' }}
+                            style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, padding: '0 12px', minHeight: 40, display: 'inline-flex', alignItems: 'center', border: `1px solid ${colors.lineGray}`, borderRadius: 6, textDecoration: 'none' }}
                           >
                             Drive
                           </a>
@@ -792,7 +802,7 @@ function AgentReportsPanel({ reports }) {
                           <a
                             href={`/api/commission-reports/${r.id}/download`}
                             download
-                            style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: colors.inkPlum, padding: '4px 10px', borderRadius: 6, textDecoration: 'none' }}
+                            style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: colors.inkPlum, padding: '0 14px', minHeight: 40, display: 'inline-flex', alignItems: 'center', borderRadius: 6, textDecoration: 'none' }}
                           >
                             Download
                           </a>

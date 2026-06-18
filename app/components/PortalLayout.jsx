@@ -22,11 +22,13 @@ export default function PortalLayout({ navItems, activeId, portalLabel, rootPath
   const pathname = usePathname()
   const { user, profile } = useAuth()
 
+  // Compact = phone OR iPad portrait (< 1024px) → hamburger + drawer sidebar,
+  // freeing the full width for content on tablets too.
   const [isMobile, setIsMobile] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    const mql = window.matchMedia('(max-width: 767px)')
+    const mql = window.matchMedia('(max-width: 1023px)')
     const update = () => setIsMobile(mql.matches)
     update()
     mql.addEventListener('change', update)
@@ -38,7 +40,7 @@ export default function PortalLayout({ navItems, activeId, portalLabel, rootPath
   const canGoBack = pathname !== rootPath
 
   return (
-    <div style={{ fontFamily: fonts.body, background: '#f8f8f8', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column' }}>
       {/* Slim top bar — same purple as sidebar */}
       <div style={{ background: colors.inkPlum, flexShrink: 0, zIndex: 100, borderBottom: `2px solid ${colors.lovelabDark}` }}>
         <div style={{
@@ -56,6 +58,7 @@ export default function PortalLayout({ navItems, activeId, portalLabel, rootPath
                   background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.35)',
                   borderRadius: 8, padding: 8, color: '#fff', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  minWidth: 44, minHeight: 44,
                 }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

@@ -147,9 +147,10 @@ export default function ContractChatPanel({ isOpen, onClose, agentId, agentName 
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             style={{
               background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
-              width: 32, height: 32, borderRadius: 8, fontSize: 18,
+              width: 44, height: 44, borderRadius: 8, fontSize: 20, flexShrink: 0,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >×</button>

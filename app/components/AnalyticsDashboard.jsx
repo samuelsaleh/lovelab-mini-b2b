@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
-import { useIsMobile } from '@/lib/useIsMobile'
+import { useResponsive } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
 import { normalizeCountry } from '@/lib/countries'
@@ -233,7 +233,8 @@ function MiniStat({ label, items, maxItems = 5 }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function AnalyticsDashboard({ initialEventId = null }) {
-  const mobile = useIsMobile()
+  // Compact = phone OR iPad portrait → single-column charts/tables.
+  const { isCompact: mobile } = useResponsive()
 
   const [documents, setDocuments] = useState([])
   const [events, setEvents] = useState([])

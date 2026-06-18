@@ -1,115 +1,78 @@
 /**
- * Full necklace product spec export for IT / backend team.
- * Source of truth: lib/catalog.js + lib/packshot-lookup.js
+ * Full necklace product spec export for the IT / backend team.
+ *
+ * 100% catalog-driven: every price, colour, carat, size and shape is read
+ * straight from lib/catalog.js so this file can never drift from the live app.
+ * Covers all necklaces: CUTY, MULTI THREE, MULTI FOUR and SHAPY SHINE.
+ *
  * Run: node scripts/generate-necklace-it-export.mjs
  */
 import ExcelJS from 'exceljs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  COLLECTIONS, HOUSING, SIZES_NECKLACE, PRICELISTS, CORD_COLORS,
+  getCollectionsByType, getPrice, getRetail, getDefaultCert,
+} from '../lib/catalog.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.join(__dirname, '..', '_reference-materials', 'Necklace_Full_Spec_IT.xlsx')
 
+// ─── Static reference data (not in the catalog) ───────────────────────────────
 const NECKLACE_SIZE_INFO = {
   'S/M': { normalCm: 22, maxCm: 62 },
   'L/XL': { normalCm: 24, maxCm: 64 },
 }
+const CORD_LABELS = { nylon: 'Nylon', shine: 'Shine', silk: 'Silk', silkBraided: 'Silk / Braided' }
+const CERT_LABELS = { igi: 'IGI', inhouse: 'In-house', both: 'IGI + In-house' }
+const BRACELET_SOURCE = {
+  CUTY_NECK: 'CUTY', M3_NECK: 'MULTI THREE (M3)', M4_NECK: 'MULTI FOUR (M4)', SSF_NECK: 'SHAPY SHINE FANCY (SSF)',
+}
+const PACKSHOT_ALIAS = { CUTY_NECK: 'CUTY', M3_NECK: 'M3', M4_NECK: 'M4', SSF_NECK: 'SSF' }
 
-const SHAPES_SHAPY_SHINE = ['Heart', 'Pear', 'Marquise', 'Oval', 'Emerald', 'Cushion', 'Long Cushion']
+// Human-readable housing description, derived from the catalog HOUSING table.
+function housingDescription(col) {
+  if (!col.housing) return { summary: 'No metal housing (shape + colour only)', detail: '—' }
+  const h = HOUSING[col.housing]
+  if (!h) return { summary: col.housing, detail: '—' }
+  if (Array.isArray(h)) {
+    return { summary: `Metal — ${h.join(' / ')}`, detail: h.join(' | ') }
+  }
+  // Object housings. Bezel/prong (shapyShine, matchy) vs attached/not (multiThree).
+  const keys = Object.keys(h)
+  const parts = Object.entries(h).map(([k, v]) => {
+    const arr = Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x : x.label || x.id)) : []
+    const label = k === 'notAttached' ? 'Not attached' : k.charAt(0).toUpperCase() + k.slice(1)
+    return `${label}: ${arr.join(', ')}`
+  })
+  if (keys.includes('bezel') || keys.includes('prong')) {
+    return { summary: 'Bezel / Prong + metal (Yellow / White / Pink)', detail: parts.join(' | ') }
+  }
+  return { summary: 'Multi housing — Attached or Not Attached', detail: parts.join(' | ') }
+}
 
-const CUTY_COLORS = [
-  'Orange', 'Light Blue', 'Black', 'Fluo Pink', 'Fluo Yellow',
-  'Light Pink', 'Ivory', 'Red', 'Gold', 'Silver Grey', 'Green',
-]
+const NECKS = getCollectionsByType(COLLECTIONS, 'necklace')
 
-const MULTI_COLORS = ['Silver Grey', 'Gold', 'Bordeaux', 'Red', 'Black', 'Navy Blue']
+// Colours available for a collection: an explicit allowedColors list, or the
+// full native cord palette when no cap is set (CUTY + Shapy Shine necklaces).
+function colorsFor(col) {
+  if (col.allowedColors) return col.allowedColors
+  return (CORD_COLORS[col.cord] || []).map(c => c.n)
+}
 
-const NECKLACES = [
-  {
-    id: 'CUTY_NECK',
-    label: 'CUTY NECKLACE',
-    braceletSource: 'CUTY',
-    certificate: 'IGI',
-    carats: ['0.10', '0.20', '0.30'],
-    b2b: [50, 88, 125],
-    b2c: [195, 395, 540],
-    minQty: 3,
-    cord: 'Nylon',
-    housing: 'Standard — Yellow, White, Pink',
-    housingDetail: 'Yellow | White | Pink',
-    shapes: '—',
-    attachedDetached: '—',
-    packshotAlias: 'CUTY',
-    colors: CUTY_COLORS,
-  },
-  {
-    id: 'M3_NECK',
-    label: 'MULTI THREE NECKLACE',
-    braceletSource: 'MULTI THREE (M3)',
-    certificate: 'IGI',
-    carats: ['0.15', '0.30', '0.60'],
-    b2b: [81, 119, 219],
-    b2c: [325, 500, 1000],
-    minQty: 2,
-    cord: 'Nylon',
-    housing: 'Multi Three — Attached or Not Attached',
-    housingDetail: 'Attached: WWW, YYY, PPP | Not attached: WWW, YYY, PPP, YWP',
-    shapes: '—',
-    attachedDetached: 'Attached (F) or Not Attached (NF)',
-    packshotAlias: 'M3',
-    colors: MULTI_COLORS,
-  },
-  {
-    id: 'M4_NECK',
-    label: 'MULTI FOUR NECKLACE',
-    braceletSource: 'MULTI FOUR (M4)',
-    certificate: 'IGI',
-    carats: ['0.20', '0.40'],
-    b2b: [106, 138],
-    b2c: [450, 625],
-    minQty: 2,
-    cord: 'Nylon',
-    housing: 'Gold metal — White, Yellow, Pink',
-    housingDetail: 'White | Yellow | Pink',
-    shapes: '—',
-    attachedDetached: '—',
-    packshotAlias: 'M4',
-    colors: MULTI_COLORS,
-  },
-  {
-    id: 'SSF_NECK',
-    label: 'SHAPY SHINE NECKLACE',
-    braceletSource: 'SHAPY SHINE FANCY (SSF)',
-    certificate: 'IGI',
-    carats: ['0.10', '0.30', '0.50'],
-    b2b: [66, 120, 186],
-    b2c: [220, 400, 540],
-    minQty: 2,
-    cord: 'Shine',
-    housing: 'No metal housing (shape + colour only)',
-    housingDetail: '— (no bezel/prong metal; shapes selectable directly)',
-    shapes: SHAPES_SHAPY_SHINE.join(', '),
-    attachedDetached: '—',
-    packshotAlias: 'SSF',
-    colors: CUTY_COLORS,
-  },
-]
-
+// ─── Styling helpers ──────────────────────────────────────────────────────────
 function styleHeader(row) {
   row.font = { bold: true }
   row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE7F6' } }
   row.alignment = { vertical: 'middle', wrapText: true }
 }
-
-function euroFmt(cell) {
-  cell.numFmt = '€#,##0'
-}
+function euroFmt(cell) { cell.numFmt = '€#,##0' }
 
 const wb = new ExcelJS.Workbook()
-wb.creator = 'LoveLab B2B'
+wb.creator = 'LoveLab Mini B2B'
 wb.created = new Date()
 
-// ─── Sheet 1: Prices (one row per product × carat) ─────────────────────────
+// ─── Sheet 1: Prices (one row per product × carat) ─────────────────────────────
 const wsPrices = wb.addWorksheet('Prices')
 wsPrices.columns = [
   { header: 'Product ID', key: 'id', width: 14 },
@@ -119,77 +82,84 @@ wsPrices.columns = [
   { header: 'B2B wholesale (€)', key: 'b2b', width: 18 },
   { header: 'B2C / Retail (€)', key: 'b2c', width: 16 },
   { header: 'Min order qty', key: 'minQty', width: 14 },
-  { header: 'Price list 2025', key: 'pl2025', width: 14 },
-  { header: 'Price list 2026', key: 'pl2026', width: 14 },
+  { header: 'Price list 2025 (€)', key: 'pl2025', width: 18 },
+  { header: 'Price list 2026 (€)', key: 'pl2026', width: 18 },
   { header: 'Notes', key: 'notes', width: 36 },
 ]
 styleHeader(wsPrices.getRow(1))
 
-for (const p of NECKLACES) {
-  p.carats.forEach((carat, i) => {
+for (const col of NECKS) {
+  const cert = getDefaultCert(col)
+  col.carats.forEach((carat, i) => {
     const r = wsPrices.addRow({
-      id: p.id,
-      label: p.label,
+      id: col.id,
+      label: col.label,
       carat,
-      cert: p.certificate,
-      b2b: p.b2b[i],
-      b2c: p.b2c[i],
-      minQty: p.minQty,
-      pl2025: 'Same as 2026',
-      pl2026: 'Current',
-      notes: 'Flat price for S/M and L/XL sizes',
+      cert: CERT_LABELS[cert] || cert,
+      b2b: getPrice(col, i, cert, '2026'),
+      b2c: getRetail(col, i, cert, '2026'),
+      minQty: col.minC || 1,
+      pl2025: getPrice(col, i, cert, '2025'),
+      pl2026: getPrice(col, i, cert, '2026'),
+      notes: 'Flat price across S/M and L/XL sizes',
     })
     euroFmt(r.getCell('b2b'))
     euroFmt(r.getCell('b2c'))
+    euroFmt(r.getCell('pl2025'))
+    euroFmt(r.getCell('pl2026'))
   })
 }
 wsPrices.autoFilter = 'A1:J1'
 wsPrices.views = [{ state: 'frozen', ySplit: 1 }]
 
-// ─── Sheet 2: Product summary ───────────────────────────────────────────────
+// ─── Sheet 2: Product summary ───────────────────────────────────────────────────
 const wsProducts = wb.addWorksheet('Products')
 wsProducts.columns = [
   { header: 'Product ID', key: 'id', width: 14 },
   { header: 'Product name', key: 'label', width: 26 },
-  { header: 'Based on bracelet', key: 'braceletSource', width: 22 },
+  { header: 'Based on bracelet', key: 'source', width: 24 },
   { header: 'Product type', key: 'type', width: 12 },
-  { header: 'Certificate', key: 'cert', width: 12 },
+  { header: 'Certificate', key: 'cert', width: 14 },
   { header: 'Carats available', key: 'carats', width: 22 },
-  { header: 'Sizes', key: 'sizes', width: 28 },
-  { header: 'Cord / thread type', key: 'cord', width: 14 },
-  { header: 'Housing / metal', key: 'housing', width: 32 },
-  { header: 'Housing options', key: 'housingDetail', width: 48 },
+  { header: 'Sizes', key: 'sizes', width: 44 },
+  { header: 'Cord / thread', key: 'cord', width: 14 },
+  { header: 'Housing / metal', key: 'housing', width: 34 },
+  { header: 'Housing options', key: 'housingDetail', width: 52 },
   { header: 'Shapes', key: 'shapes', width: 52 },
-  { header: 'Attached / Detached', key: 'attachedDetached', width: 28 },
   { header: 'Min order qty', key: 'minQty', width: 14 },
-  { header: 'Packshot images from', key: 'packshotAlias', width: 18 },
+  { header: 'Packshots reuse', key: 'alias', width: 16 },
   { header: 'Colour count', key: 'colorCount', width: 12 },
 ]
 styleHeader(wsProducts.getRow(1))
 
-for (const p of NECKLACES) {
+const sizeText = SIZES_NECKLACE
+  .map(s => `${s} (${NECKLACE_SIZE_INFO[s]?.normalCm} cm, max ${NECKLACE_SIZE_INFO[s]?.maxCm} cm)`)
+  .join(' | ')
+
+for (const col of NECKS) {
+  const housing = housingDescription(col)
+  const colors = colorsFor(col)
   wsProducts.addRow({
-    id: p.id,
-    label: p.label,
-    braceletSource: p.braceletSource,
+    id: col.id,
+    label: col.label,
+    source: BRACELET_SOURCE[col.id] || '—',
     type: 'Necklace',
-    cert: p.certificate,
-    carats: p.carats.join(', '),
-    sizes: 'S/M (22 cm, max 62 cm) | L/XL (24 cm, max 64 cm)',
-    cord: p.cord,
-    housing: p.housing,
-    housingDetail: p.housingDetail,
-    shapes: p.shapes,
-    attachedDetached: p.attachedDetached,
-    minQty: p.minQty,
-    packshotAlias: p.packshotAlias,
-    colorCount: p.colors.length,
+    cert: CERT_LABELS[col.certificate] || col.certificate,
+    carats: col.carats.join(', '),
+    sizes: sizeText,
+    cord: CORD_LABELS[col.cord] || col.cord,
+    housing: housing.summary,
+    housingDetail: housing.detail,
+    shapes: col.shapes ? col.shapes.join(', ') : '—',
+    minQty: col.minC || 1,
+    alias: PACKSHOT_ALIAS[col.id] || col.id,
+    colorCount: colors.length,
   })
 }
-wsProducts.autoFilter = 'A1:O1'
+wsProducts.autoFilter = 'A1:N1'
 wsProducts.views = [{ state: 'frozen', ySplit: 1 }]
 
-// ─── Sheet 3: Cord colours (one row per product × colour) ───────────────────
+// ─── Sheet 3: Cord colours (one row per product × colour) ──────────────────────
 const wsColors = wb.addWorksheet('Cord colours')
 wsColors.columns = [
   { header: 'Product ID', key: 'id', width: 14 },
@@ -197,64 +167,37 @@ wsColors.columns = [
   { header: 'Cord type', key: 'cord', width: 12 },
   { header: '#', key: 'num', width: 6 },
   { header: 'Colour name', key: 'color', width: 18 },
-  { header: 'Palette group', key: 'group', width: 22 },
 ]
 styleHeader(wsColors.getRow(1))
-
-for (const p of NECKLACES) {
-  const group = p.id === 'SSF_NECK' ? 'Shapy Shine (same as CUTY necklace)'
-    : p.id === 'CUTY_NECK' ? 'CUTY necklace palette'
-    : 'Multi Three / Four palette'
-  p.colors.forEach((color, i) => {
-    wsColors.addRow({ id: p.id, label: p.label, cord: p.cord, num: i + 1, color, group })
+for (const col of NECKS) {
+  colorsFor(col).forEach((color, i) => {
+    wsColors.addRow({ id: col.id, label: col.label, cord: CORD_LABELS[col.cord] || col.cord, num: i + 1, color })
   })
 }
-wsColors.autoFilter = 'A1:F1'
+wsColors.autoFilter = 'A1:E1'
 wsColors.views = [{ state: 'frozen', ySplit: 1 }]
 
-// ─── Sheet 4: Colour palette reference ──────────────────────────────────────
-const wsPalette = wb.addWorksheet('Colour palettes')
-wsPalette.columns = [
-  { header: 'Palette name', key: 'name', width: 28 },
-  { header: 'Used by', key: 'usedBy', width: 40 },
-  { header: 'Colour count', key: 'count', width: 14 },
-  { header: 'Colours (comma-separated)', key: 'colors', width: 80 },
-]
-styleHeader(wsPalette.getRow(1))
-
-wsPalette.addRow({
-  name: 'CUTY necklace / Shapy Shine necklace',
-  usedBy: 'CUTY NECKLACE, SHAPY SHINE NECKLACE',
-  count: CUTY_COLORS.length,
-  colors: CUTY_COLORS.join(', '),
-})
-wsPalette.addRow({
-  name: 'Multi Three / Multi Four necklace',
-  usedBy: 'MULTI THREE NECKLACE, MULTI FOUR NECKLACE',
-  count: MULTI_COLORS.length,
-  colors: MULTI_COLORS.join(', '),
-})
-
-// ─── Sheet 5: Sizes ─────────────────────────────────────────────────────────
+// ─── Sheet 4: Sizes ────────────────────────────────────────────────────────────
 const wsSizes = wb.addWorksheet('Sizes')
 wsSizes.columns = [
   { header: 'Size code', key: 'code', width: 12 },
   { header: 'Normal length (cm)', key: 'normal', width: 18 },
   { header: 'Max opening (cm)', key: 'max', width: 16 },
-  { header: 'Applies to', key: 'applies', width: 40 },
+  { header: 'Applies to', key: 'applies', width: 48 },
 ]
 styleHeader(wsSizes.getRow(1))
-for (const [code, info] of Object.entries(NECKLACE_SIZE_INFO)) {
+for (const code of SIZES_NECKLACE) {
+  const info = NECKLACE_SIZE_INFO[code] || {}
   wsSizes.addRow({
     code,
-    normal: info.normalCm,
-    max: info.maxCm,
-    applies: 'All necklaces (CUTY, Multi Three, Multi Four, Shapy Shine)',
+    normal: info.normalCm ?? '',
+    max: info.maxCm ?? '',
+    applies: NECKS.map(c => c.label).join(', '),
   })
 }
 
-// ─── Sheet 6: Shapy Shine shapes ────────────────────────────────────────────
-const wsShapes = wb.addWorksheet('Shapy Shine shapes')
+// ─── Sheet 5: Shapes (Shapy Shine) ───────────────────────────────────────────────
+const wsShapes = wb.addWorksheet('Shapes')
 wsShapes.columns = [
   { header: 'Product ID', key: 'id', width: 14 },
   { header: 'Product', key: 'label', width: 26 },
@@ -262,30 +205,34 @@ wsShapes.columns = [
   { header: 'Shape', key: 'shape', width: 18 },
 ]
 styleHeader(wsShapes.getRow(1))
-SHAPES_SHAPY_SHINE.forEach((shape, i) => {
-  wsShapes.addRow({ id: 'SSF_NECK', label: 'SHAPY SHINE NECKLACE', num: i + 1, shape })
-})
+for (const col of NECKS) {
+  if (!col.shapes) continue
+  col.shapes.forEach((shape, i) => {
+    wsShapes.addRow({ id: col.id, label: col.label, num: i + 1, shape })
+  })
+}
 
-// ─── Sheet 7: Pricing rules (for IT context) ────────────────────────────────
-const wsRules = wb.addWorksheet('Notes for IT')
-wsRules.columns = [{ header: 'Field', key: 'field', width: 28 }, { header: 'Value', key: 'value', width: 90 }]
-styleHeader(wsRules.getRow(1))
+// ─── Sheet 6: Notes for IT ───────────────────────────────────────────────────────
+const wsNotes = wb.addWorksheet('Notes for IT')
+wsNotes.columns = [{ header: 'Field', key: 'field', width: 28 }, { header: 'Value', key: 'value', width: 95 }]
+styleHeader(wsNotes.getRow(1))
 const notes = [
-  ['System', 'LoveLab Mini B2B — catalog source: lib/catalog.js'],
-  ['Product type', 'All items in this file are necklaces (productType: necklace)'],
+  ['System', 'LoveLab Mini B2B — generated from lib/catalog.js (single source of truth)'],
+  ['Pricelist years', `Available: ${PRICELISTS.join(', ')}. Necklace prices are identical across years.`],
+  ['Product type', 'All rows are necklaces (productType: necklace)'],
   ['Certificate', 'All necklaces are IGI only — no in-house certificate option'],
-  ['Price lists', '2025 and 2026 prices are identical for all necklace SKUs'],
   ['Size pricing', 'B2B and B2C prices are flat — same for S/M and L/XL'],
   ['CUTY necklace B2C', 'Retail rounded up to nearest €5 (195, 395, 540)'],
-  ['Shapy Shine necklace pricing', 'B2B = SSF bracelet × 1.20 (66, 120, 186). B2C = retail × 1.20 rounded up to €5 (220, 400, 540)'],
-  ['Shapy Shine colours', 'Same 11 cord colours as CUTY necklace (not the full 21-colour Shine bracelet palette)'],
-  ['Shapy Shine shapes', 'All 7 SHAPY SHINE shapes available on necklace, selectable directly after carat (see Shapy Shine shapes sheet)'],
-  ['Shapy Shine housing', 'No bezel/prong metal housing on the necklace (unlike the bracelet) — config is carat -> shape -> colour/size'],
-  ['Multi Three necklace', 'Requires Attached (F) or Not Attached (NF) setting on order line'],
+  ['Shapy Shine pricing', 'B2B = SSF bracelet × 1.20 (66, 120, 186). B2C = retail × 1.20 rounded up to €5 (220, 400, 540)'],
+  ['CUTY & Shapy Shine colours', 'Full cord palette available (no cap): CUTY necklace = full nylon palette, Shapy Shine necklace = full Shine palette'],
+  ['Multi Three / Four colours', 'Capped to 6 colours: Silver Grey, Gold, Bordeaux, Red, Black, Navy Blue'],
+  ['Shapy Shine shapes', 'All 7 shapes are selectable directly on the selection grid (one card per shape); the shape is locked per line.'],
+  ['Shapy Shine housing', 'Same as the SSF bracelet: Bezel/Prong setting + metal colour (Yellow/White/Pink). At 0.10 ct only Bezel is available. Config: shape (grid) -> carat -> bezel/prong + metal -> size -> colour.'],
+  ['Multi Three necklace', 'Requires Attached (F) or Not Attached (NF) setting on the order line'],
   ['Packshots', 'Necklace SKUs reuse bracelet images: CUTY_NECK→CUTY, M3_NECK→M3, M4_NECK→M4, SSF_NECK→SSF'],
-  ['Metadata fields (orders)', 'Standard order PDF + documents.metadata; DZB fields separate feature for Nicolas'],
 ]
-for (const [field, value] of notes) wsRules.addRow({ field, value })
+for (const [field, value] of notes) wsNotes.addRow({ field, value })
 
 await wb.xlsx.writeFile(OUT)
 console.log('Wrote', OUT)
+console.log('Necklaces:', NECKS.map(c => c.id).join(', '))

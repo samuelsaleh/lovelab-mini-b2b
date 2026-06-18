@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from './AuthProvider'
 import { useOrgData } from '@/app/hooks/useOrgData'
 import { colors, fonts } from '@/lib/styles'
+import { useResponsive } from '@/lib/useIsMobile'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ContractChatPanel from './ContractChatPanel'
 import AgentFolderBrowser from './AgentFolderBrowser'
@@ -25,6 +26,7 @@ const ITEMS_PER_PAGE = 20
 
 export default function AgentAnalytics({ defaultTab = null }) {
   const router = useRouter()
+  const { isCompact } = useResponsive()
   const { profile, loading: authLoading } = useAuth()
   const [data, setData] = useState(null)
   const [payments, setPayments] = useState([])
@@ -338,7 +340,7 @@ export default function AgentAnalytics({ defaultTab = null }) {
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 300px', gap: 24, alignItems: 'start' }}>
               {/* Monthly Chart */}
               {monthlyData.length > 0 ? (
                 <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${colors.lineGray}`, padding: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>

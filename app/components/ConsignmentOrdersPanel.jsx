@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
+import { useResponsive } from '@/lib/useIsMobile'
 import EditConsignmentDetailsModal from './EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from './ReconcileConsignmentModal'
 import { isReturned, isOverdue, daysUntil, patchConsignmentOrder, closeConsignmentAsReturned, getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
@@ -51,6 +52,7 @@ function AgentChip({ name }) {
 }
 
 export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
+  const { isCompact } = useResponsive()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -358,7 +360,7 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
 
         {/* Summary strip */}
         {!loading && orders.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isCompact ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Active value', value: fmt(totalActiveValue), accent: colors.inkPlum },
               { label: 'Active orders', value: active.length, accent: '#0ea5e9' },
@@ -416,7 +418,7 @@ export default function ConsignmentOrdersPanel({ onReEdit, onDuplicate }) {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search recipient or agent..."
-            style={{ padding: '8px 12px', fontSize: 13, fontFamily: fonts.body, border: `1px solid ${colors.lineGray}`, borderRadius: 8, width: 240, outline: 'none' }}
+            style={{ padding: '10px 12px', minHeight: 44, fontSize: 13, fontFamily: fonts.body, border: `1px solid ${colors.lineGray}`, borderRadius: 8, width: '100%', maxWidth: isCompact ? '100%' : 240, outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
 
