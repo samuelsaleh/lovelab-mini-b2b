@@ -81,4 +81,18 @@ describe('app/components/OrderForm.jsx — draft round-trip', () => {
     const deps = match[1]
     expect(deps).toMatch(/pricelistYear/)
   })
+
+  it('draft auto-save useEffect dep array includes calculator money adjustments', () => {
+    const src = readOrderForm()
+    // The May 2026 calculator fix stopped writing delivery/custom/VAT into
+    // finalTotalOverride. If these states are not direct deps, a draft saved
+    // after applying a no-discount adjustment can restore with those money
+    // lines silently missing after refresh/crash recovery.
+    const match = src.match(/saveDraft, 2 \* 60 \* 1000\)[\s\S]*?\}\s*,\s*\[([^\]]+)\]\)/)
+    expect(match).not.toBeNull()
+    const deps = match[1]
+    for (const dep of ['shippingAmount', 'taxPercent', 'taxLabel', 'customLineLabel', 'customLineAmount']) {
+      expect(deps).toMatch(new RegExp(`\\b${dep}\\b`))
+    }
+  })
 })

@@ -1017,7 +1017,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows, pricelistYear])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, shippingAmount, taxPercent, taxLabel, customLineLabel, customLineAmount, rows, pricelistYear])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
