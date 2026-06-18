@@ -56,6 +56,10 @@ const COLUMNS = [
 
 const FILL_KEYS = ['quantity', 'collection', 'cert', 'carat', 'shape', 'setting', 'bpColor', 'closure', 'size', 'material', 'colorCord', 'unitPrice']
 
+// LoveLab's fixed DZB Bank supplier number (Numéro fournisseur DZB). Shown on
+// the invoice for clients who settle through DZB Bank GmbH by subrogation.
+const DZB_SUPPLIER_NUMBER = '1350017080'
+
 function isRowFilled(row) {
   // Show action buttons if any field has content (not just when ALL fields are filled)
   return FILL_KEYS.some(k => String(row[k] || '').trim() !== '')
@@ -697,6 +701,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [vitrinePrice, setVitrinePrice] = useState(250)
   const [vitrineQty, setVitrineQty] = useState(1)
 
+  // DZB Bank state. Clients who pay via DZB Bank need a fixed payment text block
+  // on the invoice. The supplier number is a constant; the client's adhérent
+  // number is typed per order. Option is gated to Nicolas + admins (canUseDzb).
+  const [dzbEnabled, setDzbEnabled] = useState(false)
+  const [dzbClientNumber, setDzbClientNumber] = useState('')
+  const canUseDzb = isAdmin || currentUser?.email === 'nicolas@love-lab.com'
+
   // Table rows state with undo/redo support
   const [rows, setRowsInternal] = useState(() => prefillRows(quote))
   const [rowsHistory, setRowsHistory] = useState([prefillRows(quote)])
@@ -828,6 +839,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
     if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
+    if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
+    if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
     // Restore shipping / tax / custom line so re-opening a saved order
     // doesn't silently drop them from the totals (and from the saved
     // document on the next save). `deliveryCost` is the legacy field name
@@ -920,6 +933,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
     if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
+    if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
+    if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
     // Same shipping/tax/custom-line restore as the saved-document path.
     if (s.shippingAmount != null) setShippingAmount(Number(s.shippingAmount) || null)
     else if (s.deliveryCost != null) setShippingAmount(Number(s.deliveryCost) || null)
@@ -980,6 +995,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
           discountDisplay, finalTotalOverride,
           hasVitrine, vitrinePrice, vitrineQty,
+          dzbEnabled, dzbClientNumber,
           // Keep drafts and saved orders in sync — drafts also need to
           // restore shipping / tax / custom line on reopen.
           shippingAmount,
@@ -1017,7 +1033,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, rows, pricelistYear])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, rows, pricelistYear])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
@@ -1601,6 +1617,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             eventName, createdBy, hasPrepayment, prepaymentAmount, prepaymentMethod,
             discountDisplay, finalTotalOverride,
             hasVitrine, vitrinePrice, vitrineQty,
+            // DZB Bank payment block (Nicolas + admins). dzbSupplierNumber is the
+            // fixed LoveLab number; dzbClientNumber is the client's adhérent number.
+            dzbEnabled, dzbClientNumber, dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
             // Persisted alongside the top-level metadata.shipping_amount so the
             // form can rehydrate them when re-opening a saved order. Without
             // these, re-saving stripped any delivery fee, VAT line, or custom
@@ -1620,6 +1639,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           eventName,
           contactName,
           pricelistYear,
+          // Top-level DZB fields so back-end / Hardik forwarding can read them
+          // without cracking open formState. These are the values to send onward.
+          dzbEnabled,
+          dzbClientNumber,
+          dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
           shippingAddress: shippingSameAsBilling 
             ? [addressLine1, addressLine2, country].filter(Boolean).join(', ')
@@ -2238,6 +2262,41 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         </>
                       )}
                     </div>
+                    {/* DZB Bank Section (Nicolas + admins only) */}
+                    {canUseDzb && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.dzb') || 'DZB Bank'} :</span>
+                        {['no', 'yes'].map(opt => {
+                          const isSelected = (opt === 'yes') === dzbEnabled
+                          return (
+                            <button
+                              key={opt}
+                              onClick={() => setDzbEnabled(opt === 'yes')}
+                              style={{
+                                padding: '4px 10px', borderRadius: 4,
+                                border: isSelected ? 'none' : '1px solid #ccc',
+                                background: isSelected ? (opt === 'yes' ? colors.lovelabPurple : '#6b7280') : '#f0f0f0',
+                                color: isSelected ? '#fff' : '#666',
+                                fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                                textTransform: 'capitalize',
+                              }}
+                            >{opt}</button>
+                          )
+                        })}
+                        {dzbEnabled && (
+                          <PrintableInput
+                            value={dzbClientNumber}
+                            onChange={(e) => setDzbClientNumber(e.target.value)}
+                            placeholder={t('order.dzbClientNumber') || 'Client DZB number'}
+                            style={{
+                              width: 150, padding: '2px 6px', borderRadius: 4,
+                              border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
+                            }}
+                            isPrinting={isPrinting}
+                          />
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
                 </>
@@ -2259,6 +2318,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   </div>
                 )}
               </div>
+
+              {/* DZB Bank payment block — page 0 only, when enabled. Rendered
+                  inside #order-form-print so html2canvas captures it onto the PDF.
+                  The text is a fixed French legal/banking statement. */}
+              {pageIdx === 0 && dzbEnabled && (
+                <div style={{ marginBottom: 10, fontSize: 10, color: colors.lovelabMuted, lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700 }}>Numéro fournisseur DZB: {DZB_SUPPLIER_NUMBER}</div>
+                  <div style={{ fontWeight: 700 }}>Numéro adhérent DZB du client: {dzbClientNumber}</div>
+                  <div>Veuillez effectuer votre paiement directement à l'ordre de DZB BANK GmbH qui le reçoit par subrogation.</div>
+                </div>
+              )}
 
               {/* ─── Order Table (Desktop) or Cards (Mobile) ─── */}
               {mobile && mobileCardView && !isPrinting ? (
