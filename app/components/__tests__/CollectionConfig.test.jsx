@@ -31,6 +31,8 @@ const CUTY = COLLECTIONS.find(c => c.id === 'CUTY')
 const M3 = COLLECTIONS.find(c => c.id === 'M3')
 // SSF has shapes (shapyShine housing)
 const SSF = COLLECTIONS.find(c => c.id === 'SSF')
+// Necklace collection (CUTY necklace)
+const CUTY_NECK = COLLECTIONS.find(c => c.id === 'CUTY_NECK')
 
 // ─── Component under test ────────────────────────────────────────────────────
 
@@ -95,6 +97,29 @@ describe('CollectionConfig — color palette', () => {
         ]),
       })
     )
+  })
+})
+
+describe('CollectionConfig — product type badge', () => {
+  it('shows a Necklace badge for necklace collections', () => {
+    const line = mockLine(CUTY_NECK)
+    renderConfig(CUTY_NECK, line)
+    expect(screen.getByText('Necklace')).toBeInTheDocument()
+  })
+
+  it('shows a Bracelet badge for bracelet collections', () => {
+    const line = mockLine(CUTY)
+    renderConfig(CUTY, line)
+    expect(screen.getByText('Bracelet')).toBeInTheDocument()
+  })
+
+  it('necklace size dropdown surfaces the cm measurement', () => {
+    const line = mockLine(CUTY_NECK, [
+      mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: null, qty: 1 }),
+    ])
+    renderConfig(CUTY_NECK, line)
+    // The size <option> text includes the worn + max-opening centimetres.
+    expect(screen.getAllByText(/22 cm \(max 62 cm\)/).length).toBeGreaterThan(0)
   })
 })
 

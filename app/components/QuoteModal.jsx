@@ -4,11 +4,18 @@ import { fmt, today } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
-import { COLLECTIONS, CERT_LABELS } from '@/lib/catalog'
+import { COLLECTIONS, CERT_LABELS, getProductType } from '@/lib/catalog'
 import { findPackshot } from '@/lib/packshot-lookup'
 import PackshotThumb from './PackshotThumb'
 
 const LABEL_TO_ID = Object.fromEntries(COLLECTIONS.map(c => [c.label, c.id]))
+
+// Resolve a quote line's product type ('bracelet' | 'necklace') from its
+// product label so the Type column/badge can render without storing it on the line.
+function lineProductType(ln) {
+  const col = COLLECTIONS.find(c => c.label === ln.product || c.id === LABEL_TO_ID[ln.product])
+  return getProductType(col)
+}
 
 function quoteLinePackshotOpts(ln) {
   const opts = {}
@@ -138,7 +145,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>{fmt(ln.lineTotal)}</div>
                   </div>
                   <div style={{ fontSize: 10, color: colors.lovelabMuted, lineHeight: 1.5 }}>
-                    {[ln.certType ? CERT_LABELS[ln.certType] : null, ln.carat, ln.housing, ln.colorName, ln.shape, ln.size].filter(Boolean).join(' · ')}
+                    {[t(`productType.${lineProductType(ln)}`), ln.certType ? CERT_LABELS[ln.certType] : null, ln.carat, ln.housing, ln.colorName, ln.shape, ln.size].filter(Boolean).join(' · ')}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 11, color: colors.charcoal }}>
                     {t('quote.qty')}: <strong>{ln.qty}</strong> · {t('quote.unitPrice')}: <strong>{fmt(ln.unitB2B)}</strong>
@@ -151,7 +158,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: `2px solid ${colors.inkPlum}` }}>
-                    {['Photo', t('quote.product'), t('cert.label'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
+                    {['Photo', t('quote.product'), t('quote.type'), t('cert.label'), 'ct', t('quote.housing'), t('quote.color'), t('quote.shape'), t('quote.size'), t('quote.qty'), t('quote.unitPrice'), t('quote.total')].map((h) => (
                       <th key={h} style={{ 
                         padding: '7px 4px', 
                         textAlign: 'left', 
@@ -175,6 +182,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
                         />
                       </td>
                       <td style={{ padding: '7px 4px', fontWeight: 600, color: colors.charcoal, fontSize: 12, whiteSpace: 'nowrap' }}>{ln.product}</td>
+                      <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal, whiteSpace: 'nowrap' }}>{t(`productType.${lineProductType(ln)}`)}</td>
                       <td style={{ padding: '7px 4px', fontSize: 9, color: colors.charcoal }}>{ln.certType ? CERT_LABELS[ln.certType] : '—'}</td>
                       <td style={{ padding: '7px 4px', color: colors.charcoal, fontSize: 12 }}>{ln.carat}</td>
                       <td style={{ padding: '7px 4px', fontSize: 10, color: colors.charcoal }}>{ln.housing || '—'}</td>

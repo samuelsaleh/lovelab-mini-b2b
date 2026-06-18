@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, getVisibleCollections, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -36,6 +36,7 @@ const COLUMNS = [
   { key: 'photo', labelKey: 'order.columns.photo', width: 52 },
   { key: 'quantity', labelKey: 'order.columns.quantity', width: 58 },
   { key: 'collection', labelKey: 'order.columns.collection', width: 148 },
+  { key: 'type', labelKey: 'order.columns.type', width: 58 },
   { key: 'cert', labelKey: 'order.columns.cert', width: 56 },
   { key: 'carat', labelKey: 'order.columns.carat', width: 58 },
   { key: 'shape', labelKey: 'order.columns.shape', width: 72 },
@@ -2379,6 +2380,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         {COLUMNS.map((col) => {
                           const isPhotoCol = col.key === 'photo'
                           const isCollectionCol = col.key === 'collection'
+                          const isTypeCol = col.key === 'type'
                           const isCertCol = col.key === 'cert'
                           const isCaratCol = col.key === 'carat'
                           const isShapeCol = col.key === 'shape'
@@ -2466,6 +2468,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   isPrinting={isPrinting}
                                   wrapText
                                 />
+                              ) : isTypeCol ? (
+                                <div style={{ fontSize: 10, color: colors.charcoal, textAlign: 'center' }}>
+                                  {row.collection ? t(`productType.${getProductType(findCollection(row.collection))}`) : ''}
+                                </div>
                               ) : isCertCol && row.collection ? (
                                 (() => {
                                   const certCol = findCollection(row.collection)

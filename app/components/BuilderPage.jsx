@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, getCollectionsByType, getProductType, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile, useIsTablet } from '@/lib/useIsMobile'
@@ -375,6 +375,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [selectedCollections, setSelectedCollections] = useState(() => {
     // Init from existing lines
     return lines.filter(l => l.collectionId).map(l => l.collectionId)
+  })
+  // Bracelet vs Necklace tab on the selection grid. Default to whichever type
+  // the already-selected lines belong to (so editing a necklace order opens on
+  // the Necklaces tab), otherwise Bracelets.
+  const [productTypeTab, setProductTypeTab] = useState(() => {
+    const firstSelected = lines.find(l => l.collectionId)
+    if (firstSelected) {
+      const col = COLLECTIONS.find(c => c.id === firstSelected.collectionId)
+      if (col) return getProductType(col)
+    }
+    return 'bracelet'
   })
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
@@ -1391,6 +1402,39 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   </p>
                 </div>
 
+                {/* Bracelet / Necklace segmented toggle. Filters the grid only —
+                    selection state stays global across both tabs. */}
+                <div style={{ display: 'inline-flex', gap: 0, marginBottom: 16, border: `1px solid ${colors.inkPlum}33`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                  {(() => {
+                    const visibleAll = getVisibleCollections(isAdmin)
+                    return [
+                      { type: 'bracelet', label: t('builder.bracelets') },
+                      { type: 'necklace', label: t('builder.necklaces') },
+                    ].map(({ type, label }) => {
+                      const active = productTypeTab === type
+                      const selCount = selectedCollections.filter(id => {
+                        const c = visibleAll.find(x => x.id === id)
+                        return c && getProductType(c) === type
+                      }).length
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => setProductTypeTab(type)}
+                          style={{
+                            padding: '8px 18px', border: 'none', cursor: 'pointer',
+                            fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+                            background: active ? colors.inkPlum : 'transparent',
+                            color: active ? '#fff' : colors.inkPlum,
+                            transition: 'all .12s',
+                          }}
+                        >
+                          {label}{selCount > 0 ? ` (${selCount})` : ''}
+                        </button>
+                      )
+                    })
+                  })()}
+                </div>
+
                 {/* Collection Grid */}
                 <div style={{
                   display: 'grid',
@@ -1400,8 +1444,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 }}>
                   {(() => {
                     // Preview (admin-only) collections are hidden from the grid
-                    // for non-admins.
-                    const visible = getVisibleCollections(isAdmin)
+                    // for non-admins. The active Bracelet/Necklace tab filters
+                    // further; selection state stays global across tabs.
+                    const visible = getCollectionsByType(getVisibleCollections(isAdmin), productTypeTab)
                     return [
                       ...selectedCollections.map(id => visible.find(c => c.id === id)).filter(Boolean),
                       ...visible.filter(c => !selectedCollections.includes(c.id)),
