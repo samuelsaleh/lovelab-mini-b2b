@@ -25,8 +25,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // in-app webviews); without these the spinner spins with no error and nothing
 // is ever uploaded or saved. Generous enough for the largest real orders
 // (~200 rows / ~20 pages still render well under these).
-const PDF_GEN_TIMEOUT_MS = 90000; // 90s per generation pass
+const PDF_GEN_TIMEOUT_MS = 90000; // 90s for the first (highest-quality) pass
 const SAVE_FETCH_TIMEOUT_MS = 45000; // 45s for the final document-save request
+
+// Build an accurate, browser-aware message when PDF generation can't finish.
+// The old message told everyone to "open Chrome or Safari directly... or save
+// from a computer" — confusing for the common case of a user already on
+// desktop Chrome. We only show the in-app-browser advice when we actually
+// detect an in-app webview (Instagram/Facebook/Gmail/Android wv etc.), and
+// otherwise blame the workload/device, which is the real cause on a slow or
+// busy computer.
+function pdfTimeoutMessage() {
+  if (typeof navigator !== 'undefined') {
+    const ua = navigator.userAgent || '';
+    const inAppWebview = /FBAN|FBAV|Instagram|Line\/|WhatsApp|; wv\)|GSA\/|Twitter|MicroMessenger/i.test(ua);
+    if (inAppWebview) {
+      return 'Could not build the PDF inside this in-app browser. Open the page directly in Chrome or Safari (not from inside another app) and try again.';
+    }
+  }
+  return 'The PDF took too long to build on this device — the order may be large or the computer is busy. Close other tabs and programs, then press Save again. If it keeps failing, try from another computer.';
+}
 
 // Safe JSON parser that gracefully handles non-JSON server responses.
 // When the API returns plain text like "Internal Server Error", we surface a
@@ -303,31 +321,58 @@ export default function SaveDocumentModal({
       let pdfBlob;
       try {
         const MAX_UPLOAD_BYTES = 24 * 1024 * 1024; // Keep under 25MB request cap
+        // Quality-first, with progressively cheaper/faster fallbacks. The
+        // high-scale pass is CPU-heavy; on a slow or busy machine it can blow
+        // past its time budget. Rather than failing outright we drop to a
+        // lower scale (far fewer pixels = much faster render), which is the
+        // difference between "the order won't save at all" and a slightly
+        // softer PDF that still prints perfectly. Each pass also gets a
+        // shorter budget than the last — if the heavy pass couldn't finish in
+        // time, the cheap passes only need a fraction of it.
         const profiles = [
-          { scale: 1.6, quality: 0.92 }, // best quality
-          { scale: 1.35, quality: 0.86 }, // balanced
-          { scale: 1.15, quality: 0.8 }, // aggressive fallback
+          { scale: 1.6, quality: 0.92, timeout: PDF_GEN_TIMEOUT_MS }, // best quality
+          { scale: 1.35, quality: 0.86, timeout: 60000 }, // balanced
+          { scale: 1.15, quality: 0.8, timeout: 45000 }, // aggressive fallback
+          { scale: 1.0, quality: 0.75, timeout: 35000 }, // last resort for slow machines
         ];
 
         for (let i = 0; i < profiles.length; i++) {
           const cfg = profiles[i];
-          // Bound each generation pass so a stalled html2canvas render can't
-          // hang the modal forever — surfaces a clear, actionable error instead.
-          pdfBlob = await withTimeout(
-            generatePDF(elementRef.current, filename, {
-              orientation: 'landscape',
-              scale: cfg.scale,
-              quality: cfg.quality,
-            }),
-            PDF_GEN_TIMEOUT_MS,
-            'PDF generation timed out on this device. Try a different browser (open Chrome or Safari directly, not from inside another app), or save from a computer.',
-          );
-
-          if (pdfBlob.size <= MAX_UPLOAD_BYTES) break;
+          try {
+            // Bound each generation pass so a stalled html2canvas render can't
+            // hang the modal forever — surfaces a clear, actionable error.
+            const blob = await withTimeout(
+              generatePDF(elementRef.current, filename, {
+                orientation: 'landscape',
+                scale: cfg.scale,
+                quality: cfg.quality,
+              }),
+              cfg.timeout,
+              'PDF_TIMEOUT',
+            );
+            pdfBlob = blob;
+            if (pdfBlob.size <= MAX_UPLOAD_BYTES) break;
+            // Too large: fall through to a lower-quality profile to shrink it.
+          } catch (passErr) {
+            // A timeout is recoverable — retry the next, cheaper/faster pass
+            // instead of failing the whole save. Any other error (e.g. a
+            // tainted-canvas security error) won't be fixed by retrying.
+            if (passErr?.isTimeout) {
+              console.warn(`[pdf] generation timed out at scale ${cfg.scale} after ${cfg.timeout}ms — retrying cheaper`);
+              continue;
+            }
+            throw passErr;
+          }
         }
 
-        if (!pdfBlob || pdfBlob.size > MAX_UPLOAD_BYTES) {
-          const mb = pdfBlob ? (pdfBlob.size / (1024 * 1024)).toFixed(1) : 'unknown';
+        if (!pdfBlob) {
+          // Every pass timed out — give browser-aware, accurate guidance
+          // instead of the old "open Chrome on a computer" message that
+          // confused desktop-Chrome users who were already doing exactly that.
+          throw new Error(pdfTimeoutMessage());
+        }
+        if (pdfBlob.size > MAX_UPLOAD_BYTES) {
+          const mb = (pdfBlob.size / (1024 * 1024)).toFixed(1);
           throw new Error(`PDF too large to upload (${mb} MB). Please reduce rows or split into multiple orders.`);
         }
       } catch (pdfError) {
