@@ -71,17 +71,39 @@ export async function GET(request) {
       return badRequest('Failed to load packs', 500)
     }
 
-    let packs = data || []
+    // Flag each pack the caller actually owns. The UI uses this (not the scope)
+    // to decide whether to show the "Your pack" badge + edit/delete controls,
+    // because admins can now SEE other users' private packs (Phase 27) but must
+    // not be able to mutate them.
+    let packs = (data || []).map((p) => ({ ...p, is_owner: p.created_by === user.id }))
 
     // Only admins need the per-pack agent assignments (to pre-check the editor
-    // checkboxes). We never leak the visibility list to agents. Best-effort —
-    // a failure here must not break the pack list.
+    // checkboxes) and the owner labels (so they can tell whose pack they're
+    // looking at). We never leak either to agents. Best-effort — a failure here
+    // must not break the pack list.
     if (isAdmin && packs.length > 0) {
       try {
         const map = await fetchAgentIdsForPacks(adminSupabase, packs.map((p) => p.id))
         packs = packs.map((p) => ({ ...p, agent_ids: map[p.id] || [] }))
       } catch (e) {
         console.warn('[packs GET] failed to load pack_visibility:', e?.message)
+      }
+
+      try {
+        const ownerIds = [...new Set(packs.map((p) => p.created_by).filter(Boolean))]
+        if (ownerIds.length > 0) {
+          const { data: owners } = await adminSupabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', ownerIds)
+          const ownerById = Object.fromEntries((owners || []).map((o) => [o.id, o]))
+          packs = packs.map((p) => {
+            const o = p.created_by ? ownerById[p.created_by] : null
+            return { ...p, owner_name: o ? (o.full_name || o.email || null) : null }
+          })
+        }
+      } catch (e) {
+        console.warn('[packs GET] failed to load pack owners:', e?.message)
       }
     }
 

@@ -9,9 +9,10 @@
  *   - Search filters are still applied on top of the shared directory.
  *   - The non-admin result set is capped at 2000 (same as admins) so large
  *     shared directories are actually browsable.
- *   - POST update by a non-admin on a client they DON'T own does not 500;
- *     it returns the existing record read-only instead of overwriting it.
- *   - POST update by the owner still persists changes normally.
+ *   - POST update is a SHARED directory: a non-admin can edit ANY client
+ *     (no created_by filter), so an agent can keep an office-created client
+ *     up to date. created_by is never part of the update filter.
+ *   - POST update of a missing id returns 404.
  */
 
 // ── Mock Supabase query chain ────────────────────────────────────────────────
@@ -51,10 +52,6 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: jest.fn(() => null) }))
-
-jest.mock('@/app/api/_lib/access', () => ({
-  resolveAgentIds: jest.fn(async (_c, id) => [id]),
-}))
 
 const { GET, POST } = require('../clients/route')
 
@@ -148,28 +145,28 @@ describe('POST /api/clients — update on shared directory', () => {
     expect(json.readOnly).toBeUndefined()
   })
 
-  test('non-admin updating a client they DO NOT own: no 500, returns existing read-only', async () => {
+  test('non-admin can edit ANY client (shared directory): persists and returns it, no created_by filter', async () => {
     mockRole = 'member'
-    // First maybeSingle = the update (0 rows matched ownership filter) → null.
-    // Second maybeSingle = the fallback read of the existing record.
-    mockQuery.maybeSingle
-      .mockResolvedValueOnce({ data: null, error: null })
-      .mockResolvedValueOnce({
-        data: { id: 'c-bld', company: 'sas bld', created_by: 'admin-sunita' },
-        error: null,
-      })
-    const res = await POST(makePost({ id: 'c-bld', company: 'sas bld' }))
+    // The update matches the row (no ownership filter) and returns it.
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-bld', company: 'sas bld', address: 'New Street 1', created_by: 'admin-sunita' },
+      error: null,
+    })
+    const res = await POST(makePost({ id: 'c-bld', company: 'sas bld', address: 'New Street 1' }))
     const json = await res.json()
     expect(res.status).toBe(200)
-    expect(json.readOnly).toBe(true)
+    expect(json.readOnly).toBeUndefined()
     expect(json.client.company).toBe('sas bld')
+    expect(json.client.address).toBe('New Street 1')
+    // The update must NEVER be scoped by created_by — that's what shares the
+    // directory for editing.
+    expect(mockQuery.in).not.toHaveBeenCalledWith('created_by', expect.anything())
+    expect(mockQuery.eq).not.toHaveBeenCalledWith('created_by', expect.anything())
   })
 
   test('update of a non-existent id returns 404', async () => {
     mockRole = 'member'
-    mockQuery.maybeSingle
-      .mockResolvedValueOnce({ data: null, error: null }) // update matched nothing
-      .mockResolvedValueOnce({ data: null, error: null }) // fallback read found nothing
+    mockQuery.maybeSingle.mockResolvedValueOnce({ data: null, error: null }) // update matched nothing
     const res = await POST(makePost({ id: 'missing', company: 'Ghost Co' }))
     expect(res.status).toBe(404)
   })

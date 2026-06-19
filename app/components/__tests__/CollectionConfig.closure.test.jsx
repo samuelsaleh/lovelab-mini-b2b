@@ -1,9 +1,11 @@
 /**
- * CollectionConfig — bracelet thread closure (CUTY/CUBIX) tests
+ * CollectionConfig — bracelet thread closure tests
  *
  * Guarantees:
  *   - The Closure column header renders ONLY for collections with hasClosure
- *     (CUTY, CUBIX) and is hidden for everyone else (HOLY/M3/etc.).
+ *     (the nylon bracelets: CUTY, CUBIX, MULTI THREE/FOUR/FIVE, MATCHY FANCY,
+ *     SHAPY SHINE FANCY, HOLY) and is hidden for silk bracelets (SSPF) and
+ *     necklaces.
  *   - The Closure dropdown lets the user pick Braided / Non-braided and emits
  *     onChange with the new colorConfigs array.
  *   - The completion mirror in CollectionConfig requires closureType for
@@ -24,7 +26,9 @@ jest.mock('@/lib/useIsMobile', () => ({
 const { COLLECTIONS } = require('@/lib/catalog')
 const CUTY = COLLECTIONS.find(c => c.id === 'CUTY')
 const CUBIX = COLLECTIONS.find(c => c.id === 'CUBIX')
-const HOLY = COLLECTIONS.find(c => c.id === 'HOLY')
+// SSPF (Shapy Sparkle Fancy) is a SILK bracelet — the canonical "no closure"
+// sentinel now that the nylon bracelets (incl. HOLY) all opt in to closure.
+const SSPF = COLLECTIONS.find(c => c.id === 'SSPF')
 
 const CollectionConfig = require('../CollectionConfig').default
 
@@ -78,11 +82,20 @@ describe('CollectionConfig — closure column visibility', () => {
     expect(screen.getByText('Closure')).toBeInTheDocument()
   })
 
-  it('does NOT show the Closure header for HOLY (no hasClosure)', () => {
-    const line = mockLine(HOLY, [
-      mockColorConfig({ caratIdx: 0, housing: 'Yellow', shape: 'Cross', size: 'M' }),
+  it('shows the Closure header for MATCHY FANCY (newly-enabled nylon bracelet)', () => {
+    const MF = COLLECTIONS.find(c => c.id === 'MF')
+    const line = mockLine(MF, [
+      mockColorConfig({ caratIdx: 0, housing: 'Yellow', housingType: 'prong', shape: 'Pear', size: 'M', closureType: null }),
     ])
-    renderConfig(HOLY, line)
+    renderConfig(MF, line)
+    expect(screen.getByText('Closure')).toBeInTheDocument()
+  })
+
+  it('does NOT show the Closure header for SSPF (silk, no hasClosure)', () => {
+    const line = mockLine(SSPF, [
+      mockColorConfig({ caratIdx: 0, shape: 'Round', size: 'S/M' }),
+    ])
+    renderConfig(SSPF, line)
     expect(screen.queryByText('Closure')).not.toBeInTheDocument()
   })
 })
@@ -206,12 +219,12 @@ describe('CollectionConfig — Shared Settings: Closure', () => {
     expect(sharedClosure).toBeTruthy()
   })
 
-  it('does NOT render the Closure dropdown for non-closure collections (HOLY)', () => {
-    const line = mockLineSameForAll(HOLY, [
-      mockColorConfig({ caratIdx: 0, housing: 'Yellow', shape: 'Cross', size: 'M' }),
+  it('does NOT render the Closure dropdown for non-closure collections (SSPF — silk)', () => {
+    const line = mockLineSameForAll(SSPF, [
+      mockColorConfig({ caratIdx: 0, shape: 'Round', size: 'S/M' }),
     ])
-    renderConfig(HOLY, line)
-    // Closure has no place on HOLY whether it's per-row or shared.
+    renderConfig(SSPF, line)
+    // Closure has no place on a silk bracelet whether it's per-row or shared.
     expect(screen.queryByRole('option', { name: 'Braided' })).not.toBeInTheDocument()
   })
 
@@ -261,17 +274,17 @@ describe('CollectionConfig — Duplicate panel: Closure row', () => {
     expect(closureRadios.length).toBeGreaterThanOrEqual(2) // Keep same + Change to
   })
 
-  it('does NOT render a CLOSURE row for non-closure collections (HOLY)', () => {
-    const line = mockLine(HOLY, [
-      mockColorConfig({ caratIdx: 0, housing: 'Yellow', shape: 'Cross', size: 'M' }),
+  it('does NOT render a CLOSURE row for non-closure collections (SSPF — silk)', () => {
+    const line = mockLine(SSPF, [
+      mockColorConfig({ caratIdx: 0, shape: 'Round', size: 'S/M' }),
     ])
-    renderConfig(HOLY, line)
+    renderConfig(SSPF, line)
 
     const triggers = screen.getAllByText(/Duplicate all with variations/i)
     fireEvent.click(triggers[0])
 
-    // No `dup-closure-*` radios should exist for HOLY — the field is gated
-    // by hasClosure in the panel's row array.
+    // No `dup-closure-*` radios should exist for a silk bracelet — the field is
+    // gated by hasClosure in the panel's row array.
     const closureRadios = document.querySelectorAll('input[type="radio"][name^="dup-closure-"]')
     expect(closureRadios.length).toBe(0)
   })

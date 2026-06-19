@@ -352,23 +352,23 @@ describe('linesToFormRows ↔ applyPack round-trip', () => {
     expect(row.closure).toBe('braided')
   })
 
-  it('strips closure for non-hasClosure collections', () => {
-    const M3 = COLLECTIONS.find(c => c.id === 'M3')
+  it('strips closure for non-hasClosure collections (SSPF — silk)', () => {
+    // SSPF (Shapy Sparkle Fancy) is a silk bracelet — it never opts in to
+    // closure, so any closureType carried on the config must be stripped.
     const line = {
-      uid: 'l1', collectionId: 'M3',
+      uid: 'l1', collectionId: 'SSPF',
       colorConfigs: [{
-        id: 'c1', colorName: 'Black', caratIdx: 0,
-        housing: 'YYY', housingType: null, multiAttached: true,
-        shape: null, size: 'M', cordType: null, thickness: null,
+        id: 'c1', colorName: 'Red', caratIdx: 0,
+        housing: null, housingType: null, multiAttached: null,
+        shape: 'Round', size: 'S/M', cordType: 'silk', thickness: 'Thin',
         closureType: 'braided', // attempted carry-over
         qty: 1, priceOverride: null, certType: 'igi',
       }],
     }
     const rows = linesToFormRows([line])
     expect(rows).toHaveLength(1)
-    expect(rows[0].closure).toBe('') // stripped because M3.hasClosure is falsy
-    expect(rows[0].setting).toBe('F') // multiAttached: true → setting 'F'
-    void M3
+    expect(rows[0].collection).toBe('SHAPY SPARKLE FANCY')
+    expect(rows[0].closure).toBe('') // stripped because SSPF.hasClosure is falsy
   })
 
   it('totalForFormRows multiplies quantity × unitPrice and sums', () => {

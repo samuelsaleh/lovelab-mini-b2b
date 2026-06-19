@@ -6,8 +6,8 @@
  *   - For a CUTY row (hasClosure: true), the closure cell renders the
  *     localised value coming from the quote (`closureType: 'braided'`
  *     → "Braided"); the cell is editable (a real <select>).
- *   - For a non-CUTY/CUBIX row, the closure cell shows the "N/A" em-dash
- *     so users don't accidentally pick a closure for HOLY/M3/etc.
+ *   - For a non-closure row (silk bracelets, necklaces), the closure cell shows
+ *     the "N/A" em-dash so users don't accidentally pick a closure there.
  */
 
 import React from 'react'
@@ -96,29 +96,28 @@ describe('OrderForm — closure column', () => {
     expect(closureSelect.value).toBe('braided')
   })
 
-  it('renders the em-dash N/A in the closure cell for a non-closure collection (M3)', () => {
+  it('renders the em-dash N/A in the closure cell for a non-closure collection (SSPF — silk)', () => {
     const quote = {
       lines: [{
-        product: 'MULTI THREE',
-        carat: '0.10',
+        product: 'SHAPY SPARKLE FANCY',
+        carat: '0.70',
         certType: 'igi',
-        housing: 'WWW',
-        multiAttached: true,
-        size: 'M',
+        shape: 'Round',
+        size: 'S/M',
         closureType: null,
-        colorName: 'White',
+        colorName: 'Red',
         qty: 1,
-        unitB2B: 95,
-        lineTotal: 95,
+        unitB2B: 240,
+        lineTotal: 240,
       }],
-      subtotal: 95,
-      total: 95,
+      subtotal: 240,
+      total: 240,
       totalPieces: 1,
     }
     renderForm(quote)
 
-    // No <select> in the document should expose a "Braided" option for an
-    // M3 row — the closure cell falls back to the N/A em-dash instead.
+    // No <select> in the document should expose a "Braided" option for a
+    // silk row — the closure cell falls back to the N/A em-dash instead.
     const selects = screen.queryAllByRole('combobox')
     const braidedSelect = selects.find(s =>
       Array.from(s.options || []).some(o => o.text === 'Braided'),

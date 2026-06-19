@@ -163,7 +163,7 @@ describe('BuilderPage — AI ADD action plumbs closureType + certType into the l
     expect(cfg.closureType).toBeNull()
   })
 
-  test('ADD on a non-closure collection (M3) leaves closureType null even if the AI sends one', async () => {
+  test('ADD on a non-closure collection (SSPF — silk) leaves closureType null even if the AI sends one', async () => {
     let captured = null
     const harness = renderWithI18n(
       <StatefulHarness
@@ -174,20 +174,20 @@ describe('BuilderPage — AI ADD action plumbs closureType + certType into the l
 
     await runAddAction(harness, {
       type: 'add',
-      collection: 'MULTI THREE',
-      color: 'Black',
-      carat: '0.10',
-      closureType: 'braided', // M3 has no closure — should be ignored
-      housing: 'Yellow',
+      collection: 'SHAPY SPARKLE FANCY',
+      color: 'Red',
+      carat: '0.70',
+      shape: 'Round',
+      closureType: 'braided', // SSPF is silk — has no closure, should be ignored
       qty: 1,
     })
 
-    const m3Line = captured.find(l => {
+    const sspfLine = captured.find(l => {
       const col = COLLECTIONS.find(c => c.id === l.collectionId)
-      return col && col.label === 'MULTI THREE'
+      return col && col.label === 'SHAPY SPARKLE FANCY'
     })
-    expect(m3Line).toBeTruthy()
-    const cfg = m3Line.colorConfigs[m3Line.colorConfigs.length - 1]
+    expect(sspfLine).toBeTruthy()
+    const cfg = sspfLine.colorConfigs[sspfLine.colorConfigs.length - 1]
     expect(cfg.closureType).toBeNull()
   })
 })

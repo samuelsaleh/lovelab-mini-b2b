@@ -20,12 +20,13 @@ export function uniqueId() {
 }
 
 // ─── Shape cards on the selection grid ───
-// For these collections we expand the single grid card into one card per shape
-// (e.g. SHAPY SHINE NECKLACE → Heart / Pear / Marquise / …) so the sales user can
-// pick the shape directly on the selection page. Each card carries a selection
-// "key" of the form `${collectionId}::${shape}`. Every other collection keeps a
-// plain `collectionId` key, so their behaviour is unchanged.
-export const SHAPE_CARD_IDS = new Set(['SSF_NECK'])
+// Mechanism kept for flexibility: any collection id listed here is expanded
+// into one grid card per shape (key `${collectionId}::${shape}`). Currently the
+// set is empty — every collection (including the Shapy Shine / Shapy Sparkle /
+// Holy / Matchy necklaces) shows as ONE general card on the selection grid, and
+// the shape is chosen later during configuration. Sam asked to keep the picker
+// uncluttered ("show Shapy Shine in general, not one card per shape").
+export const SHAPE_CARD_IDS = new Set([])
 const CARD_KEY_SEP = '::'
 
 export function cardKey(collectionId, shape) {
@@ -315,23 +316,32 @@ function computePackTotal(pack, pricelistYear) {
 // the PACK*_ROWS shape because PackBuilderModal builds them via
 // linesToFormRows, the exact inverse of applyPack.
 //
-// We carry the DB id, scope and is_seed flag through (prefixed with `_`) so
-// the UI can decide which packs are editable/deletable:
-//   - `_custom` (private, owned) → "Your pack" badge + delete control.
+// We carry the DB id, scope, ownership and is_seed flag through (prefixed with
+// `_`) so the UI can decide which packs are editable/deletable:
+//   - `_custom` (private AND owned by the caller) → "Your pack" badge + delete.
+//   - `_isOwner` → the caller created this pack (any scope).
+//   - admins can SEE other users' private packs (Phase 27) but must not get a
+//     delete/edit control on them; `_ownerName` lets the card show whose pack
+//     it is. `is_owner` / `owner_name` come from /api/packs.
 //   - `_isSeed` / global → editable only by admins (matches the RLS policy).
 function dbPackToDisplay(p) {
+  const isOwner = p.is_owner === undefined ? (p.scope === 'private') : !!p.is_owner
   return {
     id: p.id,
     _dbId: p.id,
     _scope: p.scope || 'global',
     _agentIds: Array.isArray(p.agent_ids) ? p.agent_ids : [],
     _isSeed: !!p.is_seed,
+    _isOwner: isOwner,
+    _ownerName: p.owner_name || null,
     label: p.label,
     description: Array.isArray(p.description) ? p.description : [],
     budget: p.budget_label || null,
     fixedTotal: p.fixed_total != null ? Number(p.fixed_total) : null,
     formRows: Array.isArray(p.form_rows) ? p.form_rows : [],
-    _custom: p.scope === 'private',
+    // "Your pack" (badge + delete) only when the caller actually owns a private
+    // pack — never on another user's private pack an admin happens to see.
+    _custom: p.scope === 'private' && isOwner,
   }
 }
 
@@ -1365,10 +1375,13 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </span>
                   </button>
                   {allPacks.map(pack => {
-                    // Private packs are always owned by the caller (RLS only
-                    // returns the user's own), so they're editable. Global/seed
-                    // standard packs are editable only by admins.
-                    const editable = !!pack._dbId && (pack._scope === 'private' || isAdmin)
+                    // Mirror the RLS UPDATE policy exactly: the owner can edit
+                    // their own pack (any scope); admins can edit non-private
+                    // (global/restricted) packs. An admin viewing another
+                    // user's private pack can see + apply it but NOT edit it.
+                    const editable = !!pack._dbId && (pack._isOwner || (isAdmin && pack._scope !== 'private'))
+                    // Packs an admin sees but doesn't own — surface whose it is.
+                    const foreignOwner = !pack._isOwner && pack._ownerName
                     return (
                     <div key={pack.id} style={{
                       minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 240px' : '0 0 auto',
@@ -1388,6 +1401,19 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             borderRadius: 5, padding: '1px 5px',
                           }}>
                             Your pack
+                          </span>
+                        )}
+                        {foreignOwner && (
+                          <span
+                            title={`Created by ${pack._ownerName}`}
+                            style={{
+                              fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                              letterSpacing: 0.3, color: '#6b7280', background: '#f1f1f4',
+                              borderRadius: 5, padding: '1px 5px',
+                              maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {pack._ownerName}
                           </span>
                         )}
                         {pack._custom && (

@@ -27,8 +27,13 @@ const CORD_LABELS = { nylon: 'Nylon', shine: 'Shine', silk: 'Silk', silkBraided:
 const CERT_LABELS = { igi: 'IGI', inhouse: 'In-house', both: 'IGI + In-house' }
 const BRACELET_SOURCE = {
   CUTY_NECK: 'CUTY', M3_NECK: 'MULTI THREE (M3)', M4_NECK: 'MULTI FOUR (M4)', SSF_NECK: 'SHAPY SHINE FANCY (SSF)',
+  CUBIX_NECK: 'CUBIX', MF_NECK: 'MATCHY FANCY (MF)',
+  SSPF_NECK: 'SHAPY SPARKLE (SSPF)', HOLY_NECK: 'HOLY (D VVS)',
 }
-const PACKSHOT_ALIAS = { CUTY_NECK: 'CUTY', M3_NECK: 'M3', M4_NECK: 'M4', SSF_NECK: 'SSF' }
+const PACKSHOT_ALIAS = {
+  CUTY_NECK: 'CUTY', M3_NECK: 'M3', M4_NECK: 'M4', SSF_NECK: 'SSF',
+  CUBIX_NECK: 'CUBIX', MF_NECK: 'MF', SSPF_NECK: 'SSPF', HOLY_NECK: 'HOLY',
+}
 
 // Human-readable housing description, derived from the catalog HOUSING table.
 function housingDescription(col) {

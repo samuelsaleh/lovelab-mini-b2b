@@ -1,7 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { resolveAgentIds } from '@/app/api/_lib/access';
 
 // GET - List all clients (with optional search)
 export async function GET(request) {
@@ -24,7 +23,9 @@ export async function GET(request) {
     // Clients are a shared pool: every authenticated user (agents + admins)
     // can browse the full directory so an order can always be matched to an
     // existing client, even when that client was first created by an admin or
-    // a different agent. Write access stays owner-scoped (see POST below).
+    // a different agent. Edit access is shared too (see POST below) — agents
+    // often onboard a client the office first entered and need to keep its
+    // details up to date.
     let query = adminSupabase
       .from('clients')
       .select('*')
@@ -101,7 +102,13 @@ export async function POST(request) {
     }
 
     if (id) {
-      let query = adminSupabase
+      // Shared directory: any authenticated user can edit any client's core
+      // details (created_by is never overwritten, so ownership/attribution is
+      // preserved). The Salesforce `source*` metadata stays admin-only via
+      // sourcePayload above. We deliberately do NOT scope this by created_by:
+      // agents routinely onboard a client the office first entered and need to
+      // keep its address / VAT / contact up to date.
+      const { data: client, error } = await adminSupabase
         .from('clients')
         .update({
           name: name?.trim() || null,
@@ -117,35 +124,19 @@ export async function POST(request) {
           ...sourcePayload,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
-
-      if (!isAdmin) {
-        const agentIds = await resolveAgentIds(adminSupabase, user.id);
-        query = query.in('created_by', agentIds);
-      }
-
-      // maybeSingle (not single): for a non-admin trying to update a client
-      // they don't own, the ownership filter matches 0 rows. That is expected
-      // now that the directory is shared — we must not 500 on it.
-      const { data: client, error } = await query.select().maybeSingle();
+        .eq('id', id)
+        .select()
+        // maybeSingle (not single): a missing id matches 0 rows → handled as a
+        // 404 below instead of throwing.
+        .maybeSingle();
 
       if (error) {
         console.error('[Clients POST update] Error:', error.message);
         return NextResponse.json({ error: 'Failed to update client' }, { status: 500 });
       }
 
-      // No row updated → the client exists but is owned by someone else
-      // (shared directory). Return the existing record read-only so the order
-      // flow keeps the selected client without overwriting another owner's data.
+      // No row updated → the id doesn't exist.
       if (!client) {
-        const { data: existing } = await adminSupabase
-          .from('clients')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-        if (existing) {
-          return NextResponse.json({ client: existing, readOnly: true });
-        }
         return NextResponse.json({ error: 'Client not found' }, { status: 404 });
       }
 
