@@ -1,9 +1,13 @@
 /**
- * Full necklace product spec export for the IT / backend team.
+ * Full necklace product spec export (business + IT reference).
  *
  * 100% catalog-driven: every price, colour, carat, size and shape is read
  * straight from lib/catalog.js so this file can never drift from the live app.
- * Covers all necklaces: CUTY, MULTI THREE, MULTI FOUR and SHAPY SHINE.
+ * Covers ALL 8 necklaces: CUTY, MULTI THREE, MULTI FOUR, SHAPY SHINE, CUBIX,
+ * MATCHY FANCY, SHAPY SPARKLE and HOLY.
+ *
+ * Sheets: Overview · Prices (B2B/B2C) · Products · Specialities · Cord colours ·
+ *         Sizes · Shapes · Notes.
  *
  * Run: node scripts/generate-necklace-it-export.mjs
  */
@@ -26,13 +30,28 @@ const NECKLACE_SIZE_INFO = {
 const CORD_LABELS = { nylon: 'Nylon', shine: 'Shine', silk: 'Silk', silkBraided: 'Silk / Braided' }
 const CERT_LABELS = { igi: 'IGI', inhouse: 'In-house', both: 'IGI + In-house' }
 const BRACELET_SOURCE = {
-  CUTY_NECK: 'CUTY', M3_NECK: 'MULTI THREE (M3)', M4_NECK: 'MULTI FOUR (M4)', SSF_NECK: 'SHAPY SHINE FANCY (SSF)',
+  CUTY_NECK: 'CUTY', M3_NECK: 'MULTI THREE (M3)', M4_NECK: 'MULTI FOUR (M4)', M5_NECK: 'MULTI FIVE (M5)',
+  SSF_NECK: 'SHAPY SHINE FANCY (SSF)',
   CUBIX_NECK: 'CUBIX', MF_NECK: 'MATCHY FANCY (MF)',
   SSPF_NECK: 'SHAPY SPARKLE (SSPF)', HOLY_NECK: 'HOLY (D VVS)',
 }
 const PACKSHOT_ALIAS = {
-  CUTY_NECK: 'CUTY', M3_NECK: 'M3', M4_NECK: 'M4', SSF_NECK: 'SSF',
+  CUTY_NECK: 'CUTY', M3_NECK: 'M3', M4_NECK: 'M4', M5_NECK: 'M5', SSF_NECK: 'SSF',
   CUBIX_NECK: 'CUBIX', MF_NECK: 'MF', SSPF_NECK: 'SSPF', HOLY_NECK: 'HOLY',
+}
+
+// Per-product "what's special about this necklace" — the bits that aren't
+// obvious from the price/colour grids. Kept short and human-readable.
+const SPECIFICS = {
+  CUTY_NECK: 'Full nylon colour palette (no cap). Metal housing Yellow / White / Pink.',
+  M3_NECK: 'Order line must choose Attached (F) or Not Attached (NF). Colours capped to 6. Multi-row housing (WWW/YYY/PPP, + YWP when detached).',
+  M4_NECK: 'Colours capped to 6. Gold-metal housing (Yellow / White / Pink).',
+  M5_NECK: 'Colours capped to 6. Gold-metal housing (Yellow / White / Pink).',
+  SSF_NECK: 'All 7 Shapy Shine shapes (shape chosen first, locked per line). Bezel / Prong setting — Bezel only at 0.10 ct, Bezel + Prong from 0.30 ct. Full nylon palette (necklaces are nylon-only).',
+  CUBIX_NECK: 'Full nylon colour palette (no cap). Gold-metal housing.',
+  MF_NECK: 'Matchy shapes (Pear / Heart / Emerald). Bezel / Prong setting. Full nylon palette.',
+  SSPF_NECK: 'PRONG only (no bezel). Exists ONLY in 0.70 & 1.00 ct, IGI. Nylon thread (NOT silk). All Shapy Sparkle shapes.',
+  HOLY_NECK: 'Nylon thread (NOT silk). Colours capped to 4: Silver Grey, Black, Red, Ivory. Holy shapes (Cross / Hamsa / Star of David / Greek Cross).',
 }
 
 // Human-readable housing description, derived from the catalog HOUSING table.
@@ -76,6 +95,29 @@ function euroFmt(cell) { cell.numFmt = '€#,##0' }
 const wb = new ExcelJS.Workbook()
 wb.creator = 'LoveLab Mini B2B'
 wb.created = new Date()
+
+// ─── Sheet 0: Overview ─────────────────────────────────────────────────────────
+const wsOverview = wb.addWorksheet('Overview')
+wsOverview.columns = [
+  { header: 'LoveLab — Necklaces full reference', key: 'a', width: 30 },
+  { header: '', key: 'b', width: 95 },
+]
+styleHeader(wsOverview.getRow(1))
+const overviewRows = [
+  ['Generated', new Date().toISOString().slice(0, 10)],
+  ['Source', 'Live app catalogue (lib/catalog.js) — always in sync with the builder'],
+  ['Collections', `${NECKS.length} necklaces: ${NECKS.map(c => c.label).join(', ')}`],
+  ['', ''],
+  ['Sheet: Prices', 'Every product × carat with B2B (wholesale) and B2C (retail) prices, min order qty, both price-list years.'],
+  ['Sheet: Products', 'One row per necklace: certificate, carats, sizes, cord, housing, shapes, colour count + specialities.'],
+  ['Sheet: Specialities', 'The specific rules per necklace (colour caps, prong-only, attached/detached, etc.).'],
+  ['Sheet: Cord colours', 'The full colour list available for each necklace.'],
+  ['Sheet: Sizes', 'The two necklace sizes with their cm measurements.'],
+  ['Sheet: Shapes', 'The shape options for the shape-based necklaces.'],
+  ['Sheet: Notes', 'Pricing rules and product notes.'],
+]
+for (const [a, b] of overviewRows) wsOverview.addRow({ a, b })
+wsOverview.getColumn('a').font = { bold: true }
 
 // ─── Sheet 1: Prices (one row per product × carat) ─────────────────────────────
 const wsPrices = wb.addWorksheet('Prices')
@@ -134,6 +176,7 @@ wsProducts.columns = [
   { header: 'Min order qty', key: 'minQty', width: 14 },
   { header: 'Packshots reuse', key: 'alias', width: 16 },
   { header: 'Colour count', key: 'colorCount', width: 12 },
+  { header: 'Specialities / specifics', key: 'specifics', width: 70 },
 ]
 styleHeader(wsProducts.getRow(1))
 
@@ -159,10 +202,40 @@ for (const col of NECKS) {
     minQty: col.minC || 1,
     alias: PACKSHOT_ALIAS[col.id] || col.id,
     colorCount: colors.length,
-  })
+    specifics: SPECIFICS[col.id] || '—',
+  }).getCell('specifics').alignment = { wrapText: true, vertical: 'top' }
 }
-wsProducts.autoFilter = 'A1:N1'
+wsProducts.autoFilter = 'A1:O1'
 wsProducts.views = [{ state: 'frozen', ySplit: 1 }]
+
+// ─── Sheet: Specialities (one readable row per necklace) ───────────────────────
+const wsSpecial = wb.addWorksheet('Specialities')
+wsSpecial.columns = [
+  { header: 'Product', key: 'label', width: 26 },
+  { header: 'Carats', key: 'carats', width: 18 },
+  { header: 'Certificate', key: 'cert', width: 12 },
+  { header: 'Cord / thread', key: 'cord', width: 14 },
+  { header: 'Colours', key: 'colours', width: 22 },
+  { header: 'Speciality / specifics', key: 'specifics', width: 80 },
+]
+styleHeader(wsSpecial.getRow(1))
+for (const col of NECKS) {
+  const colors = colorsFor(col)
+  const colourSummary = col.allowedColors
+    ? `${colors.length} (capped)`
+    : `${colors.length} (full ${CORD_LABELS[col.cord] || col.cord} palette)`
+  const r = wsSpecial.addRow({
+    label: col.label,
+    carats: col.carats.join(', '),
+    cert: CERT_LABELS[col.certificate] || col.certificate,
+    cord: CORD_LABELS[col.cord] || col.cord,
+    colours: colourSummary,
+    specifics: SPECIFICS[col.id] || '—',
+  })
+  r.getCell('specifics').alignment = { wrapText: true, vertical: 'top' }
+}
+wsSpecial.autoFilter = 'A1:F1'
+wsSpecial.views = [{ state: 'frozen', ySplit: 1 }]
 
 // ─── Sheet 3: Cord colours (one row per product × colour) ──────────────────────
 const wsColors = wb.addWorksheet('Cord colours')
@@ -223,18 +296,22 @@ wsNotes.columns = [{ header: 'Field', key: 'field', width: 28 }, { header: 'Valu
 styleHeader(wsNotes.getRow(1))
 const notes = [
   ['System', 'LoveLab Mini B2B — generated from lib/catalog.js (single source of truth)'],
-  ['Pricelist years', `Available: ${PRICELISTS.join(', ')}. Necklace prices are identical across years.`],
+  ['Pricelist years', `Available: ${PRICELISTS.join(', ')}. Necklace prices are identical across both years (new products).`],
   ['Product type', 'All rows are necklaces (productType: necklace)'],
   ['Certificate', 'All necklaces are IGI only — no in-house certificate option'],
   ['Size pricing', 'B2B and B2C prices are flat — same for S/M and L/XL'],
+  ['Pricing rule (necklaces)', 'B2B = matching bracelet B2B × 1.20 (exact). B2C / retail = bracelet retail × 1.20 rounded UP to the nearest €5.'],
   ['CUTY necklace B2C', 'Retail rounded up to nearest €5 (195, 395, 540)'],
   ['Shapy Shine pricing', 'B2B = SSF bracelet × 1.20 (66, 120, 186). B2C = retail × 1.20 rounded up to €5 (220, 400, 540)'],
-  ['CUTY & Shapy Shine colours', 'Full cord palette available (no cap): CUTY necklace = full nylon palette, Shapy Shine necklace = full Shine palette'],
+  ['Necklace colours', 'All necklaces use the NYLON palette only. CUTY, CUBIX, MATCHY FANCY, SHAPY SHINE + SHAPY SPARKLE = full nylon palette (21). No colour cap.'],
   ['Multi Three / Four colours', 'Capped to 6 colours: Silver Grey, Gold, Bordeaux, Red, Black, Navy Blue'],
+  ['HOLY necklace colours', 'Nylon thread (NOT silk), capped to 4 colours: Silver Grey, Black, Red, Ivory'],
+  ['Shapy Sparkle necklace', 'Single product. PRONG only (no bezel). Exists ONLY in 0.70 & 1.00 ct, IGI. Nylon thread (NOT silk).'],
   ['Shapy Shine shapes', 'All 7 shapes are selectable directly on the selection grid (one card per shape); the shape is locked per line.'],
   ['Shapy Shine housing', 'Same as the SSF bracelet: Bezel/Prong setting + metal colour (Yellow/White/Pink). At 0.10 ct only Bezel is available. Config: shape (grid) -> carat -> bezel/prong + metal -> size -> colour.'],
+  ['Matchy Fancy necklace', 'Shapes: Pear / Heart / Emerald. Bezel / Prong setting (Yellow / White / Pink).'],
   ['Multi Three necklace', 'Requires Attached (F) or Not Attached (NF) setting on the order line'],
-  ['Packshots', 'Necklace SKUs reuse bracelet images: CUTY_NECK→CUTY, M3_NECK→M3, M4_NECK→M4, SSF_NECK→SSF'],
+  ['Packshots', 'Necklace SKUs reuse bracelet images: CUTY_NECK→CUTY, M3_NECK→M3, M4_NECK→M4, SSF_NECK→SSF, CUBIX_NECK→CUBIX, MF_NECK→MF, SSPF_NECK→SSPF, HOLY_NECK→HOLY'],
 ]
 for (const [field, value] of notes) wsNotes.addRow({ field, value })
 
