@@ -110,10 +110,10 @@ export async function GET(request) {
       query = query.is('deleted_at', null);
     }
 
-    // Exclude internal, consignment, and delete_from_stock orders from all default views.
+    // Exclude internal, consignment, delete_from_stock, and sample orders from default views.
     // Only include them when the caller explicitly requests that order_channel.
     if (!orderChannelFilter) {
-      query = query.not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+      query = query.not('order_channel', 'in', '("internal","consignment","delete_from_stock","sample")');
     }
 
     if (eventId) {
@@ -151,7 +151,7 @@ export async function GET(request) {
 
     // Filter by order_channel if specified (e.g. 'internal', 'consignment', 'delete_from_stock')
     if (orderChannelFilter) {
-      const allowed = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'];
+      const allowed = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock', 'sample'];
       if (allowed.includes(orderChannelFilter)) {
         query = query.eq('order_channel', orderChannelFilter);
       }
@@ -220,10 +220,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid document type' }, { status: 400 });
     }
 
-    const safeOrderChannel = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock'].includes(order_channel) ? order_channel : 'b2b';
+    const safeOrderChannel = ['b2b', 'b2c', 'internal', 'consignment', 'delete_from_stock', 'sample'].includes(order_channel) ? order_channel : 'b2b';
     const isInternalOrder = safeOrderChannel === 'internal';
     const isConsignmentOrder = safeOrderChannel === 'consignment';
     const isWriteOffOrder = safeOrderChannel === 'delete_from_stock';
+    const isSampleOrder = safeOrderChannel === 'sample';
 
     // Draft (parked) orders: a real, reopenable row that is NOT yet committed.
     // No commission, no bonus, no notification email, no LoveLab sync, and
@@ -242,9 +243,9 @@ export async function POST(request) {
       }
     }
 
-    // Drafts are never filed into a folder — they live only in the Draft view
-    // until promoted to a sent order, at which point the agent picks the folder.
-    const effectiveEventId = isDraft ? null : (event_id || null);
+    // Drafts and samples are never filed into a folder — drafts live in the
+    // Draft view; samples live in the Sample Orders view until promoted to B2B.
+    const effectiveEventId = (isDraft || isSampleOrder) ? null : (event_id || null);
 
     if (effectiveEventId) {
       const { allowed } = await requireEventPermission(adminSupabase, effectiveEventId, user.id, 'edit', isAdmin);
@@ -271,6 +272,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Metadata too large' }, { status: 400 });
     }
 
+    const docMetadata = {
+      ...(metadata || {}),
+      ...(isSampleOrder ? { is_sample: true } : {}),
+    };
+
     const { data: document, error } = await adminSupabase
       .from('documents')
       .insert({
@@ -283,7 +289,7 @@ export async function POST(request) {
         file_size: file_size || null,
         total_amount: total_amount || null,
         created_by: user.id,
-        metadata: metadata || {},
+        metadata: docMetadata,
         order_channel: safeOrderChannel,
         consignment_agent_id: isConsignmentOrder ? (consignment_agent_id || null) : null,
         status: safeStatus,
@@ -302,7 +308,7 @@ export async function POST(request) {
     // Attribution logic lives in lib/commissionAttribution.js so PUT and POST
     // resolve the same way.
     try {
-      if (document?.total_amount > 0 && !isDraft && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder) {
+      if (document?.total_amount > 0 && !isDraft && !isInternalOrder && !isConsignmentOrder && !isWriteOffOrder && !isSampleOrder) {
         const commSupabase = createAdminClient();
         const attribution = await resolveCommissionAgent(commSupabase, document);
         if (attribution) {
@@ -357,7 +363,7 @@ export async function POST(request) {
     // Skipped for internal and consignment orders — not revenue-bearing.
     // Non-blocking — document is already saved at this point.
     try {
-      const resendApiKey = isDraft || isInternalOrder || isConsignmentOrder || isWriteOffOrder ? null : process.env.RESEND_API_KEY;
+      const resendApiKey = isDraft || isInternalOrder || isConsignmentOrder || isWriteOffOrder || isSampleOrder ? null : process.env.RESEND_API_KEY;
       if (resendApiKey) {
         const adminSupabase2 = createAdminClient();
         const eventName = event_id

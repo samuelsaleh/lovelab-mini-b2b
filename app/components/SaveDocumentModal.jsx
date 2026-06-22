@@ -63,6 +63,7 @@ async function safeJson(res) {
 // Adding a new channel: add one entry here; no inline ternaries needed elsewhere.
 const CHANNEL_CONFIG = {
   b2b: { showEvent: true, showConsignment: false, showComment: false, autoClientName: null },
+  sample: { showEvent: false, showConsignment: false, showComment: false, autoClientName: null },
   internal: { showEvent: false, showConsignment: false, showComment: false, autoClientName: 'Antwerp Office' },
   consignment: { showEvent: false, showConsignment: true, showComment: false, autoClientName: null },
   delete_from_stock: { showEvent: false, showConsignment: false, showComment: true, autoClientName: 'Write-off' },
@@ -83,7 +84,7 @@ export default function SaveDocumentModal({
   editingDocumentId = null, // ID of document being re-edited (for replacement)
   isDraftOrder = false, // True when the document being edited is currently a draft (parked) order
   onSaveSuccess = null, // Callback when save completes successfully
-  initialOrderChannel = 'b2b', // 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
+  initialOrderChannel = 'b2b', // 'b2b' | 'sample' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
   // Soft warning: if the parent OrderForm thinks some rows are incomplete,
   // we surface the same summary at the top of the modal so the agent sees
@@ -597,7 +598,7 @@ export default function SaveDocumentModal({
   // creating a new one or editing one that is still a draft. Editing an
   // already-sent order keeps today's Save/Update behaviour with no draft option.
   const canDraft = documentType === 'order' && (orderChannel === 'b2b' || orderChannel === 'b2c');
-  const showSaveAsDraft = canDraft && (!editingDocumentId || isDraftOrder);
+  const showSaveAsDraft = canDraft && orderChannel !== 'sample' && (!editingDocumentId || isDraftOrder);
   // When editing a draft, the primary button promotes it to a sent order.
   const promoteOnPrimary = !!editingDocumentId && isDraftOrder;
 
@@ -766,7 +767,7 @@ export default function SaveDocumentModal({
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {Object.entries(CHANNEL_CONFIG).map(([id, cfg]) => {
-                    const labels = { b2b: 'B2B', internal: 'Internal', consignment: 'Consignment', delete_from_stock: 'Write-off' }
+                    const labels = { b2b: 'B2B', sample: 'Sample', internal: 'Internal', consignment: 'Consignment', delete_from_stock: 'Write-off' }
                     return (
                       <button
                         key={id}
@@ -788,6 +789,9 @@ export default function SaveDocumentModal({
                     )
                   })}
                 </div>
+                {orderChannel === 'sample' && (
+                  <div style={{ fontSize: 11, color: '#b9770e', marginTop: 5 }}>Temporary sample — not counted in revenue, not sent to production.</div>
+                )}
                 {orderChannel === 'internal' && (
                   <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>Not counted in revenue or analytics. Saved as Antwerp Office order.</div>
                 )}
@@ -1332,7 +1336,9 @@ export default function SaveDocumentModal({
                           ? 'Save Consignment Order'
                           : orderChannel === 'delete_from_stock'
                             ? 'Save Write-off'
-                            : promoteOnPrimary
+                            : orderChannel === 'sample'
+                              ? 'Save Sample Order'
+                              : promoteOnPrimary
                               ? 'Send Order'
                               : (editingDocumentId ? 'Update Document' : 'Save Document')}
                   </button>

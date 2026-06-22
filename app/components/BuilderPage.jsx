@@ -393,6 +393,7 @@ function WarningsSummary({ warnings }) {
 }
 
 const CHANNEL_BANNER = {
+  sample:     { label: 'Sample Order (temporary)', color: '#b9770e', bg: '#fff4e5' },
   internal:   { label: 'Internal Order', color: '#4f46e5', bg: '#eef2ff' },
   consignment:{ label: 'Consignment',    color: '#0891b2', bg: '#ecfeff' },
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },

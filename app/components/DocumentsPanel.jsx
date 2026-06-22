@@ -12,6 +12,7 @@ import { useAuth } from './AuthProvider'
 import DocumentsSidebar from './DocumentsSidebar'
 import DocumentRow from './DocumentRow'
 import DocumentsAnalytics from './DocumentsAnalytics'
+import PromoteSampleModal from './PromoteSampleModal'
 
 export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const router = useRouter()
@@ -67,6 +68,13 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // Draft (parked orders) view — its own "Draft" folder, separate from the
   // agent's event folders. Drafts come from the main documents load.
   const [showDrafts, setShowDrafts] = useState(false)
+  const [showSamples, setShowSamples] = useState(false)
+
+  // ── Sample orders ─────────────────────────────────────────────────────────
+  const [sampleDocs, setSampleDocs] = useState([])
+  const [sampleLoading, setSampleLoading] = useState(false)
+  const [sampleCount, setSampleCount] = useState(0)
+  const [promoteSampleDoc, setPromoteSampleDoc] = useState(null)
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const [internalDocs, setInternalDocs] = useState([])
@@ -205,6 +213,16 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       }
 
       try {
+        const sampleRes = await safeFetch('/api/documents?order_channel=sample&per_page=1')
+        if (sampleRes.ok) {
+          const sampleData = await sampleRes.json().catch(() => ({}))
+          setSampleCount(sampleData.total_count ?? (sampleData.documents || []).length)
+        }
+      } catch {
+        // non-fatal
+      }
+
+      try {
         if (!orgFoldersRes.ok) {
           setOrgFoldersError('Failed to load company folders')
           if (orgFoldersCacheRef.current) setOrgFolders(orgFoldersCacheRef.current)
@@ -280,14 +298,37 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   useEffect(() => {
-    if (showInternal || showConsignment || showDrafts) return
+    if (showInternal || showConsignment || showDrafts || showSamples) return
     if (selectedOrgId || (selectedEventId && selectedEventId !== 'none')) {
       fetchFolderDocs(selectedEventId, selectedOrgId)
     } else {
       setFolderDocs([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts])
+  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts, showSamples])
+
+  const fetchSampleDocs = async () => {
+    setSampleLoading(true)
+    try {
+      const res = await safeFetch('/api/documents?order_channel=sample&per_page=200')
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.documents) {
+          setSampleDocs(data.documents)
+          setSampleCount(data.total_count ?? data.documents.length)
+        }
+      }
+    } catch {
+      setErrorMsg('Failed to load sample orders')
+    }
+    setSampleLoading(false)
+  }
+
+  const handleSetShowSamples = (val) => {
+    setShowSamples(val)
+    if (val) setShowDrafts(false)
+    if (val && sampleDocs.length === 0) fetchSampleDocs()
+  }
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const fetchInternalDocs = async () => {
@@ -306,7 +347,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowInternal = (val) => {
     setShowInternal(val)
-    if (val) setShowDrafts(false)
+    if (val) { setShowDrafts(false); setShowSamples(false) }
     if (val && internalDocs.length === 0) fetchInternalDocs()
   }
 
@@ -326,7 +367,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowConsignment = (val) => {
     setShowConsignment(val)
-    if (val) setShowDrafts(false)
+    if (val) { setShowDrafts(false); setShowSamples(false) }
     if (val && consignmentDocs.length === 0) fetchConsignmentDocs()
   }
 
@@ -649,11 +690,11 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // the server-fetched `folderDocs` (complete folder) or the paginated
   // `documents` array (All Documents / No Event views).
   const isFolderView =
-    !showInternal && !showConsignment && !showDrafts &&
+    !showInternal && !showConsignment && !showDrafts && !showSamples &&
     (Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
 
   const filteredDocs = useMemo(() => {
-    if (showInternal || showConsignment || showDrafts) return []
+    if (showInternal || showConsignment || showDrafts || showSamples) return []
     const sourceDocs = isFolderView ? folderDocs : documents
     return sourceDocs.filter(doc => {
       // Drafts (parked orders) never appear in All Documents or event folders —
@@ -679,7 +720,18 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(search.toLowerCase())
       )
     })
-  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts])
+  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts, showSamples])
+
+  const filteredSampleDocs = useMemo(() => {
+    return sampleDocs.filter(doc => {
+      return (
+        !search ||
+        doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
+        doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
+        doc.file_name?.toLowerCase().includes(search.toLowerCase())
+      )
+    })
+  }, [sampleDocs, search])
 
   // Dataset for the analytics widget. Folder/agent views and the rare "No Event"
   // view already have a complete dataset in filteredDocs. For All Documents we
@@ -687,7 +739,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // reflect everything, not just the first loaded page. Falls back to filteredDocs
   // until the summary has loaded.
   const analyticsDocs = useMemo(() => {
-    if (showInternal || showConsignment || showDrafts) return []
+    if (showInternal || showConsignment || showDrafts || showSamples) return []
     if (isFolderView || selectedEventId === 'none') return filteredDocs
     if (summaryDocs.length === 0) return filteredDocs
     const term = search.toLowerCase()
@@ -700,7 +752,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(term)
       )
     })
-  }, [showInternal, showConsignment, showDrafts, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
+  }, [showInternal, showConsignment, showDrafts, showSamples, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
 
   // Drafts live in their own "Draft" folder — never mixed into All Documents or
   // the agent's own event folders. Search still applies within the folder.
@@ -718,6 +770,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const currentEventName = useMemo(() => {
     if (showDrafts) return 'Draft'
+    if (showSamples) return 'Sample Orders'
     if (showInternal) return 'Internal Orders'
     if (showConsignment) return 'Consignment Orders'
     if (selectedOrgId) {
@@ -728,7 +781,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showDrafts, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
+  }, [showDrafts, showSamples, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -771,8 +824,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const emptyState = getEmptyState()
 
   // ── Display list ──────────────────────────────────────────────────────────
-  const displayDocs = showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
-  const displayLoading = showDrafts ? loading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
+  const displayDocs = showDrafts ? draftDocs : showSamples ? filteredSampleDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
+  const displayLoading = showDrafts ? loading : showSamples ? sampleLoading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -819,6 +872,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         setShowConsignment={handleSetShowConsignment}
         showDrafts={showDrafts}
         setShowDrafts={setShowDrafts}
+        showSamples={showSamples}
+        setShowSamples={handleSetShowSamples}
+        sampleCount={sampleCount}
         draftCount={documents.filter(d => d.status === 'draft').length}
         renamingEventId={renamingEventId}
         renameValue={renameValue}
@@ -883,7 +939,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         </div>
 
         {/* Analytics widget — hidden in internal/consignment view */}
-        {!displayLoading && !showInternal && !showConsignment && (
+        {!displayLoading && !showInternal && !showConsignment && !showSamples && (
           <DocumentsAnalytics
             filteredDocs={analyticsDocs}
             currentEventName={currentEventName}
@@ -973,6 +1029,15 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                   Consignment orders assigned to agents will appear here.
                 </div>
               </>
+            ) : showSamples ? (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#555', marginBottom: 4 }}>
+                  No sample orders
+                </div>
+                <div style={{ fontSize: 13, color: '#999' }}>
+                  Temporary sample orders appear here until confirmed as B2B.
+                </div>
+              </>
             ) : (
               <>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#555', marginBottom: 4 }}>
@@ -996,6 +1061,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 onDownload={downloadDocument}
                 onDelete={requestDelete}
                 onRequestInternal={requestMoveToInternal}
+                onPromoteSample={showSamples ? setPromoteSampleDoc : undefined}
                 renamingDocId={renamingDocId}
                 docRenameValue={docRenameValue}
                 setDocRenameValue={setDocRenameValue}
@@ -1004,7 +1070,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 docRenameLoading={docRenameLoading}
               />
             ))}
-            {!showInternal && !showConsignment && !isFolderView && hasMoreDocs && (
+            {!showInternal && !showConsignment && !showSamples && !isFolderView && hasMoreDocs && (
               <button
                 onClick={loadMoreDocs}
                 disabled={loadingMore}
@@ -1023,6 +1089,18 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
           </div>
         )}
       </div>
+
+      <PromoteSampleModal
+        doc={promoteSampleDoc}
+        isOpen={!!promoteSampleDoc}
+        onClose={() => setPromoteSampleDoc(null)}
+        onSuccess={() => {
+          setPromoteSampleDoc(null)
+          fetchSampleDocs()
+          fetchData()
+          fetchSummaryDocs()
+        }}
+      />
 
       {/* ── Confirm: move to internal ─────────────────────────────────────── */}
       <ConfirmDialog

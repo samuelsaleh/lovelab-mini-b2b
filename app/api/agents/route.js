@@ -111,7 +111,7 @@ export async function GET(request) {
         .from('documents')
         .select('created_by, total_amount, order_channel')
         .eq('document_type', 'order')
-        .not('order_channel', 'in', '("internal","consignment")')
+        .not('order_channel', 'in', '("internal","consignment","sample")')
         .is('deleted_at', null);
       for (const d of docRows || []) {
         if (!d.created_by) continue;

@@ -188,7 +188,7 @@ export async function GET(request) {
           .select('id, created_by, event_id')
           .or(orParts.join(','))
           .is('deleted_at', null)
-          .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+          .not('order_channel', 'in', '("internal","consignment","delete_from_stock","sample")');
         if (docsErr) throw docsErr;
 
         const countByOrg = new Map();

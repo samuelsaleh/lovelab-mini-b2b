@@ -129,6 +129,7 @@ describe('/api/events GET — doc_count', () => {
     expect(notFilter.val).toContain('internal');
     expect(notFilter.val).toContain('consignment');
     expect(notFilter.val).toContain('delete_from_stock');
+    expect(notFilter.val).toContain('sample');
   });
 
   test('count query restricts to the events being returned', async () => {

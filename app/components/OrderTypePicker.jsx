@@ -5,13 +5,17 @@ import { colors, fonts } from '@/lib/styles'
 import { ORDER_TYPES } from '@/lib/orderTypes'
 
 /**
- * OrderTypePicker — modal overlay for admins to choose the type of new order.
+ * OrderTypePicker — modal overlay to choose the type of new order.
  *
  * Props:
- *   onSelect(type)  — called with 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
- *   onClose()       — called when dismissed without selection
+ *   onSelect(type)     — called with an order channel id
+ *   onClose()          — called when dismissed without selection
+ *   allowedTypes       — optional list of type ids to show (defaults to all ORDER_TYPES)
  */
-export default function OrderTypePicker({ onSelect, onClose }) {
+export default function OrderTypePicker({ onSelect, onClose, allowedTypes = null }) {
+  const types = allowedTypes
+    ? ORDER_TYPES.filter((t) => allowedTypes.includes(t.id))
+    : ORDER_TYPES
   // Close on Escape
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -47,7 +51,7 @@ export default function OrderTypePicker({ onSelect, onClose }) {
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {ORDER_TYPES.map((type) => (
+          {types.map((type) => (
             <button
               key={type.id}
               onClick={() => onSelect(type.id)}

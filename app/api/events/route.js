@@ -69,7 +69,7 @@ export async function GET(request) {
         .select('event_id')
         .in('event_id', visibleEventIds)
         .is('deleted_at', null)
-        .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+        .not('order_channel', 'in', '("internal","consignment","delete_from_stock","sample")');
       if (countErr) {
         console.error('[Events GET] doc count query failed:', countErr.message);
       } else {
@@ -125,7 +125,7 @@ export async function GET(request) {
               .in('created_by', allAgentIds)
               .eq('document_type', 'order')
               .is('deleted_at', null)
-              .not('order_channel', 'in', '("internal","consignment","delete_from_stock")');
+              .not('order_channel', 'in', '("internal","consignment","delete_from_stock","sample")');
             if (docsErr) {
               console.error('[Events GET] agent docs query failed:', docsErr.message);
             } else {

@@ -1227,6 +1227,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     const fallback = initialOrderChannel === 'internal' ? 'Internal-Order'
       : initialOrderChannel === 'consignment' ? 'Consignment-Order'
       : initialOrderChannel === 'delete_from_stock' ? 'Write-Off'
+      : initialOrderChannel === 'sample' ? 'Sample-Order'
       : 'Order'
     return formatDocumentFilename(companyName || contactName || fallback, 'order', new Date().toISOString().split('T')[0])
   }, [companyName, contactName, initialOrderChannel])

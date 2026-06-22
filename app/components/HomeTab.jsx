@@ -25,13 +25,10 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
   const name = profile?.full_name || user?.email?.split('@')[0] || 'there'
 
   const handleNewOrderClick = () => {
-    if (isAdmin) {
-      setShowTypePicker(true)
-    } else {
-      // Agents go straight to the builder (B2B only)
-      onCreateOrder?.('b2b')
-    }
+    setShowTypePicker(true)
   }
+
+  const pickerTypes = isAdmin ? null : ['b2b', 'sample']
 
   return (
     <div
@@ -40,6 +37,7 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
     >
       {showTypePicker && (
         <OrderTypePicker
+          allowedTypes={pickerTypes}
           onSelect={(type) => { setShowTypePicker(false); onCreateOrder?.(type) }}
           onClose={() => setShowTypePicker(false)}
         />

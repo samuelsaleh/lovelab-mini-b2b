@@ -72,8 +72,13 @@ describe('GET /api/documents', () => {
   test('excludes internal, consignment, and delete_from_stock by default (not called with in clause)', async () => {
     await GET(makeRequest())
     expect(mockQuery.not).toHaveBeenCalledWith(
-      'order_channel', 'in', '("internal","consignment","delete_from_stock")'
+      'order_channel', 'in', '("internal","consignment","delete_from_stock","sample")'
     )
+  })
+
+  test('applies eq(order_channel, sample) when sample is requested', async () => {
+    await GET(makeRequest({ order_channel: 'sample' }))
+    expect(mockQuery.eq).toHaveBeenCalledWith('order_channel', 'sample')
   })
 
   test('does NOT call the exclusion filter when order_channel=internal is requested', async () => {

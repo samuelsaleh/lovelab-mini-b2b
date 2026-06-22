@@ -80,7 +80,7 @@ export async function PUT(request, { params }) {
     // First, get the old document to delete old file
     const { data: oldDoc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by, event_id, status')
+      .select('file_path, created_by, event_id, status, order_channel')
       .eq('id', id)
       .single();
 
@@ -113,6 +113,8 @@ export async function PUT(request, { params }) {
     // internal notification email fires once on the transition (mirroring POST).
     const newStatus = (body.status === 'draft' || body.status === 'sent') ? body.status : oldDoc.status;
     const promotedToSent = oldDoc.status === 'draft' && newStatus === 'sent';
+    const promotedFromSample = oldDoc.order_channel === 'sample'
+      && body.order_channel === 'b2b';
 
     // Update the document record
     const updatePayload = {
@@ -126,8 +128,15 @@ export async function PUT(request, { params }) {
       total_amount: body.total_amount,
       metadata: body.metadata,
     };
-    if (['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)) {
+    if (['b2b', 'b2c', 'internal', 'consignment', 'sample'].includes(body.order_channel)) {
       updatePayload.order_channel = body.order_channel;
+    }
+    if (promotedFromSample && body.metadata) {
+      updatePayload.metadata = {
+        ...body.metadata,
+        is_sample: false,
+        promoted_at: new Date().toISOString(),
+      };
     }
     if (newStatus) {
       updatePayload.status = newStatus;
@@ -153,7 +162,7 @@ export async function PUT(request, { params }) {
     // Recalculate commission when total_amount changes (skip for internal and consignment orders)
     // Attribution logic shared with POST — see lib/commissionAttribution.js.
     try {
-      if (doc?.total_amount > 0 && doc?.status !== 'draft' && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
+      if (doc?.total_amount > 0 && doc?.status !== 'draft' && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment' && doc?.order_channel !== 'sample') {
         const attribution = await resolveCommissionAgent(adminSupabase, doc);
         if (attribution) {
           await upsertCommissionForDocument(adminSupabase, {
@@ -200,13 +209,12 @@ export async function PUT(request, { params }) {
       });
     }
 
-    // Internal notification on the draft→sent promotion only. A plain edit of
-    // an already-sent order does not re-notify (matches POST's create-only
-    // behaviour). Non-blocking — the document is already updated.
-    if (promotedToSent) {
+    // Internal notification on draft→sent or sample→b2b promotion only.
+    const shouldNotify = promotedToSent || promotedFromSample;
+    if (shouldNotify) {
       try {
         const resendApiKey =
-          doc?.order_channel === 'internal' || doc?.order_channel === 'consignment' || doc?.order_channel === 'delete_from_stock'
+          doc?.order_channel === 'internal' || doc?.order_channel === 'consignment' || doc?.order_channel === 'delete_from_stock' || doc?.order_channel === 'sample'
             ? null
             : process.env.RESEND_API_KEY;
         if (resendApiKey) {
@@ -353,24 +361,13 @@ export async function PATCH(request, { params }) {
     const body = await request.json();
     const newName = body.file_name?.trim();
     const newChannel = body.order_channel;
+    const newEventId = body.event_id;
     const newMetadata = body.metadata; // optional partial metadata merge
     const newConsignmentAgentId = body.consignment_agent_id; // optional
 
-    // Must provide at least one updatable field
-    const hasName = newName && newName.length <= 255;
-    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(newChannel);
-    const hasMetadata = newMetadata !== undefined && newMetadata !== null;
-    if (!hasName && !hasChannel && !hasMetadata) {
-      return NextResponse.json({ error: 'Provide file_name, order_channel, or metadata' }, { status: 400 });
-    }
-    // Changing order_channel is admin-only
-    if (hasChannel && !isAdmin) {
-      return NextResponse.json({ error: 'Only admins can change order channel' }, { status: 403 });
-    }
-
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, created_by, event_id, metadata')
+      .select('id, created_by, event_id, metadata, order_channel, status, document_type, client_name, client_company, total_amount, file_name')
       .eq('id', id)
       .single();
 
@@ -382,23 +379,58 @@ export async function PATCH(request, { params }) {
     const eventAccess = doc.event_id
       ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
       : { allowed: false };
-    if (!isAdmin && !isOwner && !eventAccess.allowed) {
+
+    const isSamplePromotion = doc.order_channel === 'sample' && newChannel === 'b2b';
+    if (isSamplePromotion && !newEventId) {
+      return NextResponse.json({ error: 'event_id is required when confirming a sample as B2B' }, { status: 400 });
+    }
+    if (isSamplePromotion) {
+      const { allowed } = await requireEventPermission(adminSupabase, newEventId, user.id, 'edit', isAdmin);
+      if (!allowed && !isOwner && !isAdmin) {
+        return NextResponse.json({ error: 'Forbidden: no edit access to the target folder' }, { status: 403 });
+      }
+    }
+
+    // Must provide at least one updatable field
+    const hasName = newName && newName.length <= 255;
+    const hasChannel = ['b2b', 'b2c', 'internal', 'consignment', 'sample'].includes(newChannel);
+    const hasEventId = newEventId !== undefined && newEventId !== null;
+    const hasMetadata = newMetadata !== undefined && newMetadata !== null;
+    if (!hasName && !hasChannel && !hasMetadata && !hasEventId) {
+      return NextResponse.json({ error: 'Provide file_name, order_channel, event_id, or metadata' }, { status: 400 });
+    }
+    // Changing order_channel is admin-only, except sample→b2b promotion by owner/admin
+    if (hasChannel && !isAdmin && !isSamplePromotion) {
+      return NextResponse.json({ error: 'Only admins can change order channel' }, { status: 403 });
+    }
+    if (!isAdmin && !isOwner && !eventAccess.allowed && !isSamplePromotion) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const patchPayload = {};
     if (hasName) patchPayload.file_name = newName;
     if (hasChannel) patchPayload.order_channel = newChannel;
-    if (hasMetadata) {
+    if (hasEventId) patchPayload.event_id = newEventId;
+    if (hasMetadata || isSamplePromotion) {
       const existing = doc.metadata || {};
-      const merged = { ...existing, ...newMetadata };
+      const merged = { ...existing, ...(newMetadata || {}) };
+      if (isSamplePromotion) {
+        merged.is_sample = false;
+        merged.promoted_at = new Date().toISOString();
+      }
       // Deep-merge known nested objects so a partial patch doesn't clobber sibling keys
       for (const key of ['consignment', 'formState']) {
-        if (existing[key] && newMetadata[key] && typeof existing[key] === 'object' && typeof newMetadata[key] === 'object') {
+        if (existing[key] && newMetadata?.[key] && typeof existing[key] === 'object' && typeof newMetadata[key] === 'object') {
           merged[key] = { ...existing[key], ...newMetadata[key] };
         }
       }
       patchPayload.metadata = merged;
+    } else if (isSamplePromotion) {
+      patchPayload.metadata = {
+        ...(doc.metadata || {}),
+        is_sample: false,
+        promoted_at: new Date().toISOString(),
+      };
     }
     if (newConsignmentAgentId !== undefined) {
       patchPayload.consignment_agent_id = newConsignmentAgentId || null;
@@ -414,6 +446,74 @@ export async function PATCH(request, { params }) {
     if (updateError) {
       console.error('[Documents PATCH] DB error:', updateError);
       return NextResponse.json({ error: 'Failed to update document', detail: updateError.message }, { status: 500 });
+    }
+
+    // Commission + notification on sample→b2b promotion (mirrors PUT draft→sent).
+    if (isSamplePromotion && updated?.order_channel === 'b2b') {
+      try {
+        if (updated.total_amount > 0) {
+          const attribution = await resolveCommissionAgent(adminSupabase, updated);
+          if (attribution) {
+            await upsertCommissionForDocument(adminSupabase, {
+              document: updated,
+              profile: attribution.profile,
+              agentId: attribution.agentId,
+            });
+            try {
+              await maybeCreateBonusForOrder(adminSupabase, {
+                agentId: attribution.agentId,
+                profile: attribution.profile,
+                document: updated,
+              });
+            } catch (bonusErr) {
+              await recordHealthEvent({
+                source: 'documents_patch_sample_promote_bonus',
+                severity: 'warn',
+                message: bonusErr.message || 'New-client bonus hook failed on sample promotion',
+                context: { documentId: updated.id, agentId: attribution.agentId },
+              });
+            }
+          }
+        }
+      } catch (commErr) {
+        await recordHealthEvent({
+          source: 'documents_patch_sample_promote_commission',
+          severity: 'error',
+          message: commErr.message || 'Commission hook failed on sample promotion',
+          context: { documentId: updated.id },
+        });
+      }
+
+      try {
+        const resendApiKey = process.env.RESEND_API_KEY;
+        if (resendApiKey) {
+          const eventName = updated.event_id
+            ? (await adminSupabase.from('events').select('name').eq('id', updated.event_id).single())?.data?.name
+            : null;
+          const creatorName =
+            (await adminSupabase.from('profiles').select('full_name').eq('id', updated.created_by).single())?.data?.full_name ||
+            user.email;
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+          const { subject, html } = orderNotificationEmail({
+            documentType: updated.document_type,
+            clientCompany: updated.client_company,
+            clientName: updated.client_name,
+            totalAmount: updated.total_amount,
+            eventName,
+            creatorName,
+          }, siteUrl);
+          const { Resend } = await import('resend');
+          const resend = new Resend(resendApiKey);
+          await resend.emails.send({
+            from: getSenderFrom(),
+            to: getOrderNotificationRecipients(),
+            subject,
+            html,
+          });
+        }
+      } catch (emailErr) {
+        console.error('[Documents PATCH] Sample promotion notification error (non-blocking):', emailErr.message);
+      }
     }
 
     // Lovelab Sync: Sync returned consignment orders

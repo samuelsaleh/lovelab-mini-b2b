@@ -4,7 +4,7 @@
  * Guarantees:
  *   - Renders with zero financial data
  *   - No API calls are made on mount
- *   - "+ Create New Order" button (agent role) calls onCreateOrder('b2b')
+ *   - "+ Create New Order" opens the order type picker for agents (B2B + Sample)
  *   - Welcome message contains the user's name
  */
 
@@ -65,11 +65,12 @@ describe('HomeTab', () => {
     expect(screen.getByTestId('new-order-button')).toBeInTheDocument()
   })
 
-  it('calls onCreateOrder("b2b") when New Order is clicked (agent role)', () => {
-    const onCreateOrder = jest.fn()
-    render(<HomeTab onSwitchTab={jest.fn()} onCreateOrder={onCreateOrder} />)
+  it('opens the order type picker when New Order is clicked (agent role)', () => {
+    render(<HomeTab onSwitchTab={jest.fn()} onCreateOrder={jest.fn()} />)
     fireEvent.click(screen.getByTestId('new-order-button'))
-    expect(onCreateOrder).toHaveBeenCalledWith('b2b')
+    expect(screen.getByText('Create New Order')).toBeInTheDocument()
+    expect(screen.getByText('Sample Order')).toBeInTheDocument()
+    expect(screen.getByText('B2B Order')).toBeInTheDocument()
   })
 
   it('makes NO fetch calls on mount (privacy guarantee)', () => {
