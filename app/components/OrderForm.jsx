@@ -707,7 +707,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // number is typed per order. Option is gated to Nicolas + admins (canUseDzb).
   const [dzbEnabled, setDzbEnabled] = useState(false)
   const [dzbClientNumber, setDzbClientNumber] = useState('')
-  const canUseDzb = isAdmin || currentUser?.email === 'nicolas@love-lab.com'
+  const canUseDzb = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
 
   // Table rows state with undo/redo support
   const [rows, setRowsInternal] = useState(() => prefillRows(quote))

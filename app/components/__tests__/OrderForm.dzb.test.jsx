@@ -73,7 +73,7 @@ function getDzbRow() {
 
 describe('OrderForm — DZB Bank option gating', () => {
   it('shows the DZB toggle for Nicolas', () => {
-    renderForm({ currentUser: { full_name: 'Nicolas', email: 'nicolas@love-lab.com' } })
+    renderForm({ currentUser: { full_name: 'Nicolas', email: 'nicolas.vial@ascension-france.com' } })
     expect(screen.getByText(/DZB Bank/)).toBeInTheDocument()
   })
 
@@ -90,7 +90,7 @@ describe('OrderForm — DZB Bank option gating', () => {
 
 describe('OrderForm — DZB payment block on the PDF', () => {
   it('renders the fixed DZB block when enabled with a client number', () => {
-    renderForm({ currentUser: { email: 'nicolas@love-lab.com' } })
+    renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
 
     // Block is hidden until the toggle is set to "yes".
     expect(screen.queryByText(/Numéro fournisseur DZB/)).not.toBeInTheDocument()
@@ -109,7 +109,7 @@ describe('OrderForm — DZB payment block on the PDF', () => {
   })
 
   it('does not render the DZB block while the toggle is "no"', () => {
-    renderForm({ currentUser: { email: 'nicolas@love-lab.com' } })
+    renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
     expect(screen.queryByText(/Numéro fournisseur DZB/)).not.toBeInTheDocument()
   })
 })
@@ -117,7 +117,7 @@ describe('OrderForm — DZB payment block on the PDF', () => {
 describe('OrderForm — DZB metadata persistence', () => {
   it('passes dzb fields to SaveDocumentModal in formState and at top level', () => {
     mockModal.props = null
-    renderForm({ currentUser: { email: 'nicolas@love-lab.com' } })
+    renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
 
     const row = getDzbRow()
     fireEvent.click(within(row).getByText('yes'))
@@ -139,7 +139,7 @@ describe('OrderForm — DZB metadata persistence', () => {
 describe('OrderForm — DZB restore on re-edit', () => {
   it('rehydrates the toggle, number and block from a saved order', () => {
     renderForm({
-      currentUser: { email: 'nicolas@love-lab.com' },
+      currentUser: { email: 'nicolas.vial@ascension-france.com' },
       savedFormState: { rows: [], dzbEnabled: true, dzbClientNumber: '5551234' },
     })
 
