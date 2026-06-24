@@ -677,6 +677,7 @@ export default function App() {
           setOrderFormQuote(null)
           if (documentId) setEditingDocumentId(documentId)
           setEditingDocStatus(parsed.status ?? null)
+          setInitialOrderChannel(parsed.order_channel || 'b2b')
           setShowOrderForm(true)
         }
       }

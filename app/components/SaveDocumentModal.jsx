@@ -63,6 +63,7 @@ async function safeJson(res) {
 // Adding a new channel: add one entry here; no inline ternaries needed elsewhere.
 const CHANNEL_CONFIG = {
   b2b: { showEvent: true, showConsignment: false, showComment: false, autoClientName: null },
+  b2c: { showEvent: true, showConsignment: false, showComment: false, autoClientName: null },
   sample: { showEvent: false, showConsignment: false, showComment: false, autoClientName: null },
   internal: { showEvent: false, showConsignment: false, showComment: false, autoClientName: 'Antwerp Office' },
   consignment: { showEvent: false, showConsignment: true, showComment: false, autoClientName: null },
@@ -172,7 +173,7 @@ export default function SaveDocumentModal({
       setShowEmailPreview(false);
       setEmailOverrides({});
       // Only fetch events for B2B orders — other channels don't use the event selector
-      if ((initialOrderChannel || 'b2b') === 'b2b') {
+      if (['b2b', 'b2c'].includes(initialOrderChannel || 'b2b')) {
         fetchEvents();
       }
     }

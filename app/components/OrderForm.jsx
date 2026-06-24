@@ -2547,7 +2547,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               ) : isCertCol && row.collection ? (
                                 (() => {
                                   const certCol = findCollection(row.collection)
-                                  if (!certCol) return <PrintableInput value={row.cert} onChange={(e) => updateCell(globalIdx, 'cert', e.target.value)} style={inputStyle} isPrinting={isPrinting} />
+                                  if (!certCol) {
+                                    // Website B2C orders may store free-text product names
+                                    // that don't match our catalog — fall back to a plain
+                                    // text cell instead of crashing on an undefined style.
+                                    return (
+                                      <CellInput
+                                        value={row.cert}
+                                        onChange={(val) => updateCell(globalIdx, 'cert', val)}
+                                        isPrinting={isPrinting}
+                                      />
+                                    )
+                                  }
                                   const certOpts = certCol.certificate === 'both'
                                     ? [{ value: 'IGI', label: 'IGI' }, { value: 'In-house', label: 'In-house' }]
                                     : [{ value: CERT_LABELS[certCol.certificate], label: CERT_LABELS[certCol.certificate] }]

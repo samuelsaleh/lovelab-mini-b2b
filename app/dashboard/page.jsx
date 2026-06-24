@@ -818,7 +818,12 @@ export default function DashboardPage() {
                     {doc.metadata?.formState && (
                       <button
                         onClick={() => {
-                          sessionStorage.setItem('lovelab-reedit', JSON.stringify({ formState: doc.metadata.formState, documentId: doc.id }));
+                          sessionStorage.setItem('lovelab-reedit', JSON.stringify({
+                            formState: doc.metadata.formState,
+                            documentId: doc.id,
+                            order_channel: doc.order_channel || 'b2b',
+                            status: doc.status || 'sent',
+                          }));
                           router.push('/');
                         }}
                         title="Re-edit"
