@@ -13,6 +13,7 @@ import AddBonusModal from '@/app/components/AddBonusModal';
 import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
+import SynaliaAgentTab from '@/app/components/SynaliaAgentTab';
 
 // Money formatter that ALWAYS shows the cents (e.g. "1 469,55 €", "1 469,00 €").
 // The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
@@ -412,6 +413,7 @@ export default function AdminAgentDetailsPage() {
   // instantly, then revalidates from the server. On failure, reverts and
   // surfaces the error.
   const [togglingCommissionId, setTogglingCommissionId] = useState(null);
+  const [togglingSynaliaDocId, setTogglingSynaliaDocId] = useState(null);
   const [savingInvoiceId, setSavingInvoiceId] = useState(null);
   const handleToggleCustomerPaid = useCallback(async (commissionId, nextPaid) => {
     if (!commissionId || togglingCommissionId === commissionId) return;
@@ -446,6 +448,56 @@ export default function AdminAgentDetailsPage() {
       setTogglingCommissionId(null);
     }
   }, [load, togglingCommissionId]);
+
+  const handleToggleSynalia = useCallback(async (docId, nextSynalia) => {
+    if (!docId || togglingSynaliaDocId === docId) return;
+    setTogglingSynaliaDocId(docId);
+    const patchDocMeta = (prevDocs) =>
+      prevDocs.map((d) =>
+        d.id === docId
+          ? {
+              ...d,
+              metadata: {
+                ...(d.metadata || {}),
+                synalia: nextSynalia,
+                formState: { ...(d.metadata?.formState || {}), synalia: nextSynalia },
+              },
+            }
+          : d,
+      );
+    setCommissions((prev) =>
+      prev.map((c) => {
+        const linkedId = c.document_id || c.document?.id;
+        if (linkedId !== docId || !c.document) return c;
+        return {
+          ...c,
+          document: {
+            ...c.document,
+            metadata: {
+              ...(c.document.metadata || {}),
+              synalia: nextSynalia,
+              formState: { ...(c.document.metadata?.formState || {}), synalia: nextSynalia },
+            },
+          },
+        };
+      }),
+    );
+    setOrgDocuments(patchDocMeta);
+    try {
+      const res = await fetch(`/api/documents/${docId}/synalia`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ synalia: nextSynalia }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update');
+    } catch (err) {
+      await load();
+      setError(err.message || 'Failed to update Synalia flag');
+    } finally {
+      setTogglingSynaliaDocId(null);
+    }
+  }, [load, togglingSynaliaDocId]);
 
   // Undo a payout: revert a PAID commission back to 'pending' (keeping the
   // customer-paid tick) so it returns to "Ready to pay" and re-enters the next
@@ -588,6 +640,16 @@ export default function AdminAgentDetailsPage() {
       : (st.effective_revenue || 0);
   const activeConsignment = agentConsignmentOrders.filter(d => !d.metadata?.consignment?.returned_at);
 
+  const synaliaOrderCount = useMemo(
+    () => orgDocuments.filter((d) =>
+      d.document_type === 'order'
+      && d.status === 'sent'
+      && !d.deleted_at
+      && (d.metadata?.synalia === true || d.metadata?.formState?.synalia === true),
+    ).length,
+    [orgDocuments],
+  );
+
   // ── avatar initials ──────────────────────────────────────────────────────────
   const initials = (agent?.full_name || agent?.email || '?')
     .split(/[\s.@]+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('');
@@ -597,6 +659,7 @@ export default function AdminAgentDetailsPage() {
   // screen, instead of bouncing between two tabs to do one workflow.
   const TABS = [
     { id: 'financials', label: 'Financials' },
+    { id: 'synalia', label: synaliaOrderCount > 0 ? `Synalia (${synaliaOrderCount})` : 'Synalia' },
     { id: 'consignment', label: `Consignment (${agentConsignmentOrders.length})` },
     { id: 'organisation', label: 'Organisation' },
     { id: 'documents', label: 'Documents' },
@@ -838,11 +901,6 @@ export default function AdminAgentDetailsPage() {
             */}
             {activeTab === 'financials' && (
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-                {/* Phase 22 (2026-05-13) — Commission report controls live
-                    here now (was its own tab). The card sits between the
-                    KPI strip above and Commission History below so mom can
-                    see how much is "ready to pay" right above the
-                    "Send report now" button. */}
                 {agent && (
                   <CommissionReportsCard
                     agentId={agent.id}
@@ -1148,6 +1206,16 @@ export default function AdminAgentDetailsPage() {
                 CommissionReportsCard now renders inside the Financials tab
                 above. Any old `?tab=reports` deep-links fall through to
                 the default tab ('financials'). */}
+
+            {activeTab === 'synalia' && agent && (
+              <SynaliaAgentTab
+                agentId={agent.id}
+                agentName={agent.full_name || agent.email}
+                orgDocuments={orgDocuments}
+                onToggleSynalia={handleToggleSynalia}
+                togglingDocId={togglingSynaliaDocId}
+              />
+            )}
 
             {/* ── Tab: Consignment ──────────────────────────────────────────── */}
             {activeTab === 'consignment' && (

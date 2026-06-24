@@ -709,6 +709,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [dzbClientNumber, setDzbClientNumber] = useState('')
   const canUseDzb = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
 
+  const [synaliaEnabled, setSynaliaEnabled] = useState(false)
+  const canUseSynalia = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
+
   // Table rows state with undo/redo support
   const [rows, setRowsInternal] = useState(() => prefillRows(quote))
   const [rowsHistory, setRowsHistory] = useState([prefillRows(quote)])
@@ -842,6 +845,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
     if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
     if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
+    if (s.synaliaEnabled != null) setSynaliaEnabled(s.synaliaEnabled)
+    else if (s.synalia != null) setSynaliaEnabled(!!s.synalia)
     // Restore shipping / tax / custom line so re-opening a saved order
     // doesn't silently drop them from the totals (and from the saved
     // document on the next save). `deliveryCost` is the legacy field name
@@ -936,6 +941,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
     if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
     if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
+    if (s.synaliaEnabled != null) setSynaliaEnabled(s.synaliaEnabled)
+    else if (s.synalia != null) setSynaliaEnabled(!!s.synalia)
     // Same shipping/tax/custom-line restore as the saved-document path.
     if (s.shippingAmount != null) setShippingAmount(Number(s.shippingAmount) || null)
     else if (s.deliveryCost != null) setShippingAmount(Number(s.deliveryCost) || null)
@@ -997,6 +1004,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           discountDisplay, finalTotalOverride,
           hasVitrine, vitrinePrice, vitrineQty,
           dzbEnabled, dzbClientNumber,
+          synaliaEnabled,
           // Keep drafts and saved orders in sync — drafts also need to
           // restore shipping / tax / custom line on reopen.
           shippingAmount,
@@ -1034,7 +1042,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, rows, pricelistYear])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, synaliaEnabled, rows, pricelistYear])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
@@ -1621,6 +1629,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             // DZB Bank payment block (Nicolas + admins). dzbSupplierNumber is the
             // fixed LoveLab number; dzbClientNumber is the client's adhérent number.
             dzbEnabled, dzbClientNumber, dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
+            synaliaEnabled,
+            synalia: synaliaEnabled,
             // Persisted alongside the top-level metadata.shipping_amount so the
             // form can rehydrate them when re-opening a saved order. Without
             // these, re-saving stripped any delivery fee, VAT line, or custom
@@ -1645,6 +1655,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           dzbEnabled,
           dzbClientNumber,
           dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
+          synalia: synaliaEnabled,
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
           shippingAddress: shippingSameAsBilling 
             ? [addressLine1, addressLine2, country].filter(Boolean).join(', ')
@@ -2296,6 +2307,29 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             isPrinting={isPrinting}
                           />
                         )}
+                      </div>
+                    )}
+                    {canUseSynalia && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.synalia') || 'Synalia'} :</span>
+                        {['no', 'yes'].map(opt => {
+                          const isSelected = (opt === 'yes') === synaliaEnabled
+                          return (
+                            <button
+                              key={`synalia-${opt}`}
+                              type="button"
+                              onClick={() => setSynaliaEnabled(opt === 'yes')}
+                              style={{
+                                padding: '4px 10px', borderRadius: 4,
+                                border: isSelected ? 'none' : '1px solid #ccc',
+                                background: isSelected ? (opt === 'yes' ? colors.lovelabPurple : '#6b7280') : '#f0f0f0',
+                                color: isSelected ? '#fff' : '#666',
+                                fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                                textTransform: 'capitalize',
+                              }}
+                            >{opt}</button>
+                          )
+                        })}
                       </div>
                     )}
                   </>
