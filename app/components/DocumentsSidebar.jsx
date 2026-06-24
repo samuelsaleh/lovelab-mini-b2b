@@ -30,9 +30,6 @@ export default function DocumentsSidebar({
   setShowConsignment,
   showDrafts,
   setShowDrafts,
-  showSamples,
-  setShowSamples,
-  sampleCount = 0,
   draftCount = 0,
   renamingEventId,
   renameValue,
@@ -84,13 +81,12 @@ export default function DocumentsSidebar({
   const allDocsCount = documents.filter(d => d.status !== 'draft').length
 
   const eventFolders = (events || []).filter(e => (e.type || 'other') !== 'agent')
-  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts && !showSamples
+  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts
 
   const selectAll = () => {
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
-    setShowSamples?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -99,7 +95,6 @@ export default function DocumentsSidebar({
     setSelectedEventId(eventId)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
-    setShowSamples?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -108,7 +103,6 @@ export default function DocumentsSidebar({
     setSelectedOrgId?.(orgId)
     setSelectedEventId(null)
     setShowDrafts?.(false)
-    setShowSamples?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -118,7 +112,6 @@ export default function DocumentsSidebar({
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
-    setShowSamples?.(false)
     if (showConsignment) setShowConsignment?.(false)
   }
 
@@ -127,7 +120,6 @@ export default function DocumentsSidebar({
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
-    setShowSamples?.(false)
     if (showInternal) setShowInternal(false)
   }
 
@@ -135,16 +127,6 @@ export default function DocumentsSidebar({
     setShowDrafts?.(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
-    setShowSamples?.(false)
-    if (showInternal) setShowInternal(false)
-    if (showConsignment) setShowConsignment?.(false)
-  }
-
-  const selectSamples = () => {
-    setShowSamples?.(true)
-    setSelectedEventId(null)
-    setSelectedOrgId?.(null)
-    setShowDrafts?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -290,34 +272,13 @@ export default function DocumentsSidebar({
         </button>
       </div>
 
-      {/* Sample Orders — temporary, unconfirmed orders */}
-      <div style={{ padding: '0 8px' }}>
-        <button
-          onClick={selectSamples}
-          style={{
-            width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
-            background: showSamples ? '#fff4e5' : 'transparent',
-            color: showSamples ? '#b9770e' : '#555',
-            fontSize: 13, fontWeight: showSamples ? 600 : 400,
-            cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-            marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12 }}>🧪</span>
-            <span>Sample Orders</span>
-          </span>
-          <span style={{ fontSize: 11, color: '#999' }}>{sampleCount}</span>
-        </button>
-      </div>
-
       {/* ── EVENTS ── */}
       {eventFolders.length > 0 && (
         <>
           <SectionLabel>Events</SectionLabel>
           <div style={{ padding: '0 8px' }}>
             {eventFolders.map(event => {
-              const isSelected = selectedEventId === event.id && !showInternal && !showConsignment && !showSamples
+              const isSelected = selectedEventId === event.id && !showInternal && !showConsignment && !showDrafts
               return (
                 <div
                   key={event.id}
@@ -419,7 +380,7 @@ export default function DocumentsSidebar({
           <SectionLabel>Agents</SectionLabel>
           <div style={{ padding: '0 8px' }}>
             {(orgFolders || []).map(org => {
-              const isSelected = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showSamples
+              const isSelected = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showDrafts
               const docCount = getOrgDocCount(org.organization_id)
               const displayName = org.members?.[0]?.full_name || org.members?.[0]?.email || org.organization_name
               return (

@@ -76,9 +76,9 @@ describe('GET /api/documents', () => {
     )
   })
 
-  test('applies eq(order_channel, sample) when sample is requested', async () => {
+  test('does NOT apply sample filter (sample orders merged into draft)', async () => {
     await GET(makeRequest({ order_channel: 'sample' }))
-    expect(mockQuery.eq).toHaveBeenCalledWith('order_channel', 'sample')
+    expect(mockQuery.eq).not.toHaveBeenCalledWith('order_channel', 'sample')
   })
 
   test('does NOT call the exclusion filter when order_channel=internal is requested', async () => {

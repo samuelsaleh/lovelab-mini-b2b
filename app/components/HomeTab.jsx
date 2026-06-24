@@ -28,7 +28,7 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
     setShowTypePicker(true)
   }
 
-  const pickerTypes = isAdmin ? null : ['b2b', 'sample']
+  const pickerTypes = isAdmin ? null : ['b2b']
 
   return (
     <div

@@ -4,7 +4,7 @@
  * Guarantees:
  *   - Renders with zero financial data
  *   - No API calls are made on mount
- *   - "+ Create New Order" opens the order type picker for agents (B2B + Sample)
+ *   - "+ Create New Order" opens the order type picker for agents (B2B only)
  *   - Welcome message contains the user's name
  */
 
@@ -69,7 +69,7 @@ describe('HomeTab', () => {
     render(<HomeTab onSwitchTab={jest.fn()} onCreateOrder={jest.fn()} />)
     fireEvent.click(screen.getByTestId('new-order-button'))
     expect(screen.getByText('Create New Order')).toBeInTheDocument()
-    expect(screen.getByText('Sample Order')).toBeInTheDocument()
+    expect(screen.queryByText('Sample Order')).not.toBeInTheDocument()
     expect(screen.getByText('B2B Order')).toBeInTheDocument()
   })
 

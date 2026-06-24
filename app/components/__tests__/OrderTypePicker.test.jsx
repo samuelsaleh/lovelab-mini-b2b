@@ -9,20 +9,20 @@ describe('OrderTypePicker', () => {
   it('shows all order types by default', () => {
     render(<OrderTypePicker onSelect={jest.fn()} onClose={jest.fn()} />)
     expect(screen.getByText('B2B Order')).toBeInTheDocument()
-    expect(screen.getByText('Sample Order')).toBeInTheDocument()
+    expect(screen.queryByText('Sample Order')).not.toBeInTheDocument()
     expect(screen.getByText('Internal Order')).toBeInTheDocument()
   })
 
   it('filters to allowedTypes when provided', () => {
     render(
       <OrderTypePicker
-        allowedTypes={['b2b', 'sample']}
+        allowedTypes={['b2b']}
         onSelect={jest.fn()}
         onClose={jest.fn()}
       />,
     )
     expect(screen.getByText('B2B Order')).toBeInTheDocument()
-    expect(screen.getByText('Sample Order')).toBeInTheDocument()
+    expect(screen.queryByText('Sample Order')).not.toBeInTheDocument()
     expect(screen.queryByText('Internal Order')).not.toBeInTheDocument()
   })
 
@@ -30,12 +30,12 @@ describe('OrderTypePicker', () => {
     const onSelect = jest.fn()
     render(
       <OrderTypePicker
-        allowedTypes={['b2b', 'sample']}
+        allowedTypes={['b2b']}
         onSelect={onSelect}
         onClose={jest.fn()}
       />,
     )
-    fireEvent.click(screen.getByText('Sample Order'))
-    expect(onSelect).toHaveBeenCalledWith('sample')
+    fireEvent.click(screen.getByText('B2B Order'))
+    expect(onSelect).toHaveBeenCalledWith('b2b')
   })
 })

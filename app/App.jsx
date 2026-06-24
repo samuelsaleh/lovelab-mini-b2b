@@ -253,13 +253,15 @@ export default function App() {
   // channel (b2b/internal/consignment/delete_from_stock) is remembered so
   // the SaveDocumentModal pre-selects it later.
   const handleCreateOrder = useCallback((type = 'b2b') => {
+    // Sample orders were merged into Draft — always start a normal B2B order.
+    const channel = type === 'sample' ? 'b2b' : (type || 'b2b')
     setOrderFormQuote(null)
     setSavedFormState(null)
     setEditingDocumentId(null)
     setShowOrderForm(false)
     setLines([])
-    setInitialOrderChannel(type)
-    pendingOrderChannel.current = type
+    setInitialOrderChannel(channel)
+    pendingOrderChannel.current = channel
     setActiveTab('builder')
   }, [])
 

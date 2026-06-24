@@ -14,7 +14,6 @@ export default function DocumentRow({
   onDownload,
   onDelete,
   onRequestInternal,
-  onPromoteSample,
   renamingDocId,
   docRenameValue,
   setDocRenameValue,
@@ -24,8 +23,7 @@ export default function DocumentRow({
 }) {
   const { t } = useI18n()
   const isRenaming = renamingDocId === doc.id
-
-  const isSample = doc.order_channel === 'sample'
+  const isDraft = doc.status === 'draft'
 
   return (
     <div style={{
@@ -39,11 +37,11 @@ export default function DocumentRow({
         {/* Icon */}
         <div style={{
           width: 36, height: 36, borderRadius: 8,
-          background: isSample ? '#fff4e5' : doc.document_type === 'order' ? '#f0f5ff' : '#f5f5f5',
+          background: isDraft ? '#fff4e5' : doc.document_type === 'order' ? '#f0f5ff' : '#f5f5f5',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 16, flexShrink: 0, color: colors.inkPlum, fontWeight: 700,
         }}>
-          {isSample ? 'S' : doc.document_type === 'order' ? 'PO' : 'Q'}
+          {isDraft ? 'D' : doc.document_type === 'order' ? 'PO' : 'Q'}
         </div>
 
         {/* Info */}
@@ -86,7 +84,7 @@ export default function DocumentRow({
             />
           ) : (
             <div style={{ fontSize: 11, color: '#999', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {!isSample && (
+              {!isDraft && (
                 <span style={{
                   padding: '1px 6px', borderRadius: 4,
                   background: doc.document_type === 'order' ? '#e8f4ea' : '#e8f0ff',
@@ -94,14 +92,7 @@ export default function DocumentRow({
                   fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
                 }}>{doc.document_type}</span>
               )}
-              {isSample && (
-                <span style={{
-                  padding: '1px 6px', borderRadius: 4,
-                  background: '#fff4e5', color: '#b9770e',
-                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                }}>Sample</span>
-              )}
-              {doc.status === 'draft' && (
+              {isDraft && (
                 <span style={{
                   padding: '1px 6px', borderRadius: 4,
                   background: '#fff4e5', color: '#b9770e',
@@ -177,19 +168,7 @@ export default function DocumentRow({
             }}
           >Delete</button>
         )}
-        {isSample && canEdit && onPromoteSample && (
-          <button
-            onClick={() => onPromoteSample(doc)}
-            title="Confirm as a real B2B order"
-            style={{
-              padding: mobile ? '10px 12px' : '7px 10px', borderRadius: 6,
-              border: `1px solid ${colors.inkPlum}`, background: '#fdf7fa',
-              color: colors.inkPlum, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              fontFamily: fonts.body, minHeight: mobile ? 44 : 'auto', whiteSpace: 'nowrap',
-            }}
-          >Confirm as B2B</button>
-        )}
-        {isAdmin && doc.order_channel !== 'internal' && !isSample && (
+        {isAdmin && doc.order_channel !== 'internal' && !isDraft && (
           <button
             onClick={() => onRequestInternal(doc)}
             title="Move to Internal Orders (removes from analytics)"
