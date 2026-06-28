@@ -398,7 +398,7 @@ const CHANNEL_BANNER = {
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false }) {
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false, profile = null }) {
   // Compact = phone OR iPad portrait (< 1024px). The summary becomes a FAB +
   // drawer, toolbars stack, and the pack carousel wraps on compact. `tablet`
   // is kept only to fine-tune the collection grid card size.
@@ -929,7 +929,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       const response = await sendBuilderChat(
         [...aiMessages, { role: 'user', content: userMessage }],
         orderContext,
-        { pricelistYear: activePricelist, isAdmin },
+        { pricelistYear: activePricelist, profile },
       )
 
       if (response.actions && response.actions.length > 0) {
@@ -1515,7 +1515,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     selection state stays global across both tabs. */}
                 <div style={{ display: 'inline-flex', gap: 0, marginBottom: 16, border: `1px solid ${colors.inkPlum}33`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
                   {(() => {
-                    const visibleAll = getVisibleCollections(isAdmin)
+                    const visibleAll = getVisibleCollections(profile)
                     return [
                       { type: 'bracelet', label: t('builder.bracelets') },
                       { type: 'necklace', label: t('builder.necklaces') },
@@ -1555,7 +1555,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     // Preview (admin-only) collections are hidden from the grid
                     // for non-admins. The active Bracelet/Necklace tab filters
                     // further; selection state stays global across tabs.
-                    const visible = getCollectionsByType(getVisibleCollections(isAdmin), productTypeTab)
+                    const visible = getCollectionsByType(getVisibleCollections(profile), productTypeTab)
                     // Expand shape-card collections (e.g. SSF_NECK) into one card
                     // per shape, then order selected cards first.
                     const allCards = visible.flatMap(cardsForCollection)

@@ -218,7 +218,7 @@ export default function App() {
     ).join('; ')
     const prompt = `The client has a budget of €${budgetNum}. They have already built an order worth €${spent} (after any discounts). They have €${remaining} remaining.\n\nCurrent order: ${currentItems || 'empty'}\n\nIMPORTANT: Do NOT change or remove anything from the current order. Only suggest what to ADD on top of it.\nBased on what they already like (their chosen collections, colors, carat sizes), suggest 3-5 smart additions they could make with the remaining €${remaining}. Consider:\n- Adding more pieces of collections they already chose (safe upsell)\n- Trying a new complementary collection\n- Upgrading carat size on an existing line\n- Adding new colors of something they already have\n\nFor each suggestion, give a short one-line description and the approximate cost.\nKeep it very concise — this is for a salesperson at a trade fair.`
     try {
-      const parsed = await sendRecommendationChat(prompt, { pricelistYear, isAdmin })
+      const parsed = await sendRecommendationChat(prompt, { pricelistYear, profile })
       setBudgetRecommendations({ loading: false, message: parsed.message, suggestions: parsed.quote })
     } catch {
       setBudgetRecommendations({ loading: false, message: 'Could not generate recommendations. Please try again.', suggestions: null })
@@ -511,7 +511,7 @@ export default function App() {
     const apiMsgs = [...aiMsgs, apiMsg]
     setAiMsgs((prev) => [...prev, displayMsg])
     try {
-      const parsed = await sendChat(apiMsgs, { pricelistYear, isAdmin })
+      const parsed = await sendChat(apiMsgs, { pricelistYear, profile })
       let expandedQuote = null
       if (parsed.quote && parsed.quote.lines && parsed.quote.lines.length > 0) {
         const linesByCollection = new Map()
@@ -871,6 +871,7 @@ export default function App() {
             pricelistYear={pricelistYear}
             setPricelistYear={setPricelistYear}
             isAdmin={profile?.role === 'admin'}
+            profile={profile}
           />
         )}
 
@@ -1003,7 +1004,7 @@ export default function App() {
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: mobile ? 11 : 10, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('ai.collections')}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: mobile ? 6 : 5 }}>
-                        {getVisibleCollections(isAdmin).map((col) => {
+                        {getVisibleCollections(profile).map((col) => {
                           const active = aiCollections.includes(col.id)
                           return (
                             <button key={col.id} onClick={() => toggleAiCollection(col.id)} style={{ padding: mobile ? '8px 14px' : '5px 10px', borderRadius: 16, border: active ? `1.5px solid ${colors.inkPlum}` : '1px solid #ddd', background: active ? `${colors.inkPlum}12` : '#fafafa', color: active ? colors.inkPlum : '#666', fontSize: mobile ? 12 : 11, fontWeight: active ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', minHeight: mobile ? 36 : 'auto' }}>
@@ -1125,7 +1126,7 @@ export default function App() {
         )}
 
         {activeTab === 'photos' && (
-          <PackshotGallery inline isAdmin={isAdmin} />
+          <PackshotGallery inline profile={profile} />
         )}
 
       </main>

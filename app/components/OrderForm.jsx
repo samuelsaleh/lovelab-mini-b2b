@@ -604,7 +604,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // Preview (admin-only) collections are hidden from the collection dropdown
   // for non-admins.
   const isAdmin = currentUser?.role === 'admin'
-  const visibleCollections = getVisibleCollections(isAdmin)
+  const visibleCollections = getVisibleCollections(currentUser)
   const { t } = useI18n()
   // Compact = phone OR iPad portrait → card rows + stacked calculator.
   const { isCompact: mobile } = useResponsive()

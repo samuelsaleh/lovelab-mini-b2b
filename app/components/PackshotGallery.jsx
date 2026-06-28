@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { getAllCollectionIds, getCollectionLabel, getCollectionImages, getCollectionFilters } from '@/lib/packshot-lookup'
-import { isAdminOnlyCollection } from '@/lib/catalog'
+import { canSeeCollection } from '@/lib/catalog'
 import PackshotLightbox from './PackshotLightbox'
 
 const COLLECTION_ORDER = [
@@ -15,11 +15,11 @@ const COLLECTION_ORDER = [
   'ZAHA', 'LUVA', 'LUMA', 'RIV4', 'RIV8', 'LIN3', 'LIN5',
 ]
 
-export default function PackshotGallery({ onClose, inline = false, isAdmin = false }) {
+export default function PackshotGallery({ onClose, inline = false, isAdmin = false, profile = null }) {
   const availableIds = getAllCollectionIds()
-  // Preview (admin-only) collections are hidden from the gallery for non-admins.
+  const viewer = profile ?? (isAdmin ? { role: 'admin' } : null)
   const orderedIds = COLLECTION_ORDER.filter(
-    id => availableIds.includes(id) && (isAdmin || !isAdminOnlyCollection(id)),
+    id => availableIds.includes(id) && canSeeCollection(id, viewer),
   )
 
   const [activeCollection, setActiveCollection] = useState(orderedIds[0] || null)

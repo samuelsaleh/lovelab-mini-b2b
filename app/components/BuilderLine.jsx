@@ -409,7 +409,7 @@ function getPalette(col, cordType) {
 }
 
 // ─── Main BuilderLine ───
-export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate, isAdmin = false }) {
+export default memo(function BuilderLine({ line, index, total, onChange, onRemove, onDuplicate, isAdmin = false, profile = null }) {
   const col = line.collectionId ? COLLECTIONS.find((c) => c.id === line.collectionId) : null
 
   const [activeSection, setActiveSection] = useState('collection')
@@ -665,7 +665,7 @@ export default memo(function BuilderLine({ line, index, total, onChange, onRemov
             isCompleted={!!col}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {getVisibleCollections(isAdmin).map((c) => (
+              {getVisibleCollections(profile ?? (isAdmin ? { role: 'admin' } : null)).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {
