@@ -140,7 +140,7 @@ export default function CommissionReportsCard({ agentId, agentName }) {
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 700, color: PLUM, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>Commission Reports</span>
         <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>
-          Excel + email to mom · also saved to Google Drive
+          Excel + email to Dionne only · also saved to Google Drive
         </span>
       </div>
 
@@ -168,7 +168,7 @@ export default function CommissionReportsCard({ agentId, agentName }) {
           {busy ? 'Sending…' : 'Send report now'}
         </button>
         <span style={{ fontSize: 11, color: MUTED }}>
-          Emails the agent every order ticked Paid that isn’t on a report yet, and marks them “Reported”. Record the payment afterwards to settle them as Paid.
+          Emails Dionne (never the agent) with every order ticked Paid that isn’t on a report yet, and marks them “Reported”. Forward to the agent yourself when ready.
         </span>
 
         {lastResult && (

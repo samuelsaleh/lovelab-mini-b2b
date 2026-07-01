@@ -30,7 +30,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"send_email\": true,\n  \"upload_to_drive\": true,\n  \"skip_if_empty\": true\n}",
+        "jsonBody": "={\n  \"send_email\": false,\n  \"upload_to_drive\": false,\n  \"skip_if_empty\": true\n}",
         "options": {
           "response": {
             "response": {
