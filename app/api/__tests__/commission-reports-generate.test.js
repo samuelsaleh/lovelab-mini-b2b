@@ -128,22 +128,36 @@ describe('/api/commission-reports/generate POST', () => {
     expect(args.options.triggeredBy).toBe('admin-user');
   });
 
-  test('cron auth → triggerSource cron, even with no logged-in user', async () => {
+  test('cron auth → batch mode disabled (no automatic reports)', async () => {
     process.env.CRON_SECRET = 'expected';
     currentUser = null;
-    mockGenerateAllAgents.mockResolvedValue({
-      summary: { period: FIXED_PERIOD, total_agents: 0, sent: 0, skipped: 0, failed: 0 },
-      results: [],
-    });
 
     const res = await POST(makeRequest({
       headers: { 'x-vercel-cron-secret': 'expected' },
-      body: {},
+      body: { send_email: true },
     }));
     expect(res.status).toBe(200);
-    const args = mockGenerateAllAgents.mock.calls[0][0];
+    const json = await res.json();
+    expect(json.disabled).toBe(true);
+    expect(json.mode).toBe('batch');
+    expect(mockGenerateAllAgents).not.toHaveBeenCalled();
+    expect(mockGenerateAgentReport).not.toHaveBeenCalled();
+  });
+
+  test('cron auth → triggerSource cron for single-agent calls', async () => {
+    process.env.CRON_SECRET = 'expected';
+    currentUser = null;
+    mockGenerateAgentReport.mockResolvedValue({ reportId: 'r-1' });
+
+    const validUuid = '11111111-1111-1111-1111-111111111111';
+    const res = await POST(makeRequest({
+      headers: { 'x-vercel-cron-secret': 'expected' },
+      body: { agent_id: validUuid },
+    }));
+    expect(res.status).toBe(200);
+    const args = mockGenerateAgentReport.mock.calls[0][0];
     expect(args.options.triggerSource).toBe('cron');
-    expect(args.options.triggeredBy).toBeNull();
+    expect(args.options.sendEmail).toBe(false);
   });
 
   test('400 when agent_id is not a UUID', async () => {
@@ -215,17 +229,15 @@ describe('/api/commission-reports/generate POST', () => {
     expect(json.summary.skipped).toBe(1);
   });
 
-  test('cron defaults to previous calendar month when month is not given', async () => {
+  test('cron defaults to previous calendar month when month is not given (single-agent only)', async () => {
     process.env.CRON_SECRET = 'expected';
     currentUser = null;
-    mockGenerateAllAgents.mockResolvedValue({
-      summary: { period: FIXED_PERIOD, total_agents: 0, sent: 0, skipped: 0, failed: 0 },
-      results: [],
-    });
+    mockGenerateAgentReport.mockResolvedValue({ reportId: 'r-1' });
 
+    const validUuid = '22222222-2222-2222-2222-222222222222';
     await POST(makeRequest({
       headers: { 'x-vercel-cron-secret': 'expected' },
-      body: {},
+      body: { agent_id: validUuid },
     }));
     expect(mockPreviousMonthPeriod).toHaveBeenCalled();
     expect(mockSnapshotPeriod).not.toHaveBeenCalled();
@@ -244,7 +256,7 @@ describe('/api/commission-reports/generate POST', () => {
     expect(mockPreviousMonthPeriod).not.toHaveBeenCalled();
   });
 
-  test('skip flags & recipient pass through to service options', async () => {
+  test('skip flags pass through to service options; email requires explicit opt-in', async () => {
     mockGenerateAllAgents.mockResolvedValue({
       summary: { period: FIXED_PERIOD, total_agents: 0, sent: 0, skipped: 0, failed: 0 },
       results: [],
@@ -252,19 +264,21 @@ describe('/api/commission-reports/generate POST', () => {
 
     await POST(makeRequest({
       body: {
-        send_email: false,
+        send_email: true,
         upload_to_drive: false,
         skip_if_empty: false,
-        recipient: 'test@love-lab.com',
         month: '2026-04',
       },
     }));
 
     const args = mockGenerateAllAgents.mock.calls[0][0];
-    expect(args.options.sendEmail).toBe(false);
+    expect(args.options.sendEmail).toBe(true);
     expect(args.options.uploadToDrive).toBe(false);
     expect(args.options.skipIfEmpty).toBe(false);
-    expect(args.options.recipient).toBe('test@love-lab.com');
+
+    mockGenerateAllAgents.mockClear();
+    await POST(makeRequest({ body: { month: '2026-04' } }));
+    expect(mockGenerateAllAgents.mock.calls[0][0].options.sendEmail).toBe(false);
   });
 
   test('records a warn health event when batch has failures', async () => {

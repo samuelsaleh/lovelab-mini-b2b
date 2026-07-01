@@ -12,12 +12,9 @@
  *     agent_id?: string,        // generate for just this agent (UI button)
  *                               // omit → loop over every active agent (cron)
  *     month?:   string,         // YYYY-MM. Defaults to previous calendar month.
- *     send_email?: boolean,     // default true
+ *     send_email?: boolean,     // default false — must be true to email Dionne
  *     upload_to_drive?: boolean,// default true
  *     skip_if_empty?: boolean,  // default true (no .xlsx for empty months)
- *     recipient?: string,       // override dionne@love-lab.com (testing)
- *     cc?:  string|string[],    // optional carbon-copy
- *     bcc?: string|string[],    // optional blind carbon-copy
  *   }
  *
  * Auth (one of):
@@ -144,17 +141,46 @@ export async function POST(request) {
     }
 
     const options = {
-      sendEmail: body.send_email !== false,
+      sendEmail: !cron && body.send_email === true,
       uploadToDrive: body.upload_to_drive !== false,
       skipIfEmpty: body.skip_if_empty !== false,
-      recipient: body.recipient || undefined,
-      cc: body.cc || undefined,
-      bcc: body.bcc || undefined,
       triggeredBy: userId,
       triggerSource,
     };
 
     const adminSupabase = createAdminClient();
+
+    // ── Batch mode (cron / bulk) — disabled ───────────────────────────
+    // Automatic monthly runs fired before Dionne had ticked customer-paid.
+    if (!body.agent_id) {
+      if (cron) {
+        return NextResponse.json({
+          mode: 'batch',
+          disabled: true,
+          message: 'Automatic monthly commission reports are disabled. Use Send report now on each agent page.',
+        });
+      }
+      const { summary, results } = await generateAllAgents({
+        supabase: adminSupabase,
+        period,
+        options,
+      });
+
+      if (summary.failed > 0) {
+        await recordHealthEvent({
+          source: 'commission_reports_batch',
+          severity: 'warn',
+          message: `Monthly commission report batch had ${summary.failed} failure(s)`,
+          context: {
+            period_key: period.key,
+            summary,
+            failures: results.filter((r) => !r.ok).map((r) => ({ agent_id: r.agent_id, agent_name: r.agent_name, error: r.error })),
+          },
+        });
+      }
+
+      return NextResponse.json({ mode: 'batch', period, summary, results });
+    }
 
     // ── Single-agent mode (UI button) ─────────────────────────────────
     if (body.agent_id) {
@@ -167,28 +193,7 @@ export async function POST(request) {
       return NextResponse.json({ mode: 'single', period, result });
     }
 
-    // ── Batch mode (cron) ─────────────────────────────────────────────
-    const { summary, results } = await generateAllAgents({
-      supabase: adminSupabase,
-      period,
-      options,
-    });
-
-    // If anything failed, log a single warn event so admin sees it.
-    if (summary.failed > 0) {
-      await recordHealthEvent({
-        source: 'commission_reports_batch',
-        severity: 'warn',
-        message: `Monthly commission report batch had ${summary.failed} failure(s)`,
-        context: {
-          period_key: period.key,
-          summary,
-          failures: results.filter((r) => !r.ok).map((r) => ({ agent_id: r.agent_id, agent_name: r.agent_name, error: r.error })),
-        },
-      });
-    }
-
-    return NextResponse.json({ mode: 'batch', period, summary, results });
+    return NextResponse.json({ error: 'agent_id is required' }, { status: 400 });
   } catch (err) {
     console.error('[commission-reports/generate] Exception:', err);
     await recordHealthEvent({
