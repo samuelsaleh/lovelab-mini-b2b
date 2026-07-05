@@ -34,7 +34,7 @@ export async function getEventPermission(adminSupabase, eventId, userId, isAdmin
 
   const { data: eventRow } = await adminSupabase
     .from('events')
-    .select('id, created_by')
+    .select('id, created_by, organization_id')
     .eq('id', eventId)
     .maybeSingle();
 
@@ -56,7 +56,26 @@ export async function getEventPermission(adminSupabase, eventId, userId, isAdmin
     console.error('[access] event_access read error:', shareErr.message);
   }
 
-  return shareRow?.permission || null;
+  if (shareRow?.permission) return shareRow.permission;
+
+  // Team visibility: every active member of an organization can READ
+  // (a) events explicitly linked to their org, and (b) events created by a
+  // teammate who shares an active org with them.
+  const myMemberships = await getActiveOrgMemberships(adminSupabase, userId);
+  if (myMemberships.length > 0) {
+    const myOrgIds = new Set(myMemberships.map((m) => m.organization_id));
+    if (eventRow.organization_id && myOrgIds.has(eventRow.organization_id)) {
+      return 'read';
+    }
+    if (eventRow.created_by) {
+      const creatorMemberships = await getActiveOrgMemberships(adminSupabase, eventRow.created_by);
+      if (creatorMemberships.some((m) => myOrgIds.has(m.organization_id))) {
+        return 'read';
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function requireEventPermission(adminSupabase, eventId, userId, required = 'read', isAdmin = false) {
@@ -120,6 +139,77 @@ export async function isUserOwnerOrSameEmail(adminSupabase, ownerUserId, current
   const ownerEmail = normalizeEmail((rows || []).find((r) => r.id === ownerUserId)?.email);
   const currentEmail = normalizeEmail(currentUser.email || (rows || []).find((r) => r.id === currentUser.id)?.email);
   return !!ownerEmail && ownerEmail === currentEmail;
+}
+
+// Returns the user's ACTIVE organization memberships (deleted_at IS NULL),
+// resolved across all profile IDs sharing the user's email.
+// Shape: [{ organization_id, role, user_id }]
+export async function getActiveOrgMemberships(adminSupabase, userId) {
+  if (!userId) return [];
+  const userIds = await resolveAgentIds(adminSupabase, userId);
+  const { data, error } = await adminSupabase
+    .from('organization_memberships')
+    .select('organization_id, role, user_id')
+    .in('user_id', userIds)
+    .is('deleted_at', null);
+  if (error) {
+    console.error('[access] org memberships read error:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+// Team scope for an organization: every member profile ID (current AND
+// historical — soft-deleted memberships stay in scope so a removed member's
+// past orders remain in the team totals) plus the org's linked event IDs.
+// Member IDs are email-reconciled the same way resolveAgentIds works.
+export async function getOrgTeamScope(adminSupabase, organizationId) {
+  if (!organizationId) return { memberIds: [], eventIds: [] };
+
+  const [{ data: orgMembers }, { data: orgProfiles }, { data: orgEvents }] = await Promise.all([
+    adminSupabase
+      .from('organization_memberships')
+      .select('user_id')
+      .eq('organization_id', organizationId),
+    adminSupabase
+      .from('profiles')
+      .select('id')
+      .eq('organization_id', organizationId),
+    adminSupabase
+      .from('events')
+      .select('id')
+      .eq('organization_id', organizationId),
+  ]);
+
+  const memberIds = new Set([
+    ...(orgMembers || []).map((m) => m.user_id),
+    ...(orgProfiles || []).map((p) => p.id),
+  ]);
+
+  // Email reconciliation: re-invited agents may have legacy profile IDs whose
+  // documents should still count for the team.
+  const baseIds = [...memberIds].filter(Boolean);
+  if (baseIds.length > 0) {
+    const { data: memberProfiles } = await adminSupabase
+      .from('profiles')
+      .select('id, email')
+      .in('id', baseIds);
+    const emails = [...new Set(
+      (memberProfiles || []).map((p) => normalizeEmail(p.email)).filter(Boolean)
+    )];
+    if (emails.length > 0) {
+      const { data: sameEmailProfiles } = await adminSupabase
+        .from('profiles')
+        .select('id')
+        .in('email', emails);
+      (sameEmailProfiles || []).forEach((p) => memberIds.add(p.id));
+    }
+  }
+
+  return {
+    memberIds: [...memberIds].filter(Boolean),
+    eventIds: (orgEvents || []).map((e) => e.id),
+  };
 }
 
 // Returns all profile IDs that share the same email as `agentId`.

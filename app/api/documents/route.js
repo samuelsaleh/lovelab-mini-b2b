@@ -4,7 +4,7 @@ import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
-import { getAccessibleEventIds, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
+import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
@@ -50,6 +50,19 @@ export async function GET(request) {
       .order('created_at', { ascending: false })
       .range(offset, offset + perPage - 1);
 
+    // Team scope: non-admin callers may request organization_id only for an
+    // org they are an ACTIVE member of (any role — owner or member). Everyone
+    // in an org sees the same team documents; outsiders get 403.
+    let nonAdminOrgScope = null;
+    if (organizationId && !isAdmin) {
+      const memberships = await getActiveOrgMemberships(adminSupabase, user.id);
+      const isMember = memberships.some((m) => m.organization_id === organizationId);
+      if (!isMember) {
+        return NextResponse.json({ error: 'Forbidden: not a member of this organization' }, { status: 403 });
+      }
+      nonAdminOrgScope = await getOrgTeamScope(adminSupabase, organizationId);
+    }
+
     // Admin filtering: all documents on events owned by this agent
     if (isAdmin && createdByAgent) {
       const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
@@ -90,16 +103,43 @@ export async function GET(request) {
       orParts.push(`and(created_by.in.(${agentIds.join(',')}),event_id.is.null)`);
 
       query = query.or(orParts.join(','));
+    } else if (!isAdmin && nonAdminOrgScope) {
+      // Explicit team view: only the requested org's documents.
+      const orParts = [];
+      if (nonAdminOrgScope.memberIds.length > 0) {
+        orParts.push(`created_by.in.(${nonAdminOrgScope.memberIds.join(',')})`);
+      }
+      if (nonAdminOrgScope.eventIds.length > 0) {
+        orParts.push(`event_id.in.(${nonAdminOrgScope.eventIds.join(',')})`);
+      }
+      if (orParts.length > 0) {
+        query = query.or(orParts.join(','));
+      } else {
+        return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
+      }
     } else if (!isAdmin) {
       const userIds = await resolveAgentIds(adminSupabase, user.id);
       const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
-      const createdByFilter = userIds.map(id => `created_by.eq.${id}`).join(',');
-      if (accessibleEventIds.length > 0) {
-        query = query.or(`${createdByFilter},event_id.in.(${accessibleEventIds.join(',')})`);
+
+      // Team visibility: an org member's default list also includes their
+      // teammates' documents (everyone in an org sees the same data).
+      const memberships = await getActiveOrgMemberships(adminSupabase, user.id);
+      const teamCreatorIds = new Set(userIds);
+      const teamEventIds = new Set(accessibleEventIds);
+      for (const membership of memberships) {
+        const scope = await getOrgTeamScope(adminSupabase, membership.organization_id);
+        scope.memberIds.forEach((id) => teamCreatorIds.add(id));
+        scope.eventIds.forEach((id) => teamEventIds.add(id));
+      }
+
+      const creatorIds = [...teamCreatorIds];
+      const eventIds = [...teamEventIds];
+      if (eventIds.length > 0) {
+        query = query.or(`created_by.in.(${creatorIds.join(',')}),event_id.in.(${eventIds.join(',')})`);
       } else {
-        query = userIds.length === 1
-          ? query.eq('created_by', userIds[0])
-          : query.in('created_by', userIds);
+        query = creatorIds.length === 1
+          ? query.eq('created_by', creatorIds[0])
+          : query.in('created_by', creatorIds);
       }
     }
 

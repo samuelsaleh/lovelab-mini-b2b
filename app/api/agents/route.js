@@ -1,12 +1,8 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { welcomeAgentWithPasswordEmail, upgradeAgentEmail } from '@/lib/email-templates';
-import { sendEmail } from '@/lib/send-email';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
-import { provisionAgentInOrg, autoEnsureOrganization } from '@/lib/organizations/provision-agent';
-import { grantAccess } from '@/lib/agents/access';
+import { inviteAgent, InviteError } from '@/lib/agents/invite';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
-import { generateTempPassword } from '@/lib/auth/generateTempPassword';
 import { ensureAgentDriveFolder } from '@/lib/agentDriveFolder';
 import { NextResponse } from 'next/server';
 
@@ -298,181 +294,41 @@ export async function POST(request) {
     }
 
     const adminSupabase = createAdminClient();
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
 
-    // Check if user already exists in profiles
-    const { data: existingProfile } = await adminSupabase
-      .from('profiles')
-      .select('id, email, is_agent')
-      .eq('email', emailLower)
-      .maybeSingle();
-
-    const agentFields = {
-      is_agent: true,
-      agent_status: existingProfile ? 'active' : 'invited',
-      commission_rate: rate,
-      agent_since: new Date().toISOString(),
-      agent_phone: agent_phone?.trim() || null,
-      agent_company: agent_company?.trim() || null,
-      agent_country: agent_country?.trim() || null,
-      agent_city: agent_city?.trim() || null,
-      agent_region: agent_region?.trim() || null,
-      agent_territory: agent_territory?.trim() || null,
-      agent_specialty: agent_specialty?.trim() || null,
-      agent_conditions: agent_conditions?.trim() || null,
-      agent_notes: agent_notes?.trim() || null,
-      organization_id: requestedOrgId || null,
-    };
-
+    // Shared invite flow (lib/agents/invite.js) — also used by the org
+    // members endpoint so owners can self-onboard their teams.
     let agentProfile;
-
-    if (existingProfile) {
-      // Existing user -- upgrade to agent
-      const nameUpdate = full_name?.trim() ? { full_name: full_name.trim() } : {};
-      const { data, error } = await adminSupabase
-        .from('profiles')
-        .update({ ...agentFields, ...nameUpdate })
-        .eq('id', existingProfile.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[Agents POST] Update error:', error.message);
-        return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
+    try {
+      const result = await inviteAgent(adminSupabase, {
+        email: emailLower,
+        fullName: full_name,
+        commissionRate: rate,
+        extraAgentFields: {
+          agent_phone: agent_phone?.trim() || null,
+          agent_company: agent_company?.trim() || null,
+          agent_country: agent_country?.trim() || null,
+          agent_city: agent_city?.trim() || null,
+          agent_region: agent_region?.trim() || null,
+          agent_territory: agent_territory?.trim() || null,
+          agent_specialty: agent_specialty?.trim() || null,
+          agent_conditions: agent_conditions?.trim() || null,
+          agent_notes: agent_notes?.trim() || null,
+        },
+        organizationId: requestedOrgId || null,
+        membershipRole: 'member',
+        autoEnsureOrg: true,
+        invitedByUserId: user.id,
+        sendInvite: send_invite,
+        siteUrl,
+      });
+      agentProfile = result.agent;
+    } catch (inviteErr) {
+      if (inviteErr instanceof InviteError) {
+        console.error('[Agents POST] Invite error:', inviteErr.message);
+        return NextResponse.json({ error: inviteErr.message }, { status: inviteErr.status });
       }
-      agentProfile = data;
-
-      // Ensure existing users are also granted login access
-      try {
-        await grantAccess(adminSupabase, emailLower);
-      } catch (grantErr) {
-        console.error('[Agents POST] grantAccess error (non-blocking):', grantErr.message);
-      }
-    } else {
-      // New user -- add to allowed_emails and create auth account with a
-      // temp password. Replaces the old magic-link flow which kept breaking
-      // because email scanners pre-fetched the OTP and burned it before the
-      // agent could click. The temp password has no expiry, no token to
-      // consume, and works from any device after any delay.
-      try {
-        await grantAccess(adminSupabase, emailLower);
-      } catch (grantErr) {
-        console.error('[Agents POST] grantAccess error (non-blocking):', grantErr.message);
-      }
-
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-      const tempPassword = generateTempPassword(full_name);
-
-      // Check if an auth user already exists for this email (e.g. via Google OAuth)
-      // to prevent creating a duplicate auth user with a different ID.
-      let authUser = null;
-      try {
-        const { data: existingUsers } = await adminSupabase.auth.admin.listUsers({
-          filter: `email.eq.${emailLower}`,
-          perPage: 1,
-        });
-        const match = (existingUsers?.users || []).find(
-          u => u.email?.toLowerCase() === emailLower
-        );
-        if (match) authUser = match;
-      } catch (lookupErr) {
-        console.warn('[Agents POST] Auth user lookup warning:', lookupErr.message);
-      }
-
-      if (authUser) {
-        // Auth user already exists (likely from prior Google OAuth) — just
-        // set the temp password on the existing record.
-        const { error: pwErr } = await adminSupabase.auth.admin.updateUserById(authUser.id, {
-          password: tempPassword,
-        });
-        if (pwErr) {
-          console.error('[Agents POST] Password update error:', pwErr.message);
-          return NextResponse.json({ error: 'Failed to set temporary password' }, { status: 500 });
-        }
-      } else {
-        const { data: createData, error: createErr } = await adminSupabase.auth.admin.createUser({
-          email: emailLower,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: { full_name: full_name?.trim() || '' },
-        });
-        if (createErr || !createData?.user) {
-          console.error('[Agents POST] Could not create auth user:', createErr?.message);
-          return NextResponse.json({ error: 'Failed to create account. Please try again or check if the email already exists.' }, { status: 500 });
-        }
-        authUser = createData.user;
-      }
-
-      const { data, error } = await adminSupabase
-        .from('profiles')
-        .upsert({
-          id: authUser.id,
-          email: emailLower,
-          full_name: full_name?.trim() || '',
-          has_password_set: false,
-          ...agentFields,
-        }, { onConflict: 'id' })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[Agents POST] Profile upsert error:', error.message);
-        return NextResponse.json({ error: 'Failed to create agent profile' }, { status: 500 });
-      }
-      agentProfile = data;
-
-      if (send_invite) {
-        const agentName = full_name?.trim() || emailLower;
-        const { subject, html } = welcomeAgentWithPasswordEmail(
-          agentName,
-          emailLower,
-          tempPassword,
-          `${siteUrl}/login`,
-          siteUrl,
-        );
-        await sendEmail({ to: emailLower, subject, html });
-      }
-    }
-
-    if (existingProfile && send_invite) {
-      try {
-        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-        const agentName = full_name?.trim() || existingProfile.email;
-        const { subject, html } = upgradeAgentEmail(agentName, siteUrl);
-        await sendEmail({ to: existingProfile.email || emailLower, subject, html });
-      } catch (emailErr) {
-        console.error('[Agents POST] Upgrade email failed (non-blocking):', emailErr.message);
-      }
-    }
-
-    // Handle organization membership and folder provisioning
-    if (agentProfile?.id && !agentProfile?._pending) {
-      if (requestedOrgId) {
-        try {
-          const { data: existingMembership } = await adminSupabase
-            .from('organization_memberships')
-            .select('id')
-            .eq('organization_id', requestedOrgId)
-            .eq('user_id', agentProfile.id)
-            .maybeSingle();
-
-          if (!existingMembership) {
-            await adminSupabase
-              .from('organization_memberships')
-              .insert({ organization_id: requestedOrgId, user_id: agentProfile.id, role: 'member' });
-          }
-
-          await provisionAgentInOrg(requestedOrgId, agentProfile.id);
-        } catch (memberErr) {
-          console.error('[Agents POST] Org membership/folder error (non-blocking):', memberErr.message);
-        }
-      } else if (!agentProfile.organization_id) {
-        try {
-          const result = await autoEnsureOrganization(agentProfile.id, user.id);
-          agentProfile.organization_id = result.organization?.id || null;
-        } catch (orgErr) {
-          console.error('[Agents POST] Auto-ensure org error (non-blocking):', orgErr.message);
-        }
-      }
+      throw inviteErr;
     }
 
     // Phase 22: pre-create the per-agent Google Drive folder for commission

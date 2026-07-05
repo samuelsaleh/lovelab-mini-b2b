@@ -19,6 +19,7 @@ const AUTH_PAGES = [
 const AuthContext = createContext({
   user: null,
   profile: null,
+  orgMembership: null,
   profileMissing: false,
   profileError: null,
   loading: true,
@@ -29,6 +30,7 @@ const AuthContext = createContext({
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [orgMembership, setOrgMembership] = useState(null);
   const [profileMissing, setProfileMissing] = useState(false);
   const [profileError, setProfileError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,7 @@ export function AuthProvider({ children }) {
       const json = await res.json();
       if (json.user) {
         setUser(json.user);
+        setOrgMembership(json.organization_membership || null);
         if (json.profile) {
           setProfile(json.profile);
           setProfileMissing(false);
@@ -74,6 +77,7 @@ export function AuthProvider({ children }) {
       if (!ok) {
         setUser(null);
         setProfile(null);
+        setOrgMembership(null);
         setProfileMissing(false);
         setProfileError(null);
       }
@@ -90,6 +94,7 @@ export function AuthProvider({ children }) {
         } else {
           setUser(null);
           setProfile(null);
+          setOrgMembership(null);
           setProfileMissing(false);
           setProfileError(null);
         }
@@ -132,6 +137,7 @@ export function AuthProvider({ children }) {
   const signOut = async () => {
     setUser(null);
     setProfile(null);
+    setOrgMembership(null);
     setProfileMissing(false);
     setProfileError(null);
     try {
@@ -154,7 +160,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, profileMissing, profileError, loading, refreshProfile, signOut }}>
+    <AuthContext.Provider value={{ user, profile, orgMembership, profileMissing, profileError, loading, refreshProfile, signOut }}>
       {children}
     </AuthContext.Provider>
   );
