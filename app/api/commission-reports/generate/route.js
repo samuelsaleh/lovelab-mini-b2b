@@ -11,6 +11,10 @@
  *   {
  *     agent_id?: string,        // generate for just this agent (UI button)
  *                               // omit → loop over every active agent (cron)
+ *     organization_id?: string, // Phase 31: ONE report for the whole org —
+ *                               // sweeps all members' ready commissions,
+ *                               // keyed to the org owner. Mutually exclusive
+ *                               // with agent_id.
  *     month?:   string,         // YYYY-MM. Defaults to previous calendar month.
  *     send_email?: boolean,     // default false — must be true to email Dionne
  *     upload_to_drive?: boolean,// default true
@@ -35,6 +39,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import {
   generateAgentReport,
   generateAllAgents,
+  generateOrganizationReport,
   previousMonthPeriod,
   snapshotPeriod,
 } from '@/lib/commissionReportService';
@@ -114,6 +119,15 @@ export async function POST(request) {
     if (body.agent_id != null && !UUID_REGEX.test(String(body.agent_id))) {
       return NextResponse.json({ error: 'agent_id must be a UUID' }, { status: 400 });
     }
+    if (body.organization_id != null && !UUID_REGEX.test(String(body.organization_id))) {
+      return NextResponse.json({ error: 'organization_id must be a UUID' }, { status: 400 });
+    }
+    if (body.agent_id && body.organization_id) {
+      return NextResponse.json(
+        { error: 'Provide either agent_id or organization_id, not both' },
+        { status: 400 },
+      );
+    }
 
     // Period selection:
     //   - body.month given     → calendar-month report (cron path, n8n still
@@ -149,6 +163,19 @@ export async function POST(request) {
     };
 
     const adminSupabase = createAdminClient();
+
+    // ── Organization mode (Phase 31) — one report for the whole org ────
+    // Sweeps every member's ready commissions into a single report keyed
+    // to the org owner, so LoveLab owes ONE amount per partner company.
+    if (body.organization_id) {
+      const result = await generateOrganizationReport({
+        supabase: adminSupabase,
+        organizationId: String(body.organization_id),
+        period,
+        options,
+      });
+      return NextResponse.json({ mode: 'organization', period, result });
+    }
 
     // ── Batch mode (cron / bulk) — disabled ───────────────────────────
     // Automatic monthly runs fired before Dionne had ticked customer-paid.

@@ -905,6 +905,14 @@ export default function AdminAgentDetailsPage() {
                   <CommissionReportsCard
                     agentId={agent.id}
                     agentName={agent.full_name || agent.email}
+                    // Phase 31: agents in a multi-member org are settled via ONE
+                    // org-level report/payment — per-agent sending is disabled to
+                    // prevent double settlement and split payouts.
+                    orgSettlement={
+                      agent.organization_id && organizationMembers.length > 1
+                        ? { organizationId: agent.organization_id, organizationName: orgData?.name || 'the organization' }
+                        : null
+                    }
                   />
                 )}
 

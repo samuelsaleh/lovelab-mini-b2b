@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import TeamDashboard from '@/app/components/TeamDashboard'
+import OrgSettlementCard from '@/app/components/OrgSettlementCard'
 import { colors } from '@/lib/styles'
 
 export default function AdminOrganizationDetailPage() {
@@ -145,6 +146,10 @@ export default function AdminOrganizationDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Phase 31: one global owed number + org-level report/payment actions.
+            Per-agent tracking stays in the TeamDashboard below. */}
+        <OrgSettlementCard organizationId={organizationId} />
 
         <TeamDashboard organizationId={organizationId} adminView />
       </div>

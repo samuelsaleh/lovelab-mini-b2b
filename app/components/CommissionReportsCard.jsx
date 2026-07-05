@@ -61,7 +61,17 @@ function todayKey(now = new Date()) {
   return `${yyyy}-${mm}-${dd}-${hh}${min}`;
 }
 
-export default function CommissionReportsCard({ agentId, agentName }) {
+/**
+ * @param {object} props
+ * @param {string} props.agentId
+ * @param {string} props.agentName
+ * @param {{ organizationId: string, organizationName: string }|null} [props.orgSettlement]
+ *   Phase 31: when the agent belongs to a multi-member organization, the org
+ *   is settled with ONE report + ONE payment from the organization page.
+ *   Per-agent sending is disabled here (past reports stay listed) and a link
+ *   points to the org settlement instead — prevents double settlement.
+ */
+export default function CommissionReportsCard({ agentId, agentName, orgSettlement = null }) {
   const [reports, setReports] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState(null);
@@ -145,6 +155,19 @@ export default function CommissionReportsCard({ agentId, agentName }) {
       </div>
 
       {/* ── Send report row ───────────────────────────────────────── */}
+      {orgSettlement ? (
+        <div style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: '#fdf6e3', borderBottom: `1px solid ${LINE}` }}>
+          <span style={{ fontSize: 12, color: '#8a6a2c', fontWeight: 600 }}>
+            This agent is part of {orgSettlement.organizationName} — commissions are settled with one report and one payment for the whole team.
+          </span>
+          <a
+            href={`/admin/organizations/${orgSettlement.organizationId}`}
+            style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: PLUM, padding: '7px 14px', borderRadius: 8, textDecoration: 'none' }}
+          >
+            Go to organization settlement
+          </a>
+        </div>
+      ) : (
       <div style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: '#fafafa', borderBottom: `1px solid ${LINE}` }}>
         <button
           type="button"
@@ -189,6 +212,7 @@ export default function CommissionReportsCard({ agentId, agentName }) {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Past reports list ──────────────────────────────────────── */}
       <div>
