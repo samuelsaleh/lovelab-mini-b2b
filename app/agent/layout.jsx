@@ -5,12 +5,12 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '../components/AuthProvider'
 import { fonts, colors } from '@/lib/styles'
 import PortalLayout from '../components/PortalLayout'
-import { AGENT_NAV_ITEMS, resolveAgentActiveId } from '@/lib/navItems'
+import { getAgentNavItems, resolveAgentActiveId } from '@/lib/navItems'
 
 export default function AgentLayout({ children }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, profile, loading } = useAuth()
+  const { user, profile, orgMembership, loading } = useAuth()
 
   useEffect(() => {
     if (!loading && (!user || !profile?.is_agent)) {
@@ -32,7 +32,7 @@ export default function AgentLayout({ children }) {
 
   return (
     <PortalLayout
-      navItems={AGENT_NAV_ITEMS}
+      navItems={getAgentNavItems(orgMembership)}
       activeId={activeId}
       portalLabel="Agent Portal"
       rootPath="/agent"

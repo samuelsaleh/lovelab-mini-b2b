@@ -15,15 +15,55 @@
  * the file to swap. For now reuse keeps parity with admin.
  */
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import AnalyticsDashboard from '@/app/components/AnalyticsDashboard'
+import { useAuth } from '@/app/components/AuthProvider'
+import { useI18n } from '@/lib/i18n'
 import { colors, fonts } from '@/lib/styles'
 
 function AgentAnalyticsInner() {
   const searchParams = useSearchParams()
   const initialEventId = searchParams.get('event') || null
-  return <AnalyticsDashboard initialEventId={initialEventId} />
+  const { orgMembership } = useAuth()
+  const { t } = useI18n()
+  // For org members the API's default document list already includes the
+  // whole team, so 'all' = team view. The toggle lets them narrow to their
+  // own documents (scope=mine).
+  const [scope, setScope] = useState('all')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {orgMembership && (
+        <div style={{ display: 'flex', gap: 6, padding: '14px 20px 0' }}>
+          <ScopePill active={scope === 'all'} onClick={() => setScope('all')}>
+            {t('team.analyticsTeamData')}
+          </ScopePill>
+          <ScopePill active={scope === 'mine'} onClick={() => setScope('mine')}>
+            {t('team.analyticsMyData')}
+          </ScopePill>
+        </div>
+      )}
+      <AnalyticsDashboard key={scope} initialEventId={initialEventId} dataScope={scope === 'mine' ? 'mine' : 'all'} />
+    </div>
+  )
+}
+
+function ScopePill({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '7px 16px', borderRadius: 18, border: 'none',
+        background: active ? colors.inkPlum : '#eee',
+        color: active ? '#fff' : '#555',
+        fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+        transition: 'all .15s',
+      }}
+    >
+      {children}
+    </button>
+  )
 }
 
 export default function AgentAnalyticsPage() {

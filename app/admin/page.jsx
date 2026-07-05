@@ -76,6 +76,26 @@ export default function AdminDashboard() {
       .slice(0, 5),
   [agents])
 
+  // Revenue grouped by organization (partner-company template) — links to
+  // the /admin/organizations pages for the full team dashboards.
+  const revenueByOrg = useMemo(() => {
+    const byOrg = new Map()
+    for (const a of agents) {
+      if (!a.organization_id || a.agent_deleted_at) continue
+      const rev = a.stats?.effective_revenue || a.stats?.total_revenue || 0
+      const entry = byOrg.get(a.organization_id) || {
+        id: a.organization_id,
+        name: a.organization_name || 'Organization',
+        revenue: 0,
+        members: 0,
+      }
+      entry.revenue += rev
+      entry.members += 1
+      byOrg.set(a.organization_id, entry)
+    }
+    return [...byOrg.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 6)
+  }, [agents])
+
   const revenueByEvent = useMemo(() => {
     const byEvent = {}
     for (const d of orderDocs) {
@@ -176,6 +196,29 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+
+        {/* Revenue by Organization */}
+        {revenueByOrg.length > 0 && (
+          <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden', marginBottom: 28 }}>
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={sectionLabel}>By Organization</span>
+              <button onClick={() => router.push('/admin/organizations')} style={linkBtn}>View all</button>
+            </div>
+            {revenueByOrg.map(org => (
+              <div
+                key={org.id}
+                onClick={() => router.push(`/admin/organizations/${org.id}`)}
+                style={{ padding: '10px 18px', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: colors.charcoal }}>{org.name}</div>
+                  <div style={{ fontSize: 11, color: colors.lovelabMuted }}>{org.members} {org.members === 1 ? 'agent' : 'agents'}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{fmt(org.revenue)}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Revenue by Fair */}
         {revenueByEvent.length > 0 && (

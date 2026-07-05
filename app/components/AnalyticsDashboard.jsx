@@ -232,8 +232,10 @@ function MiniStat({ label, items, maxItems = 5 }) {
 // Main Dashboard Component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function AnalyticsDashboard({ initialEventId = null }) {
+export default function AnalyticsDashboard({ initialEventId = null, dataScope = 'all' }) {
   // Compact = phone OR iPad portrait → single-column charts/tables.
+  // dataScope: 'all' (default — for org members this includes the whole
+  // team's documents) or 'mine' (personal documents only).
   const { isCompact: mobile } = useResponsive()
 
   const [documents, setDocuments] = useState([])
@@ -255,7 +257,8 @@ export default function AnalyticsDashboard({ initialEventId = null }) {
     while (true) {
       // Note: cannot use summary=true here — country / product / vitrine
       // breakdowns rely on metadata.formState which summary mode strips.
-      const res = await safeFetch(`/api/documents?page=${page}&per_page=${PER_PAGE}`)
+      const scopeParam = dataScope === 'mine' ? '&scope=mine' : ''
+      const res = await safeFetch(`/api/documents?page=${page}&per_page=${PER_PAGE}${scopeParam}`)
       const data = await res.json()
       const batch = Array.isArray(data?.documents) ? data.documents : []
       all.push(...batch)
@@ -286,7 +289,7 @@ export default function AnalyticsDashboard({ initialEventId = null }) {
     setLoading(false)
   }
 
-  useEffect(() => { loadAnalytics() }, [])
+  useEffect(() => { loadAnalytics() }, [dataScope])
 
   // ─── Filtered docs based on event selector ────────────────────────────
   const docs = useMemo(() => {

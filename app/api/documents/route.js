@@ -25,6 +25,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get('event_id');
     const organizationId = searchParams.get('organization_id');
+    const scopeMine = searchParams.get('scope') === 'mine'; // opt out of team expansion
     const search = searchParams.get('search');
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
@@ -123,7 +124,8 @@ export async function GET(request) {
 
       // Team visibility: an org member's default list also includes their
       // teammates' documents (everyone in an org sees the same data).
-      const memberships = await getActiveOrgMemberships(adminSupabase, user.id);
+      // scope=mine opts back into the personal-only view (analytics toggle).
+      const memberships = scopeMine ? [] : await getActiveOrgMemberships(adminSupabase, user.id);
       const teamCreatorIds = new Set(userIds);
       const teamEventIds = new Set(accessibleEventIds);
       for (const membership of memberships) {
