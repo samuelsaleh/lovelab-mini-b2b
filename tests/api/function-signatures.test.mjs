@@ -68,7 +68,7 @@ test('email template functions are exported with correct signatures', async () =
   assert.equal(typeof mod.orderNotificationEmail, 'function');
   assert.equal(mod.orderNotificationEmail.length, 2);
   assert.equal(typeof mod.approvedSignupEmail, 'function');
-  assert.equal(mod.approvedSignupEmail.length, 2);
+  assert.equal(mod.approvedSignupEmail.length, 3, 'approvedSignupEmail(fullName, signInUrl, siteUrl)');
 });
 
 test('sendEmail is an exported function with 1 param', async (t) => {

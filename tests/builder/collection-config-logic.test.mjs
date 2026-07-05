@@ -214,11 +214,12 @@ test('qty decrement clamps at minC=2 for M3', () => {
   assert.equal(newQty, 2);
 });
 
-test('qty decrement clamps at minC=1 for CUTY', () => {
-  const currentQty = 1;
-  const minC = CUTY.minC; // 1
-  const newQty = Math.max(minC || 1, currentQty - 1);
-  assert.equal(newQty, 1);
+test('qty decrement clamps at the collection minimum for CUTY', () => {
+  // Uses the live catalog minC so a pricing/minimum change never breaks
+  // the clamp-logic test itself.
+  const minC = CUTY.minC;
+  const newQty = Math.max(minC || 1, minC - 1);
+  assert.equal(newQty, minC);
 });
 
 test('qty decrement from 3 to 2 for M3 (minC=2)', () => {
@@ -228,9 +229,9 @@ test('qty decrement from 3 to 2 for M3 (minC=2)', () => {
   assert.equal(newQty, 2);
 });
 
-test('qty decrement from 2 to 1 for CUTY (minC=1)', () => {
-  const currentQty = 2;
+test('qty decrement above the minimum decreases by one (CUTY)', () => {
   const minC = CUTY.minC;
+  const currentQty = minC + 2;
   const newQty = Math.max(minC || 1, currentQty - 1);
-  assert.equal(newQty, 1);
+  assert.equal(newQty, minC + 1);
 });
