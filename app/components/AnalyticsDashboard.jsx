@@ -10,7 +10,7 @@ import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
   ComposedChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Area, CartesianGrid,
+  PieChart, Pie, Cell, Area, CartesianGrid, Legend,
 } from 'recharts'
 
 // ─── Color palette for charts ──────────────────────────────────────────────
@@ -64,6 +64,36 @@ function resolveVitrineQty(doc) {
   return null
 }
 
+// ─── Timeline bucketing (pure, exported for tests) ─────────────────────────
+// Groups documents into 'day' | 'week' (Monday-start) | 'month' buckets with
+// revenue + document count per bucket, sorted chronologically.
+export function bucketTimeline(docs, group = 'day') {
+  const map = new Map()
+  ;(docs || []).forEach(d => {
+    const dt = new Date(d.created_at)
+    if (isNaN(dt)) return
+    let sortKey, dateKey
+    if (group === 'month') {
+      sortKey = dt.toISOString().slice(0, 7) // YYYY-MM
+      dateKey = dt.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    } else if (group === 'week') {
+      const monday = new Date(dt)
+      const day = monday.getDay() // 0=Sun..6=Sat
+      monday.setDate(monday.getDate() - ((day + 6) % 7))
+      sortKey = monday.toISOString().slice(0, 10)
+      dateKey = `wk ${monday.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+    } else {
+      sortKey = dt.toISOString().slice(0, 10)
+      dateKey = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    }
+    if (!map.has(sortKey)) map.set(sortKey, { sortKey, date: dateKey, revenue: 0, orders: 0 })
+    const entry = map.get(sortKey)
+    entry.revenue += d.total_amount || 0
+    entry.orders++
+  })
+  return Array.from(map.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+}
+
 // ─── Custom Recharts tooltip ───────────────────────────────────────────────
 function ChartTooltip({ active, payload, label, formatter }) {
   if (!active || !payload?.length) return null
@@ -82,9 +112,13 @@ function ChartTooltip({ active, payload, label, formatter }) {
 // ─── Sales Timeline Chart ──────────────────────────────────────────────────
 function SalesTimelineChart({ data }) {
   const rotateLabels = data.length > 5
+  // With many points, rendering every X label (interval={0}) turns the axis
+  // into an unreadable smear. Skip labels so at most ~12 are shown; the
+  // tooltip still reveals the exact date of every point on hover.
+  const labelInterval = data.length > 14 ? Math.ceil(data.length / 12) - 1 : 0
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <ComposedChart data={data} margin={{ top: 12, right: 16, left: 8, bottom: rotateLabels ? 44 : 12 }}>
+      <ComposedChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: rotateLabels ? 44 : 12 }}>
         <defs>
           <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%"  stopColor={colors.inkPlum} stopOpacity={0.22} />
@@ -94,11 +128,11 @@ function SalesTimelineChart({ data }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
         <XAxis
           dataKey="date"
-          fontSize={12}
+          fontSize={11}
           tick={{ fill: '#999' }}
           angle={rotateLabels ? -35 : 0}
           textAnchor={rotateLabels ? 'end' : 'middle'}
-          interval={0}
+          interval={labelInterval}
         />
         <YAxis
           yAxisId="rev"
@@ -112,11 +146,16 @@ function SalesTimelineChart({ data }) {
           yAxisId="cnt"
           orientation="right"
           fontSize={11}
-          tick={{ fill: '#ccc' }}
+          tick={{ fill: '#c5a059' }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
           width={28}
+        />
+        <Legend
+          verticalAlign="top"
+          height={26}
+          formatter={(value) => <span style={{ fontSize: 12, color: colors.charcoal }}>{value}</span>}
         />
         <Tooltip
           content={({ active, payload, label }) => {
@@ -130,13 +169,13 @@ function SalesTimelineChart({ data }) {
                 boxShadow: '0 4px 16px rgba(0,0,0,0.10)', fontSize: 13,
               }}>
                 <div style={{ fontWeight: 700, color: colors.inkPlum, marginBottom: 6 }}>{label}</div>
-                {rev && <div style={{ color: colors.inkPlum }}>Revenue: <strong>{fmt(rev.value)}</strong></div>}
-                {cnt && <div style={{ color: '#aaa', marginTop: 2 }}>Orders: <strong>{cnt.value}</strong></div>}
+                {cnt && <div style={{ color: '#8a6a2c' }}>Orders: <strong>{cnt.value}</strong></div>}
+                {rev && <div style={{ color: colors.inkPlum, marginTop: 2 }}>Revenue: <strong>{fmt(rev.value)}</strong></div>}
               </div>
             )
           }}
         />
-        <Bar yAxisId="cnt" dataKey="orders" name="Orders" fill={`${colors.inkPlum}15`} radius={[4, 4, 0, 0]} maxBarSize={36} />
+        <Bar yAxisId="cnt" dataKey="orders" name="Orders" fill="#c5a059" fillOpacity={0.55} radius={[4, 4, 0, 0]} maxBarSize={30} />
         <Area
           yAxisId="rev"
           type="monotone"
@@ -145,11 +184,34 @@ function SalesTimelineChart({ data }) {
           stroke={colors.inkPlum}
           strokeWidth={2.5}
           fill="url(#salesGradient)"
-          dot={{ r: 4, fill: '#fff', stroke: colors.inkPlum, strokeWidth: 2 }}
+          dot={data.length <= 40 ? { r: 3, fill: '#fff', stroke: colors.inkPlum, strokeWidth: 2 } : false}
           activeDot={{ r: 6, fill: colors.inkPlum }}
         />
       </ComposedChart>
     </ResponsiveContainer>
+  )
+}
+
+// ─── Small pill toggle (Day / Week / Month, All / B2B / B2C) ───────────────
+function PillToggle({ options, value, onChange }) {
+  return (
+    <div style={{ display: 'inline-flex', background: '#f4f0f5', borderRadius: 8, padding: 2, gap: 2 }}>
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onChange(opt.id)}
+          style={{
+            padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700,
+            fontFamily: 'inherit', cursor: 'pointer',
+            background: value === opt.id ? colors.inkPlum : 'transparent',
+            color: value === opt.id ? '#fff' : colors.lovelabMuted,
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -168,10 +230,13 @@ function KpiCard({ label, value, sub, accent }) {
 }
 
 // ─── Section wrapper ───────────────────────────────────────────────────────
-function Section({ title, children, style: s }) {
+function Section({ title, children, style: s, actions = null }) {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden', ...s }}>
-      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>{title}</div>
+      <div style={{ padding: '11px 20px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <span>{title}</span>
+        {actions}
+      </div>
       <div style={{ padding: 20 }}>{children}</div>
     </div>
   )
@@ -245,6 +310,14 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const [selectedEventId, setSelectedEventId] = useState(initialEventId ?? '')
   const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
+  // Channel scope: 'all' | 'b2b' | 'b2c'. B2C gets its own personalized view
+  // (individual customers, no fairs/vitrines) so wholesale and website sales
+  // don't blur together.
+  const [channelScope, setChannelScope] = useState('all')
+  // Sales Timeline grouping: 'day' | 'week' | 'month'.
+  const [timelineGroup, setTimelineGroup] = useState('day')
+
+  const isB2C = channelScope === 'b2c'
 
   // Paginate through /api/documents to load every doc, not just the most
   // recent 50 (the API's default page size). Without this, fairs older than
@@ -291,14 +364,21 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   useEffect(() => { loadAnalytics() }, [dataScope])
 
+  // ─── Channel-scoped documents (before the event filter) ──────────────
+  const channelDocs = useMemo(() => {
+    if (channelScope === 'b2c') return documents.filter(d => d.order_channel === 'b2c')
+    if (channelScope === 'b2b') return documents.filter(d => d.order_channel !== 'b2c')
+    return documents
+  }, [documents, channelScope])
+
   // ─── Filtered docs based on event selector ────────────────────────────
   const docs = useMemo(() => {
     // Drafts (parked, unsent orders) are not real activity yet — keep them out
     // of every analytics KPI, chart, and breakdown.
-    const base = documents.filter(d => d.status !== 'draft')
+    const base = channelDocs.filter(d => d.status !== 'draft')
     if (!selectedEventId) return base
     return base.filter(d => d.event_id === selectedEventId)
-  }, [documents, selectedEventId])
+  }, [channelDocs, selectedEventId])
 
   // ─── KPIs ─────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -309,7 +389,12 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     const avgOrder = orderCount > 0 ? totalRevenue / orderCount : 0
     let totalVitrines = 0
     docs.forEach(d => { const q = resolveVitrineQty(d); if (q) totalVitrines += q })
-    return { totalRevenue, orderCount, quoteCount, avgOrder, totalVitrines, totalDocs: docs.length }
+    // Unique customers — the headline that matters for B2C (website buyers
+    // are individuals, so "vitrines" is meaningless there).
+    const customerKeys = new Set(
+      docs.map(d => (d.client_company || d.client_name || '').trim().replace(/\s+/g, ' ').toLowerCase()).filter(Boolean)
+    )
+    return { totalRevenue, orderCount, quoteCount, avgOrder, totalVitrines, totalDocs: docs.length, uniqueCustomers: customerKeys.size }
   }, [docs])
 
   // ─── Revenue per fair ─────────────────────────────────────────────────
@@ -320,7 +405,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const revenuePerFair = useMemo(() => {
     if (selectedEventId) return []
     const map = new Map()
-    documents.forEach(d => {
+    channelDocs.forEach(d => {
       if (d.document_type !== 'order') return
       const eid = d.event_id || '__none__'
       const eName = d.events?.name || 'No Event'
@@ -330,7 +415,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       entry.orders++
     })
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [documents, selectedEventId])
+  }, [channelDocs, selectedEventId])
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => {
@@ -411,19 +496,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
   }, [docs])
 
-  // ─── Sales timeline (by day) ──────────────────────────────────────────
-  const timelineData = useMemo(() => {
-    const map = new Map()
-    docs.forEach(d => {
-      const dateKey = new Date(d.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
-      const sortKey = new Date(d.created_at).toISOString().slice(0, 10)
-      if (!map.has(sortKey)) map.set(sortKey, { sortKey, date: dateKey, revenue: 0, orders: 0 })
-      const entry = map.get(sortKey)
-      entry.revenue += d.total_amount || 0
-      entry.orders++
-    })
-    return Array.from(map.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-  }, [docs])
+  // ─── Sales timeline (grouped by day / week / month) ───────────────────
+  const timelineData = useMemo(() => bucketTimeline(docs, timelineGroup), [docs, timelineGroup])
 
   // ─── Quick stats: carats, shapes, packaging, cord colors ──────────────
   const quickStats = useMemo(() => {
@@ -489,7 +563,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     const eventName = selectedEventId
       ? events.find(e => e.id === selectedEventId)?.name || 'Unknown'
       : 'All Events'
-    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName})`, '---']
+    const scopeLabel = channelScope === 'b2c' ? 'B2C (website/individual sales)' : channelScope === 'b2b' ? 'B2B (wholesale)' : 'All channels'
+    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName} · scope: ${scopeLabel})`, '---']
 
     lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} | Vitrines: ${kpis.totalVitrines} | Total Documents: ${kpis.totalDocs}`)
     lines.push('---')
@@ -539,7 +614,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     }
 
     return lines.join('\n')
-  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, quickStats, selectedEventId, events])
+  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, quickStats, selectedEventId, events, channelScope])
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -557,6 +632,18 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const pad = mobile ? 12 : 24
   const gridGap = mobile ? 12 : 20
 
+  const timelineToggle = (
+    <PillToggle
+      options={[
+        { id: 'day', label: 'Day' },
+        { id: 'week', label: 'Week' },
+        { id: 'month', label: 'Month' },
+      ]}
+      value={timelineGroup}
+      onChange={setTimelineGroup}
+    />
+  )
+
   return (
     <div style={{ fontFamily: fonts.body, background: '#f8f8f8', flex: 1, overflowY: 'auto' }}>
       {fetchError && (
@@ -567,7 +654,17 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       )}
       {/* ─── Filter toolbar ─── */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${colors.lineGray}`, padding: `${mobile ? 8 : 10}px ${pad}px` }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <PillToggle
+            options={[
+              { id: 'all', label: 'All' },
+              { id: 'b2b', label: 'B2B' },
+              { id: 'b2c', label: 'B2C' },
+            ]}
+            value={channelScope}
+            onChange={(v) => { setChannelScope(v); setSelectedCountry('') }}
+          />
           <select
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
@@ -595,6 +692,12 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               );
             })}
           </select>
+          {isB2C && (
+            <span style={{ fontSize: 12, color: colors.lovelabMuted }}>
+              Website / individual sales only
+            </span>
+          )}
+          </div>
           <button
             onClick={() => setShowChat(true)}
             style={{
@@ -612,17 +715,22 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
         {/* ─── KPI Cards ─── */}
         <div style={{ display: 'flex', gap: gridGap, flexWrap: 'wrap', marginBottom: gridGap }}>
-          <KpiCard label="Total Revenue" value={fmt(kpis.totalRevenue)} sub={`${kpis.totalDocs} documents`} />
+          <KpiCard label={isB2C ? 'B2C Revenue' : 'Total Revenue'} value={fmt(kpis.totalRevenue)} sub={`${kpis.totalDocs} documents`} />
           <KpiCard label="Orders" value={kpis.orderCount} sub={`${kpis.quoteCount} quotes`} accent={colors.luxeGold} />
           <KpiCard label="Avg. Order Value" value={fmt(kpis.avgOrder)} />
-          <KpiCard label="Vitrines" value={kpis.totalVitrines} sub={`${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
+          {isB2C ? (
+            <KpiCard label="Customers" value={kpis.uniqueCustomers} sub="unique buyers" accent={colors.gradientDeep} />
+          ) : (
+            <KpiCard label="Vitrines" value={kpis.totalVitrines} sub={`${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
+          )}
         </div>
 
         {/* ─── Row 1: Revenue per Fair + Country Distribution ─── */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: gridGap, marginBottom: gridGap }}>
 
-          {/* Revenue per Fair */}
-          {!selectedEventId ? (
+          {/* Revenue per Fair — hidden in B2C scope (website sales aren't fairs);
+              the Sales Timeline takes this slot instead. */}
+          {!selectedEventId && !isB2C ? (
             <Section title="Revenue per Fair">
               {revenuePerFair.length > 0 ? (
                 <>
@@ -648,7 +756,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No events yet</div>}
             </Section>
           ) : (
-            <Section title="Sales Timeline">
+            <Section title={isB2C ? 'B2C Sales Timeline' : 'Sales Timeline'} actions={timelineToggle}>
               {timelineData.length > 0
                 ? <SalesTimelineChart data={timelineData} />
                 : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No data</div>}
@@ -748,10 +856,10 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           </Section>
 
           {/* Top Clients */}
-          <Section title="Top Clients (by revenue)">
+          <Section title={isB2C ? 'Top Customers (by revenue)' : 'Top Clients (by revenue)'}>
             <RankedTable
               columns={[
-                { label: 'Company', key: 'name' },
+                { label: isB2C ? 'Customer' : 'Company', key: 'name' },
                 { label: 'Orders', key: 'orders', align: 'center' },
                 { label: 'Revenue', key: 'revenue', align: 'right', bold: true, color: colors.inkPlum, render: (r) => fmt(r.revenue) },
               ]}
@@ -764,9 +872,10 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
         {/* ─── Row 3: Sales Timeline (global) + Vitrine Summary ─── */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: gridGap, marginBottom: gridGap }}>
 
-          {/* Sales Timeline (always visible) */}
-          {!selectedEventId && (
-            <Section title="Sales Timeline">
+          {/* Sales Timeline (always visible) — in B2C scope it already sits in
+              Row 1, so don't render it twice. */}
+          {!selectedEventId && !isB2C && (
+            <Section title="Sales Timeline" actions={timelineToggle}>
               {timelineData.length > 0
                 ? <SalesTimelineChart data={timelineData} />
                 : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No timeline data</div>}
