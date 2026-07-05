@@ -327,12 +327,17 @@ export default function AdminAgentsPage() {
               return (
                 <div key={group.organizationId || group.agents[0]?.id}>
                   {hasOrg && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                      padding: '10px 16px',
-                      background: '#f4f0f5', borderRadius: '12px 12px 0 0',
-                      border: `1px solid ${colors.lineGray}`, borderBottom: 'none',
-                    }}>
+                    <div
+                      onClick={() => router.push(`/admin/organizations/${group.organizationId}`)}
+                      title="Open organization — team overview, totals and payment"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                        padding: '10px 16px',
+                        background: '#f4f0f5', borderRadius: '12px 12px 0 0',
+                        border: `1px solid ${colors.lineGray}`, borderBottom: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.inkPlum} strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                       <span style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>
                         {group.organizationName || 'Organization'}
@@ -350,6 +355,17 @@ export default function AdminAgentsPage() {
                           {orgRate}%
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); router.push(`/admin/organizations/${group.organizationId}`); }}
+                        style={{
+                          marginLeft: 'auto', padding: '6px 14px', borderRadius: 7, border: 'none',
+                          background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 700,
+                          cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
+                        }}
+                      >
+                        Open organization →
+                      </button>
                     </div>
                   )}
                   <div style={{
