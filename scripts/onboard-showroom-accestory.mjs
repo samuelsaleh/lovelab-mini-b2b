@@ -25,10 +25,11 @@ import { pathToFileURL } from 'node:url';
 import { inviteAgent } from '../lib/agents/invite.js';
 
 // ─── Roster ──────────────────────────────────────────────────────────────────
-// membershipRole: 'member' for everyone except Alice (Responsable commerciale),
-// who gets 'owner' so she can manage the team from the /agent/team page.
+// Sarah (the main agent / boss) already exists as the org OWNER — she is NOT
+// in this roster. Everyone below joins HER organization as 'member', so she
+// manages the whole team from her /agent/team page.
 export const ROSTER = [
-  { email: 'alice@showroomaccestory.com', fullName: 'Alice Cadenet', title: 'Responsable commerciale', membershipRole: 'owner' },
+  { email: 'alice@showroomaccestory.com', fullName: 'Alice Cadenet', title: 'Responsable commerciale', membershipRole: 'member' },
   { email: 'marie-louise@showroomaccestory.com', fullName: 'Marie-Louise Trochain', title: 'Commerciale', membershipRole: 'member' },
   { email: 'caren@showroomaccestory.com', fullName: 'Caren Melkonian', title: 'Commerciale', membershipRole: 'member' },
   { email: 'wassila@showroomaccestory.com', fullName: 'Wassila Mekidiche', title: 'Commerciale', membershipRole: 'member' },
@@ -39,17 +40,23 @@ export const ROSTER = [
 ];
 
 export const ORG_NAME_PATTERNS = ['%showroom%', '%accestory%', '%accessory%'];
+export const COMPANY_DOMAIN = 'showroomaccestory.com';
 const COMPANY_NAME = 'Showroom Accestory';
 
 // ─── Org resolution ──────────────────────────────────────────────────────────
 
 /**
- * Find the target organization. Explicit --org-id wins; otherwise search by
- * name patterns and require exactly ONE match (never guess with real data).
+ * Find the target organization — Sarah's org. Resolution order:
+ *   1. explicit --org-id (always wins)
+ *   2. the org of an EXISTING agent on the company email domain (Sarah is
+ *      already onboarded, and her auto-created org may be named
+ *      "Sarah ... Organization" rather than anything with "Showroom" in it)
+ *   3. org name search as a fallback
+ * Requires exactly ONE distinct match — never guesses with real data.
  *
  * @returns {{ org: object|null, candidates: array, reason: string|null }}
  */
-export async function resolveOrganization(admin, { orgId = null, patterns = ORG_NAME_PATTERNS } = {}) {
+export async function resolveOrganization(admin, { orgId = null, domain = COMPANY_DOMAIN, patterns = ORG_NAME_PATTERNS } = {}) {
   if (orgId) {
     const { data: org, error } = await admin
       .from('organizations')
@@ -61,6 +68,42 @@ export async function resolveOrganization(admin, { orgId = null, patterns = ORG_
     return { org, candidates: [org], reason: null };
   }
 
+  // 2. Existing agent on the company domain (excluding the roster we're about
+  //    to add, in case of a partial previous run) → her organization_id.
+  const rosterEmails = new Set(ROSTER.map((m) => m.email.toLowerCase()));
+  const { data: domainAgents, error: domainErr } = await admin
+    .from('profiles')
+    .select('id, email, full_name, organization_id')
+    .ilike('email', `%@${domain}`);
+  if (domainErr) return { org: null, candidates: [], reason: `domain search failed: ${domainErr.message}` };
+
+  const existingOrgIds = Array.from(new Set(
+    (domainAgents || [])
+      .filter((p) => p.organization_id && !rosterEmails.has((p.email || '').toLowerCase()))
+      .map((p) => p.organization_id)
+  ));
+
+  if (existingOrgIds.length === 1) {
+    const { data: org, error } = await admin
+      .from('organizations')
+      .select('id, name, territory, commission_rate')
+      .eq('id', existingOrgIds[0])
+      .maybeSingle();
+    if (!error && org) return { org, candidates: [org], reason: null };
+  }
+  if (existingOrgIds.length > 1) {
+    const { data: orgs } = await admin
+      .from('organizations')
+      .select('id, name, territory, commission_rate')
+      .in('id', existingOrgIds);
+    return {
+      org: null,
+      candidates: orgs || [],
+      reason: `agents on @${domain} belong to several different organizations — pass --org-id to disambiguate`,
+    };
+  }
+
+  // 3. Fallback: org name search.
   const { data: orgs, error } = await admin
     .from('organizations')
     .select('id, name, territory, commission_rate')
@@ -69,7 +112,7 @@ export async function resolveOrganization(admin, { orgId = null, patterns = ORG_
 
   const candidates = orgs || [];
   if (candidates.length === 1) return { org: candidates[0], candidates, reason: null };
-  if (candidates.length === 0) return { org: null, candidates, reason: 'no organization matched the name search' };
+  if (candidates.length === 0) return { org: null, candidates, reason: `no existing agent found on @${domain} and no organization matched the name search` };
   return { org: null, candidates, reason: 'multiple organizations matched — pass --org-id to disambiguate' };
 }
 

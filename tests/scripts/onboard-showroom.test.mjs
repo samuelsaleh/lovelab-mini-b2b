@@ -24,7 +24,12 @@ function createMockSupabase(fixtures = {}) {
   };
 
   const applyFilters = (rows, filters) =>
-    rows.filter((row) => filters.every(([col, val]) => {
+    rows.filter((row) => filters.every(([kind, col, val]) => {
+      if (kind === 'ilike') {
+        const needle = String(val).replace(/%/g, '').toLowerCase();
+        return String(row[col] || '').toLowerCase().includes(needle);
+      }
+      if (kind === 'in') return (val || []).includes(row[col]);
       if (val === null) return row[col] == null;
       return row[col] === val;
     }));
@@ -58,8 +63,10 @@ function createMockSupabase(fixtures = {}) {
     const b = {
       select() { return b; },
       insert(payload) { ctx.op = 'insert'; ctx.payload = payload; return b; },
-      eq(col, val) { ctx.filters.push([col, val]); return b; },
-      is(col, val) { ctx.isFilters.push([col, val]); return b; },
+      eq(col, val) { ctx.filters.push(['eq', col, val]); return b; },
+      is(col, val) { ctx.isFilters.push(['eq', col, val]); return b; },
+      ilike(col, val) { ctx.filters.push(['ilike', col, val]); return b; },
+      in(col, val) { ctx.filters.push(['in', col, val]); return b; },
       or(expr) { ctx.orFilter = expr; return b; },
       order() { return b; },
       limit() { return b; },
@@ -96,17 +103,55 @@ test('roster: all 8 team members present with normalized-able emails', () => {
   }
 });
 
-test('roster: exactly one owner — Alice (Responsable commerciale)', () => {
-  const owners = ROSTER.filter((m) => m.membershipRole === 'owner');
-  assert.equal(owners.length, 1);
-  assert.equal(owners[0].email, 'alice@showroomaccestory.com');
+test('roster: everyone is a member — Sarah (existing agent) stays the only owner', () => {
+  assert.equal(ROSTER.filter((m) => m.membershipRole === 'owner').length, 0);
+  assert.ok(ROSTER.every((m) => m.membershipRole === 'member'));
+  assert.ok(!ROSTER.some((m) => /sarah/i.test(m.email)), 'Sarah must not be re-invited');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Organization resolution
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('resolveOrganization: single name match wins', async () => {
+test('resolveOrganization: finds Sarah\'s org via her existing domain account, even with a non-matching org name', async () => {
+  const supabase = createMockSupabase({
+    organizations: [{ id: 'org-sarah', name: 'Sarah Dupont Organization' }, { id: 'o2', name: 'Nicolas Organization' }],
+    profiles: [{ id: 'u-sarah', email: 'sarah@showroomaccestory.com', full_name: 'Sarah Dupont', organization_id: 'org-sarah' }],
+  });
+  const { org, reason } = await resolveOrganization(supabase);
+  assert.equal(reason, null);
+  assert.equal(org.id, 'org-sarah');
+});
+
+test('resolveOrganization: roster members from a partial previous run do not confuse the domain lookup', async () => {
+  const supabase = createMockSupabase({
+    organizations: [{ id: 'org-sarah', name: 'Sarah Dupont Organization' }],
+    profiles: [
+      { id: 'u-sarah', email: 'sarah@showroomaccestory.com', organization_id: 'org-sarah' },
+      // Alice was already added in an earlier partial run — same org, must not break uniqueness
+      { id: 'u-alice', email: 'alice@showroomaccestory.com', organization_id: 'org-sarah' },
+    ],
+  });
+  const { org, reason } = await resolveOrganization(supabase);
+  assert.equal(reason, null);
+  assert.equal(org.id, 'org-sarah');
+});
+
+test('resolveOrganization: domain agents in several different orgs → refuses to guess', async () => {
+  const supabase = createMockSupabase({
+    organizations: [{ id: 'org-a', name: 'Org A' }, { id: 'org-b', name: 'Org B' }],
+    profiles: [
+      { id: 'u1', email: 'sarah@showroomaccestory.com', organization_id: 'org-a' },
+      { id: 'u2', email: 'other@showroomaccestory.com', organization_id: 'org-b' },
+    ],
+  });
+  const { org, candidates, reason } = await resolveOrganization(supabase);
+  assert.equal(org, null);
+  assert.equal(candidates.length, 2);
+  assert.match(reason, /--org-id/);
+});
+
+test('resolveOrganization: falls back to single name match when no domain agent exists', async () => {
   const supabase = createMockSupabase({ organizations: [ORG, { id: 'o2', name: 'Nicolas Organization' }] });
   const { org, reason } = await resolveOrganization(supabase);
   assert.equal(reason, null);
@@ -228,9 +273,7 @@ test('onboardRoster: invites every new member with org id, correct role, France 
     assert.equal(call.extraAgentFields.agent_company, 'Showroom Accestory');
     assert.equal(call.extraAgentFields.agent_country, 'France');
   }
-  const aliceCall = inviteCalls.find((c) => c.email === 'alice@showroomaccestory.com');
-  assert.equal(aliceCall.membershipRole, 'owner');
-  assert.equal(inviteCalls.filter((c) => c.membershipRole === 'member').length, 7);
+  assert.equal(inviteCalls.filter((c) => c.membershipRole === 'member').length, 8, 'everyone joins as member under Sarah');
 });
 
 test('onboardRoster: dry run never calls invite', async () => {
@@ -385,7 +428,7 @@ test('integration: real inviteAgent path creates auth user, profile and org memb
     assert.equal(upsert.organization_id, ORG.id);
     assert.equal(upsert.agent_company, 'Showroom Accestory');
   }
-  const ownerMemberships = writes.membershipInserts.filter((m) => m.role === 'owner');
-  assert.equal(ownerMemberships.length, 1, 'only Alice becomes owner');
+  assert.equal(writes.membershipInserts.filter((m) => m.role === 'owner').length, 0, 'no new owners — Sarah stays the boss');
+  assert.equal(writes.membershipInserts.filter((m) => m.role === 'member').length, 8);
   assert.ok(results.every((r) => r.tempPassword), 'every invite yields a temp password for the summary');
 });
