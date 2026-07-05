@@ -4,10 +4,14 @@ import { isAdmin, requireOrganizationAccess } from '@/lib/organizations/authz';
 import { isValidEmail, normalizeEmail } from '@/lib/organizations/invitations';
 import { inviteAgent, InviteError } from '@/lib/agents/invite';
 import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
+import {
+  canManageTeam,
+  resolveInviteRole,
+  parseInviteEmails,
+  validateInviteTarget,
+  resolveMemberCommissionRate,
+} from '@/lib/organizations/team';
 import { checkRateLimit } from '@/lib/rateLimit';
-
-// Cap for bulk invites — protects the email sender and the auth API.
-const MAX_BULK_INVITES = 50;
 
 async function getMembershipRole(adminSupabase, organizationId, userId) {
   // Always use admin client to avoid the self-referential RLS policy
@@ -84,28 +88,16 @@ async function inviteOneMember(adminSupabase, {
     .maybeSingle();
   if (profileErr) throw profileErr;
 
-  if (existingProfile) {
-    // Never let an org invite touch an admin account.
-    if (existingProfile.role === 'admin') {
-      throw new InviteError('This user is an administrator and cannot be added as a team member', 409);
-    }
-
-    // Owners cannot poach users who already belong to a different org.
-    // Admins can move people between orgs explicitly.
-    if (
-      !callerIsAdmin &&
-      existingProfile.organization_id &&
-      existingProfile.organization_id !== organizationId
-    ) {
-      throw new InviteError('This user already belongs to another organization', 409);
-    }
+  // Guardrails: never touch admin accounts; owners cannot poach users who
+  // already belong to a different org (admins can move people explicitly).
+  const targetCheck = validateInviteTarget({ existingProfile, organizationId, callerIsAdmin });
+  if (!targetCheck.ok) {
+    throw new InviteError(targetCheck.error, targetCheck.status);
   }
 
   // Per-agent commission rate defaults to the org rate for NEW accounts only;
   // existing profiles keep whatever rate the admin configured for them.
-  const commissionRate = existingProfile
-    ? null
-    : (organization?.commission_rate ?? null);
+  const commissionRate = resolveMemberCommissionRate({ existingProfile, organization });
 
   const { agent, created } = await inviteAgent(adminSupabase, {
     email: emailLower,
@@ -149,15 +141,13 @@ export async function POST(request, { params }) {
     const adminSupabase = createAdminClient();
     const callerIsAdmin = isAdmin(session.profile);
     const callerRole = await getMembershipRole(adminSupabase, organizationId, session.user.id);
-    const canManage = callerIsAdmin || callerRole === 'owner';
-    if (!canManage) {
+    if (!canManageTeam({ callerIsAdmin, callerRole })) {
       return NextResponse.json({ error: 'Only organization owners can add members' }, { status: 403 });
     }
 
     // Role guardrail: only LoveLab admins may appoint additional owners.
     // Org owners always create plain members.
-    const requestedRole = body?.role === 'owner' ? 'owner' : 'member';
-    const role = callerIsAdmin ? requestedRole : 'member';
+    const role = resolveInviteRole({ callerIsAdmin, requestedRole: body?.role });
 
     const { data: organization, error: orgErr } = await adminSupabase
       .from('organizations')
@@ -207,20 +197,11 @@ export async function POST(request, { params }) {
       : (body?.email ? [body.email] : []);
     const fullName = typeof body?.full_name === 'string' ? body.full_name : '';
 
-    // Normalize + dedupe while preserving order
-    const emails = [...new Set(
-      rawEmails.map((e) => normalizeEmail(e)).filter(Boolean)
-    )];
-
-    if (emails.length === 0) {
-      return NextResponse.json({ error: 'Missing user_id or email' }, { status: 400 });
+    const parsed = parseInviteEmails(rawEmails);
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: parsed.status });
     }
-    if (emails.length > MAX_BULK_INVITES) {
-      return NextResponse.json(
-        { error: `Too many invitations — maximum ${MAX_BULK_INVITES} per request` },
-        { status: 400 }
-      );
-    }
+    const { emails } = parsed;
 
     const results = [];
     for (const email of emails) {

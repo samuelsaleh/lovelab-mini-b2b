@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireOrganizationAccess } from '@/lib/organizations/authz';
 import { resendAgentInvite, InviteError } from '@/lib/agents/invite';
+import { canManageTargetMember } from '@/lib/organizations/team';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 /**
@@ -38,15 +39,6 @@ async function getManagementContext(request, params, prefix) {
     .maybeSingle();
   if (callerErr) throw callerErr;
 
-  const canManage = callerIsAdmin || callerMembership?.role === 'owner';
-  if (!canManage) {
-    return { error: NextResponse.json({ error: 'Only organization owners can manage members' }, { status: 403 }) };
-  }
-
-  if (targetUserId === session.user.id) {
-    return { error: NextResponse.json({ error: 'You cannot manage your own membership' }, { status: 400 }) };
-  }
-
   const { data: targetMembership, error: targetErr } = await adminSupabase
     .from('organization_memberships')
     .select('id, role, deleted_at')
@@ -56,12 +48,15 @@ async function getManagementContext(request, params, prefix) {
     .maybeSingle();
   if (targetErr) throw targetErr;
 
-  if (!targetMembership) {
-    return { error: NextResponse.json({ error: 'Member not found in this organization' }, { status: 404 }) };
-  }
-
-  if (targetMembership.role === 'owner' && !callerIsAdmin) {
-    return { error: NextResponse.json({ error: 'Only admins can manage organization owners' }, { status: 403 }) };
+  const check = canManageTargetMember({
+    callerIsAdmin,
+    callerRole: callerMembership?.role || null,
+    targetRole: targetMembership?.role || null,
+    isSelf: targetUserId === session.user.id,
+    targetExists: Boolean(targetMembership),
+  });
+  if (!check.allowed) {
+    return { error: NextResponse.json({ error: check.error }, { status: check.status }) };
   }
 
   return { adminSupabase, session, organizationId, targetUserId, targetMembership, callerIsAdmin };

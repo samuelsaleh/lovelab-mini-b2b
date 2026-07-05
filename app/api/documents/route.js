@@ -5,6 +5,7 @@ import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
+import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
@@ -57,8 +58,7 @@ export async function GET(request) {
     let nonAdminOrgScope = null;
     if (organizationId && !isAdmin) {
       const memberships = await getActiveOrgMemberships(adminSupabase, user.id);
-      const isMember = memberships.some((m) => m.organization_id === organizationId);
-      if (!isMember) {
+      if (!canUseOrgScope({ isAdmin, organizationId, memberships })) {
         return NextResponse.json({ error: 'Forbidden: not a member of this organization' }, { status: 403 });
       }
       nonAdminOrgScope = await getOrgTeamScope(adminSupabase, organizationId);
@@ -106,15 +106,9 @@ export async function GET(request) {
       query = query.or(orParts.join(','));
     } else if (!isAdmin && nonAdminOrgScope) {
       // Explicit team view: only the requested org's documents.
-      const orParts = [];
-      if (nonAdminOrgScope.memberIds.length > 0) {
-        orParts.push(`created_by.in.(${nonAdminOrgScope.memberIds.join(',')})`);
-      }
-      if (nonAdminOrgScope.eventIds.length > 0) {
-        orParts.push(`event_id.in.(${nonAdminOrgScope.eventIds.join(',')})`);
-      }
-      if (orParts.length > 0) {
-        query = query.or(orParts.join(','));
+      const orFilter = buildTeamScopeOrFilter(nonAdminOrgScope);
+      if (orFilter) {
+        query = query.or(orFilter);
       } else {
         return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
       }
