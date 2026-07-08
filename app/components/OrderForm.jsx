@@ -54,6 +54,16 @@ const COLUMNS = [
   { key: 'total', labelKey: 'order.columns.total', width: 84 },
 ]
 
+// The COLUMNS `width` values are relative weights, not literal pixels. The
+// <colgroup> converts them to percentages of the table width so the table
+// always fits its page container exactly. Rendering them as raw px with
+// tableLayout:'fixed' let the table overflow the 1020px page card and the
+// PDF/print capture clipped the rightmost columns (UNIT PRICE / TOTAL) —
+// the "order PDF stops at COLOR CORD" bug (2026-07-08).
+const COLUMNS_TOTAL_WIDTH = COLUMNS.reduce((sum, c) => sum + c.width, 0)
+// Width weight of the on-screen-only duplicate/delete actions column.
+const DUP_COL_WIDTH = 72
+
 const FILL_KEYS = ['quantity', 'collection', 'cert', 'carat', 'shape', 'setting', 'bpColor', 'closure', 'size', 'material', 'colorCord', 'unitPrice']
 
 // LoveLab's fixed DZB Bank supplier number (Numéro fournisseur DZB). Shown on
@@ -2035,12 +2045,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         {/* Pages */}
         <div id="order-form-print" ref={printRef} style={{ display: isPrinting ? 'block' : 'flex', flexDirection: 'column', gap: isPrinting ? 0 : 24 }}>
           {displayPages.map((pageRows, pageIdx) => {
-            // When printing, use desktop layout even on mobile (PDF is captured at 1020px)
+            // When printing, use desktop layout even on mobile (PDF is captured
+            // at desktop width — DESKTOP_WIDTH in lib/pdf.js, kept equal to the
+            // page card maxWidth of 1180)
             const compact = mobile && !isPrinting
             return (
             <div key={pageIdx} className="order-form-page" style={{
               width: '100%',
-              maxWidth: 1020,
+              maxWidth: 1180,
               background: '#fff',
               borderRadius: 4,
               boxShadow: isPrinting ? 'none' : '0 1px 6px rgba(0,0,0,0.08)',
@@ -2461,10 +2473,16 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
               )}
               <table style={{ width: '100%', minWidth: compact ? 700 : 'auto', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
                 <colgroup>
-                  {COLUMNS.map((col) => (
-                    <col key={col.key} style={{ width: col.width }} />
-                  ))}
-                  {!isPrinting && <col className="order-form-dup-col" style={{ width: 72 }} />}
+                  {/* Percentage widths (of the summed weights) so the fixed-layout
+                      table can never grow wider than the page card and clip the
+                      last columns out of the PDF/print capture. */}
+                  {(() => {
+                    const weightTotal = COLUMNS_TOTAL_WIDTH + (isPrinting ? 0 : DUP_COL_WIDTH)
+                    return COLUMNS.map((col) => (
+                      <col key={col.key} style={{ width: `${(col.width / weightTotal) * 100}%` }} />
+                    ))
+                  })()}
+                  {!isPrinting && <col className="order-form-dup-col" style={{ width: `${(DUP_COL_WIDTH / (COLUMNS_TOTAL_WIDTH + DUP_COL_WIDTH)) * 100}%` }} />}
                 </colgroup>
                 <thead>
                   <tr>
@@ -3002,7 +3020,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             className="order-form-add-page"
             onClick={addPage}
             style={{
-              width: '100%', maxWidth: 1020, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
+              width: '100%', maxWidth: 1180, padding: 12, borderRadius: 8, border: `1.5px dashed ${colors.lineGray}`,
               background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600,
               color: '#888', fontFamily: fonts.body, marginBottom: 40, transition: 'all .12s',
               minHeight: mobile ? 48 : 'auto',
