@@ -9,32 +9,22 @@
  *   ✓ 400 when report_id is not a UUID
  *   ✓ 400 when the report belongs to a different agent
  *   ✓ 404 when the report does not exist
+ *   ✓ 409 when the report already has a payment
  *   ✓ plain payment (no report_id) records a payout, settles nothing
- *   ✓ report payment settles the report's commissions (status=paid + invoice)
- *     and links the payout row to the report + invoice
+ *   ✓ report payment is delegated to the atomic DB RPC
  */
 
 let currentUser = { id: 'admin-user' };
 let currentRole = 'admin';
 
 let agentRow = null;
-let reportRow = null;
-let acQueue = [];
-let acChains = [];
 let insertedPaymentPayload = null;
+let rpcResult = null;
+let rpcError = null;
+let rpcCall = null;
 
 const AGENT = '11111111-1111-1111-1111-111111111111';
 const REPORT = '22222222-2222-2222-2222-222222222222';
-
-function makeACChain(result) {
-  const chain = {};
-  for (const m of ['select', 'eq', 'in', 'update', 'neq', 'order']) {
-    chain[m] = jest.fn(() => chain);
-  }
-  chain.then = (resolve) => resolve(result);
-  acChains.push(chain);
-  return chain;
-}
 
 const mockAdminSupabase = {
   from: jest.fn((table) => {
@@ -44,17 +34,6 @@ const mockAdminSupabase = {
         eq: jest.fn().mockReturnThis(),
         single: jest.fn(() => Promise.resolve({ data: agentRow, error: null })),
       };
-    }
-    if (table === 'commission_reports') {
-      return {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn(() => Promise.resolve({ data: reportRow, error: null })),
-      };
-    }
-    if (table === 'agent_commissions') {
-      const result = acQueue.length ? acQueue.shift() : { data: [], error: null };
-      return makeACChain(result);
     }
     if (table === 'agent_payments') {
       return {
@@ -68,6 +47,10 @@ const mockAdminSupabase = {
       };
     }
     throw new Error('unexpected table: ' + table);
+  }),
+  rpc: jest.fn((fn, payload) => {
+    rpcCall = { fn, payload };
+    return Promise.resolve({ data: rpcResult, error: rpcError });
   }),
 };
 
@@ -102,10 +85,19 @@ beforeEach(() => {
   currentUser = { id: 'admin-user' };
   currentRole = 'admin';
   agentRow = { id: AGENT, is_agent: true, agent_deleted_at: null };
-  reportRow = { id: REPORT, agent_id: AGENT, snapshot_data: {} };
-  acQueue = [];
-  acChains = [];
   insertedPaymentPayload = null;
+  rpcResult = {
+    payment: {
+      id: 'pay-1',
+      agent_id: AGENT,
+      amount: 1500,
+      report_id: REPORT,
+      invoice_number: 'INV-42',
+    },
+    settled: { marked: 2, ids: ['c1', 'c2'] },
+  };
+  rpcError = null;
+  rpcCall = null;
   jest.clearAllMocks();
 });
 
@@ -136,29 +128,33 @@ describe('POST /api/agent-payments', () => {
     expect(body.settled).toBeNull();
     expect(insertedPaymentPayload.report_id).toBeNull();
     expect(insertedPaymentPayload.invoice_number).toBe('INV-7');
-    // No commission rows touched.
-    expect(acChains.length).toBe(0);
+    expect(mockAdminSupabase.rpc).not.toHaveBeenCalled();
   });
 
   test('404 when the report does not exist', async () => {
-    reportRow = null;
+    rpcError = { code: 'P0002', message: 'Commission report not found' };
     const res = await POST(makeRequest({ agent_id: AGENT, amount: 100, report_id: REPORT }));
     expect(res.status).toBe(404);
   });
 
   test('400 when the report belongs to a different agent', async () => {
-    reportRow = { id: REPORT, agent_id: 'someone-else', snapshot_data: {} };
+    rpcError = { message: 'Report does not belong to this agent' };
     const res = await POST(makeRequest({ agent_id: AGENT, amount: 100, report_id: REPORT }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/does not belong/i);
   });
 
-  test('report payment settles commissions + stamps invoice + links the payout', async () => {
-    acQueue = [
-      { data: [{ id: 'c1' }, { id: 'c2' }], error: null }, // resolution by report_id
-      { data: [{ id: 'c1' }, { id: 'c2' }], error: null }, // settle update
-    ];
+  test('409 when the report already has a payment', async () => {
+    rpcError = { code: '23505', message: 'Commission report already has a recorded payment' };
+    const res = await POST(makeRequest({ agent_id: AGENT, amount: 100, report_id: REPORT }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/already has/i);
+    expect(insertedPaymentPayload).toBeNull();
+  });
+
+  test('report payment delegates to the atomic RPC', async () => {
     const res = await POST(makeRequest({
       agent_id: AGENT,
       amount: 1500,
@@ -168,16 +164,25 @@ describe('POST /api/agent-payments', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.settled).toEqual({ marked: 2, ids: ['c1', 'c2'] });
+    expect(body.payment).toMatchObject({
+      report_id: REPORT,
+      invoice_number: 'INV-42',
+      amount: 1500,
+    });
 
-    // The commission settle update set status=paid + the invoice.
-    const settleChain = acChains.find((c) => c.update.mock.calls.length > 0);
-    const payload = settleChain.update.mock.calls[0][0];
-    expect(payload.status).toBe('paid');
-    expect(payload.invoice_number).toBe('INV-42');
-
-    // The payout row links back to the report + invoice.
-    expect(insertedPaymentPayload.report_id).toBe(REPORT);
-    expect(insertedPaymentPayload.invoice_number).toBe('INV-42');
-    expect(insertedPaymentPayload.amount).toBe(1500);
+    expect(rpcCall).toEqual({
+      fn: 'record_agent_report_payment',
+      payload: {
+        p_agent_id: AGENT,
+        p_amount: 1500,
+        p_notes: null,
+        p_payment_date: expect.any(String),
+        p_report_id: REPORT,
+        p_invoice_number: 'INV-42',
+        p_created_by: 'admin-user',
+      },
+    });
+    // Report-linked payments must not fall back to the old split-write path.
+    expect(insertedPaymentPayload).toBeNull();
   });
 });
