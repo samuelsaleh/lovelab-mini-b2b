@@ -3,6 +3,13 @@
 import { useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import SynaliaReportCard from './SynaliaReportCard'
+import {
+  JEWELER_GROUP_OPTIONS,
+  getJewelerGroupLabel,
+  isSynaliaJewelerGroup,
+  jewelerGroupFromLegacy,
+  normalizeJewelerGroup,
+} from '@/lib/jewelerGroup'
 
 const fmt2 = (n) => {
   const num = Number(n);
@@ -36,7 +43,7 @@ const td = {
 const EXCLUDED = new Set(['internal', 'consignment', 'delete_from_stock', 'sample']);
 
 function isSynalia(doc) {
-  return doc?.metadata?.synalia === true || doc?.metadata?.formState?.synalia === true;
+  return isSynaliaJewelerGroup(jewelerGroupFromLegacy(doc?.metadata));
 }
 
 function orderDate(doc) {
@@ -52,7 +59,7 @@ export default function SynaliaAgentTab({
   agentId,
   agentName,
   orgDocuments,
-  onToggleSynalia,
+  onChangeJewelerGroup,
   togglingDocId,
 }) {
   const orders = useMemo(() => {
@@ -85,7 +92,7 @@ export default function SynaliaAgentTab({
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>Commandes</div>
             <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>
-              Coche Synalia pour les adhérents SYNALIA · {synaliaCount} / {orders.length} marquée{synaliaCount !== 1 ? 's' : ''}
+              Choisis le groupement du client · {synaliaCount} / {orders.length} commande{synaliaCount !== 1 ? 's' : ''} SYNALIA
             </div>
           </div>
         </div>
@@ -100,12 +107,13 @@ export default function SynaliaAgentTab({
                   <th style={th}>Date</th>
                   <th style={th}>Client</th>
                   <th style={{ ...th, textAlign: 'right' }}>Total</th>
-                  <th style={{ ...th, textAlign: 'center' }}>Synalia</th>
+                  <th style={{ ...th, textAlign: 'center' }}>Groupement</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((doc) => {
-                  const flagged = isSynalia(doc);
+                  const group = jewelerGroupFromLegacy(doc?.metadata);
+                  const flagged = isSynaliaJewelerGroup(group);
                   return (
                     <tr key={doc.id}>
                       <td style={td}>
@@ -114,14 +122,26 @@ export default function SynaliaAgentTab({
                       <td style={td}>{doc.client_company || doc.client_name || '—'}</td>
                       <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt2(doc.total_amount)}</td>
                       <td style={{ ...td, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={flagged}
+                        <select
+                          value={group}
                           disabled={togglingDocId === doc.id}
-                          onChange={(e) => onToggleSynalia(doc.id, e.target.checked)}
-                          title={flagged ? 'Inclus dans le rapport SYNALIA' : 'Marquer adhérent SYNALIA'}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: colors.inkPlum }}
-                        />
+                          onChange={(e) => onChangeJewelerGroup(doc.id, normalizeJewelerGroup(e.target.value))}
+                          title={flagged ? 'Inclus dans le rapport SYNALIA' : `Groupement: ${getJewelerGroupLabel(group)}`}
+                          style={{
+                            minWidth: 150,
+                            padding: '5px 8px',
+                            borderRadius: 6,
+                            border: `1px solid ${colors.lineGray}`,
+                            background: '#fff',
+                            fontSize: 11,
+                            fontFamily: fonts.body,
+                            cursor: togglingDocId === doc.id ? 'wait' : 'pointer',
+                          }}
+                        >
+                          {JEWELER_GROUP_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </td>
                     </tr>
                   );

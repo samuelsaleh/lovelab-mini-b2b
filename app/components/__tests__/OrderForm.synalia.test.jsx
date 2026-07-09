@@ -1,5 +1,5 @@
 /**
- * OrderForm — Synalia toggle tests (mirrors DZB pattern).
+ * OrderForm — jeweler group dropdown tests.
  */
 
 import React from 'react'
@@ -58,28 +58,50 @@ describe('OrderForm — Synalia option', () => {
     mockModal.props = null
   })
 
-  it('shows Synalia toggle for Nicolas', () => {
+  it('shows jeweler group dropdown for Nicolas', () => {
     renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
-    expect(screen.getByText(/Synalia/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Jeweler group')).toBeInTheDocument()
   })
 
-  it('hides Synalia toggle for other agents', () => {
+  it('shows jeweler group dropdown for admins', () => {
+    renderForm({ currentUser: { email: 'admin@example.com', role: 'admin' } })
+    expect(screen.getByLabelText('Jeweler group')).toBeInTheDocument()
+  })
+
+  it('hides jeweler group dropdown for other agents', () => {
     renderForm({ currentUser: { email: 'other@example.com', role: 'agent' } })
-    expect(screen.queryByText(/^Synalia/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Jeweler group')).not.toBeInTheDocument()
   })
 
-  it('persists synalia in metadata when yes is selected', () => {
+  it('persists SYNALIA group and derived synalia metadata when selected', () => {
     renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
-    fireEvent.click(screen.getAllByText('yes').find((el) => el.closest('div')?.textContent?.includes('Synalia')))
+    fireEvent.change(screen.getByLabelText('Jeweler group'), { target: { value: 'SYNALIA' } })
+    expect(mockModal.props.metadata.jewelerGroup).toBe('SYNALIA')
+    expect(mockModal.props.metadata.formState.jewelerGroup).toBe('SYNALIA')
     expect(mockModal.props.metadata.synalia).toBe(true)
     expect(mockModal.props.metadata.formState.synalia).toBe(true)
   })
 
-  it('restores synalia from saved formState', () => {
+  it('persists non-SYNALIA groups without including them in SYNALIA reporting', () => {
+    renderForm({ currentUser: { email: 'nicolas.vial@ascension-france.com' } })
+    fireEvent.change(screen.getByLabelText('Jeweler group'), { target: { value: 'MG' } })
+    expect(mockModal.props.metadata.jewelerGroup).toBe('MG')
+    expect(mockModal.props.metadata.formState.jewelerGroup).toBe('MG')
+    expect(mockModal.props.metadata.synalia).toBe(false)
+    expect(mockModal.props.metadata.formState.synalia).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Jeweler group'), { target: { value: 'JOAILLIERS_ORFEVRES' } })
+    expect(mockModal.props.metadata.jewelerGroup).toBe('JOAILLIERS_ORFEVRES')
+    expect(mockModal.props.metadata.synalia).toBe(false)
+  })
+
+  it('restores legacy synalia from saved formState as SYNALIA', () => {
     renderForm({
       currentUser: { email: 'nicolas.vial@ascension-france.com' },
       savedFormState: { synaliaEnabled: true },
     })
+    expect(screen.getByLabelText('Jeweler group')).toHaveValue('SYNALIA')
+    expect(mockModal.props.metadata.jewelerGroup).toBe('SYNALIA')
     expect(mockModal.props.metadata.synalia).toBe(true)
   })
 })

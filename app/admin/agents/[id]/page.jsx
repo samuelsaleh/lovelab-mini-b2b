@@ -14,6 +14,7 @@ import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 import SynaliaAgentTab from '@/app/components/SynaliaAgentTab';
+import { isSynaliaJewelerGroup, jewelerGroupFromLegacy, normalizeJewelerGroup } from '@/lib/jewelerGroup';
 
 // Money formatter that ALWAYS shows the cents (e.g. "1 469,55 €", "1 469,00 €").
 // The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
@@ -449,8 +450,10 @@ export default function AdminAgentDetailsPage() {
     }
   }, [load, togglingCommissionId]);
 
-  const handleToggleSynalia = useCallback(async (docId, nextSynalia) => {
+  const handleChangeJewelerGroup = useCallback(async (docId, nextJewelerGroup) => {
     if (!docId || togglingSynaliaDocId === docId) return;
+    const jewelerGroup = normalizeJewelerGroup(nextJewelerGroup);
+    const nextSynalia = isSynaliaJewelerGroup(jewelerGroup);
     setTogglingSynaliaDocId(docId);
     const patchDocMeta = (prevDocs) =>
       prevDocs.map((d) =>
@@ -459,8 +462,9 @@ export default function AdminAgentDetailsPage() {
               ...d,
               metadata: {
                 ...(d.metadata || {}),
+                jewelerGroup,
                 synalia: nextSynalia,
-                formState: { ...(d.metadata?.formState || {}), synalia: nextSynalia },
+                formState: { ...(d.metadata?.formState || {}), jewelerGroup, synalia: nextSynalia },
               },
             }
           : d,
@@ -475,8 +479,9 @@ export default function AdminAgentDetailsPage() {
             ...c.document,
             metadata: {
               ...(c.document.metadata || {}),
+              jewelerGroup,
               synalia: nextSynalia,
-              formState: { ...(c.document.metadata?.formState || {}), synalia: nextSynalia },
+              formState: { ...(c.document.metadata?.formState || {}), jewelerGroup, synalia: nextSynalia },
             },
           },
         };
@@ -487,7 +492,7 @@ export default function AdminAgentDetailsPage() {
       const res = await fetch(`/api/documents/${docId}/synalia`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ synalia: nextSynalia }),
+        body: JSON.stringify({ jewelerGroup }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update');
@@ -645,7 +650,7 @@ export default function AdminAgentDetailsPage() {
       d.document_type === 'order'
       && d.status === 'sent'
       && !d.deleted_at
-      && (d.metadata?.synalia === true || d.metadata?.formState?.synalia === true),
+      && isSynaliaJewelerGroup(jewelerGroupFromLegacy(d.metadata)),
     ).length,
     [orgDocuments],
   );
@@ -1220,7 +1225,7 @@ export default function AdminAgentDetailsPage() {
                 agentId={agent.id}
                 agentName={agent.full_name || agent.email}
                 orgDocuments={orgDocuments}
-                onToggleSynalia={handleToggleSynalia}
+                onChangeJewelerGroup={handleChangeJewelerGroup}
                 togglingDocId={togglingSynaliaDocId}
               />
             )}

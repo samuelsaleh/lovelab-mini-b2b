@@ -20,6 +20,14 @@ import {
 import { computeAfterDiscount } from '@/lib/orderTotals'
 import { chunkRowsForPrint } from '@/lib/orderPrintPagination'
 import { applyCalculatorToOrder } from '@/lib/applyCalculatorToOrder'
+import {
+  JEWELER_GROUP,
+  JEWELER_GROUP_OPTIONS,
+  getJewelerGroupLabel,
+  isSynaliaJewelerGroup,
+  jewelerGroupFromLegacy,
+  normalizeJewelerGroup,
+} from '@/lib/jewelerGroup'
 
 const ROWS_PER_PAGE = 10
 // Row counts tuned 2026-05-12 so each rendered page reliably fits one A4
@@ -719,8 +727,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [dzbClientNumber, setDzbClientNumber] = useState('')
   const canUseDzb = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
 
-  const [synaliaEnabled, setSynaliaEnabled] = useState(false)
-  const canUseSynalia = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
+  const [jewelerGroup, setJewelerGroup] = useState(JEWELER_GROUP.AUCUN)
+  const synaliaEnabled = isSynaliaJewelerGroup(jewelerGroup)
+  const selectedJewelerGroupLabel = getJewelerGroupLabel(jewelerGroup)
+  const canUseJewelerGroup = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
 
   // Table rows state with undo/redo support
   const [rows, setRowsInternal] = useState(() => prefillRows(quote))
@@ -855,8 +865,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
     if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
     if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
-    if (s.synaliaEnabled != null) setSynaliaEnabled(s.synaliaEnabled)
-    else if (s.synalia != null) setSynaliaEnabled(!!s.synalia)
+    setJewelerGroup(jewelerGroupFromLegacy(s))
     // Restore shipping / tax / custom line so re-opening a saved order
     // doesn't silently drop them from the totals (and from the saved
     // document on the next save). `deliveryCost` is the legacy field name
@@ -951,8 +960,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
     if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
     if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
-    if (s.synaliaEnabled != null) setSynaliaEnabled(s.synaliaEnabled)
-    else if (s.synalia != null) setSynaliaEnabled(!!s.synalia)
+    setJewelerGroup(jewelerGroupFromLegacy(s))
     // Same shipping/tax/custom-line restore as the saved-document path.
     if (s.shippingAmount != null) setShippingAmount(Number(s.shippingAmount) || null)
     else if (s.deliveryCost != null) setShippingAmount(Number(s.deliveryCost) || null)
@@ -1014,7 +1022,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           discountDisplay, finalTotalOverride,
           hasVitrine, vitrinePrice, vitrineQty,
           dzbEnabled, dzbClientNumber,
+          jewelerGroup,
           synaliaEnabled,
+          synalia: synaliaEnabled,
           // Keep drafts and saved orders in sync — drafts also need to
           // restore shipping / tax / custom line on reopen.
           shippingAmount,
@@ -1052,7 +1062,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearInterval(interval)
       clearTimeout(initialSave)
     }
-  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, synaliaEnabled, rows, pricelistYear])
+  }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, jewelerGroup, synaliaEnabled, rows, pricelistYear])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
@@ -1639,6 +1649,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             // DZB Bank payment block (Nicolas + admins). dzbSupplierNumber is the
             // fixed LoveLab number; dzbClientNumber is the client's adhérent number.
             dzbEnabled, dzbClientNumber, dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
+            jewelerGroup,
             synaliaEnabled,
             synalia: synaliaEnabled,
             // Persisted alongside the top-level metadata.shipping_amount so the
@@ -1665,6 +1676,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           dzbEnabled,
           dzbClientNumber,
           dzbSupplierNumber: DZB_SUPPLIER_NUMBER,
+          jewelerGroup,
           synalia: synaliaEnabled,
           address: [addressLine1, addressLine2, country].filter(Boolean).join(', '),
           shippingAddress: shippingSameAsBilling 
@@ -2321,27 +2333,31 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         )}
                       </div>
                     )}
-                    {canUseSynalia && (
+                    {canUseJewelerGroup && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.synalia') || 'Synalia'} :</span>
-                        {['no', 'yes'].map(opt => {
-                          const isSelected = (opt === 'yes') === synaliaEnabled
-                          return (
-                            <button
-                              key={`synalia-${opt}`}
-                              type="button"
-                              onClick={() => setSynaliaEnabled(opt === 'yes')}
-                              style={{
-                                padding: '4px 10px', borderRadius: 4,
-                                border: isSelected ? 'none' : '1px solid #ccc',
-                                background: isSelected ? (opt === 'yes' ? colors.lovelabPurple : '#6b7280') : '#f0f0f0',
-                                color: isSelected ? '#fff' : '#666',
-                                fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
-                                textTransform: 'capitalize',
-                              }}
-                            >{opt}</button>
-                          )
-                        })}
+                        <span style={{ fontSize: 10, fontWeight: 600, color: colors.lovelabMuted }}>{t('order.jewelerGroup') || 'Groupement'} :</span>
+                        <select
+                          value={jewelerGroup}
+                          onChange={(e) => setJewelerGroup(normalizeJewelerGroup(e.target.value))}
+                          aria-label={t('order.jewelerGroup') || 'Groupement'}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            border: `1px solid ${colors.lineGray}`,
+                            background: '#fff',
+                            color: colors.charcoal,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            fontFamily: fonts.body,
+                          }}
+                        >
+                          {JEWELER_GROUP_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {t(opt.labelKey) || opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     )}
                   </>
@@ -2374,6 +2390,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div style={{ fontWeight: 700 }}>Numéro fournisseur DZB: {DZB_SUPPLIER_NUMBER}</div>
                   <div style={{ fontWeight: 700 }}>Numéro adhérent DZB du client: {dzbClientNumber}</div>
                   <div>Veuillez effectuer votre paiement directement à l'ordre de DZB BANK GmbH qui le reçoit par subrogation.</div>
+                </div>
+              )}
+              {pageIdx === 0 && canUseJewelerGroup && jewelerGroup !== JEWELER_GROUP.AUCUN && (
+                <div style={{ marginBottom: 10, fontSize: 10, color: colors.lovelabMuted, lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 700 }}>{t('order.jewelerGroup') || 'Groupement'}: </span>
+                  {selectedJewelerGroupLabel}
                 </div>
               )}
 

@@ -1,12 +1,18 @@
 /**
  * PATCH /api/documents/[id]/synalia
- * Body: { synalia: boolean }
- * Admin-only — marks order as SYNALIA adhérent for quarterly reporting.
+ * Body: { jewelerGroup: string } or legacy { synalia: boolean }
+ * Admin-only — sets the client's jeweler group for reporting.
  */
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import {
+  JEWELER_GROUP,
+  isSynaliaJewelerGroup,
+  isValidJewelerGroup,
+  normalizeJewelerGroup,
+} from '@/lib/jewelerGroup';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,8 +47,16 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    if (typeof body.synalia !== 'boolean') {
-      return NextResponse.json({ error: 'synalia must be a boolean' }, { status: 400 });
+    let jewelerGroup;
+    if (body.jewelerGroup != null) {
+      if (!isValidJewelerGroup(body.jewelerGroup)) {
+        return NextResponse.json({ error: 'Invalid jewelerGroup' }, { status: 400 });
+      }
+      jewelerGroup = normalizeJewelerGroup(body.jewelerGroup);
+    } else if (typeof body.synalia === 'boolean') {
+      jewelerGroup = body.synalia ? JEWELER_GROUP.SYNALIA : JEWELER_GROUP.AUCUN;
+    } else {
+      return NextResponse.json({ error: 'jewelerGroup must be valid or synalia must be a boolean' }, { status: 400 });
     }
 
     const { data: doc, error: fetchErr } = await adminSupabase
@@ -56,12 +70,15 @@ export async function PATCH(request, { params }) {
     }
 
     const existing = doc.metadata || {};
+    const synalia = isSynaliaJewelerGroup(jewelerGroup);
     const merged = {
       ...existing,
-      synalia: body.synalia,
+      jewelerGroup,
+      synalia,
       formState: {
         ...(existing.formState || {}),
-        synalia: body.synalia,
+        jewelerGroup,
+        synalia,
       },
     };
 
