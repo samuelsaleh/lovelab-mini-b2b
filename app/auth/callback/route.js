@@ -42,6 +42,8 @@ export async function GET(request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error && data?.user) {
       sessionUser = data.user;
+    } else if (error) {
+      console.error('[auth/callback] OAuth code exchange failed:', error.message);
     }
   }
   // Handle magic link / OTP token_hash (agent invitations and magic link sign-in)

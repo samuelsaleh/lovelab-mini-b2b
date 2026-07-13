@@ -166,7 +166,7 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
 
         {/* Resources card */}
         <div style={{ marginTop: 36 }}>
-          <ResourcesCard isAdmin={isAdmin} />
+          <ResourcesCard isAdmin={isAdmin} userEmail={user?.email || profile?.email} />
         </div>
       </div>
     </div>

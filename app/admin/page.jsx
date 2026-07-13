@@ -237,7 +237,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Resources */}
-        <ResourcesCard />
+        <ResourcesCard isAdmin={true} />
       </div>
     </div>
   )

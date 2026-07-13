@@ -10,6 +10,8 @@
 
 import { render, screen, fireEvent } from '@testing-library/react'
 
+const mockResourcesCard = jest.fn(() => <div data-testid="resources-card" />)
+
 // Mock useAuth
 jest.mock('../AuthProvider', () => ({
   useAuth: () => ({
@@ -36,13 +38,14 @@ jest.mock('@/lib/i18n', () => ({
 // Mock ResourcesCard (external dep)
 jest.mock('../ResourcesCard', () => ({
   __esModule: true,
-  default: () => <div data-testid="resources-card" />,
+  default: (props) => mockResourcesCard(props),
 }))
 
 import HomeTab from '../HomeTab'
 
 beforeEach(() => {
   global.fetch = jest.fn()
+  mockResourcesCard.mockClear()
 })
 
 afterEach(() => {
@@ -82,5 +85,13 @@ describe('HomeTab', () => {
     const { container } = render(<HomeTab onSwitchTab={jest.fn()} />)
     // No euro signs in the rendered output
     expect(container.textContent).not.toMatch(/€\d/)
+  })
+
+  it('passes the user email to ResourcesCard for role-aware catalogue links', () => {
+    render(<HomeTab onSwitchTab={jest.fn()} />)
+    expect(mockResourcesCard).toHaveBeenCalledWith(expect.objectContaining({
+      isAdmin: false,
+      userEmail: 'alice@example.com',
+    }))
   })
 })

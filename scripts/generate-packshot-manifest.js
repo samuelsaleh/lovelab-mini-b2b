@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * Scans public/Packshot Folder and outputs lib/packshot-manifest.json
+ * Scans public/Packshot Folder/{Bracelets,Necklaces} and outputs
+ * lib/packshot-manifest.json.
  * Run: node scripts/generate-packshot-manifest.js
  */
 
 const fs = require('fs')
 const path = require('path')
 
-const PUBLIC_DIR = path.join(__dirname, '..', 'public', 'Packshot Folder')
+const PUBLIC_DIR = path.join(__dirname, '..', 'public')
+const PACKSHOT_DIR = path.join(PUBLIC_DIR, 'Packshot Folder')
+const BRACELETS_DIR = path.join(PACKSHOT_DIR, 'Bracelets')
+const NECKLACES_DIR = path.join(PACKSHOT_DIR, 'Necklaces')
 const OUTPUT = path.join(__dirname, '..', 'lib', 'packshot-manifest.json')
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
@@ -28,6 +32,32 @@ const MULTI_SUB = {
   'Three': 'M3',
   'Four':  'M4',
   'Five':  'M5',
+}
+
+const NECKLACE_COLLECTION_MAP = {
+  'necks cuty': 'CUTY_NECK',
+  'cubix_necks': 'CUBIX_NECK',
+  'shapyshine_necks': 'SSF_NECK',
+  'matchy_necks': 'MF_NECK',
+}
+
+const NECKLACE_MULTI_MAP = {
+  'Three': 'M3_NECK',
+  'Four': 'M4_NECK',
+  'Five': 'M5_NECK',
+}
+
+const NECKLACE_SHAPES = {
+  heart: 'Heart',
+  pear: 'Pear',
+  marquise: 'Marquise',
+  oval: 'Oval',
+  emerald: 'Emerald',
+  Emerald: 'Emerald',
+  long_cushion: 'Long Cushion',
+  'emerald matchy': 'Emerald',
+  heart_matchy: 'Heart',
+  pear_matchy: 'Pear',
 }
 
 // ─── 2026 NEW COLLECTIONS (Moonlight / Sienna / Iconix) ───
@@ -103,14 +133,16 @@ function parseFilename(filename) {
     name = name.replace(/\.[^.]+$/, '') // strip second extension
   }
 
-  // Full format: Color_housing_caratct_cord-id
-  const match = name.match(/^(.+?)_(white_gold|yellow_gold|rose_gold)_(\d+_\d+)ct_(\w+)-/)
+  // Full format: Color_housing_caratct_cord[-id]. Necklace files additionally
+  // contain _bezel/_prong before their id and end with _necklace.
+  const match = name.match(/^(.+?)_(white_gold|yellow_gold|rose_gold)_(\d+_\d+)ct_(\w+)(?:_(bezel|prong))?-/i)
   if (match) {
     return {
       color: normalizeColorName(match[1]),
-      housing: HOUSING_MAP[match[2]] || match[2],
+      housing: HOUSING_MAP[match[2].toLowerCase()] || match[2],
       carat: match[3].replace('_', '.'),
       cord: match[4],
+      subgroup: match[5] ? titleCaseWords(match[5].toLowerCase()) : null,
     }
   }
 
@@ -236,15 +268,49 @@ function walkDir(dir) {
   return results
 }
 
-function buildManifest() {
-  const manifest = {}
+function processNecklaceCollection(collectionId, dirPath, manifest, { shape = null, isMulti = false } = {}) {
+  const images = walkDir(dirPath)
+  const processed = []
 
-  const topFolders = fs.readdirSync(PUBLIC_DIR, { withFileTypes: true })
+  for (const imgPath of images) {
+    const filename = path.basename(imgPath)
+    const parsed = parseFilename(filename)
+    if (!parsed?.color) {
+      console.warn(`  Unparsed necklace file (skipped): ${collectionId}/${filename}`)
+      continue
+    }
+
+    if (isMulti && !isAllowedMultiColor(parsed.color)) {
+      console.log(`  Skipping ${collectionId} color "${parsed.color}" (not in allowed list)`)
+      continue
+    }
+
+    const relativePath = path.relative(PUBLIC_DIR, imgPath)
+    const url = '/' + relativePath.split(path.sep).map(encodeURIComponent).join('/')
+    const housing = housingFromPath(path.dirname(imgPath)) || parsed.housing
+
+    processed.push({
+      url,
+      color: parsed.color,
+      housing,
+      carat: parsed.carat,
+      ...(shape ? { shape } : {}),
+      ...(parsed.subgroup ? { subgroup: parsed.subgroup } : {}),
+    })
+  }
+
+  if (processed.length > 0) {
+    manifest[collectionId] = (manifest[collectionId] || []).concat(processed)
+  }
+}
+
+function scanBracelets(manifest) {
+  const topFolders = fs.readdirSync(BRACELETS_DIR, { withFileTypes: true })
     .filter(d => d.isDirectory() && !EXCLUDED_FOLDERS.has(d.name.trim()))
 
   for (const topDir of topFolders) {
     const topName = topDir.name.trim()
-    const topPath = path.join(PUBLIC_DIR, topDir.name)
+    const topPath = path.join(BRACELETS_DIR, topDir.name)
 
     // New collections: iterate the per-model sub-folders.
     if (NEW_COLLECTION_MODELS[topName]) {
@@ -281,6 +347,50 @@ function buildManifest() {
       processCollection(collectionKey, topPath, manifest, false)
     }
   }
+}
+
+function scanNecklaces(manifest) {
+  const topFolders = fs.readdirSync(NECKLACES_DIR, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+
+  for (const topDir of topFolders) {
+    const topName = topDir.name.trim()
+    const topPath = path.join(NECKLACES_DIR, topDir.name)
+
+    if (topName === 'multi_necks') {
+      for (const sub of fs.readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())) {
+        const collectionId = NECKLACE_MULTI_MAP[sub.name.trim()]
+        if (!collectionId) continue
+        processNecklaceCollection(collectionId, path.join(topPath, sub.name), manifest, { isMulti: true })
+      }
+      continue
+    }
+
+    const collectionId = NECKLACE_COLLECTION_MAP[topName]
+    if (!collectionId) {
+      console.warn(`Unknown necklace folder: "${topName}", skipping`)
+      continue
+    }
+
+    if (collectionId === 'SSF_NECK' || collectionId === 'MF_NECK') {
+      for (const sub of fs.readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())) {
+        const shape = NECKLACE_SHAPES[sub.name.trim()]
+        if (!shape) {
+          console.warn(`Unknown necklace shape folder: "${topName}/${sub.name}", skipping`)
+          continue
+        }
+        processNecklaceCollection(collectionId, path.join(topPath, sub.name), manifest, { shape })
+      }
+    } else {
+      processNecklaceCollection(collectionId, topPath, manifest)
+    }
+  }
+}
+
+function buildManifest() {
+  const manifest = {}
+  scanBracelets(manifest)
+  scanNecklaces(manifest)
 
   return manifest
 }

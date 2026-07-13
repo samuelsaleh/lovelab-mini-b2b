@@ -6,7 +6,7 @@ import { getAllCollectionIds, getCollectionLabel, getCollectionImages, getCollec
 import { canSeeCollection } from '@/lib/catalog'
 import PackshotLightbox from './PackshotLightbox'
 
-const COLLECTION_ORDER = [
+const BRACELET_COLLECTION_ORDER = [
   'CUTY', 'CUBIX', 'M3', 'M4', 'M5', 'MF', 'SSF', 'SSPF',
   // 2026 new collections (Moonlight, Sienna, Iconix). SI1 (Sienna One) has no
   // photos yet, so it is filtered out automatically until images are added.
@@ -15,14 +15,22 @@ const COLLECTION_ORDER = [
   'ZAHA', 'LUVA', 'LUMA', 'RIV4', 'RIV8', 'LIN3', 'LIN5',
 ]
 
+const NECKLACE_COLLECTION_ORDER = [
+  'CUTY_NECK', 'CUBIX_NECK', 'M3_NECK', 'M4_NECK', 'M5_NECK',
+  'MF_NECK', 'SSF_NECK', 'SSPF_NECK', 'HOLY_NECK',
+]
+
 export default function PackshotGallery({ onClose, inline = false, isAdmin = false, profile = null }) {
   const availableIds = getAllCollectionIds()
   const viewer = profile ?? (isAdmin ? { role: 'admin' } : null)
-  const orderedIds = COLLECTION_ORDER.filter(
-    id => availableIds.includes(id) && canSeeCollection(id, viewer),
+  const getOrderedIds = (productType) => (
+    (productType === 'necklace' ? NECKLACE_COLLECTION_ORDER : BRACELET_COLLECTION_ORDER)
+      .filter(id => availableIds.includes(id) && canSeeCollection(id, viewer))
   )
+  const [productType, setProductType] = useState('bracelet')
+  const orderedIds = getOrderedIds(productType)
 
-  const [activeCollection, setActiveCollection] = useState(orderedIds[0] || null)
+  const [activeCollection, setActiveCollection] = useState(() => getOrderedIds('bracelet')[0] || null)
   const [housingFilter, setHousingFilter] = useState(null)
   const [shapeFilter, setShapeFilter] = useState(null)
   const [subgroupFilter, setSubgroupFilter] = useState(null)
@@ -48,6 +56,15 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
     setHousingFilter(null)
     setShapeFilter(null)
     setSubgroupFilter(null)
+  }
+
+  const handleProductTypeChange = (nextType) => {
+    setProductType(nextType)
+    setActiveCollection(getOrderedIds(nextType)[0] || null)
+    setHousingFilter(null)
+    setShapeFilter(null)
+    setSubgroupFilter(null)
+    setLightboxIdx(null)
   }
 
   const panelContent = (
@@ -83,6 +100,25 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
           </button>
         )}
       </div>
+
+        {/* Product type */}
+        <div style={{
+          padding: '10px 24px', borderBottom: `1px solid ${colors.lineGray}`,
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: colors.lovelabMuted,
+            textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 2,
+          }}>
+            Product type
+          </span>
+          <button onClick={() => handleProductTypeChange('bracelet')} style={pillStyle(productType === 'bracelet')}>
+            Bracelet
+          </button>
+          <button onClick={() => handleProductTypeChange('necklace')} style={pillStyle(productType === 'necklace')}>
+            Necklace
+          </button>
+        </div>
 
         {/* Collection Tabs */}
         <div style={{

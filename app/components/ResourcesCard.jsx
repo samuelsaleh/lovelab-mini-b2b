@@ -1,16 +1,73 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import SendResourcesModal from './SendResourcesModal'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
 
+const NICOLAS_EMAIL = 'nicolas.vial@ascension-france.com'
+
+const FRENCH_CATALOGUES = [
+  {
+    id: 'fr-general-sept',
+    label: 'Catalogue français 1',
+    fileName: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
+    pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
+    canva: 'https://www.canva.com/design/DAHPPy7GKXc/fzRUgvGrbqq5jf1DJ_DcTQ/view?embed',
+    audience: 'nicolas',
+    period: 'September',
+  },
+  {
+    id: 'fr-bijorka-sept',
+    label: 'Catalogue France-Français Bijorka 1',
+    fileName: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
+    pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
+    canva: 'https://www.canva.com/design/DAHPPw_T2xI/Z_Tyy6Lp6OWkBRy1x5dCOg/view?embed',
+    audience: 'nicolas',
+    period: 'September',
+  },
+  {
+    id: 'fr-premiere-france-oct',
+    label: 'Première classe catalogue France-Français 2',
+    fileName: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+    pdf: '/catalogues/Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+    canva: 'https://www.canva.com/design/DAG8QTSZGDA/00BwwxPy9ZTg_g18XWm9EQ/view?embed',
+    audience: 'admin',
+    period: 'October',
+  },
+  {
+    id: 'fr-premiere-general-oct',
+    label: 'La première classe catalogue France-Français general 2',
+    fileName: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+    pdf: '/catalogues/Francais/Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+    canva: 'https://www.canva.com/design/DAHPP8Z87Jw/ke6GNZN7sohPEteltgMNQw/view?embed',
+    audience: 'admin',
+    period: 'October',
+  },
+]
+
+const STANDARD_CATALOGUES = [
+  {
+    id: 'en',
+    label: 'English',
+    fileName: 'EN_LoveLab_B2B_Catalogue.pdf',
+    pdf: '/catalogues/EN_LoveLab_B2B_Catalogue.pdf',
+    canva: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
+  },
+  {
+    id: 'de',
+    label: 'Deutsch',
+    fileName: 'DE_LoveLab_B2B_Catalogue.pdf',
+    pdf: '/catalogues/DE_LoveLab_B2B_Catalogue.pdf',
+    canva: 'https://www.canva.com/design/DAG_PqDSDhQ/K2FvRij-94kg6L0eD9oCgQ/view?embed',
+  },
+]
+
 const CATALOGUE_FILES = [
-  { name: 'FR — LoveLab B2B Catalogue.pdf', path: '/catalogues/_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' },
-  { name: 'EN — LoveLab B2B Catalogue.pdf', path: '/catalogues/EN_LoveLab_B2B_Catalogue.pdf' },
-  { name: 'DE — LoveLab B2B Catalogue.pdf', path: '/catalogues/DE_LoveLab_B2B_Catalogue.pdf' },
+  ...FRENCH_CATALOGUES.map(({ label, fileName, pdf }) => ({ name: `${label}.pdf`, fileName, path: pdf })),
+  ...STANDARD_CATALOGUES.map(({ label, fileName, pdf }) => ({ name: `${label} — LoveLab B2B Catalogue.pdf`, fileName, path: pdf })),
 ]
 
 // Pack order templates are now generated per pack and served from
@@ -100,35 +157,6 @@ function DownloadFolder({ label, files, selected, onToggle }) {
   )
 }
 
-const CATALOGUES = [
-  {
-    lang: 'FR',
-    label: 'Français',
-    canva: 'https://www.canva.com/design/DAG8QTSZGDA/00BwwxPy9ZTg_g18XWm9EQ/view?utm_content=DAG8QTSZGDA&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h24deb22c81',
-    pdf: '/catalogues/_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-  },
-  {
-    lang: 'EN',
-    label: 'English',
-    canva: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?utm_content=DAG96CBWaMA&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=ha3c6d14fc6',
-    pdf: '/catalogues/EN_LoveLab_B2B_Catalogue.pdf',
-  },
-  {
-    lang: 'DE',
-    label: 'Deutsch',
-    canva: 'https://www.canva.com/design/DAG_PqDSDhQ/K2FvRij-94kg6L0eD9oCgQ/view?utm_content=DAG_PqDSDhQ&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h07aaa4d7fd',
-    pdf: '/catalogues/DE_LoveLab_B2B_Catalogue.pdf',
-  },
-]
-
-// Canva embed URLs by portal language (append ?embed for the embeddable version).
-// Italian and any other language fall back to English.
-const CANVA_EMBED_BY_LANG = {
-  fr: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
-  en: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
-  de: 'https://www.canva.com/design/DAG_PqDSDhQ/K2FvRij-94kg6L0eD9oCgQ/view?embed',
-}
-
 function LinkButton({ href, children, variant = 'outline' }) {
   const base = {
     display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -146,9 +174,30 @@ function LinkButton({ href, children, variant = 'outline' }) {
   )
 }
 
-export default function ResourcesCard({ isAdmin = false }) {
+export default function ResourcesCard({ isAdmin = false, userEmail }) {
   const { lang, t } = useI18n()
-  const embedUrl = CANVA_EMBED_BY_LANG[lang] || CANVA_EMBED_BY_LANG.en
+  const isNicolas = String(userEmail || '').trim().toLowerCase() === NICOLAS_EMAIL
+  const visibleFrenchCatalogues = useMemo(() => (
+    isAdmin
+      ? FRENCH_CATALOGUES
+      : isNicolas
+        ? FRENCH_CATALOGUES.filter((cat) => cat.audience === 'nicolas')
+        : []
+  ), [isAdmin, isNicolas])
+  const standardDefault = STANDARD_CATALOGUES.find((cat) => cat.id === lang) || STANDARD_CATALOGUES[0]
+  const previewCatalogues = useMemo(
+    () => [...visibleFrenchCatalogues, ...STANDARD_CATALOGUES],
+    [visibleFrenchCatalogues],
+  )
+  const defaultPreviewCatalogue = visibleFrenchCatalogues[0] || standardDefault
+  const [selectedPreviewId, setSelectedPreviewId] = useState(defaultPreviewCatalogue.id)
+  const selectedPreviewCatalogue = previewCatalogues.find((cat) => cat.id === selectedPreviewId) || defaultPreviewCatalogue
+
+  useEffect(() => {
+    if (!previewCatalogues.some((cat) => cat.id === selectedPreviewId)) {
+      setSelectedPreviewId(defaultPreviewCatalogue.id)
+    }
+  }, [selectedPreviewId, defaultPreviewCatalogue.id, previewCatalogues])
 
   // Selection is lifted here so a single email can bundle picks from
   // Catalogue + Packs + Price List together.
@@ -315,7 +364,7 @@ export default function ResourcesCard({ isAdmin = false }) {
 
       </div>
 
-      {/* Catalogue preview — language-aware Canva embed */}
+      {/* Catalogue preview — selected Canva demo + matching local PDF */}
       <div style={{ borderTop: `1px solid ${colors.lineGray}`, padding: '0 24px 24px' }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
@@ -331,13 +380,37 @@ export default function ResourcesCard({ isAdmin = false }) {
             </svg>
             Catalogue Preview
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, color: '#aaa', fontWeight: 500 }}>Download PDF:</span>
-            {CATALOGUES.map((cat) => (
-              <a key={cat.lang} href={cat.pdf} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none', padding: '3px 8px', borderRadius: 5, border: `1px solid ${colors.inkPlum}25`, background: '#faf8fc', fontFamily: fonts.body, lineHeight: 1 }}>
-                {cat.lang}
-              </a>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <label htmlFor="catalogue-preview-selector" style={{ fontSize: 10, color: '#777', fontWeight: 600 }}>
+              Choose catalogue:
+            </label>
+            <select
+              id="catalogue-preview-selector"
+              aria-label="Catalogue preview"
+              value={selectedPreviewCatalogue.id}
+              onChange={(e) => setSelectedPreviewId(e.target.value)}
+              style={{
+                maxWidth: 300, padding: '5px 8px', borderRadius: 5,
+                border: `1px solid ${colors.inkPlum}35`, background: '#faf8fc',
+                color: colors.inkPlum, fontFamily: fonts.body, fontSize: 11, fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {previewCatalogues.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.label}</option>
+              ))}
+            </select>
+            <a
+              href={selectedPreviewCatalogue.pdf}
+              download={selectedPreviewCatalogue.fileName}
+              style={{
+                fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none',
+                padding: '5px 8px', borderRadius: 5, border: `1px solid ${colors.inkPlum}25`,
+                background: '#faf8fc', fontFamily: fonts.body, lineHeight: 1,
+              }}
+            >
+              Download PDF
+            </a>
           </div>
         </div>
         <div style={{
@@ -347,7 +420,8 @@ export default function ResourcesCard({ isAdmin = false }) {
           background: '#f5f5f5',
         }}>
           <iframe
-            src={embedUrl}
+            key={selectedPreviewCatalogue.id}
+            src={selectedPreviewCatalogue.canva}
             style={{
               position: 'absolute', top: 0, left: 0,
               width: '100%', height: '100%',
@@ -355,7 +429,7 @@ export default function ResourcesCard({ isAdmin = false }) {
             }}
             loading="lazy"
             allowFullScreen
-            title="B2B Catalogue"
+            title={`Catalogue preview: ${selectedPreviewCatalogue.label}`}
           />
         </div>
       </div>
