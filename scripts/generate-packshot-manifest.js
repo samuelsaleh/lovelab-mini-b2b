@@ -38,6 +38,7 @@ const NECKLACE_COLLECTION_MAP = {
   'necks cuty': 'CUTY_NECK',
   'cubix_necks': 'CUBIX_NECK',
   'shapyshine_necks': 'SSF_NECK',
+  'shapy sparkle': 'SSPF_NECK',
   'matchy_necks': 'MF_NECK',
 }
 
@@ -49,12 +50,16 @@ const NECKLACE_MULTI_MAP = {
 
 const NECKLACE_SHAPES = {
   heart: 'Heart',
+  Princess: 'Princess',
+  princess: 'Princess',
   pear: 'Pear',
   marquise: 'Marquise',
   oval: 'Oval',
+  round: 'Round',
   emerald: 'Emerald',
   Emerald: 'Emerald',
   long_cushion: 'Long Cushion',
+  'long cushion': 'Long Cushion',
   'emerald matchy': 'Emerald',
   heart_matchy: 'Heart',
   pear_matchy: 'Pear',
@@ -372,7 +377,7 @@ function scanNecklaces(manifest) {
       continue
     }
 
-    if (collectionId === 'SSF_NECK' || collectionId === 'MF_NECK') {
+    if (collectionId === 'SSF_NECK' || collectionId === 'SSPF_NECK' || collectionId === 'MF_NECK') {
       for (const sub of fs.readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())) {
         const shape = NECKLACE_SHAPES[sub.name.trim()]
         if (!shape) {
