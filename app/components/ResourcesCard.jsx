@@ -12,7 +12,7 @@ const NICOLAS_EMAIL = 'nicolas.vial@ascension-france.com'
 const FRENCH_CATALOGUES = [
   {
     id: 'fr-general-sept',
-    label: 'Catalogue français 1',
+    label: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
     fileName: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
     pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
     canva: 'https://www.canva.com/design/DAHPPy7GKXc/fzRUgvGrbqq5jf1DJ_DcTQ/view?embed',
@@ -21,7 +21,7 @@ const FRENCH_CATALOGUES = [
   },
   {
     id: 'fr-bijorka-sept',
-    label: 'Catalogue France-Français Bijorka 1',
+    label: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
     fileName: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
     pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
     canva: 'https://www.canva.com/design/DAHPPw_T2xI/Z_Tyy6Lp6OWkBRy1x5dCOg/view?embed',
@@ -30,7 +30,7 @@ const FRENCH_CATALOGUES = [
   },
   {
     id: 'fr-premiere-france-oct',
-    label: 'Première classe catalogue France-Français 2',
+    label: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
     fileName: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
     pdf: '/catalogues/Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
     canva: 'https://www.canva.com/design/DAG8QTSZGDA/00BwwxPy9ZTg_g18XWm9EQ/view?embed',
@@ -39,7 +39,7 @@ const FRENCH_CATALOGUES = [
   },
   {
     id: 'fr-premiere-general-oct',
-    label: 'La première classe catalogue France-Français general 2',
+    label: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
     fileName: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
     pdf: '/catalogues/Francais/Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
     canva: 'https://www.canva.com/design/DAHPP8Z87Jw/ke6GNZN7sohPEteltgMNQw/view?embed',
@@ -66,7 +66,7 @@ const STANDARD_CATALOGUES = [
 ]
 
 const CATALOGUE_FILES = [
-  ...FRENCH_CATALOGUES.map(({ label, fileName, pdf }) => ({ name: `${label}.pdf`, fileName, path: pdf })),
+  ...FRENCH_CATALOGUES.map(({ fileName, pdf }) => ({ name: fileName, path: pdf })),
   ...STANDARD_CATALOGUES.map(({ label, fileName, pdf }) => ({ name: `${label} — LoveLab B2B Catalogue.pdf`, fileName, path: pdf })),
 ]
 

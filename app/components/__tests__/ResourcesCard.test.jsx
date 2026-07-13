@@ -91,27 +91,27 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
 
     expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Catalogue français 1' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Catalogue France-Français Bijorka 1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).not.toBeInTheDocument()
   })
 
   it('shows Nicolas the two September French catalogue preview choices only', () => {
     render(<ResourcesCard isAdmin={false} userEmail="nicolas.vial@ascension-france.com" />)
 
-    expect(screen.getByRole('option', { name: 'Catalogue français 1' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Catalogue France-Français Bijorka 1' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Première classe catalogue France-Français 2' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'La première classe catalogue France-Français general 2' })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf' })).not.toBeInTheDocument()
     expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
   })
 
   it('shows admins all four French catalogue preview choices, not quick links', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
 
-    expect(screen.getByRole('option', { name: 'Catalogue français 1' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Catalogue France-Français Bijorka 1' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Première classe catalogue France-Français 2' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'La première classe catalogue France-Français general 2' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
     expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
   })
 
@@ -121,7 +121,7 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     const selector = screen.getByLabelText('Catalogue preview')
     fireEvent.change(selector, { target: { value: 'fr-premiere-general-oct' } })
 
-    const preview = screen.getByTitle('Catalogue preview: La première classe catalogue France-Français general 2')
+    const preview = screen.getByTitle('Catalogue preview: Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
     expect(preview.getAttribute('src')).toBe(FRENCH_LINKS.premiereGeneral)
     expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
       .toBe(FRENCH_PDFS.premiereGeneral)
@@ -131,9 +131,13 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     fireEvent.click(screen.getByText('Catalogue'))
 
-    expect(screen.getByText('Catalogue français 1.pdf').closest('a').getAttribute('href')).toBe(FRENCH_PDFS.generalSept)
-    expect(screen.getByText('Catalogue France-Français Bijorka 1.pdf').closest('a').getAttribute('href')).toBe(FRENCH_PDFS.bijorkaSept)
-    expect(screen.getByText('Première classe catalogue France-Français 2.pdf').closest('a').getAttribute('href')).toBe(FRENCH_PDFS.premiereFrance)
-    expect(screen.getByText('La première classe catalogue France-Français general 2.pdf').closest('a').getAttribute('href')).toBe(FRENCH_PDFS.premiereGeneral)
+    const documentLink = (fileName) => screen.getAllByText(fileName)
+      .map((element) => element.closest('a'))
+      .find(Boolean)
+
+    expect(documentLink('Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.generalSept)
+    expect(documentLink('Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.bijorkaSept)
+    expect(documentLink('_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereFrance)
+    expect(documentLink('Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereGeneral)
   })
 })
