@@ -206,6 +206,18 @@ function normalizeNewColor(raw, material) {
   return titleCaseWords(lower)
 }
 
+// Bracelet source files are organized locally under Bracelets/, but the
+// established public deployment keeps them at /Packshot Folder/<collection>.
+// Preserve those deployed URLs so the 3.4GB bracelet archive does not need to
+// be duplicated under the new local organization folder.
+function publicAssetUrl(imgPath) {
+  const parts = path.relative(PUBLIC_DIR, imgPath).split(path.sep)
+  if (parts[0] === 'Packshot Folder' && parts[1] === 'Bracelets') {
+    parts.splice(1, 1)
+  }
+  return '/' + parts.map(encodeURIComponent).join('/')
+}
+
 // Parse a new-collection filename. Returns null if it doesn't match.
 function parseNewFilename(filename) {
   let name = filename.replace(/\.[^.]+$/, '')
@@ -231,8 +243,7 @@ function processNewCollection(collectionId, dirPath, manifest) {
       console.warn(`  Unparsed file (skipped): ${collectionId}/${filename}`)
       continue
     }
-    const relativePath = path.relative(path.join(__dirname, '..', 'public'), imgPath)
-    const url = '/' + relativePath.split(path.sep).map(encodeURIComponent).join('/')
+    const url = publicAssetUrl(imgPath)
     // Housing tile label, e.g. "Yellow" / "Black Matte" — matches catalog.
     const housing = newHousingLabel(parsed.metal, parsed.finish)
     const color = normalizeNewColor(parsed.rawColor, parsed.material)
@@ -290,8 +301,7 @@ function processNecklaceCollection(collectionId, dirPath, manifest, { shape = nu
       continue
     }
 
-    const relativePath = path.relative(PUBLIC_DIR, imgPath)
-    const url = '/' + relativePath.split(path.sep).map(encodeURIComponent).join('/')
+    const url = publicAssetUrl(imgPath)
     const housing = housingFromPath(path.dirname(imgPath)) || parsed.housing
 
     processed.push({
@@ -408,8 +418,7 @@ function processCollection(collectionId, dirPath, manifest, isMulti) {
     const filename = path.basename(imgPath)
     if (filename === '.DS_Store') continue
 
-    const relativePath = path.relative(path.join(__dirname, '..', 'public'), imgPath)
-    const url = '/' + relativePath.split(path.sep).map(encodeURIComponent).join('/')
+    const url = publicAssetUrl(imgPath)
 
     const parsed = parseFilename(filename)
     const relToCollection = path.relative(dirPath, imgPath)
