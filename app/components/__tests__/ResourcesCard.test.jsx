@@ -127,6 +127,26 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
       .toBe(FRENCH_PDFS.premiereGeneral)
   })
 
+  it('shows the second English catalogue with its matching Canva demo and PDF', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+
+    const selector = screen.getByLabelText('Catalogue preview')
+    fireEvent.change(selector, { target: { value: 'en-oct' } })
+
+    expect(screen.getByTitle('Catalogue preview: Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+      .getAttribute('src'))
+      .toBe('https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed')
+    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
+      .toBe('/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+  })
+
+  it('keeps the original English catalogue download in its new folder', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
+
+    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
+      .toBe('/catalogues/English/EN_LoveLab_B2B_Catalogue.pdf')
+  })
+
   it('lists every new French PDF in the admin document catalogue folder', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     fireEvent.click(screen.getByText('Catalogue'))
@@ -139,5 +159,17 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     expect(documentLink('Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.bijorkaSept)
     expect(documentLink('_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereFrance)
     expect(documentLink('Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereGeneral)
+  })
+
+  it('lists the second English PDF in the admin document catalogue folder', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Catalogue'))
+
+    const link = screen.getAllByText('Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+      .map((element) => element.closest('a'))
+      .find(Boolean)
+
+    expect(link).not.toBeNull()
+    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
   })
 })

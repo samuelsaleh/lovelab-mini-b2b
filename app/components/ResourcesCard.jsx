@@ -53,8 +53,16 @@ const STANDARD_CATALOGUES = [
     id: 'en',
     label: 'English',
     fileName: 'EN_LoveLab_B2B_Catalogue.pdf',
-    pdf: '/catalogues/EN_LoveLab_B2B_Catalogue.pdf',
+    pdf: '/catalogues/English/EN_LoveLab_B2B_Catalogue.pdf',
     canva: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
+  },
+  {
+    id: 'en-oct',
+    label: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf',
+    fileName: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf',
+    documentName: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf',
+    pdf: '/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf',
+    canva: 'https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed',
   },
   {
     id: 'de',
@@ -67,7 +75,11 @@ const STANDARD_CATALOGUES = [
 
 const CATALOGUE_FILES = [
   ...FRENCH_CATALOGUES.map(({ fileName, pdf }) => ({ name: fileName, path: pdf })),
-  ...STANDARD_CATALOGUES.map(({ label, fileName, pdf }) => ({ name: `${label} — LoveLab B2B Catalogue.pdf`, fileName, path: pdf })),
+  ...STANDARD_CATALOGUES.map(({ label, fileName, documentName, pdf }) => ({
+    name: documentName || `${label} — LoveLab B2B Catalogue.pdf`,
+    fileName,
+    path: pdf,
+  })),
 ]
 
 // Pack order templates are now generated per pack and served from
