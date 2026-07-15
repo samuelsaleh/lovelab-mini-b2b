@@ -118,26 +118,15 @@ export async function POST(request, { params }) {
         fixes.push({ item: 'organization + folders', status: 'failed', error: orgErr.message });
       }
     } else {
-      // Org exists — check if folders are present
-      const { data: rootFolder } = await adminSupabase
-        .from('agent_folders')
-        .select('id')
-        .eq('organization_id', agent.organization_id)
-        .is('parent_id', null)
-        .maybeSingle();
-
-      if (!rootFolder) {
-        // Org exists but folders missing — re-provision
-        try {
-          const { provisionAgentInOrg } = await import('@/lib/organizations/provision-agent');
-          await provisionAgentInOrg(agent.organization_id, id);
-          fixes.push({ item: 'agent_folders', status: 'fixed' });
-        } catch (folderErr) {
-          fixes.push({ item: 'agent_folders', status: 'failed', error: folderErr.message });
-        }
-      } else {
+      // Always run the idempotent full-tree provisioner. A root can exist while
+      // the Sub-agents grouping or this member's child folder is missing.
+      try {
+        const { provisionOrganizationFolders } = await import('@/lib/organizations/provision-agent');
+        await provisionOrganizationFolders(agent.organization_id);
         healthy.push('organization');
-        healthy.push('agent_folders');
+        fixes.push({ item: 'agent_folders tree', status: 'verified/repaired' });
+      } catch (folderErr) {
+        fixes.push({ item: 'agent_folders tree', status: 'failed', error: folderErr.message });
       }
     }
 

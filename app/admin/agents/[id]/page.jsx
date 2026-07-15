@@ -14,7 +14,12 @@ import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 import SynaliaAgentTab from '@/app/components/SynaliaAgentTab';
-import { isSynaliaJewelerGroup, jewelerGroupFromLegacy, normalizeJewelerGroup } from '@/lib/jewelerGroup';
+import {
+  isSynaliaAgentEmail,
+  isSynaliaJewelerGroup,
+  jewelerGroupFromLegacy,
+  normalizeJewelerGroup,
+} from '@/lib/jewelerGroup';
 
 // Money formatter that ALWAYS shows the cents (e.g. "1 469,55 €", "1 469,00 €").
 // The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
@@ -77,6 +82,7 @@ export default function AdminAgentDetailsPage() {
 
   // Organization documents (orders/quotes linked via events)
   const [orgDocuments, setOrgDocuments] = useState([]);
+  const [organizationFolderDocuments, setOrganizationFolderDocuments] = useState([]);
   // Consignment orders assigned to this agent
   const [agentConsignmentOrders, setAgentConsignmentOrders] = useState([]);
 
@@ -110,7 +116,11 @@ export default function AdminAgentDetailsPage() {
       if (!found) throw new Error('Agent not found');
 
       setAgent(found);
-      setCommissions(commJson.commissions || []);
+      const loadedCommissions = commJson.commissions || [];
+      setCommissions(loadedCommissions);
+      setInvoiceDrafts(Object.fromEntries(
+        loadedCommissions.map((row) => [row.id, row.invoice_number || ''])
+      ));
       setSummary(commJson.summary || null);
       setPayments(payJson.payments || []);
       setReports(reportsRes.ok ? (reportsJson.reports || []) : []);
@@ -145,21 +155,29 @@ export default function AdminAgentDetailsPage() {
       let fetchedOrgDocs = [];
       let fetchedConsignmentOrders = [];
       try {
-        const [orgDocsRes, consRes] = await Promise.all([
+        const [orgDocsRes, consRes, teamDocsRes] = await Promise.all([
           fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`),
           fetch(`/api/documents?order_channel=consignment&per_page=200`),
+          found.organization_id
+            ? fetch(`/api/documents?organization_id=${encodeURIComponent(found.organization_id)}&per_page=200`)
+            : Promise.resolve(null),
         ]);
         const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
         const consJson2 = await consRes.json().catch(() => ({}));
-        fetchedOrgDocs = orgDocsJson.documents || [];
+        const teamDocsJson = teamDocsRes ? await teamDocsRes.json().catch(() => ({})) : {};
+        fetchedOrgDocs = [...new Map((orgDocsJson.documents || []).map((doc) => [doc.id, doc])).values()];
         // Filter consignment orders assigned to this specific agent
         fetchedConsignmentOrders = (consJson2.documents || []).filter(
           d => d.consignment_agent_id === agentId
         );
         setOrgDocuments(fetchedOrgDocs);
+        setOrganizationFolderDocuments(
+          [...new Map((teamDocsJson.documents || fetchedOrgDocs).map((doc) => [doc.id, doc])).values()]
+        );
         setAgentConsignmentOrders(fetchedConsignmentOrders);
       } catch {
         setOrgDocuments([]);
+        setOrganizationFolderDocuments([]);
         setAgentConsignmentOrders([]);
       }
 
@@ -416,6 +434,8 @@ export default function AdminAgentDetailsPage() {
   const [togglingCommissionId, setTogglingCommissionId] = useState(null);
   const [togglingSynaliaDocId, setTogglingSynaliaDocId] = useState(null);
   const [savingInvoiceId, setSavingInvoiceId] = useState(null);
+  const [invoiceDrafts, setInvoiceDrafts] = useState({});
+  const [invoiceSaveState, setInvoiceSaveState] = useState(null);
   const handleToggleCustomerPaid = useCallback(async (commissionId, nextPaid) => {
     if (!commissionId || togglingCommissionId === commissionId) return;
     setTogglingCommissionId(commissionId);
@@ -567,6 +587,7 @@ export default function AdminAgentDetailsPage() {
     // No-op when unchanged (avoids a write on every blur).
     if (current && (current.invoice_number || '') === value) return;
     setSavingInvoiceId(commissionId);
+    setInvoiceSaveState(null);
     const prevRows = commissions;
     setCommissions((prev) =>
       prev.map((c) =>
@@ -581,8 +602,14 @@ export default function AdminAgentDetailsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to save invoice number');
+      setInvoiceSaveState({ id: commissionId, kind: 'success', message: 'Saved' });
     } catch (err) {
       setCommissions(prevRows);
+      setInvoiceDrafts((prev) => ({
+        ...prev,
+        [commissionId]: current?.invoice_number || '',
+      }));
+      setInvoiceSaveState({ id: commissionId, kind: 'error', message: 'Save failed' });
       setError(err.message || 'Failed to save invoice number');
     } finally {
       setSavingInvoiceId(null);
@@ -626,6 +653,12 @@ export default function AdminAgentDetailsPage() {
 
   const [activeTab, setActiveTab] = useState('financials');
 
+  useEffect(() => {
+    if (activeTab === 'synalia' && agent && !isSynaliaAgentEmail(agent.email)) {
+      setActiveTab('financials');
+    }
+  }, [activeTab, agent]);
+
   // ── derived financials ──────────────────────────────────────────────────────
   const s = summary || {};
   const st = agent?.stats || {};
@@ -644,15 +677,23 @@ export default function AdminAgentDetailsPage() {
       ? orderRows.reduce((acc, c) => acc + (Number(c.order_total) || 0), 0)
       : (st.effective_revenue || 0);
   const activeConsignment = agentConsignmentOrders.filter(d => !d.metadata?.consignment?.returned_at);
+  const usesOrgSettlement = Boolean(agent?.organization_id && organizationMembers.length > 1);
+
+  // Synalia / groupement is a Nicolas-only workflow — hide the tab on every
+  // other agent so Sarah's team (and everyone else) is not cluttered by it.
+  const showSynaliaTab = isSynaliaAgentEmail(agent?.email);
 
   const synaliaOrderCount = useMemo(
-    () => orgDocuments.filter((d) =>
-      d.document_type === 'order'
-      && d.status === 'sent'
-      && !d.deleted_at
-      && isSynaliaJewelerGroup(jewelerGroupFromLegacy(d.metadata)),
-    ).length,
-    [orgDocuments],
+    () => {
+      if (!showSynaliaTab) return 0;
+      return orgDocuments.filter((d) =>
+        d.document_type === 'order'
+        && d.status === 'sent'
+        && !d.deleted_at
+        && isSynaliaJewelerGroup(jewelerGroupFromLegacy(d.metadata)),
+      ).length;
+    },
+    [orgDocuments, showSynaliaTab],
   );
 
   // ── avatar initials ──────────────────────────────────────────────────────────
@@ -664,7 +705,9 @@ export default function AdminAgentDetailsPage() {
   // screen, instead of bouncing between two tabs to do one workflow.
   const TABS = [
     { id: 'financials', label: 'Financials' },
-    { id: 'synalia', label: synaliaOrderCount > 0 ? `Synalia (${synaliaOrderCount})` : 'Synalia' },
+    ...(showSynaliaTab
+      ? [{ id: 'synalia', label: synaliaOrderCount > 0 ? `Synalia (${synaliaOrderCount})` : 'Synalia' }]
+      : []),
     { id: 'consignment', label: `Consignment (${agentConsignmentOrders.length})` },
     { id: 'organisation', label: 'Organisation' },
     { id: 'documents', label: 'Documents' },
@@ -763,12 +806,22 @@ export default function AdminAgentDetailsPage() {
                 >
                   Add Bonus
                 </button>
-                <button
-                  onClick={openCreatePayment}
-                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
-                >
-                  Record Payment
-                </button>
+                {usesOrgSettlement ? (
+                  <button
+                    onClick={() => router.push(`/admin/organizations/${agent.organization_id}`)}
+                    title="Multi-member organizations are paid once from the organization settlement page."
+                    style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
+                  >
+                    Organization Settlement
+                  </button>
+                ) : (
+                  <button
+                    onClick={openCreatePayment}
+                    style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
+                  >
+                    Record Payment
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1009,6 +1062,7 @@ export default function AdminAgentDetailsPage() {
                               // Doc-derived placeholder rows aren't real DB rows so
                               // there's nothing to delete.
                               const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
+                              const canEditInvoice = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
                               // Phase 29: a customer-paid row that's been pulled
                               // into a report (report_id set) but not yet paid out
                               // is "Reported" — sent to the agent, awaiting the
@@ -1079,17 +1133,29 @@ export default function AdminAgentDetailsPage() {
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
                                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.commission_amount)}</td>
                                   <td style={td}>
-                                    {canDelete ? (
-                                      <input
-                                        type="text"
-                                        defaultValue={row.invoice_number || ''}
-                                        placeholder="—"
-                                        disabled={savingInvoiceId === row.id}
-                                        onBlur={(e) => handleSaveInvoice(row.id, e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                        title="Type the matching invoice number and click away (or press Enter) to save."
-                                        style={{ width: 100, fontSize: 11, padding: '3px 6px', border: `1px solid ${colors.lineGray}`, borderRadius: 4, fontFamily: 'inherit', color: colors.charcoal, background: savingInvoiceId === row.id ? '#f5f5f5' : '#fff' }}
-                                      />
+                                    {canEditInvoice ? (
+                                      <div>
+                                        <input
+                                          type="text"
+                                          value={invoiceDrafts[row.id] ?? row.invoice_number ?? ''}
+                                          placeholder="—"
+                                          disabled={savingInvoiceId === row.id}
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            setInvoiceDrafts((prev) => ({ ...prev, [row.id]: value }));
+                                            if (invoiceSaveState?.id === row.id) setInvoiceSaveState(null);
+                                          }}
+                                          onBlur={(e) => handleSaveInvoice(row.id, e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                          title="Type the matching invoice number and click away (or press Enter) to save."
+                                          style={{ width: 100, fontSize: 11, padding: '3px 6px', border: `1px solid ${invoiceSaveState?.id === row.id && invoiceSaveState.kind === 'error' ? '#dc2626' : colors.lineGray}`, borderRadius: 4, fontFamily: 'inherit', color: colors.charcoal, background: savingInvoiceId === row.id ? '#f5f5f5' : '#fff' }}
+                                        />
+                                        {invoiceSaveState?.id === row.id && (
+                                          <div role="status" style={{ marginTop: 2, fontSize: 9, color: invoiceSaveState.kind === 'success' ? '#16a34a' : '#dc2626' }}>
+                                            {invoiceSaveState.message}
+                                          </div>
+                                        )}
+                                      </div>
                                     ) : (
                                       <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{row.invoice_number || '—'}</span>
                                     )}
@@ -1220,7 +1286,7 @@ export default function AdminAgentDetailsPage() {
                 above. Any old `?tab=reports` deep-links fall through to
                 the default tab ('financials'). */}
 
-            {activeTab === 'synalia' && agent && (
+            {activeTab === 'synalia' && agent && showSynaliaTab && (
               <SynaliaAgentTab
                 agentId={agent.id}
                 agentName={agent.full_name || agent.email}
@@ -1462,7 +1528,7 @@ export default function AdminAgentDetailsPage() {
             {/* ── Tab: Documents ────────────────────────────────────────────── */}
             {activeTab === 'documents' && (
               <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 20 }}>
-                <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} orderDocuments={orgDocuments} />
+                <AgentFolderBrowser agentId={agentId} organizationId={agent?.organization_id} orderDocuments={organizationFolderDocuments} />
               </div>
             )}
 

@@ -3,11 +3,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
+import { isSynaliaAgentEmail } from '@/lib/jewelerGroup'
+import { publicAssetHref } from '@/lib/publicAssetHref'
 import SendResourcesModal from './SendResourcesModal'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
-
-const NICOLAS_EMAIL = 'nicolas.vial@ascension-france.com'
 
 const FRENCH_CATALOGUES = [
   {
@@ -147,7 +147,7 @@ function DownloadFolder({ label, files, selected, onToggle }) {
                   style={{ accentColor: colors.inkPlum, cursor: 'pointer', flexShrink: 0 }}
                 />
                 <a
-                  href={f.path}
+                  href={publicAssetHref(f.path)}
                   download={f.name}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 7, flex: 1,
@@ -188,7 +188,7 @@ function LinkButton({ href, children, variant = 'outline' }) {
 
 export default function ResourcesCard({ isAdmin = false, userEmail }) {
   const { lang, t } = useI18n()
-  const isNicolas = String(userEmail || '').trim().toLowerCase() === NICOLAS_EMAIL
+  const isNicolas = isSynaliaAgentEmail(userEmail)
   const visibleFrenchCatalogues = useMemo(() => (
     isAdmin
       ? FRENCH_CATALOGUES
@@ -413,7 +413,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail }) {
               ))}
             </select>
             <a
-              href={selectedPreviewCatalogue.pdf}
+              href={publicAssetHref(selectedPreviewCatalogue.pdf)}
               download={selectedPreviewCatalogue.fileName}
               style={{
                 fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none',

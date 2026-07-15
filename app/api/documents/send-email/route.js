@@ -84,14 +84,30 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
 
-// Drop-in localized catalogue PDFs in /public/catalogues. IT/NL fall back to EN
-// until localized catalogues are uploaded to that folder.
-const CATALOGUE_FILES = {
-  en: 'EN_LoveLab_B2B_Catalogue.pdf',
-  fr: '_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-  de: 'DE_LoveLab_B2B_Catalogue.pdf',
-  it: 'IT_LoveLab_B2B_Catalogue.pdf',
-  nl: 'NL_LoveLab_B2B_Catalogue.pdf',
+// Drop-in localized catalogue PDFs in /public/catalogues.
+// Prefer language subfolders (English / Francais); keep flat-root fallbacks
+// for older deploys. IT/NL fall back to EN until localized files exist.
+const CATALOGUE_CANDIDATES = {
+  en: [
+    'English/EN_LoveLab_B2B_Catalogue.pdf',
+    'EN_LoveLab_B2B_Catalogue.pdf',
+  ],
+  fr: [
+    'Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
+    'Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+    '_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+  ],
+  de: [
+    'DE_LoveLab_B2B_Catalogue.pdf',
+  ],
+  it: [
+    'IT_LoveLab_B2B_Catalogue.pdf',
+    'English/EN_LoveLab_B2B_Catalogue.pdf',
+  ],
+  nl: [
+    'NL_LoveLab_B2B_Catalogue.pdf',
+    'English/EN_LoveLab_B2B_Catalogue.pdf',
+  ],
 };
 
 async function readCatalogue(lang) {
@@ -99,19 +115,23 @@ async function readCatalogue(lang) {
     const fullPath = path.join(process.cwd(), 'public', 'catalogues', filename);
     try {
       const buf = await fs.readFile(fullPath);
-      return { filename, buffer: buf };
+      return { filename: path.basename(filename), buffer: buf };
     } catch {
       return null;
     }
   };
 
-  const primary = CATALOGUE_FILES[lang] || CATALOGUE_FILES.en;
-  let result = await tryRead(primary);
-  if (result) return result;
+  const candidates = CATALOGUE_CANDIDATES[lang] || CATALOGUE_CANDIDATES.en;
+  for (const filename of candidates) {
+    const result = await tryRead(filename);
+    if (result) return result;
+  }
 
   if (lang !== 'en') {
-    result = await tryRead(CATALOGUE_FILES.en);
-    if (result) return result;
+    for (const filename of CATALOGUE_CANDIDATES.en) {
+      const result = await tryRead(filename);
+      if (result) return result;
+    }
   }
   return null;
 }

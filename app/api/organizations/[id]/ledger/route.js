@@ -2,9 +2,17 @@ import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { requireOrganizationAccess } from '@/lib/organizations/authz';
 import { checkRateLimit } from '@/lib/rateLimit';
+import {
+  commissionSettlementStage,
+  summarizeOrganizationSettlement,
+} from '@/lib/organizations/settlement';
 
 function toNumber(value) {
   return Number(value) || 0;
+}
+
+function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 export async function GET(request, { params }) {
@@ -37,14 +45,21 @@ export async function GET(request, { params }) {
           total_commission_earned: 0,
           total_paid_out: 0,
           pending_balance: 0,
+          awaiting_customer: 0,
+          ready_to_pay: 0,
+          reported: 0,
+          settled_amount: 0,
+          unallocated_payment: 0,
         },
         per_member: [],
       });
     }
 
+    const commSelectBase =
+      'id, agent_id, commission_amount, status, type, customer_paid_at, report_id, invoice_number, created_at, document_id';
     const commSelect = includeOrders
-      ? 'id, agent_id, commission_amount, commission_rate, order_total, status, type, created_at, document_id, documents:document_id(client_name, client_company)'
-      : 'id, agent_id, commission_amount, status';
+      ? `${commSelectBase}, commission_rate, order_total, documents:document_id(client_name, client_company)`
+      : commSelectBase;
 
     const [{ data: commissions, error: commErr }, { data: payments, error: payErr }] = await Promise.all([
       adminSupabase
@@ -69,6 +84,16 @@ export async function GET(request, { params }) {
         total_commission_earned: 0,
         total_paid_out: 0,
         pending_balance: 0,
+        awaiting_customer: 0,
+        ready_to_pay: 0,
+        reported: 0,
+        settled_amount: 0,
+        awaiting_count: 0,
+        ready_count: 0,
+        reported_count: 0,
+        paid_count: 0,
+        invoice_numbers: [],
+        last_invoice_number: null,
         ...(includeOrders ? { orders: [] } : {}),
       });
     }
@@ -80,6 +105,26 @@ export async function GET(request, { params }) {
       if (row.status !== 'cancelled') {
         bucket.total_commission_earned += amount;
       }
+      const stage = commissionSettlementStage(row);
+      if (stage === 'settled') {
+        bucket.settled_amount += amount;
+        bucket.paid_count += 1;
+      } else if (stage === 'reported') {
+        bucket.reported += amount;
+        bucket.reported_count += 1;
+      } else if (stage === 'ready') {
+        bucket.ready_to_pay += amount;
+        bucket.ready_count += 1;
+      } else if (stage === 'awaiting') {
+        bucket.awaiting_customer += amount;
+        bucket.awaiting_count += 1;
+      }
+      if (row.invoice_number) {
+        if (!bucket.invoice_numbers.includes(row.invoice_number)) {
+          bucket.invoice_numbers.push(row.invoice_number);
+        }
+        if (!bucket.last_invoice_number) bucket.last_invoice_number = row.invoice_number;
+      }
       if (includeOrders && row.type === 'order') {
         bucket.orders.push({
           id: row.id,
@@ -90,30 +135,39 @@ export async function GET(request, { params }) {
           created_at: row.created_at,
           client_name: row.documents?.client_name || null,
           client_company: row.documents?.client_company || null,
+          invoice_number: row.invoice_number || null,
+          report_id: row.report_id || null,
+          customer_paid_at: row.customer_paid_at || null,
         });
       }
     }
 
+    let paymentTotal = 0;
     for (const row of payments || []) {
+      paymentTotal += toNumber(row.amount);
       const bucket = perMemberMap.get(row.agent_id);
       if (!bucket) continue;
       bucket.total_paid_out += toNumber(row.amount);
     }
 
-    const perMember = [...perMemberMap.values()].map((m) => ({
-      ...m,
-      pending_balance: m.total_commission_earned - m.total_paid_out,
-    }));
+    const perMember = [...perMemberMap.values()].map((m) => {
+      // Organization payments are stored once on the owner. Per-person
+      // settlement allocation therefore comes from the commission rows that
+      // the linked report marked paid, not from agent_payments.
+      const pending = m.total_commission_earned - m.settled_amount;
+      return {
+        ...m,
+        total_commission_earned: round2(m.total_commission_earned),
+        total_paid_out: round2(m.total_paid_out),
+        pending_balance: round2(pending),
+        awaiting_customer: round2(m.awaiting_customer),
+        ready_to_pay: round2(m.ready_to_pay),
+        reported: round2(m.reported),
+        settled_amount: round2(m.settled_amount),
+      };
+    });
 
-    const organizationSummary = perMember.reduce(
-      (acc, row) => {
-        acc.total_commission_earned += row.total_commission_earned;
-        acc.total_paid_out += row.total_paid_out;
-        acc.pending_balance += row.pending_balance;
-        return acc;
-      },
-      { total_commission_earned: 0, total_paid_out: 0, pending_balance: 0 }
-    );
+    const organizationSummary = summarizeOrganizationSettlement(perMember, paymentTotal);
 
     return NextResponse.json({
       organization_summary: organizationSummary,

@@ -42,7 +42,9 @@ node_modules_corrupted/
 
 # Large image assets (served via API, not git)
 public/Packshot Folder/
-public/catalogues/
+
+# Catalogue PDFs must ship with the app (home-page downloads). Keep them
+# tracked even though the folder is large — otherwise production 404s.
 
 # Database backups (contain production data)
 backups/

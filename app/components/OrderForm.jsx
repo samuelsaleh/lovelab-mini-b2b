@@ -24,6 +24,7 @@ import {
   JEWELER_GROUP,
   JEWELER_GROUP_OPTIONS,
   getJewelerGroupLabel,
+  isSynaliaAgentEmail,
   isSynaliaJewelerGroup,
   jewelerGroupFromLegacy,
   normalizeJewelerGroup,
@@ -725,12 +726,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // number is typed per order. Option is gated to Nicolas + admins (canUseDzb).
   const [dzbEnabled, setDzbEnabled] = useState(false)
   const [dzbClientNumber, setDzbClientNumber] = useState('')
-  const canUseDzb = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
+  const canUseDzb = isAdmin || isSynaliaAgentEmail(currentUser?.email)
 
   const [jewelerGroup, setJewelerGroup] = useState(JEWELER_GROUP.AUCUN)
   const synaliaEnabled = isSynaliaJewelerGroup(jewelerGroup)
   const selectedJewelerGroupLabel = getJewelerGroupLabel(jewelerGroup)
-  const canUseJewelerGroup = isAdmin || currentUser?.email === 'nicolas.vial@ascension-france.com'
+  const canUseJewelerGroup = isAdmin || isSynaliaAgentEmail(currentUser?.email)
 
   // Table rows state with undo/redo support
   const [rows, setRowsInternal] = useState(() => prefillRows(quote))

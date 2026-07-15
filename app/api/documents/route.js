@@ -64,44 +64,26 @@ export async function GET(request) {
       nonAdminOrgScope = await getOrgTeamScope(adminSupabase, organizationId);
     }
 
-    // Admin filtering: all documents on events owned by this agent
+    // Admin personal-agent filtering: documents created by this agent (including
+    // legacy IDs sharing the same email) plus documents explicitly attributed
+    // to the agent through a commission row. Do NOT expand through every event
+    // in the agent's organization: that made every teammate order appear on the
+    // owner's personal page and looked like recurring duplicates.
     if (isAdmin && createdByAgent) {
       const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
 
-      const { data: agentProf } = await adminSupabase
-        .from('profiles')
-        .select('organization_id')
-        .in('id', agentIds)
-        .not('organization_id', 'is', null)
-        .limit(1)
-        .maybeSingle();
-
-      const eventQueries = [
-        adminSupabase.from('events').select('id').in('created_by', agentIds),
-        adminSupabase.from('agent_commissions').select('document_id').in('agent_id', agentIds),
-      ];
-      if (agentProf?.organization_id) {
-        eventQueries.push(
-          adminSupabase.from('events').select('id').eq('organization_id', agentProf.organization_id),
-        );
-      }
-      const evResults = await Promise.all(eventQueries);
-      const agentEventIds = [...new Set([
-        ...(evResults[0].data || []).map(e => e.id),
-        ...(evResults[2]?.data || []).map(e => e.id),
-      ])];
+      const { data: attributedCommissions } = await adminSupabase
+        .from('agent_commissions')
+        .select('document_id')
+        .in('agent_id', agentIds);
       const commDocIds = [...new Set(
-        (evResults[1].data || []).map(c => c.document_id).filter(Boolean),
+        (attributedCommissions || []).map(c => c.document_id).filter(Boolean),
       )];
 
-      const orParts = [];
-      if (agentEventIds.length > 0) {
-        orParts.push(`event_id.in.(${agentEventIds.join(',')})`);
-      }
+      const orParts = [`created_by.in.(${agentIds.join(',')})`];
       if (commDocIds.length > 0) {
         orParts.push(`id.in.(${commDocIds.join(',')})`);
       }
-      orParts.push(`and(created_by.in.(${agentIds.join(',')}),event_id.is.null)`);
 
       query = query.or(orParts.join(','));
     } else if (!isAdmin && nonAdminOrgScope) {
@@ -163,23 +145,10 @@ export async function GET(request) {
     }
 
     if (organizationId && isAdmin) {
-      const [{ data: orgMembers }, { data: orgProfiles }, { data: orgEvents }] = await Promise.all([
-        adminSupabase.from('organization_memberships').select('user_id').eq('organization_id', organizationId),
-        adminSupabase.from('profiles').select('id').eq('organization_id', organizationId),
-        adminSupabase.from('events').select('id').eq('organization_id', organizationId),
-      ]);
-      const allMemberIds = [...new Set([
-        ...(orgMembers || []).map(m => m.user_id),
-        ...(orgProfiles || []).map(p => p.id),
-      ])];
-      const orgEventIds = (orgEvents || []).map(e => e.id);
-
-      const orParts = [];
-      if (allMemberIds.length > 0) orParts.push(`created_by.in.(${allMemberIds.join(',')})`);
-      if (orgEventIds.length > 0) orParts.push(`event_id.in.(${orgEventIds.join(',')})`);
-
-      if (orParts.length > 0) {
-        query = query.or(orParts.join(','));
+      const orgScope = await getOrgTeamScope(adminSupabase, organizationId);
+      const orFilter = buildTeamScopeOrFilter(orgScope);
+      if (orFilter) {
+        query = query.or(orFilter);
       } else {
         return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
       }
@@ -208,7 +177,16 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
     }
 
-    return NextResponse.json({ documents, total_count: count, page, per_page: perPage });
+    // PostgREST normally returns one row per document even when both branches
+    // of an OR match. Keep a defensive ID-based dedupe at the API boundary so
+    // no client or future joined query can render/count the same row twice.
+    const uniqueDocuments = [...new Map((documents || []).map((doc) => [doc.id, doc])).values()];
+    return NextResponse.json({
+      documents: uniqueDocuments,
+      total_count: Math.max(uniqueDocuments.length, Number(count) || 0),
+      page,
+      per_page: perPage,
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -308,6 +286,30 @@ export async function POST(request) {
     }
 
     const docMetadata = metadata || {};
+    const saveRequestId = typeof docMetadata.save_request_id === 'string'
+      ? docMetadata.save_request_id.trim().slice(0, 128)
+      : '';
+
+    // Idempotency for slow-network retries. The client keeps this key stable
+    // while the save modal remains open. If the first POST committed but its
+    // response timed out, the retry returns that row instead of creating the
+    // same order a second time.
+    if (saveRequestId) {
+      const { data: existingDocument, error: idempotencyError } = await adminSupabase
+        .from('documents')
+        .select('*')
+        .eq('created_by', user.id)
+        .contains('metadata', { save_request_id: saveRequestId })
+        .maybeSingle();
+      if (idempotencyError) {
+        console.error('[Documents POST] Idempotency lookup failed:', idempotencyError.message);
+        return NextResponse.json({ error: 'Failed to verify save request' }, { status: 500 });
+      }
+      if (existingDocument) {
+        return NextResponse.json({ document: existingDocument, idempotent_replay: true });
+      }
+      docMetadata.save_request_id = saveRequestId;
+    }
 
     const { data: document, error } = await adminSupabase
       .from('documents')

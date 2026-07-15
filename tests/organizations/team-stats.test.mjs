@@ -97,6 +97,17 @@ test('draft and excluded-channel documents do not pollute totals', () => {
   assert.equal(totals.orders, 1);
 });
 
+test('same document ID matching creator and event scopes is counted once', () => {
+  const duplicatedJoinRow = order('member-1', 725, { id: 'same-document', event_id: 'org-event' });
+  const { totals, perMember } = aggregateTeamStats({
+    memberships: [owner, member],
+    documents: [duplicatedJoinRow, { ...duplicatedJoinRow }],
+  });
+  assert.equal(totals.revenue, 725);
+  assert.equal(totals.orders, 1);
+  assert.equal(perMember.find((row) => row.user_id === 'member-1').orders, 1);
+});
+
 test('cancelled commissions never count; pending includes pending+approved', () => {
   const { totals, perMember } = aggregateTeamStats({
     memberships: [owner],

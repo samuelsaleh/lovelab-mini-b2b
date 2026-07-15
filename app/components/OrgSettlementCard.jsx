@@ -208,6 +208,75 @@ export default function OrgSettlementCard({ organizationId }) {
         />
       </div>
 
+      {/* One organization payment, transparently allocated back to each
+          member through the commissions settled by the linked report. */}
+      <div style={{ borderTop: `1px solid ${colors.lineGray}` }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Team settlement breakdown
+          </span>
+          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>
+            One bank payment; each person&apos;s share is tracked separately.
+          </span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+            <thead>
+              <tr style={{ background: '#fafafa' }}>
+                <th style={tableHead}>Member</th>
+                <th style={moneyHead}>Awaiting</th>
+                <th style={moneyHead}>Ready</th>
+                <th style={moneyHead}>Reported</th>
+                <th style={moneyHead}>Paid share</th>
+                <th style={tableHead}>Invoice</th>
+                <th style={{ ...tableHead, textAlign: 'right' }}>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(ledger?.per_member || []).map((member) => (
+                <tr key={member.user_id} data-testid={`org-settlement-member-${member.user_id}`}>
+                  <td style={tableCell}>
+                    <div style={{ fontWeight: 700, color: colors.charcoal }}>
+                      {member.profile?.full_name || member.profile?.email || member.user_id}
+                      {member.role === 'owner' && (
+                        <span style={{ marginLeft: 6, fontSize: 9, color: colors.inkPlum, background: '#f3f0f8', borderRadius: 4, padding: '1px 5px' }}>OWNER</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 10, color: colors.lovelabMuted }}>
+                      {member.awaiting_count || 0} awaiting · {member.ready_count || 0} ready · {member.reported_count || 0} reported
+                    </div>
+                  </td>
+                  <td style={moneyCell}>{fmt(member.awaiting_customer)}</td>
+                  <td style={{ ...moneyCell, color: '#166534', fontWeight: 700 }}>{fmt(member.ready_to_pay)}</td>
+                  <td style={{ ...moneyCell, color: '#3730a3', fontWeight: 700 }}>{fmt(member.reported)}</td>
+                  <td style={{ ...moneyCell, color: colors.inkPlum, fontWeight: 800 }}>{fmt(member.settled_amount)}</td>
+                  <td style={{ ...tableCell, fontSize: 11 }}>
+                    {member.last_invoice_number || '—'}
+                    {(member.invoice_numbers || []).length > 1 && (
+                      <span title={member.invoice_numbers.join(', ')} style={{ marginLeft: 4, color: colors.lovelabMuted }}>
+                        +{member.invoice_numbers.length - 1}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...tableCell, textAlign: 'right' }}>
+                    <a href={`/admin/agents/${member.user_id}`} style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none' }}>
+                      View agent →
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {payments.length > 0 && (
+          <div style={{ padding: '10px 18px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted }}>
+            <strong style={{ color: colors.charcoal }}>Latest organization payment:</strong>{' '}
+            {fmt(payments[0].amount)} on {new Date(payments[0].payment_date).toLocaleDateString('en-GB')}
+            {payments[0].invoice_number ? ` · Invoice ${payments[0].invoice_number}` : ''}
+          </div>
+        )}
+      </div>
+
       {/* Actions */}
       <div style={{ padding: '14px 18px', borderTop: `1px solid ${colors.lineGray}`, background: '#fafafa', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
@@ -331,3 +400,24 @@ const modalInput = {
   width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8,
   border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: 'inherit', outline: 'none',
 }
+
+const tableHead = {
+  padding: '9px 12px',
+  fontSize: 10,
+  fontWeight: 700,
+  color: colors.lovelabMuted,
+  textTransform: 'uppercase',
+  textAlign: 'left',
+  borderBottom: `1px solid ${colors.lineGray}`,
+}
+
+const moneyHead = { ...tableHead, textAlign: 'right' }
+
+const tableCell = {
+  padding: '10px 12px',
+  fontSize: 12,
+  color: colors.charcoal,
+  borderBottom: `1px solid ${colors.lineGray}`,
+}
+
+const moneyCell = { ...tableCell, textAlign: 'right', whiteSpace: 'nowrap' }

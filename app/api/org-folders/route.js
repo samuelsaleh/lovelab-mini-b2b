@@ -88,7 +88,7 @@ export async function GET(request) {
     const memberUserIds = [...new Set((memberships || []).map(m => m.user_id))];
     const rootFolderIds = [...orgRootMap.values()].map(r => r.id);
 
-    const [{ data: profiles, error: profErr }, subfolderResult] = await Promise.all([
+    const [{ data: profiles, error: profErr }, directChildResult] = await Promise.all([
       memberUserIds.length > 0
         ? adminSupabase.from('profiles').select('id, full_name, email').in('id', memberUserIds)
         : Promise.resolve({ data: [], error: null }),
@@ -97,12 +97,24 @@ export async function GET(request) {
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (profErr) throw profErr;
-    if (subfolderResult.error) throw subfolderResult.error;
+    if (directChildResult.error) throw directChildResult.error;
 
     const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
+    const directChildren = directChildResult.data || [];
+    const subAgentGroupIds = directChildren
+      .filter((folder) => folder.name === 'Sub-agents')
+      .map((folder) => folder.id);
+    const { data: nestedAgentFolders, error: nestedErr } = subAgentGroupIds.length > 0
+      ? await adminSupabase
+        .from('agent_folders')
+        .select('id, name, agent_id, parent_id')
+        .in('parent_id', subAgentGroupIds)
+      : { data: [], error: null };
+    if (nestedErr) throw nestedErr;
+
     const subfoldersByParent = new Map();
-    for (const sf of subfolderResult.data || []) {
+    for (const sf of [...directChildren, ...(nestedAgentFolders || [])]) {
       if (!subfoldersByParent.has(sf.parent_id)) subfoldersByParent.set(sf.parent_id, []);
       subfoldersByParent.get(sf.parent_id).push(sf);
     }
@@ -110,7 +122,14 @@ export async function GET(request) {
     const orgFolders = orgs.map(org => {
       const members = membersByOrg.get(org.id) || [];
       const matchingRoot = orgRootMap.get(org.id);
-      const agentSubfolders = matchingRoot ? (subfoldersByParent.get(matchingRoot.id) || []) : [];
+      const rootChildren = matchingRoot ? (subfoldersByParent.get(matchingRoot.id) || []) : [];
+      const subAgentsFolder = rootChildren.find((folder) => folder.name === 'Sub-agents') || null;
+      // New hierarchy: member folders are nested under Sub-agents. Keep the
+      // direct-child fallback during rollout so legacy trees remain readable
+      // until the idempotent backfill reparents them.
+      const agentSubfolders = subAgentsFolder
+        ? (subfoldersByParent.get(subAgentsFolder.id) || [])
+        : rootChildren.filter((folder) => folder.agent_id !== matchingRoot?.agent_id);
 
       const memberProfiles = members.map(m => {
         const p = profileMap.get(m.user_id);
@@ -130,6 +149,7 @@ export async function GET(request) {
         organization_name: org.name,
         root_folder_id: matchingRoot?.id || null,
         root_folder_name: matchingRoot?.name || org.name,
+        sub_agents_folder_id: subAgentsFolder?.id || null,
         member_count: members.length,
         members: memberProfiles,
         agent_subfolders: agentSubfolders.map(sf => ({

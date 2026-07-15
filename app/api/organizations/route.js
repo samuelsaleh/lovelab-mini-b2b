@@ -14,12 +14,20 @@ export async function GET(request) {
     if (session.error) return session.error;
 
     if (isAdmin(session.profile)) {
-      const { data, error } = await supabase
+      // Authentication is performed with the user's cookie-bound client above,
+      // but admins must list organizations through the server-only service
+      // client. The user client is still subject to organizations RLS and can
+      // legitimately return an empty array even for an application-level admin.
+      const adminSupabase = createAdminClient();
+      const { data, error } = await adminSupabase
         .from('organizations')
-        .select('*')
+        .select('id, name, territory, conditions, commission_rate, created_by, created_at, updated_at, deleted_at')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.error('[organizations GET] admin list failed:', error.message);
+        throw error;
+      }
       return NextResponse.json({ organizations: data || [] });
     }
 

@@ -5,6 +5,7 @@ import { getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
+import { ALLOWED_RESOURCE_PATH_RE, publicAssetHref } from '@/lib/publicAssetHref';
 
 export const runtime = 'nodejs';
 
@@ -30,12 +31,6 @@ function pickOverrides(body) {
   return out;
 }
 
-// Hard whitelist for outbound resource sends. Only files under these
-// public/ subfolders may be attached. Prevents path traversal or arbitrary
-// file exfiltration from the server.
-// Pack templates are no longer static (resolved via packTemplateIdFromPath
-// above), so this only covers the remaining static public assets.
-const ALLOWED_PATH_RE = /^\/(Price Lists|catalogues)\/[^/]+\.(xlsx|pdf)$/i;
 // Cap matches "select everything across Catalogue + Packs + Price List" with
 // some headroom for future additions.
 const MAX_FILES_PER_SEND = 20;
@@ -138,20 +133,13 @@ export async function POST(request) {
         continue;
       }
 
-      if (!ALLOWED_PATH_RE.test(filePath)) {
+      if (!ALLOWED_RESOURCE_PATH_RE.test(filePath)) {
         return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
       }
 
-      // Each segment of the URL needs encoding because our public/ folders
-      // contain spaces ("LoveLab Excel Packs") and parentheses (the FR
-      // catalogue filename). Splitting on "/" and re-encoding per segment
-      // preserves the slashes while making the rest URL-safe.
-      const encodedPath = filePath
-        .split('/')
-        .map((seg, i) => (i === 0 ? seg : encodeURIComponent(seg)))
-        .join('/');
-
-      const fileUrl = `${baseUrl}${encodedPath}`;
+      // Encode spaces / parentheses in folder and file names so the
+      // self-fetch of public/ assets does not 404.
+      const fileUrl = `${baseUrl}${publicAssetHref(filePath)}`;
 
       let buf;
       try {

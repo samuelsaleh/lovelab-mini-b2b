@@ -12,10 +12,10 @@
  * resolve. Any logic change in commissionAttribution.js needs to be
  * mirrored here.
  *
- * Why we need it: when an order is saved while its creator's
- * agent_status is anything other than 'active', resolveCommissionAgent
- * returns null and no commission row is written. Activating the agent
- * later does NOT retroactively create those rows.
+ * Why we need it: historical orders created before attribution was installed,
+ * or while their creator was not attributable, have no editable settlement
+ * row. Live attribution now accepts active/invited creators and also persists
+ * zero-rate rows, but that does not retroactively repair older orders.
  *
  * Usage:
  *   node scripts/backfill-missing-commissions.mjs                 # dry-run
@@ -80,7 +80,7 @@ async function resolveCommissionAgent(client, document) {
     const { data: creator } = await client
       .from('profiles').select(PROFILE_COLS)
       .eq('id', document.created_by).maybeSingle();
-    if (creator?.is_agent && creator.agent_status === 'active') {
+    if (creator?.is_agent && ['active', 'invited'].includes(creator.agent_status)) {
       return { agentId: creator.id, profile: creator, via: 'creator' };
     }
   }
@@ -156,7 +156,7 @@ async function upsertCommissionForDocument(client, { document, profile, agentId 
   }
 
   const { amount, rate } = calcAmount(commissionableBase, profile);
-  if (!amount || amount <= 0) return { skipped: true, reason: 'computed_zero' };
+  // Keep a real editable ledger row even at a temporary 0% rate.
 
   const row = {
     agent_id: agentId,

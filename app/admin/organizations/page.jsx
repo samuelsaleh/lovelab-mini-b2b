@@ -32,16 +32,33 @@ export default function AdminOrganizationsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [orgsRes, foldersRes, agentsRes] = await Promise.all([
-        fetch('/api/organizations').then(r => r.json()),
-        fetch('/api/org-folders').then(r => r.json()),
-        fetch('/api/agents').then(r => r.json()),
+      const [orgsResponse, foldersResponse, agentsResponse] = await Promise.all([
+        fetch('/api/organizations'),
+        fetch('/api/org-folders'),
+        fetch('/api/agents'),
       ])
-      setOrganizations(orgsRes.organizations || [])
-      setOrgFolders(foldersRes.orgFolders || [])
-      setAgents(agentsRes.agents || [])
-    } catch {
-      setError('Failed to load organizations.')
+      const [orgsRes, foldersRes, agentsRes] = await Promise.all([
+        orgsResponse.json().catch(() => ({})),
+        foldersResponse.json().catch(() => ({})),
+        agentsResponse.json().catch(() => ({})),
+      ])
+
+      // Keep partial data when one endpoint fails so the admin page still
+      // opens instead of blanking the whole screen on a single API error.
+      if (orgsResponse.ok) setOrganizations(orgsRes.organizations || [])
+      else setOrganizations([])
+      if (foldersResponse.ok) setOrgFolders(foldersRes.orgFolders || [])
+      else setOrgFolders([])
+      if (agentsResponse.ok) setAgents(agentsRes.agents || [])
+      else setAgents([])
+
+      const failures = []
+      if (!orgsResponse.ok) failures.push(orgsRes.error || `organizations (${orgsResponse.status})`)
+      if (!foldersResponse.ok) failures.push(foldersRes.error || `org-folders (${foldersResponse.status})`)
+      if (!agentsResponse.ok) failures.push(agentsRes.error || `agents (${agentsResponse.status})`)
+      if (failures.length > 0) setError(`Failed to load: ${failures.join(', ')}`)
+    } catch (err) {
+      setError(err?.message || 'Failed to load organizations.')
     }
     setLoading(false)
   }

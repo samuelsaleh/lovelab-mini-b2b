@@ -76,30 +76,30 @@ test('different agent_id creates new root even if same name exists', () => {
 
 // Agent subfolder scenarios
 
-function simulateEnsureAgentSubfolder(existingFolders, orgRootFolderId, agentId, agentName) {
-  if (!orgRootFolderId || !agentId) throw new Error('orgRootFolderId and agentId are required');
+function simulateEnsureAgentSubfolder(existingFolders, subAgentsFolderId, agentId, agentName) {
+  if (!subAgentsFolderId || !agentId) throw new Error('subAgentsFolderId and agentId are required');
   const folderName = agentName || 'Agent Folder';
   const existing = existingFolders.find(
-    (f) => f.agent_id === agentId && f.parent_id === orgRootFolderId
+    (f) => f.agent_id === agentId && f.parent_id === subAgentsFolderId
   );
   if (existing) return { subfolder: existing, created: false };
   return {
-    subfolder: { id: `sub-${agentId}`, agent_id: agentId, name: folderName, parent_id: orgRootFolderId },
+    subfolder: { id: `sub-${agentId}`, agent_id: agentId, name: folderName, parent_id: subAgentsFolderId },
     created: true,
   };
 }
 
-test('agent subfolder: creates under org root', () => {
-  const result = simulateEnsureAgentSubfolder([], 'root-1', 'agent-1', 'Josephine');
+test('agent subfolder: creates under the Sub-agents grouping folder', () => {
+  const result = simulateEnsureAgentSubfolder([], 'sub-agents-1', 'agent-1', 'Josephine');
   assert.equal(result.created, true);
-  assert.equal(result.subfolder.parent_id, 'root-1');
+  assert.equal(result.subfolder.parent_id, 'sub-agents-1');
 });
 
 test('agent subfolder: idempotent', () => {
   const existing = [
-    { id: 'sub-1', agent_id: 'agent-1', name: 'Josephine', parent_id: 'root-1' },
+    { id: 'sub-1', agent_id: 'agent-1', name: 'Josephine', parent_id: 'sub-agents-1' },
   ];
-  const result = simulateEnsureAgentSubfolder(existing, 'root-1', 'agent-1', 'Josephine');
+  const result = simulateEnsureAgentSubfolder(existing, 'sub-agents-1', 'agent-1', 'Josephine');
   assert.equal(result.created, false);
   assert.equal(result.subfolder.id, 'sub-1');
 });

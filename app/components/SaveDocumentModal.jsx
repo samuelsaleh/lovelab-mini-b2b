@@ -113,6 +113,10 @@ export default function SaveDocumentModal({
   const [consignmentData, setConsignmentData] = useState(null);
   const [writeOffComment, setWriteOffComment] = useState('');
   const closeTimerRef = useRef(null);
+  // Stable across retries while this modal is open. If the final save response
+  // times out after the server committed, retrying reuses this key/path and the
+  // API returns the existing document instead of inserting a duplicate.
+  const saveRequestIdRef = useRef(null);
 
   // ─── Email-to-client state (admin-only) ───
   // Catalogue is always attached on the API side; CC always goes to Alberto's
@@ -137,6 +141,10 @@ export default function SaveDocumentModal({
   // Fetch events on mount / initialize state when modal opens
   useEffect(() => {
     if (isOpen) {
+      saveRequestIdRef.current =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
       setSelectedEventId('');
       setShowNewEvent(false);
       setSuccess(false);
@@ -316,7 +324,7 @@ export default function SaveDocumentModal({
 
       // Generate PDF (auto-adjust quality if file is too large for upload)
       const baseFilename = formatDocumentFilename(clientCompany, documentType, new Date().toISOString().split('T')[0]);
-      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const uniqueSuffix = saveRequestIdRef.current || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const filename = `${baseFilename}_${uniqueSuffix}`;
 
       let pdfBlob;
@@ -499,6 +507,7 @@ export default function SaveDocumentModal({
           total_amount: totalAmount || null,
           metadata: {
             ...metadata,
+            save_request_id: saveRequestIdRef.current,
             ...(consignmentMeta ? { consignment: consignmentMeta } : {}),
             ...(orderChannel === 'delete_from_stock' ? { writeOffComment: writeOffComment.trim() } : {}),
           },

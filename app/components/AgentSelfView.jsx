@@ -99,7 +99,10 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
       const [commRes, payRes, docsRes, consRes, reportsRes, contractRes] = await Promise.all([
         fetch('/api/commissions'),
         fetch('/api/agent-payments'),
-        fetch('/api/documents?per_page=200'),
+        // Personal portal: show only this agent's documents. Team-wide orders
+        // belong on the organization/team surface, not in a person's KPIs and
+        // folder browser.
+        fetch('/api/documents?scope=mine&per_page=200'),
         fetch('/api/consignment/my'),
         fetch('/api/commission-reports?limit=24'),
         fetch(`/api/agents/${profile.id}/contract`),
@@ -121,7 +124,9 @@ export default function AgentSelfView({ defaultTab = 'financials', focused = fal
       setCommissions(dedupedCommissions);
       setSummary(commJson.summary || null);
       setPayments(payJson.payments || []);
-      setOrgDocuments(docsJson.documents || []);
+      setOrgDocuments(
+        [...new Map((docsJson.documents || []).map((doc) => [doc.id, doc])).values()]
+      );
       setConsignmentOrders(consJson.documents || []);
       setReports(reportsJson.reports || []);
       setContractInfo({ url: contractJson.url || null, name: contractJson.name || null });

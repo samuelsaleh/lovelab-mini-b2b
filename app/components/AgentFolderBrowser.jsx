@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { scopeOrganizationFolderDocuments } from '@/lib/organizations/folder-document-scope'
 
 const fmt = (bytes) => {
   if (!bytes) return ''
@@ -43,6 +44,7 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
   const [folders, setFolders] = useState([])
   const [files, setFiles] = useState([])
   const [rootFolderId, setRootFolderId] = useState(null)
+  const [rootAgent, setRootAgent] = useState({ id: null, email: null })
 
   // Create subfolder
   const [newFolderName, setNewFolderName] = useState('')
@@ -97,6 +99,10 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
 
       if (!currentFolderId && loadedFolders.length > 0) {
         setRootFolderId(loadedFolders[0].id)
+        setRootAgent({
+          id: loadedFolders[0].agent_id || null,
+          email: loadedFolders[0].agent_email || null,
+        })
       }
 
       if (filesRes) {
@@ -121,7 +127,12 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
   }, [loadContents])
 
   const handleOpenFolder = (folder) => {
-    setBreadcrumb(prev => [...prev, { id: folder.id, name: folder.name }])
+    setBreadcrumb(prev => [...prev, {
+      id: folder.id,
+      name: folder.name,
+      agent_id: folder.agent_id || null,
+      agent_email: folder.agent_email || null,
+    }])
   }
 
   const handleBreadcrumbNav = (index) => {
@@ -250,6 +261,18 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
     }
   }
 
+  const currentFolder = breadcrumb.length > 0 ? breadcrumb[breadcrumb.length - 1] : null
+  const isSubAgentsGroup = currentFolder?.name === 'Sub-agents'
+  const scopedOrderDocuments = useMemo(
+    () => scopeOrganizationFolderDocuments({
+      documents: orderDocuments,
+      organizationId,
+      currentFolder,
+      rootAgent,
+    }),
+    [orderDocuments, organizationId, currentFolder, rootAgent]
+  )
+
   return (
     <div style={{ fontFamily: fonts.body }}>
       {/* Breadcrumb */}
@@ -333,7 +356,7 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
         <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>Loading…</div>
       ) : (
         <div style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 10, overflow: 'hidden' }}>
-          {folders.length === 0 && files.length === 0 && currentFolderId ? (
+          {folders.length === 0 && files.length === 0 && scopedOrderDocuments.length === 0 && currentFolderId ? (
             <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>
               This folder is empty. Use "Upload File" above to add files.
             </div>
@@ -439,10 +462,10 @@ export default function AgentFolderBrowser({ agentId, organizationId, readOnly =
                     </td>
                   </tr>
                 ))}
-                {/* B2B Orders virtual folder — shown at root only */}
-                {!currentFolderId && <VirtualOrderGroup docs={orderDocuments} channel="b2b" label="B2B Orders" />}
-                {/* B2C Orders virtual folder — shown at root only */}
-                {!currentFolderId && <VirtualOrderGroup docs={orderDocuments} channel="b2c" label="B2C Orders" />}
+                {/* Owner orders live at the main root; member orders appear only
+                    inside that person's folder below Sub-agents. */}
+                {!isSubAgentsGroup && <VirtualOrderGroup docs={scopedOrderDocuments} channel="b2b" label="B2B Orders" />}
+                {!isSubAgentsGroup && <VirtualOrderGroup docs={scopedOrderDocuments} channel="b2c" label="B2C Orders" />}
               </tbody>
             </table>
           )}

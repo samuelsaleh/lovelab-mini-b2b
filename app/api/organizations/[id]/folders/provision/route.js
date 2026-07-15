@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireOrganizationAccess } from '@/lib/organizations/authz';
-import { ensureOrgFoldersInDb } from '@/lib/organizations/folder-provisioning';
+import { provisionOrganizationFolders } from '@/lib/organizations/provision-agent';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function POST(request, { params }) {
@@ -14,14 +14,7 @@ export async function POST(request, { params }) {
     const session = await requireOrganizationAccess(supabase, organizationId);
     if (session.error) return session.error;
 
-    const { data: org, error } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .eq('id', organizationId)
-      .single();
-    if (error) throw error;
-
-    const folder = await ensureOrgFoldersInDb(org.id, org.name, session.user.id);
+    const folder = await provisionOrganizationFolders(organizationId);
     return NextResponse.json({ folder });
   } catch (err) {
     console.error('[org-folders-provision POST]', err.message);

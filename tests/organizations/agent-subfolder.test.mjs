@@ -6,15 +6,15 @@ import assert from 'node:assert/strict';
  * Simulates ensureAgentSubfolder behavior without hitting Supabase.
  */
 
-function simulateEnsureAgentSubfolder(existingFolders, orgRootFolderId, agentId, agentName) {
-  if (!orgRootFolderId || !agentId) {
-    throw new Error('orgRootFolderId and agentId are required');
+function simulateEnsureAgentSubfolder(existingFolders, subAgentsFolderId, agentId, agentName) {
+  if (!subAgentsFolderId || !agentId) {
+    throw new Error('subAgentsFolderId and agentId are required');
   }
 
   const folderName = agentName || 'Agent Folder';
 
   const existing = existingFolders.find(
-    (f) => f.agent_id === agentId && f.parent_id === orgRootFolderId
+    (f) => f.agent_id === agentId && f.parent_id === subAgentsFolderId
   );
 
   if (existing) {
@@ -22,27 +22,27 @@ function simulateEnsureAgentSubfolder(existingFolders, orgRootFolderId, agentId,
   }
 
   const subfolder = {
-    id: `sub-${agentId}-${orgRootFolderId}`,
+    id: `sub-${agentId}-${subAgentsFolderId}`,
     agent_id: agentId,
     name: folderName,
-    parent_id: orgRootFolderId,
+    parent_id: subAgentsFolderId,
   };
   return { subfolder, created: true };
 }
 
 test('creates subfolder when none exists', () => {
-  const result = simulateEnsureAgentSubfolder([], 'root-1', 'agent-1', 'Josephine');
+  const result = simulateEnsureAgentSubfolder([], 'sub-agents-1', 'agent-1', 'Josephine');
   assert.equal(result.created, true);
   assert.equal(result.subfolder.name, 'Josephine');
-  assert.equal(result.subfolder.parent_id, 'root-1');
+  assert.equal(result.subfolder.parent_id, 'sub-agents-1');
   assert.equal(result.subfolder.agent_id, 'agent-1');
 });
 
 test('idempotent on second call', () => {
   const existing = [
-    { id: 'sub-1', agent_id: 'agent-1', name: 'Josephine', parent_id: 'root-1' },
+    { id: 'sub-1', agent_id: 'agent-1', name: 'Josephine', parent_id: 'sub-agents-1' },
   ];
-  const result = simulateEnsureAgentSubfolder(existing, 'root-1', 'agent-1', 'Josephine');
+  const result = simulateEnsureAgentSubfolder(existing, 'sub-agents-1', 'agent-1', 'Josephine');
   assert.equal(result.created, false);
   assert.equal(result.subfolder.id, 'sub-1');
 });

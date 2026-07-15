@@ -65,14 +65,24 @@ export async function GET(request) {
 
     let query = adminSupabase
       .from('agent_folders')
-      .select('id, name, parent_id, agent_id, created_at')
-      .in('agent_id', targetIds)
+      .select('id, name, parent_id, agent_id, organization_id, created_at')
       .order('name', { ascending: true });
 
-    if (parentId) {
-      query = query.eq('parent_id', parentId);
+    if (organizationId && !parentId) {
+      // An organization has exactly one canonical root. The previous query
+      // returned every member-owned parent_id=NULL folder and the browser chose
+      // the first arbitrary row, making the organization appear empty.
+      query = query
+        .eq('organization_id', organizationId)
+        .is('parent_id', null);
+    } else if (parentId) {
+      query = query
+        .eq('parent_id', parentId)
+        .in('agent_id', targetIds);
     } else {
-      query = query.is('parent_id', null);
+      query = query
+        .in('agent_id', targetIds)
+        .is('parent_id', null);
     }
 
     const { data: folders, error } = await query;
@@ -81,7 +91,21 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Failed to load folders' }, { status: 500 });
     }
 
-    return NextResponse.json({ folders: folders || [] });
+    const folderAgentIds = [...new Set((folders || []).map((folder) => folder.agent_id).filter(Boolean))];
+    const { data: folderProfiles } = folderAgentIds.length > 0
+      ? await adminSupabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', folderAgentIds)
+      : { data: [] };
+    const profileById = new Map((folderProfiles || []).map((profile) => [profile.id, profile]));
+    const enrichedFolders = (folders || []).map((folder) => ({
+      ...folder,
+      agent_email: profileById.get(folder.agent_id)?.email || null,
+      agent_name: profileById.get(folder.agent_id)?.full_name || null,
+    }));
+
+    return NextResponse.json({ folders: enrichedFolders });
   } catch (err) {
     console.error('[agent-folders GET] Exception:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

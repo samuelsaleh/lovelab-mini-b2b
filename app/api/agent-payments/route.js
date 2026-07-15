@@ -77,11 +77,29 @@ export async function POST(request) {
 
     const { data: agent } = await adminSupabase
       .from('profiles')
-      .select('id, is_agent, agent_deleted_at')
+      .select('id, is_agent, agent_deleted_at, organization_id')
       .eq('id', agent_id)
       .single();
     if (!agent || agent.agent_deleted_at) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    if (agent.organization_id) {
+      const { data: activeMembers, error: memberError } = await adminSupabase
+        .from('organization_memberships')
+        .select('user_id, role')
+        .eq('organization_id', agent.organization_id)
+        .is('deleted_at', null);
+      if (memberError) throw memberError;
+      if ((activeMembers || []).length > 1) {
+        const owner = activeMembers.find((member) => member.role === 'owner');
+        if (!owner || agent_id !== owner.user_id) {
+          return NextResponse.json(
+            { error: 'Multi-member organizations must be paid once through the organization settlement.' },
+            { status: 409 },
+          );
+        }
+      }
     }
 
     const cleanInvoice = invoice_number == null

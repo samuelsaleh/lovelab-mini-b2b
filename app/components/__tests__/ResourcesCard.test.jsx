@@ -44,10 +44,10 @@ const FRENCH_LINKS = {
 }
 
 const FRENCH_PDFS = {
-  generalSept: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-  bijorkaSept: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
-  premiereFrance: '/catalogues/Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-  premiereGeneral: '/catalogues/Francais/Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+  generalSept: '/catalogues/Francais/Sept%20Fr%20LoveLab%20B2B%20Catalogue%20General%20(210%20x%20210%20mm).pdf',
+  bijorkaSept: '/catalogues/Francais/Sept%20Fr%20LoveLab%20B2B%20Catalogue%20(210%20x%20210%20mm).pdf',
+  premiereFrance: '/catalogues/Francais/_Oct%20FR_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf',
+  premiereGeneral: '/catalogues/Francais/Oct%20FR_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf',
 }
 
 describe('ResourcesCard — EAN Codes folder', () => {
@@ -67,9 +67,8 @@ describe('ResourcesCard — EAN Codes folder', () => {
     fireEvent.click(screen.getByText('EAN Codes'))
     const link = screen.getByText('Final-GS1-Code.xlsx').closest('a')
     expect(link).not.toBeNull()
-    // Next.js will URL-encode the space at runtime; the href attribute we wrote
-    // is the raw path so the link points at /Ean Codes/Final-GS1-Code.xlsx.
-    expect(link.getAttribute('href')).toBe('/Ean Codes/Final-GS1-Code.xlsx')
+    // Encoded spaces so the browser / email fetcher do not 404 on the path.
+    expect(link.getAttribute('href')).toBe('/Ean%20Codes/Final-GS1-Code.xlsx')
     expect(link.getAttribute('download')).toBe('Final-GS1-Code.xlsx')
   })
 
@@ -137,7 +136,7 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
       .getAttribute('src'))
       .toBe('https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed')
     expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
-      .toBe('/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+      .toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm)%20(1).pdf')
   })
 
   it('keeps the original English catalogue download in its new folder', () => {
@@ -170,6 +169,6 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
       .find(Boolean)
 
     expect(link).not.toBeNull()
-    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm)%20(1).pdf')
   })
 })
