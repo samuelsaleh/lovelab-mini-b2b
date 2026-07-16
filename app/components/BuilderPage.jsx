@@ -401,8 +401,10 @@ const CHANNEL_BANNER = {
 export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false, profile = null }) {
   // Compact = phone OR iPad portrait (< 1024px). The summary becomes a FAB +
   // drawer, toolbars stack, and the pack carousel wraps on compact. `tablet`
-  // is kept only to fine-tune the collection grid card size.
-  const { isTablet: tablet, isCompact: mobile } = useResponsive()
+  // is kept only to fine-tune the collection grid card size. `phone`
+  // (< 768px) drives the extra decluttering: hidden budget CTA and a
+  // denser two-column collection grid.
+  const { isTablet: tablet, isCompact: mobile, isMobile: phone } = useResponsive()
   const { t } = useI18n()
   const [showSidebar, setShowSidebar] = useState(false)
   const mobileSafeBottom = mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)' : 0
@@ -1197,8 +1199,13 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       
       {/* Main content area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-        {/* ─── Budget Bar ─── */}
-        <div style={{ background: '#fff', borderBottom: '1px solid #ede8f0', padding: '10px 20px', flexShrink: 0 }}>
+        {/* ─── Budget Bar ───
+            Hidden on phones while empty: the "Set a budget" CTA ate header
+            space on small screens without being part of the core order flow.
+            Once a budget exists (set on desktop or via the AI flow) the
+            tracker still shows everywhere. */}
+        {!(phone && !hasBudget && !budgetEditing) && (
+        <div style={{ background: '#fff', borderBottom: '1px solid #ede8f0', padding: phone ? '8px 16px' : '10px 20px', flexShrink: 0 }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
             {!hasBudget && !budgetEditing ? (
               <button
@@ -1276,6 +1283,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             )}
           </div>
         </div>
+        )}
 
         {/* ─── Step Content ─── */}
         <div style={{
@@ -1544,11 +1552,14 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   })()}
                 </div>
 
-                {/* Collection Grid */}
+                {/* Collection Grid — on phones force two columns so the
+                    grid isn't a single long scroll of oversized cards. */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: `repeat(auto-fill, minmax(${tablet ? '150px' : '185px'}, 1fr))`,
-                  gap: 10,
+                  gridTemplateColumns: phone
+                    ? 'repeat(2, 1fr)'
+                    : `repeat(auto-fill, minmax(${tablet ? '150px' : '185px'}, 1fr))`,
+                  gap: phone ? 8 : 10,
                   marginBottom: 24,
                 }}>
                   {(() => {
@@ -1578,7 +1589,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         onClick={() => toggleCollection(card.key)}
                         style={{
                           position: 'relative',
-                          padding: '14px 14px 12px',
+                          padding: phone ? '10px 10px 10px' : '14px 14px 12px',
                           borderRadius: 12,
                           border: isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #ede8f0',
                           background: isSelected ? '#fdf7fa' : '#fdfdfd',
@@ -1626,7 +1637,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                               alt={cardLabel}
                               loading="lazy"
                               style={{
-                                width: '100%', height: 120,
+                                width: '100%', height: phone ? 90 : 120,
                                 objectFit: 'contain',
                                 marginBottom: 8,
                                 borderRadius: 6,

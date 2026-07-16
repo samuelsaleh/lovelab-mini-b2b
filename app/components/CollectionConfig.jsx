@@ -568,13 +568,15 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const renderHousingSelector = (cfg, patchFn) => {
     const selectedCarat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : null
     const shapyShineBezelOnly = col.housing === 'shapyShine' && selectedCarat === '0.10'
+    // Touch-friendly select sizing on compact screens (44px min height)
+    const hSel = mobile ? { ...selectStyle, ...mobileSelectOverride } : selectStyle
 
     if (col.housing === 'standard') {
       return (
         <select
           value={cfg.housing || ''}
           onChange={(e) => patchFn({ housing: e.target.value || null })}
-          style={selectStyle}
+          style={hSel}
         >
           <option value="">{t('collection.housingPlaceholder')}</option>
           {HOUSING.standard.map(h => <option key={h} value={h}>{h}</option>)}
@@ -586,7 +588,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         <select
           value={cfg.housing || ''}
           onChange={(e) => patchFn({ housing: e.target.value || null })}
-          style={selectStyle}
+          style={hSel}
         >
           <option value="">{t('collection.housingPlaceholder')}</option>
           {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
@@ -600,7 +602,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         <select
           value={cfg.housing || ''}
           onChange={(e) => patchFn({ housing: e.target.value || null })}
-          style={selectStyle}
+          style={hSel}
         >
           <option value="">{t('collection.housingPlaceholder')}</option>
           {HOUSING[col.housing].map(h => <option key={h} value={h}>{h}</option>)}
@@ -616,7 +618,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               const v = e.target.value
               patchFn({ multiAttached: v === 'attached' ? true : v === 'notAttached' ? false : null, housing: null })
             }}
-            style={{ ...selectStyle, minWidth: 80 }}
+            style={{ ...hSel, minWidth: 80 }}
           >
             <option value="">{t('collection.typePlaceholder')}</option>
             <option value="attached">{t('collection.attached')}</option>
@@ -626,7 +628,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             <select
               value={cfg.housing || ''}
               onChange={(e) => patchFn({ housing: e.target.value || null })}
-              style={selectStyle}
+              style={hSel}
             >
               <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.multiAttached ? HOUSING.multiThree.attached : HOUSING.multiThree.notAttached).map(h => (
@@ -643,7 +645,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           <select
             value={cfg.housingType || ''}
             onChange={(e) => patchFn({ housingType: e.target.value || null, housing: null })}
-            style={{ ...selectStyle, minWidth: 70 }}
+            style={{ ...hSel, minWidth: 70 }}
           >
             <option value="">{t('collection.typePlaceholder')}</option>
             <option value="bezel">{t('collection.bezel')}</option>
@@ -653,7 +655,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             <select
               value={cfg.housing || ''}
               onChange={(e) => patchFn({ housing: e.target.value || null })}
-              style={selectStyle}
+              style={hSel}
             >
               <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.housingType === 'bezel' ? HOUSING.matchyBezel : HOUSING.matchyProng).map(h => {
@@ -672,7 +674,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           <select
             value={cfg.housing || ''}
             onChange={(e) => patchFn({ housing: e.target.value || null, housingType: 'bezel' })}
-            style={selectStyle}
+            style={hSel}
           >
             <option value="">{t('collection.housingPlaceholder')}</option>
             {HOUSING.shapyShineBezel.map(h => <option key={h} value={`Bezel ${h}`}>Bezel {h}</option>)}
@@ -684,7 +686,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           <select
             value={cfg.housingType || ''}
             onChange={(e) => patchFn({ housingType: e.target.value || null, housing: null })}
-            style={{ ...selectStyle, minWidth: 70 }}
+            style={{ ...hSel, minWidth: 70 }}
           >
             <option value="">{t('collection.typePlaceholder')}</option>
             <option value="bezel">{t('collection.bezel')}</option>
@@ -694,7 +696,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             <select
               value={cfg.housing || ''}
               onChange={(e) => patchFn({ housing: e.target.value || null })}
-              style={selectStyle}
+              style={hSel}
             >
               <option value="">{t('collection.housingPlaceholder')}</option>
               {(cfg.housingType === 'bezel' ? HOUSING.shapyShineBezel : HOUSING.shapyShineProng).map(h => (
@@ -933,12 +935,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: mobile ? 'repeat(auto-fit, minmax(32px, 1fr))' : 'repeat(7, 1fr)',
-              gap: mobile ? 6 : 6,
+              gridTemplateColumns: mobile ? 'repeat(auto-fit, minmax(44px, 1fr))' : 'repeat(7, 1fr)',
+              gap: mobile ? 8 : 6,
             }}>
               {palette.map(c => {
                 const count = colorCounts[c.n] || 0
-                const btnSize = mobile ? 32 : 30
+                // 40px + 8px gap keeps each dot inside a ~44px touch zone
+                // (Apple HIG minimum) — 32px dots were easy to mis-tap.
+                const btnSize = mobile ? 40 : 30
                 const packshotUrl = hoveredColor === c.n ? findPackshot(col.id, { color: c.n }) : null
                 return (
                   <div key={c.n} style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
@@ -967,9 +971,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {count > 0 && (
                       <span style={{
                         position: 'absolute', top: -3, right: -3,
-                        width: mobile ? 16 : 14, height: mobile ? 16 : 14, borderRadius: '50%',
+                        width: mobile ? 18 : 14, height: mobile ? 18 : 14, borderRadius: '50%',
                         background: colors.inkPlum, color: '#fff',
-                        fontSize: mobile ? 9 : 8, fontWeight: 700,
+                        fontSize: mobile ? 10 : 8, fontWeight: 700,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {count}
@@ -1305,7 +1309,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       certType: reconciledCert,
                     })
                   }}
-                  style={selectStyle}
+                  style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                 >
                   <option value="">{t('collection.caratPlaceholder')}</option>
                   {col.carats.map((ct, ci) => (
@@ -1328,7 +1332,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           disabled={!isAvail}
                           onClick={() => isAvail && updateShared({ certType: ct })}
                           style={{
-                            padding: '4px 10px', fontSize: 11, fontWeight: 700, border: 'none',
+                            padding: mobile ? '10px 14px' : '4px 10px', fontSize: mobile ? 13 : 11, fontWeight: 700, border: 'none',
                             background: isActive ? colors.inkPlum : '#f5f5f5',
                             color: isActive ? '#fff' : isAvail ? '#888' : '#ccc',
                             cursor: isAvail ? 'pointer' : 'not-allowed',
@@ -1353,7 +1357,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   <select
                     value={sharedSettings.shape || ''}
                     onChange={(e) => updateShared({ shape: e.target.value || null })}
-                    style={selectStyle}
+                    style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                   >
                     <option value="">{t('collection.shapePlaceholder')}</option>
                     {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1365,7 +1369,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   <select
                     value={sharedSettings.size || ''}
                     onChange={(e) => updateShared({ size: e.target.value || null })}
-                    style={selectStyle}
+                    style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                   >
                     <option value="">{t('collection.sizePlaceholder')}</option>
                     {sizeOptionsForClosure(col, sharedSettings.closureType).map(s => <option key={s} value={s}>{sizeDisplayLabel(col, s)}</option>)}
@@ -1378,7 +1382,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   <select
                     value={sharedSettings.closureType || ''}
                     onChange={(e) => updateShared({ closureType: e.target.value || null })}
-                    style={selectStyle}
+                    style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                   >
                     <option value="">{t('collection.closurePlaceholder')}</option>
                     <option value="braided">{t('collection.closureBraided')}</option>
@@ -1388,14 +1392,14 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
 
                 {/* Qty */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <button onClick={() => updateShared({ qty: Math.max(1, (sharedSettings.qty ?? 1) - 1) })} style={qtyBtnStyle}>-</button>
+                  <button onClick={() => updateShared({ qty: Math.max(1, (sharedSettings.qty ?? 1) - 1) })} style={mobile ? mobileQtyBtnStyle : qtyBtnStyle}>-</button>
                   <input
                     type="number"
                     value={sharedSettings.qty ?? 1}
                     onChange={(e) => updateShared({ qty: Math.max(1, parseInt(e.target.value) || 1) })}
-                    style={qtyInputStyle}
+                    style={mobile ? { ...qtyInputStyle, width: 48, height: 44, fontSize: 15 } : qtyInputStyle}
                   />
-                  <button onClick={() => updateShared({ qty: (sharedSettings.qty ?? 1) + 1 })} style={qtyBtnStyle}>+</button>
+                  <button onClick={() => updateShared({ qty: (sharedSettings.qty ?? 1) + 1 })} style={mobile ? mobileQtyBtnStyle : qtyBtnStyle}>+</button>
                 </div>
               </div>
             </div>

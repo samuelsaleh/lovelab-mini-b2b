@@ -1,19 +1,39 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+
+// Minimum horizontal finger travel (px) to count as a swipe. Below this the
+// gesture is treated as a tap (which closes the lightbox via the backdrop).
+const SWIPE_THRESHOLD = 50
 
 export default function PackshotLightbox({ images, currentIndex, onClose, onNavigate }) {
   const hasNav = images && images.length > 1
   const src = images?.[currentIndex]?.url || images?.[currentIndex] || (typeof images === 'string' ? images : null)
   const label = images?.[currentIndex]?.color || null
 
+  // Touch state — swipe left/right to navigate, double-tap to zoom.
+  const touchStart = useRef(null)
+  const lastTap = useRef(0)
+  const [zoomed, setZoomed] = useState(false)
+
+  const goPrev = useCallback(() => {
+    if (hasNav && currentIndex > 0) onNavigate(currentIndex - 1)
+  }, [hasNav, currentIndex, onNavigate])
+
+  const goNext = useCallback(() => {
+    if (hasNav && currentIndex < images.length - 1) onNavigate(currentIndex + 1)
+  }, [hasNav, currentIndex, images, onNavigate])
+
+  // Reset zoom whenever the image changes
+  useEffect(() => { setZoomed(false) }, [currentIndex])
+
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape') onClose()
     if (!hasNav) return
-    if (e.key === 'ArrowLeft') onNavigate(Math.max(0, currentIndex - 1))
-    if (e.key === 'ArrowRight') onNavigate(Math.min(images.length - 1, currentIndex + 1))
-  }, [onClose, onNavigate, currentIndex, hasNav, images])
+    if (e.key === 'ArrowLeft') goPrev()
+    if (e.key === 'ArrowRight') goNext()
+  }, [onClose, hasNav, goPrev, goNext])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKey)
@@ -24,23 +44,79 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
     }
   }, [handleKey])
 
+  // Preload neighbours so a swipe shows the next image instantly.
+  useEffect(() => {
+    if (!hasNav || typeof window === 'undefined') return
+    const preload = (idx) => {
+      const item = images[idx]
+      const url = typeof item === 'string' ? item : item?.url
+      if (url) {
+        const img = new window.Image()
+        img.src = url
+      }
+    }
+    if (currentIndex > 0) preload(currentIndex - 1)
+    if (currentIndex < images.length - 1) preload(currentIndex + 1)
+  }, [currentIndex, hasNav, images])
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length !== 1) { touchStart.current = null; return }
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+
+  const handleTouchEnd = (e) => {
+    const start = touchStart.current
+    touchStart.current = null
+    if (!start || e.changedTouches.length !== 1) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+
+    // Horizontal swipe wins only when clearly horizontal — otherwise scrolling
+    // a zoomed image vertically would accidentally change photos.
+    if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+      if (zoomed) return
+      if (dx < 0) goNext()
+      else goPrev()
+      return
+    }
+
+    // Double-tap to zoom (two taps within 300ms, minimal movement)
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      const now = Date.now()
+      if (now - lastTap.current < 300) {
+        setZoomed(z => !z)
+        lastTap.current = 0
+      } else {
+        lastTap.current = now
+      }
+    }
+  }
+
   if (!src) return null
 
   const content = (
     <div
       onClick={onClose}
+      data-testid="lightbox-backdrop"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       style={{
         position: 'fixed', inset: 0, zIndex: 500,
         background: 'rgba(0,0,0,0.85)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        // 'none' stops Safari's own gestures from eating the swipe; when
+        // zoomed we hand control back so the image can be panned natively.
+        touchAction: zoomed ? 'auto' : 'none',
       }}
     >
       <button
         onClick={onClose}
         style={{
-          position: 'absolute', top: 16, right: 20,
-          background: 'none', border: 'none', color: '#fff',
-          fontSize: 28, cursor: 'pointer', zIndex: 2,
+          position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 12px)', right: 16,
+          background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff',
+          fontSize: 24, cursor: 'pointer', zIndex: 2,
+          width: 44, height: 44, borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
         aria-label="Close"
       >
@@ -49,7 +125,7 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
 
       {hasNav && currentIndex > 0 && (
         <button
-          onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex - 1) }}
+          onClick={(e) => { e.stopPropagation(); goPrev() }}
           style={{
             position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
@@ -62,21 +138,33 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
         </button>
       )}
 
-      <div onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          textAlign: 'center',
+          overflow: zoomed ? 'auto' : 'visible',
+          maxWidth: '100vw', maxHeight: '100vh',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         <img
           src={typeof src === 'string' ? src : src.url}
           alt={label || 'Product packshot'}
+          data-testid="lightbox-image"
           style={{
-            maxWidth: '85vw', maxHeight: '80vh',
-            objectFit: 'contain', borderRadius: 8,
+            maxWidth: zoomed ? 'none' : '85vw',
+            maxHeight: zoomed ? 'none' : '80vh',
+            width: zoomed ? '170vw' : 'auto',
+            objectFit: 'contain', borderRadius: zoomed ? 0 : 8,
+            transition: 'border-radius .15s',
           }}
         />
-        {label && (
+        {!zoomed && label && (
           <div style={{ color: '#fff', fontSize: 14, marginTop: 12, fontWeight: 600 }}>
             {label}
           </div>
         )}
-        {hasNav && (
+        {!zoomed && hasNav && (
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 4 }}>
             {currentIndex + 1} / {images.length}
           </div>
@@ -85,7 +173,7 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
 
       {hasNav && currentIndex < images.length - 1 && (
         <button
-          onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex + 1) }}
+          onClick={(e) => { e.stopPropagation(); goNext() }}
           style={{
             position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
