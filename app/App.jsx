@@ -19,7 +19,6 @@ import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
-import ConsignmentOrdersPanel from './components/ConsignmentOrdersPanel'
 import PackshotGallery from './components/PackshotGallery'
 import { findPackshot } from '@/lib/packshot-lookup'
 
@@ -1119,10 +1118,6 @@ export default function App() {
 
         {activeTab === 'internal_orders' && (
           <InternalOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
-        )}
-
-        {activeTab === 'consignment' && (
-          <ConsignmentOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
 
         {activeTab === 'photos' && (
