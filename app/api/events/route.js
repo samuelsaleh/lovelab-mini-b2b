@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, resolveAgentIds } from '@/app/api/_lib/access';
+import { getUserContext, resolveAgentIds, getActiveOrgMemberships } from '@/app/api/_lib/access';
 
 // Simple ISO date validation (YYYY-MM-DD)
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -45,11 +45,27 @@ export async function GET(request) {
       }
 
       const accessByEvent = new Map(accessRows.map((row) => [row.event_id, row.permission]));
+
+      // Org members can also see (read) events linked to their organization —
+      // e.g. the org's agent folder. Without this, a sub-agent saving an
+      // order gets an EMPTY event dropdown, the save falls back to
+      // event_id = null, and the order never shows its "@ organization"
+      // badge nor files under the org (Wassila / Caprice, July 2026).
+      const myOrgIds = new Set(
+        (await getActiveOrgMemberships(adminSupabase, user.id)).map((m) => m.organization_id)
+      );
+
       events = raw
-        .filter((evt) => userIds.includes(evt.created_by) || accessByEvent.has(evt.id))
+        .filter((evt) =>
+          userIds.includes(evt.created_by) ||
+          accessByEvent.has(evt.id) ||
+          (evt.organization_id && myOrgIds.has(evt.organization_id))
+        )
         .map((evt) => ({
           ...evt,
-          permission: userIds.includes(evt.created_by) ? 'manage' : accessByEvent.get(evt.id),
+          permission: userIds.includes(evt.created_by)
+            ? 'manage'
+            : (accessByEvent.get(evt.id) || 'read'),
         }));
     } else {
       events = raw.map((evt) => ({ ...evt, permission: 'manage' }));

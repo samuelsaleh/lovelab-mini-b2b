@@ -253,19 +253,27 @@ export default function SaveDocumentModal({
       }
 
       setEvents(allEvents);
-      // Try to auto-select matching event by name
-      if (defaultEventName && !selectedEventId) {
-        const matchingEvent = allEvents.find(e =>
-          e.name.toLowerCase().includes(defaultEventName.toLowerCase()) ||
-          defaultEventName.toLowerCase().includes(e.name.toLowerCase())
-        );
-        if (matchingEvent) {
-          setSelectedEventId(matchingEvent.id);
-        } else if (allEvents.length > 0) {
-          setSelectedEventId(allEvents[0].id);
+      // Auto-select priority: explicit name match > the user's own
+      // organization folder > first event. The org-folder preference is
+      // what stamps a sub-agent's order with "@ <organization>" without
+      // them having to know which folder to pick (Wassila, July 2026).
+      if (!selectedEventId) {
+        let pick = null;
+        if (defaultEventName) {
+          pick = allEvents.find(e =>
+            e.name.toLowerCase().includes(defaultEventName.toLowerCase()) ||
+            defaultEventName.toLowerCase().includes(e.name.toLowerCase())
+          ) || null;
         }
-      } else if (allEvents.length > 0 && !selectedEventId) {
-        setSelectedEventId(allEvents[0].id);
+        if (!pick && profile?.organization_id) {
+          pick = allEvents.find(e =>
+            e.type === 'agent' && e.organization_id === profile.organization_id
+          ) || null;
+        }
+        if (!pick && allEvents.length > 0) {
+          pick = allEvents[0];
+        }
+        if (pick) setSelectedEventId(pick.id);
       }
     } catch (err) {
       const msg = err?.name === 'AbortError'

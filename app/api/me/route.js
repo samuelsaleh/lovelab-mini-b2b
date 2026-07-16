@@ -50,6 +50,25 @@ export async function GET(request) {
       .eq('id', user.id)
       .maybeSingle();
 
+    // Activate invited agents on any authenticated session. The auth
+    // callback route only runs for OAuth/magic-link flows, so agents who
+    // sign in with email + password never hit it and were stuck at
+    // "invited" forever (Wassila, July 2026). Reaching this endpoint
+    // requires a valid session, which is exactly the "they logged in"
+    // condition activation is meant to capture.
+    if (profile?.is_agent && profile?.agent_status === 'invited') {
+      const admin = createAdminClient();
+      const { error: activateErr } = await admin
+        .from('profiles')
+        .update({ agent_status: 'active' })
+        .eq('id', user.id);
+      if (activateErr) {
+        console.error('[me GET] Agent activation failed:', activateErr.message, 'user:', user.id);
+      } else {
+        profile.agent_status = 'active';
+      }
+    }
+
     if (!profileError && profile) {
       const organization_membership = await getOrganizationMembership(user, profile);
       return NextResponse.json({ user, profile, organization_membership });
@@ -63,6 +82,17 @@ export async function GET(request) {
       .maybeSingle();
 
     if (adminProfile) {
+      if (adminProfile.is_agent && adminProfile.agent_status === 'invited') {
+        const { error: activateErr } = await admin
+          .from('profiles')
+          .update({ agent_status: 'active' })
+          .eq('id', user.id);
+        if (activateErr) {
+          console.error('[me GET] Agent activation failed (fallback):', activateErr.message, 'user:', user.id);
+        } else {
+          adminProfile.agent_status = 'active';
+        }
+      }
       const organization_membership = await getOrganizationMembership(user, adminProfile);
       return NextResponse.json({ user, profile: adminProfile, organization_membership });
     }

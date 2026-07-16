@@ -266,7 +266,22 @@ export async function POST(request) {
     if (effectiveEventId) {
       const { allowed } = await requireEventPermission(adminSupabase, effectiveEventId, user.id, 'edit', isAdmin);
       if (!allowed) {
-        return NextResponse.json({ error: 'Forbidden: no edit access to this folder' }, { status: 403 });
+        // Org members only get 'read' on their organization's events, but
+        // they MUST be able to file their own new orders into the org
+        // folder (Wassila → "Sarah Goutard", July 2026). Allow the save
+        // when the target event belongs to one of the user's active orgs.
+        const { data: targetEvent } = await adminSupabase
+          .from('events')
+          .select('organization_id')
+          .eq('id', effectiveEventId)
+          .maybeSingle();
+        const memberships = targetEvent?.organization_id
+          ? await getActiveOrgMemberships(adminSupabase, user.id)
+          : [];
+        const isOrgEvent = memberships.some((m) => m.organization_id === targetEvent?.organization_id);
+        if (!isOrgEvent) {
+          return NextResponse.json({ error: 'Forbidden: no edit access to this folder' }, { status: 403 });
+        }
       }
     }
 
