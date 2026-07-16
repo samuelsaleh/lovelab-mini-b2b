@@ -181,9 +181,12 @@ export async function GET(request) {
     // of an OR match. Keep a defensive ID-based dedupe at the API boundary so
     // no client or future joined query can render/count the same row twice.
     const uniqueDocuments = [...new Map((documents || []).map((doc) => [doc.id, doc])).values()];
+    // Prefer the database total. Never let the current page length inflate
+    // total_count — that made dashboards page forever and freeze /admin.
+    const totalCount = Number.isFinite(Number(count)) ? Number(count) : uniqueDocuments.length;
     return NextResponse.json({
       documents: uniqueDocuments,
-      total_count: Math.max(uniqueDocuments.length, Number(count) || 0),
+      total_count: totalCount,
       page,
       per_page: perPage,
     });
