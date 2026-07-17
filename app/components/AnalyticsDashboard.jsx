@@ -6,6 +6,7 @@ import { useResponsive } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
 import { COLLECTIONS } from '@/lib/catalog'
 import { normalizeCountry } from '@/lib/countries'
+import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
@@ -353,8 +354,12 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
         safeFetch('/api/events'),
       ])
       const eventsData = await eventsRes.json()
-      // Exclude internal (supplier) orders from all analytics — they are not revenue
-      setDocuments(allDocs.filter(d => d.order_channel !== 'internal' && d.order_channel !== 'sample'))
+      // Exclude non-revenue channels (internal supplier orders, consignment,
+      // stock write-offs, samples) and drafts (parked, unsent orders) from
+      // every analytics number — same rule as teamStats / commission logic.
+      setDocuments(allDocs.filter(d =>
+        !EXCLUDED_ORDER_CHANNELS.includes(d.order_channel) && d.status !== 'draft'
+      ))
       if (eventsData.events) setEvents(eventsData.events)
     } catch {
       setFetchError('Failed to load analytics data.')
@@ -372,12 +377,10 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   }, [documents, channelScope])
 
   // ─── Filtered docs based on event selector ────────────────────────────
+  // (drafts + non-revenue channels are already excluded at load time)
   const docs = useMemo(() => {
-    // Drafts (parked, unsent orders) are not real activity yet — keep them out
-    // of every analytics KPI, chart, and breakdown.
-    const base = channelDocs.filter(d => d.status !== 'draft')
-    if (!selectedEventId) return base
-    return base.filter(d => d.event_id === selectedEventId)
+    if (!selectedEventId) return channelDocs
+    return channelDocs.filter(d => d.event_id === selectedEventId)
   }, [channelDocs, selectedEventId])
 
   // ─── KPIs ─────────────────────────────────────────────────────────────

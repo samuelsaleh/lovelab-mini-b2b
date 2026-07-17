@@ -6,6 +6,7 @@ import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
+import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 import { useAuth } from './AuthProvider'
 import { useI18n } from '@/lib/i18n'
 import KpiCard from './KpiCard'
@@ -56,8 +57,9 @@ function AdminContent({ onClose }) {
 
   useEffect(() => { load() }, [])
 
-  // Exclude internal (supplier) orders and drafts (parked, unsent) from all revenue analytics
-  const billableDocs = useMemo(() => documents.filter(d => d.order_channel !== 'internal' && d.order_channel !== 'sample' && d.status !== 'draft'), [documents])
+  // Exclude non-revenue channels (internal, consignment, write-offs, samples)
+  // and drafts (parked, unsent) from all revenue analytics
+  const billableDocs = useMemo(() => documents.filter(d => !EXCLUDED_ORDER_CHANNELS.includes(d.order_channel) && d.status !== 'draft'), [documents])
   const orderDocs = useMemo(() => billableDocs.filter(d => d.document_type === 'order'), [billableDocs])
   const b2bDocs   = useMemo(() => orderDocs.filter(d => !d.order_channel || d.order_channel === 'b2b'), [orderDocs])
   const b2cDocs   = useMemo(() => orderDocs.filter(d => d.order_channel === 'b2c'), [orderDocs])

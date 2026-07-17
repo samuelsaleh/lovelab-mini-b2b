@@ -103,11 +103,33 @@ const B2C_DOC = {
   event_id: 'ev2', events: { name: 'ONLINE B2C' },
   metadata: { formState: { country: 'FR', rows: [] } },
 }
+// Non-revenue documents — none of these may ever reach a KPI or chart.
+const CONSIGNMENT_DOC = {
+  id: 'd3', document_type: 'order', status: 'sent', order_channel: 'consignment',
+  total_amount: 5000, created_at: '2026-05-06T09:00:00Z',
+  client_company: 'Consignment Store', client_name: 'Consignee',
+  event_id: null, events: null,
+  metadata: { formState: { country: 'France', rows: [] } },
+}
+const WRITEOFF_DOC = {
+  id: 'd4', document_type: 'order', status: 'sent', order_channel: 'delete_from_stock',
+  total_amount: 3000, created_at: '2026-05-06T10:00:00Z',
+  client_company: 'Write Off Client', client_name: '',
+  event_id: null, events: null,
+  metadata: { formState: { country: 'France', rows: [] } },
+}
+const DRAFT_DOC = {
+  id: 'd5', document_type: 'order', status: 'draft', order_channel: 'b2b',
+  total_amount: 428945, created_at: '2026-05-07T09:00:00Z',
+  client_company: 'Parked Draft GmbH', client_name: '',
+  event_id: null, events: null,
+  metadata: { formState: { country: 'Germany', rows: [] } },
+}
 
 beforeEach(() => {
   global.fetch = jest.fn((url) => {
     if (String(url).startsWith('/api/documents')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [B2B_DOC, B2C_DOC] }) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: [B2B_DOC, B2C_DOC, CONSIGNMENT_DOC, WRITEOFF_DOC, DRAFT_DOC] }) })
     }
     if (String(url).startsWith('/api/events')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) })
@@ -153,5 +175,55 @@ describe('AnalyticsDashboard — channel scope', () => {
     expect(screen.getByRole('button', { name: 'Day' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Week' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Month' })).toBeInTheDocument()
+  }, 12000)
+})
+
+// ─── Non-revenue exclusions ─────────────────────────────────────────────
+// Consignment, write-off (delete_from_stock) and draft orders must never
+// contribute to any KPI, chart or table — in All, B2B, or B2C scope.
+
+// Currency strings contain locale-specific whitespace (narrow no-break
+// spaces) that testing-library's default normalizer doesn't collapse —
+// compare on digits only.
+const amountMatcher = (euros) => (content) =>
+  content.replace(/[^\d€]/g, '') === `${euros}€`
+
+describe('AnalyticsDashboard — non-revenue channel + draft exclusions', () => {
+  it('excludes consignment / write-off / draft docs from Total Revenue (All scope)', async () => {
+    render(<AnalyticsDashboard />)
+    await waitFor(() => expect(screen.getByText('Total Revenue')).toBeInTheDocument(), { timeout: 8000 })
+
+    // Only the €1,000 B2B + €95 B2C orders count = €1,095
+    expect(screen.getAllByText(amountMatcher(1095)).length).toBeGreaterThan(0)
+    // The inflated totals (bug regression) must NOT be present
+    expect(screen.queryByText(amountMatcher(1095 + 5000 + 3000))).not.toBeInTheDocument()
+    expect(screen.queryByText(amountMatcher(1095 + 5000 + 3000 + 428945))).not.toBeInTheDocument()
+
+    // Excluded clients never render anywhere
+    expect(screen.queryByText(/Consignment Store/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Write Off Client/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Parked Draft GmbH/)).not.toBeInTheDocument()
+  }, 12000)
+
+  it('B2B scope also excludes consignment / write-off / draft docs', async () => {
+    render(<AnalyticsDashboard />)
+    await waitFor(() => expect(screen.getByText('Total Revenue')).toBeInTheDocument(), { timeout: 8000 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'B2B' }))
+
+    // Only the €1,000 wholesale order counts
+    await waitFor(() => expect(screen.getAllByText(amountMatcher(1000)).length).toBeGreaterThan(0))
+    expect(screen.queryByText(amountMatcher(1000 + 5000 + 3000))).not.toBeInTheDocument()
+    expect(screen.queryByText(/Consignment Store/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Write Off Client/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Parked Draft GmbH/)).not.toBeInTheDocument()
+  }, 12000)
+
+  it('drafts do not leak into the Revenue per Fair chart data', async () => {
+    render(<AnalyticsDashboard />)
+    await waitFor(() => expect(screen.getByText('Total Revenue')).toBeInTheDocument(), { timeout: 8000 })
+
+    // The draft's €428,945 was previously counted in a "No Event" bar.
+    expect(screen.queryByText(amountMatcher(428945))).not.toBeInTheDocument()
   }, 12000)
 })

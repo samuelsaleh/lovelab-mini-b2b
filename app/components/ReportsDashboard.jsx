@@ -6,6 +6,7 @@ import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { normalizeCountry } from '@/lib/countries'
+import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 
 // ─── Column config ─────────────────────────────────────────────────────────
 
@@ -109,9 +110,10 @@ export default function ReportsDashboard() {
   useEffect(() => { loadReports() }, [])
 
   const documentRows = useMemo(() => {
-    // Internal (supplier) orders are excluded from the reports view — they live in the Internal Orders tab.
+    // Non-revenue channels (internal supplier orders, consignment, write-offs,
+    // samples) are excluded from the reports view — they live in their own tabs.
     // Drafts (parked, unsent orders) are also excluded — they aren't committed revenue yet.
-    return documents.filter(d => d.order_channel !== 'internal' && d.order_channel !== 'sample' && d.status !== 'draft').map((d) => ({
+    return documents.filter(d => !EXCLUDED_ORDER_CHANNELS.includes(d.order_channel) && d.status !== 'draft').map((d) => ({
       ...d,
       rowType: 'document',
       sourceLabel: 'Order',
