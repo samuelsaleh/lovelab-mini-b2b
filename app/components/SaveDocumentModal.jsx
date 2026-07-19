@@ -117,6 +117,9 @@ export default function SaveDocumentModal({
   // times out after the server committed, retrying reuses this key/path and the
   // API returns the existing document instead of inserting a duplicate.
   const saveRequestIdRef = useRef(null);
+  // True while a save is in flight — synchronous double-click guard (state
+  // updates are async, so `saving` alone can't stop a rapid second click).
+  const savingRef = useRef(false);
 
   // ─── Email-to-client state (admin-only) ───
   // Catalogue is always attached on the API side; CC always goes to Alberto's
@@ -141,6 +144,7 @@ export default function SaveDocumentModal({
   // Fetch events on mount / initialize state when modal opens
   useEffect(() => {
     if (isOpen) {
+      savingRef.current = false;
       saveRequestIdRef.current =
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
@@ -316,6 +320,13 @@ export default function SaveDocumentModal({
       setError('Nothing to save - element not found');
       return;
     }
+
+    // Synchronous re-entrancy guard. `saving` state disables the buttons only
+    // after the next render, so a fast double-click could start handleSave
+    // twice — both passing the server's idempotency pre-check before either
+    // inserted, i.e. the "drafts save double" bug (Sam, July 2026).
+    if (savingRef.current) return;
+    savingRef.current = true;
 
     setSaving(true);
     setSavingAs(targetStatus);
@@ -595,7 +606,10 @@ export default function SaveDocumentModal({
       }
 
       setSuccess(true);
-      if (onSaveSuccess) onSaveSuccess();
+      // Hand the saved document back to the parent so a subsequent Save from
+      // the same OrderForm session UPDATES this row instead of inserting a
+      // duplicate (the other half of the "drafts save double" bug).
+      if (onSaveSuccess) onSaveSuccess(savedDoc);
       // Keep the success view open longer when an email was sent so the user
       // sees the confirmation banner before the modal auto-closes.
       const closeDelay = emailEnabled ? 2500 : 1500;
@@ -605,6 +619,7 @@ export default function SaveDocumentModal({
     } catch (err) {
       setError(err.message || 'Failed to save document');
     }
+    savingRef.current = false;
     setSaving(false);
     setSavingAs(null);
   };
@@ -1318,11 +1333,16 @@ export default function SaveDocumentModal({
               {(() => {
                 const writeOffMissing = orderChannel === 'delete_from_stock' && !writeOffComment.trim();
                 const emailMissing = emailEnabled && !recipientLooksValid;
+                // Folder list still loading: block Save so a fast click can't
+                // land the order with event_id null (the "saved but not in the
+                // agent's folder" bug — Sarah / Nicolas, July 2026). The server
+                // also auto-files as a backstop, but this keeps the UI honest.
+                const eventsPending = (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && loading;
                 // `orderIncomplete` is intentionally NOT a disabling
                 // condition — it's a soft warning surfaced in the banner
                 // above. The remaining gates are real: a write-off needs
                 // a comment, an outgoing email needs a valid recipient.
-                const disabled = saving || writeOffMissing || emailMissing;
+                const disabled = saving || writeOffMissing || emailMissing || eventsPending;
                 return (
                   <button
                     onClick={() => handleSave('sent')}
@@ -1342,7 +1362,9 @@ export default function SaveDocumentModal({
                       width: mobile ? '100%' : 'auto',
                     }}
                   >
-                    {saving && savingAs === 'sent'
+                    {eventsPending
+                      ? 'Loading folders…'
+                      : saving && savingAs === 'sent'
                       ? (promoteOnPrimary ? 'Sending…' : (emailEnabled ? t('email.sending') : (editingDocumentId ? 'Updating...' : 'Saving...')))
                       : orderChannel === 'internal'
                         ? 'Save as Internal Order'

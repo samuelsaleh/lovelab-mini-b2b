@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
+import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission, resolveAgentFolderEventId } from '@/app/api/_lib/access';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
@@ -114,9 +114,29 @@ export async function PUT(request, { params }) {
     const newStatus = (body.status === 'draft' || body.status === 'sent') ? body.status : oldDoc.status;
     const promotedToSent = oldDoc.status === 'draft' && newStatus === 'sent';
 
+    // Folder resolution on update. The save modal re-fetches its folder list
+    // on every open and can send event_id null when that fetch is slow/failed —
+    // for non-admins this must NEVER strip an existing folder or leave a sent
+    // b2b/b2c order unfiled (mandatory agent filing, Sam July 2026). Admins
+    // keep full control (an explicit "No event" choice is respected).
+    let effectiveEventId = body.event_id || null;
+    if (!isAdmin && !effectiveEventId) {
+      effectiveEventId = oldDoc.event_id || null;
+      const channel = ['b2b', 'b2c', 'internal', 'consignment'].includes(body.order_channel)
+        ? body.order_channel
+        : oldDoc.order_channel;
+      if (!effectiveEventId && newStatus !== 'draft' && ['b2b', 'b2c'].includes(channel)) {
+        try {
+          effectiveEventId = await resolveAgentFolderEventId(adminSupabase, oldDoc.created_by || user.id);
+        } catch (autoFileErr) {
+          console.error('[Documents PUT] agent auto-file failed (non-blocking):', autoFileErr?.message);
+        }
+      }
+    }
+
     // Update the document record
     const updatePayload = {
-      event_id: body.event_id || null,
+      event_id: effectiveEventId,
       client_name: body.client_name,
       client_company: body.client_company,
       document_type: body.document_type,

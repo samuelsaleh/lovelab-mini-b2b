@@ -4,7 +4,7 @@ import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
-import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds } from '@/app/api/_lib/access';
+import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds, resolveAgentFolderEventId } from '@/app/api/_lib/access';
 import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
@@ -261,7 +261,20 @@ export async function POST(request) {
     }
 
     // Drafts are never filed into a folder — they live in the Draft view until promoted to sent.
-    const effectiveEventId = isDraft ? null : (event_id || null);
+    let effectiveEventId = isDraft ? null : (event_id || null);
+
+    // MANDATORY agent filing (Sam, July 2026): a sent b2b/b2c order saved by a
+    // non-admin with no folder (e.g. the save modal's event list hadn't loaded
+    // yet, or the fetch failed) is auto-filed into the creator's agent folder.
+    // Without this the order lands in "No Event" and vanishes from the agent's
+    // folder view (Sarah / Nicolas complaints).
+    if (!effectiveEventId && !isDraft && !isAdmin && ['b2b', 'b2c'].includes(safeOrderChannel)) {
+      try {
+        effectiveEventId = await resolveAgentFolderEventId(adminSupabase, user.id);
+      } catch (autoFileErr) {
+        console.error('[Documents POST] agent auto-file failed (non-blocking):', autoFileErr?.message);
+      }
+    }
 
     if (effectiveEventId) {
       const { allowed } = await requireEventPermission(adminSupabase, effectiveEventId, user.id, 'edit', isAdmin);
