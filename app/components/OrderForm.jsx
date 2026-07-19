@@ -630,6 +630,16 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const printRef = useRef(null)
   const scrollAreaRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
+  // Once a save creates a document, remember it so every later Save in this
+  // same session UPDATES that row instead of inserting a new one. Without
+  // this, "Save as draft" twice produced two identical drafts (Sam, July 2026).
+  const [savedDocId, setSavedDocId] = useState(null)
+  const [savedDocStatus, setSavedDocStatus] = useState(null)
+  // Editing target changed (re-edit / duplicate) → forget the adopted id.
+  useEffect(() => {
+    setSavedDocId(null)
+    setSavedDocStatus(null)
+  }, [editingDocumentId])
   const [isPrinting, setIsPrinting] = useState(false)
   const [mobileCardView, setMobileCardView] = useState(true)
 
@@ -1685,9 +1695,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         eventName={eventName}
         onBeforePrint={handleBeforePrint}
         onAfterPrint={handleAfterPrint}
-        editingDocumentId={editingDocumentId}
-        isDraftOrder={editingDocStatus === 'draft'}
-        onSaveSuccess={async () => {
+        editingDocumentId={editingDocumentId || savedDocId}
+        isDraftOrder={editingDocumentId ? editingDocStatus === 'draft' : savedDocStatus === 'draft'}
+        onSaveSuccess={async (savedDoc) => {
+          if (savedDoc?.id) {
+            setSavedDocId(savedDoc.id)
+            setSavedDocStatus(savedDoc.status || 'sent')
+          }
           await deleteDraft()
           await persistClientExtras()
         }}
