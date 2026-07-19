@@ -12,7 +12,9 @@ import UserMenu from './UserMenu'
 
 /**
  * Full-screen client identification gate.
- * User can search for saved clients or enter new ones.
+ * Search a saved client → fill this page's fields (contact, company, VAT,
+ * address, plus remembered DZB / Synalia / shipping for the order form).
+ * Does NOT restore past product lines / orders.
  */
 export default function ClientGate({ client, setClient, onComplete, onGoHome }) {
   const { t } = useI18n()
@@ -64,7 +66,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
     }, 300)
   }
 
-  // Select a saved client
+  // Select a saved client — fill this page only (no past-order product lines)
   const selectSavedClient = (savedClient) => {
     const savedVatStatus = savedClient.vat_valid === true ? 'VALID' : savedClient.vat_valid === false ? 'INVALID' : null
     setClient({
@@ -83,10 +85,17 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       vatMessageKey: null,
       vatValidating: false,
       savedClientId: savedClient.id,
+      dzb_client_number: savedClient.dzb_client_number || '',
+      jeweler_group: savedClient.jeweler_group || null,
+      shipping_same_as_billing: savedClient.shipping_same_as_billing !== false,
+      shipping_address: savedClient.shipping_address || '',
+      shipping_address_line2: savedClient.shipping_address_line2 || '',
+      shipping_country: savedClient.shipping_country || '',
     })
     setShowSavedClients(false)
     setClientSearch('')
     setPerplexityDone(true)
+    setShowManualAddress(true)
   }
 
   // Save current client to DB
@@ -108,11 +117,26 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           phone: client.phone,
           vat: client.vat,
           vat_valid: client.vatValid,
+          dzb_client_number: client.dzb_client_number || null,
+          jeweler_group: client.jeweler_group || null,
+          shipping_same_as_billing: client.shipping_same_as_billing !== false,
+          shipping_address: client.shipping_address || null,
+          shipping_address_line2: client.shipping_address_line2 || null,
+          shipping_country: client.shipping_country || null,
         }),
       })
       const data = await res.json()
       if (data.client) {
-        setClient(prev => ({ ...prev, savedClientId: data.client.id }))
+        setClient(prev => ({
+          ...prev,
+          savedClientId: data.client.id,
+          dzb_client_number: data.client.dzb_client_number || prev.dzb_client_number || '',
+          jeweler_group: data.client.jeweler_group || prev.jeweler_group || null,
+          shipping_same_as_billing: data.client.shipping_same_as_billing !== false,
+          shipping_address: data.client.shipping_address || prev.shipping_address || '',
+          shipping_address_line2: data.client.shipping_address_line2 || prev.shipping_address_line2 || '',
+          shipping_country: data.client.shipping_country || prev.shipping_country || '',
+        }))
       }
     } catch (err) {
     }
@@ -379,19 +403,37 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           <input
             value={client.company}
             onChange={(e) => {
-              // Clear address/vat only if they came from a previous lookup
-              // (perplexityDone). If the user typed the VAT manually before
-              // touching company, keep it — don't wipe it on every keystroke.
-              setClient((c) => ({
-                ...c,
-                company: e.target.value,
-                address: '',
-                city: '',
-                zip: '',
-                ...(perplexityDone ? { vat: '', vatValid: null, vatStatus: null } : {}),
-              }))
-              setViesResult(null)
-              setPerplexityDone(false)
+              // Never wipe manually typed address on every keystroke — that made
+              // the New Client form feel like it "deleted everything". Only clear
+              // lookup-derived address/VAT after a completed lookup, when the
+              // company name actually changes.
+              const nextCompany = e.target.value
+              setClient((c) => {
+                const companyChanged = nextCompany.trim() !== (c.company || '').trim()
+                if (perplexityDone && companyChanged) {
+                  return {
+                    ...c,
+                    company: nextCompany,
+                    address: '',
+                    city: '',
+                    zip: '',
+                    vat: '',
+                    vatValid: null,
+                    vatStatus: null,
+                    savedClientId: null,
+                  }
+                }
+                return {
+                  ...c,
+                  company: nextCompany,
+                  // Editing the company name detaches from the saved client record
+                  ...(companyChanged ? { savedClientId: null } : {}),
+                }
+              })
+              if (perplexityDone) {
+                setViesResult(null)
+                setPerplexityDone(false)
+              }
             }}
             aria-required="true"
             aria-label={t('client.companyName')}
@@ -637,6 +679,17 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
                 {t('client.incorrectHint') || 'Data cleared. You can enter details manually in the order form.'}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Confirm a saved client was loaded into the fields above */}
+        {client?.savedClientId && client?.company && (
+          <div style={{
+            marginBottom: 14, padding: '10px 12px', borderRadius: 10,
+            background: '#f0faf4', border: '1px solid #c6e9d4',
+            fontSize: 12, color: '#155724', lineHeight: 1.4,
+          }}>
+            {t('client.loadedHint') || 'Client loaded — details filled below. Start quoting when ready.'}
           </div>
         )}
 

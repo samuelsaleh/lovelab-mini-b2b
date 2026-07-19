@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { normalizeJewelerGroup } from '@/lib/jewelerGroup';
 
 // GET - List all clients (with optional search)
 export async function GET(request) {
@@ -78,10 +79,46 @@ export async function POST(request) {
       phone,
       vat,
       vat_valid,
+      dzb_client_number,
+      jeweler_group,
+      shipping_same_as_billing,
+      shipping_address,
+      shipping_address_line2,
+      shipping_country,
       source,
       source_comment,
       source_imported_at,
     } = body;
+
+    const extrasPayload = {};
+    if (dzb_client_number !== undefined) {
+      extrasPayload.dzb_client_number = typeof dzb_client_number === 'string'
+        ? (dzb_client_number.trim() || null)
+        : null;
+    }
+    if (jeweler_group !== undefined) {
+      extrasPayload.jeweler_group = jeweler_group != null && String(jeweler_group).trim()
+        ? normalizeJewelerGroup(jeweler_group)
+        : null;
+    }
+    if (shipping_same_as_billing !== undefined) {
+      extrasPayload.shipping_same_as_billing = shipping_same_as_billing !== false;
+    }
+    if (shipping_address !== undefined) {
+      extrasPayload.shipping_address = typeof shipping_address === 'string'
+        ? (shipping_address.trim() || null)
+        : null;
+    }
+    if (shipping_address_line2 !== undefined) {
+      extrasPayload.shipping_address_line2 = typeof shipping_address_line2 === 'string'
+        ? (shipping_address_line2.trim() || null)
+        : null;
+    }
+    if (shipping_country !== undefined) {
+      extrasPayload.shipping_country = typeof shipping_country === 'string'
+        ? (shipping_country.trim() || null)
+        : null;
+    }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -121,6 +158,7 @@ export async function POST(request) {
           phone: phone?.trim() || null,
           vat: vat?.trim() || null,
           vat_valid: vat_valid ?? null,
+          ...extrasPayload,
           ...sourcePayload,
           updated_at: new Date().toISOString(),
         })
@@ -156,6 +194,12 @@ export async function POST(request) {
           phone: phone?.trim() || null,
           vat: vat?.trim() || null,
           vat_valid: vat_valid ?? null,
+          dzb_client_number: extrasPayload.dzb_client_number ?? null,
+          jeweler_group: extrasPayload.jeweler_group ?? null,
+          shipping_same_as_billing: extrasPayload.shipping_same_as_billing ?? true,
+          shipping_address: extrasPayload.shipping_address ?? null,
+          shipping_address_line2: extrasPayload.shipping_address_line2 ?? null,
+          shipping_country: extrasPayload.shipping_country ?? null,
           ...sourcePayload,
           created_by: user.id,
           updated_at: new Date().toISOString(),

@@ -682,11 +682,19 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   )
   const [country, setCountry] = useState(client?.country || '')
 
-  // Shipping address state
-  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true)
-  const [shippingAddressLine1, setShippingAddressLine1] = useState('')
-  const [shippingAddressLine2, setShippingAddressLine2] = useState('')
-  const [shippingCountry, setShippingCountry] = useState('')
+  // Shipping address state — prefill from saved client when shipping differs
+  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(
+    () => client?.shipping_same_as_billing !== false,
+  )
+  const [shippingAddressLine1, setShippingAddressLine1] = useState(
+    () => client?.shipping_address || '',
+  )
+  const [shippingAddressLine2, setShippingAddressLine2] = useState(
+    () => client?.shipping_address_line2 || '',
+  )
+  const [shippingCountry, setShippingCountry] = useState(
+    () => client?.shipping_country || '',
+  )
   const [vatNumber, setVatNumber] = useState(client?.vat || '')
   const [vatLocalValid, setVatLocalValid] = useState(client?.vatValid ?? null)
   const [vatChecking, setVatChecking] = useState(false)
@@ -724,11 +732,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // DZB Bank state. Clients who pay via DZB Bank need a fixed payment text block
   // on the invoice. The supplier number is a constant; the client's adhérent
   // number is typed per order. Option is gated to Nicolas + admins (canUseDzb).
-  const [dzbEnabled, setDzbEnabled] = useState(false)
-  const [dzbClientNumber, setDzbClientNumber] = useState('')
+  // Prefill from the saved client record when opening a new order for a known boutique.
+  const [dzbEnabled, setDzbEnabled] = useState(() => Boolean(client?.dzb_client_number))
+  const [dzbClientNumber, setDzbClientNumber] = useState(() => client?.dzb_client_number || '')
   const canUseDzb = isAdmin || isSynaliaAgentEmail(currentUser?.email)
 
-  const [jewelerGroup, setJewelerGroup] = useState(JEWELER_GROUP.AUCUN)
+  const [jewelerGroup, setJewelerGroup] = useState(() => (
+    client?.jeweler_group ? normalizeJewelerGroup(client.jeweler_group) : JEWELER_GROUP.AUCUN
+  ))
   const synaliaEnabled = isSynaliaJewelerGroup(jewelerGroup)
   const selectedJewelerGroupLabel = getJewelerGroupLabel(jewelerGroup)
   const canUseJewelerGroup = isAdmin || isSynaliaAgentEmail(currentUser?.email)
@@ -1064,6 +1075,51 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       clearTimeout(initialSave)
     }
   }, [companyName, contactName, addressLine1, addressLine2, country, shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry, vatNumber, email, phone, date, packaging, remarks, eventName, createdBy, hasPrepayment, prepaymentAmount, discountDisplay, finalTotalOverride, hasVitrine, vitrinePrice, vitrineQty, dzbEnabled, dzbClientNumber, jewelerGroup, synaliaEnabled, rows, pricelistYear])
+
+  // Best-effort: persist contact + DZB / Synalia groupement + shipping onto the
+  // shared clients record so the next visit prefills them. Never blocks order save.
+  const persistClientExtras = useCallback(async () => {
+    const company = (companyName || '').trim()
+    if (!company) return
+    try {
+      let clientId = client?.savedClientId || null
+      if (!clientId) {
+        const res = await fetch(`/api/clients?search=${encodeURIComponent(company)}`)
+        const data = await res.json().catch(() => ({}))
+        const match = (data.clients || []).find(
+          (c) => (c.company || '').trim().toLowerCase() === company.toLowerCase(),
+        )
+        clientId = match?.id || null
+      }
+      await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: clientId || undefined,
+          name: contactName,
+          company,
+          country,
+          address: addressLine1,
+          city: addressLine2,
+          email,
+          phone,
+          vat: vatNumber,
+          dzb_client_number: dzbEnabled ? (dzbClientNumber || null) : null,
+          jeweler_group: jewelerGroup !== JEWELER_GROUP.AUCUN ? jewelerGroup : null,
+          shipping_same_as_billing: shippingSameAsBilling,
+          shipping_address: shippingSameAsBilling ? null : (shippingAddressLine1 || null),
+          shipping_address_line2: shippingSameAsBilling ? null : (shippingAddressLine2 || null),
+          shipping_country: shippingSameAsBilling ? null : (shippingCountry || null),
+        }),
+      })
+    } catch {
+      /* ignore — order already saved */
+    }
+  }, [
+    client?.savedClientId, companyName, contactName, country, addressLine1, addressLine2,
+    email, phone, vatNumber, dzbEnabled, dzbClientNumber, jewelerGroup,
+    shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
+  ])
 
   // Delete draft when order is successfully saved
   const deleteDraft = useCallback(async () => {
@@ -1631,7 +1687,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onAfterPrint={handleAfterPrint}
         editingDocumentId={editingDocumentId}
         isDraftOrder={editingDocStatus === 'draft'}
-        onSaveSuccess={deleteDraft}
+        onSaveSuccess={async () => {
+          await deleteDraft()
+          await persistClientExtras()
+        }}
         initialOrderChannel={initialOrderChannel}
         metadata={{
           // Top-level shipping_amount drives commission calculation

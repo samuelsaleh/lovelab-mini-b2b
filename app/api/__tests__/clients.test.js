@@ -176,4 +176,38 @@ describe('POST /api/clients — update on shared directory', () => {
     const res = await POST(makePost({ id: 'c-1', company: '   ' }))
     expect(res.status).toBe(400)
   })
+
+  test('persists dzb_client_number, jeweler_group, and shipping on update', async () => {
+    mockRole = 'member'
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'c-dzb',
+        company: 'Bijou FR',
+        dzb_client_number: '5544',
+        jeweler_group: 'SYNALIA',
+        shipping_same_as_billing: false,
+        shipping_address: 'Depot 1',
+      },
+      error: null,
+    })
+    const res = await POST(makePost({
+      id: 'c-dzb',
+      company: 'Bijou FR',
+      dzb_client_number: '5544',
+      jeweler_group: 'synalia',
+      shipping_same_as_billing: false,
+      shipping_address: 'Depot 1',
+      shipping_address_line2: '75001 Paris',
+      shipping_country: 'France',
+    }))
+    expect(res.status).toBe(200)
+    expect(mockQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      dzb_client_number: '5544',
+      jeweler_group: 'SYNALIA',
+      shipping_same_as_billing: false,
+      shipping_address: 'Depot 1',
+      shipping_address_line2: '75001 Paris',
+      shipping_country: 'France',
+    }))
+  })
 })

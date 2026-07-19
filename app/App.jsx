@@ -21,6 +21,12 @@ import HomeTab from './components/HomeTab'
 import InternalOrdersPanel from './components/InternalOrdersPanel'
 import PackshotGallery from './components/PackshotGallery'
 import { findPackshot } from '@/lib/packshot-lookup'
+import {
+  buildPersistedAppState,
+  shouldAdminBypassClientGate,
+  restoreClientFromStorage,
+  formStateForRestock,
+} from '@/lib/clientGatePersistence'
 
 import { useAuth } from './components/AuthProvider'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -108,6 +114,13 @@ export default function App() {
     vatErrorCode: null,
     vatMessageKey: null,
     vatValidating: false,
+    savedClientId: null,
+    dzb_client_number: '',
+    jeweler_group: null,
+    shipping_same_as_billing: true,
+    shipping_address: '',
+    shipping_address_line2: '',
+    shipping_country: '',
   })
   const [clientReady, setClientReady] = useState(true)
 
@@ -236,6 +249,9 @@ export default function App() {
 
   // Tracks which order channel is being built in the builder (for context banner + save modal pre-selection)
   const pendingOrderChannel = useRef('b2b')
+  // Admin gate bypass + explicit "+ New Client" (must be declared before handlers that write them)
+  const adminInitRef = useRef(false)
+  const explicitClientGateRef = useRef(false)
 
   // ─── Open blank order form (optionally with a specific channel type) ───
   const handleBlankOrderForm = useCallback((channel = 'b2b') => {
@@ -362,23 +378,43 @@ export default function App() {
     }
   }, [authLoading, user, handleReEdit, setPricelistYear])
 
-  // ─── Duplicate a saved document as a new order ───
-  // Keeps product rows but clears contact info so the user fills in the new client
+  // ─── Duplicate / restock a saved document as a NEW order ───
+  // Keeps product rows AND client contact fields (company, email, phone, VAT,
+  // shipping, DZB, groupement) so Copy = same-boutique restock. Clears only
+  // editingDocumentId so save creates a new document.
   const handleDuplicate = useCallback((doc) => {
     const formState = doc?.metadata?.formState
     if (!formState) return
-    const { companyName, contactName, addressLine1, addressLine2, country,
-      shippingSameAsBilling, shippingAddressLine1, shippingAddressLine2, shippingCountry,
-      vatNumber, email, phone, eventName, createdBy, ...rest } = formState
-    // Keep the original document's pricelist year on the duplicate so the
-    // copy quotes the same numbers as the source order. Same first-paint
-    // fix as handleReEdit.
+    const rest = formStateForRestock(formState)
+    if (!rest) return
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
+    // Sync App-level client so ClientGate / builder also see the boutique.
+    setClient((prev) => ({
+      ...prev,
+      name: formState.contactName || prev.name || '',
+      company: formState.companyName || prev.company || '',
+      country: formState.country || prev.country || '',
+      address: formState.addressLine1 || prev.address || '',
+      city: prev.city || '',
+      zip: prev.zip || '',
+      email: formState.email || prev.email || '',
+      phone: formState.phone || prev.phone || '',
+      vat: formState.vatNumber || prev.vat || '',
+      dzb_client_number: formState.dzbClientNumber || prev.dzb_client_number || '',
+      jeweler_group: formState.jewelerGroup || prev.jeweler_group || null,
+      shipping_same_as_billing: formState.shippingSameAsBilling !== false,
+      shipping_address: formState.shippingAddressLine1 || prev.shipping_address || '',
+      shipping_address_line2: formState.shippingAddressLine2 || prev.shipping_address_line2 || '',
+      shipping_country: formState.shippingCountry || prev.shipping_country || '',
+    }))
     setOrderFormQuote(null)
     setSavedFormState(rest)
     setEditingDocumentId(null)
+    setEditingDocStatus(null)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
+    setClientReady(true)
+    explicitClientGateRef.current = false
     setShowOrderForm(true)
   }, [setPricelistYear])
 
@@ -472,13 +508,20 @@ export default function App() {
   }, [])
 
   // ─── Admin: bypass the client gate on initial load only ───
-  // Use a ref so this only fires once when the profile first loads.
-  // This prevents the effect from cancelling explicit "Select Client" / "+ New" clicks.
-  const adminInitRef = useRef(false)
+  // Fires once when the profile first loads. Never override an explicit
+  // "+ New Client" flow — that wiped in-progress company/VAT/address when
+  // the admin profile finished loading mid-gate.
   useEffect(() => {
-    if (profile?.role === 'admin' && !adminInitRef.current) {
+    if (shouldAdminBypassClientGate({
+      isAdmin: profile?.role === 'admin',
+      adminInitDone: adminInitRef.current,
+      explicitClientGate: explicitClientGateRef.current,
+    })) {
       adminInitRef.current = true
-      setClientReady(true) // reset in case localStorage had clientReady: false
+      setClientReady(true)
+    } else if (profile?.role === 'admin' && !adminInitRef.current) {
+      // Mark init done even when we skip bypass, so we never re-enter.
+      adminInitRef.current = true
     }
   }, [profile])
 
@@ -590,7 +633,10 @@ export default function App() {
   }, [curQuote, descLoading, handleAiSend])
 
   // ─── Client Gate ───
-  const handleClientComplete = useCallback(() => { setClientReady(true) }, [])
+  const handleClientComplete = useCallback(() => {
+    explicitClientGateRef.current = false
+    setClientReady(true)
+  }, [])
 
   // ─── Reset ───
   const handleReset = () => {
@@ -609,7 +655,13 @@ export default function App() {
   }
 
   const handleNewClient = () => {
-    setClient({ name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '', vat: '', vatValid: null, vatValidating: false, vatStatus: null, vatErrorCode: null, vatMessageKey: null })
+    explicitClientGateRef.current = true
+    setClient({
+      name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '',
+      vat: '', vatValid: null, vatValidating: false, vatStatus: null, vatErrorCode: null, vatMessageKey: null,
+      savedClientId: null, dzb_client_number: '', jeweler_group: null,
+      shipping_same_as_billing: true, shipping_address: '', shipping_address_line2: '', shipping_country: '',
+    })
     setClientReady(false)
     handleReset()
   }
@@ -621,9 +673,15 @@ export default function App() {
       if (saved) {
         const state = JSON.parse(saved)
         if (state.lines && state.lines.length > 0) setLines(state.lines)
-        const ready = state.clientReady === true
-        if (ready && state.client) setClient(state.client)
-        if (state.clientReady !== undefined) setClientReady(state.clientReady)
+        // Always restore in-progress client data — including mid-gate drafts
+        // (clientReady: false). Previously only ready sessions restored client,
+        // so a refresh on the New Client screen wiped company/VAT/address.
+        const restored = restoreClientFromStorage(state)
+        if (restored.client) setClient(restored.client)
+        if (restored.clientReady !== undefined) {
+          setClientReady(restored.clientReady)
+          if (restored.explicitClientGate) explicitClientGateRef.current = true
+        }
         if (state.curQuote) setCurQuote(state.curQuote)
         if (state.aiMsgs) setAiMsgs(state.aiMsgs)
         if (state.activeTab) setActiveTab(state.activeTab)
@@ -646,21 +704,19 @@ export default function App() {
 
   useEffect(() => {
     try {
-      // Limit aiMsgs to last 50 messages to prevent localStorage overflow (5MB limit)
-      const trimmedAiMsgs = aiMsgs.length > 50 ? aiMsgs.slice(-50) : aiMsgs
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistedAppState({
         lines,
-        client: clientReady ? client : null,
+        client,
         clientReady,
         curQuote,
-        aiMsgs: trimmedAiMsgs,
+        aiMsgs,
         activeTab,
         builderBudget,
         aiBudget,
         aiCollections,
         aiColors,
         pricelistYear,
-      }))
+      })))
     } catch { /* localStorage full or unavailable -- ignore */ }
   }, [lines, client, clientReady, curQuote, aiMsgs, activeTab, builderBudget, aiBudget, aiCollections, aiColors, pricelistYear])
 
@@ -761,7 +817,11 @@ export default function App() {
         client={client}
         setClient={setClient}
         onComplete={handleClientComplete}
-        onGoHome={() => { setClientReady(true); setActiveTab('home') }}
+        onGoHome={() => {
+          explicitClientGateRef.current = false
+          setClientReady(true)
+          setActiveTab('home')
+        }}
       />
     )
   }
