@@ -76,6 +76,10 @@ jest.mock('@/lib/organizations/provision-agent', () => ({
   autoEnsureOrganization: jest.fn().mockResolvedValue({ organization: { id: 'org-new' } }),
 }));
 
+jest.mock('@/lib/events/ensure-agent-folder', () => ({
+  ensureAgentFolderEvent: jest.fn().mockResolvedValue('evt-agent-folder'),
+}));
+
 jest.mock('@/lib/agents/access', () => ({
   grantAccess: jest.fn(),
 }));

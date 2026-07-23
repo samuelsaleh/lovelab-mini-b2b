@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server';
+import { ensureAgentFolderEvent } from '@/lib/events/ensure-agent-folder';
 
 const PERMISSION_RANK = {
   read: 1,
@@ -212,44 +213,17 @@ export async function getOrgTeamScope(adminSupabase, organizationId) {
   };
 }
 
-// The agent folder an order by this user should be filed into, or null.
+// The agent folder an order by this user should be filed into.
 // Used as a MANDATORY server-side fallback when a b2b/b2c order arrives with
 // no event_id (e.g. the save modal's folder list hadn't loaded yet) — Sam's
 // rule: "everything saved by an agent goes into their folder" (July 2026).
-// Resolution: agent-type event linked to one of the user's active orgs
-// (memberships OR profiles.organization_id), else an agent folder the user
-// created themselves (email-reconciled).
+//
+// Looks up an existing agent-type event (org-linked, then created_by), and if
+// none exists yet (brand-new invitee whose invite never created the events
+// row — Savvidou Kyriaki / SAVVIDIS SA, July 2026), CREATES it so the order
+// still files. See lib/events/ensure-agent-folder.js.
 export async function resolveAgentFolderEventId(adminSupabase, userId) {
-  if (!userId) return null;
-
-  const memberships = await getActiveOrgMemberships(adminSupabase, userId);
-  const orgIds = new Set(memberships.map((m) => m.organization_id));
-
-  const { data: ownProfile } = await adminSupabase
-    .from('profiles')
-    .select('organization_id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (ownProfile?.organization_id) orgIds.add(ownProfile.organization_id);
-
-  if (orgIds.size > 0) {
-    const { data: orgFolders } = await adminSupabase
-      .from('events')
-      .select('id')
-      .eq('type', 'agent')
-      .in('organization_id', [...orgIds])
-      .limit(1);
-    if (orgFolders?.[0]?.id) return orgFolders[0].id;
-  }
-
-  const userIds = await resolveAgentIds(adminSupabase, userId);
-  const { data: ownFolders } = await adminSupabase
-    .from('events')
-    .select('id')
-    .eq('type', 'agent')
-    .in('created_by', userIds)
-    .limit(1);
-  return ownFolders?.[0]?.id || null;
+  return ensureAgentFolderEvent(adminSupabase, userId);
 }
 
 // Returns all profile IDs that share the same email as `agentId`.
