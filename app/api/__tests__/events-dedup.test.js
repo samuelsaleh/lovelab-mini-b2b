@@ -16,10 +16,10 @@
  *   full_name and auto-links the folder to that agent's organization.
  *   Without this, every order saved into the folder skips Tier 2
  *   commission attribution (the "PO Oxygène doesn't appear on Corinne's
- *   page" bug). Phase 21 also adds a second dedup probe by
- *   organization_id, so a folder named "CORINNE SECRET CODE PARIS" is
- *   reused when the auto-creator probes for "Corinne Ruimy" (her
- *   profile.full_name).
+ *   page" bug).
+ *
+ *   July 2026: org-only dedup removed so Sarah's sub-agents each get a
+ *   folder; name+org dedup remains.
  */
 
 let dedupRowsByName = [];
@@ -211,19 +211,22 @@ describe('/api/events POST — Phase 21 auto-link agent folder to org', () => {
     expect(insertCalls[0].organization_id).toBe('explicit-org');
   });
 
-  test('org-based dedup returns the existing folder when an agent already has one (different name)', async () => {
-    // The profile lookup resolves to org X, then the route's org-dedup
-    // probe finds an existing folder for org X (named "CORINNE SECRET CODE
-    // PARIS") and returns it instead of inserting "Corinne Ruimy".
-    agentProfileLookupRows = [{ organization_id: 'org-corinne' }];
+  test('allows a second agent folder in the same org when the name differs (sub-agents)', async () => {
+    agentProfileLookupRows = [{ organization_id: 'org-sarah' }];
+    // Name dedup finds nothing for "Wassila Mekidiche" — even though the
+    // org already has "Sarah Goutard".
+    dedupRowsByName = [];
     dedupRowsByOrg = [
-      { id: 'existing-secret-code', name: 'CORINNE SECRET CODE PARIS', type: 'agent', organization_id: 'org-corinne' },
+      { id: 'evt-sarah', name: 'Sarah Goutard', type: 'agent', organization_id: 'org-sarah' },
     ];
-    const res = await POST(makeRequest({ name: 'Corinne Ruimy', type: 'agent' }));
+    const res = await POST(
+      makeRequest({ name: 'Wassila Mekidiche', type: 'agent', organization_id: 'org-sarah' }),
+    );
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(insertCalls).toHaveLength(0);
-    expect(body.event.id).toBe('existing-secret-code');
-    expect(body.deduplicated).toBe(true);
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0].name).toBe('Wassila Mekidiche');
+    expect(insertCalls[0].organization_id).toBe('org-sarah');
+    expect(body.event.name).toBe('Wassila Mekidiche');
   });
 });

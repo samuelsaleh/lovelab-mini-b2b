@@ -204,18 +204,18 @@ export default function SaveDocumentModal({
 
       let allEvents = data.events || [];
 
-      // Auto-create missing agent folders so new agents always appear in the picker.
+      // Auto-create missing agent folders so every agent (including org
+      // sub-agents like Wassila under Sarah) appears in the picker.
       //
-      // We dedup by BOTH name AND organization_id so an agent whose folder
-      // exists under a different display name (e.g. "CORINNE SECRET CODE
-      // PARIS" while profile.full_name is "Corinne Ruimy") isn't re-created
-      // every time the modal opens. Pre-Phase 21 we deduped by name only,
-      // which produced the "Corinne Ruimy AND CORINNE SECRET CODE PARIS in
-      // the dropdown" duplicate.
+      // Dedup rules (July 2026):
+      //   - Skip if a folder with the same name already exists.
+      //   - Solo orgs (1 agent): also skip if that org already has ANY
+      //     agent folder (covers Corinne renamed vs legacy folder name).
+      //   - Multi-member orgs: create one folder per member so Dionne can
+      //     re-save a fixed order under the right sub-agent.
       //
-      // We ALSO pass organization_id when creating, so Tier 2 commission
-      // attribution (lib/commissionAttribution.js) finds the agent for any
-      // future order saved into this folder.
+      // We pass organization_id so commission attribution can resolve the
+      // person by folder name within the org.
       if (isAdmin && agentsRes?.ok) {
         const agentsData = await agentsRes.json();
         const activeAgents = (agentsData.agents || []).filter(
@@ -228,11 +228,23 @@ export default function SaveDocumentModal({
         const existingAgentOrgs = new Set(
           agentEvents.map(e => e.organization_id).filter(Boolean)
         );
+        const agentsPerOrg = new Map();
+        for (const a of activeAgents) {
+          if (!a.organization_id) continue;
+          agentsPerOrg.set(a.organization_id, (agentsPerOrg.get(a.organization_id) || 0) + 1);
+        }
         const missing = activeAgents.filter(a => {
           if (!a.full_name) return false;
           const nameKey = a.full_name.toLowerCase().trim();
           if (existingAgentNames.has(nameKey)) return false;
-          if (a.organization_id && existingAgentOrgs.has(a.organization_id)) return false;
+          // Solo-org rename guard (Corinne): one agent, folder already exists.
+          if (
+            a.organization_id &&
+            existingAgentOrgs.has(a.organization_id) &&
+            (agentsPerOrg.get(a.organization_id) || 0) <= 1
+          ) {
+            return false;
+          }
           return true;
         });
         if (missing.length > 0) {
@@ -267,6 +279,14 @@ export default function SaveDocumentModal({
           pick = allEvents.find(e =>
             e.name.toLowerCase().includes(defaultEventName.toLowerCase()) ||
             defaultEventName.toLowerCase().includes(e.name.toLowerCase())
+          ) || null;
+        }
+        // Prefer the agent's own named folder (Wassila → "Wassila Mekidiche")
+        // before falling back to any folder in their organization.
+        if (!pick && profile?.full_name) {
+          const nameKey = profile.full_name.toLowerCase().trim();
+          pick = allEvents.find(e =>
+            e.type === 'agent' && (e.name || '').toLowerCase().trim() === nameKey
           ) || null;
         }
         if (!pick && profile?.organization_id) {

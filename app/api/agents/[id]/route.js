@@ -6,6 +6,7 @@ import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { provisionAgentInOrg } from '@/lib/organizations/provision-agent';
 import { grantAccess, revokeAccess } from '@/lib/agents/access';
 import { recordHealthEvent } from '@/lib/healthEvent';
+import { recalcUnpaidCommissionsForAgent } from '@/lib/commissionRecalc';
 import { NextResponse } from 'next/server';
 
 const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
@@ -240,6 +241,16 @@ export async function PUT(request, { params }) {
     if (error) {
       console.error('[Agent PUT] Error:', error.message);
       return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 });
+    }
+
+    // Rate change → refresh unpaid, unreported ledger rows so org settlement
+    // euros catch up without re-saving every order (Sarah org €0, July 2026).
+    if (updates.commission_rate !== undefined) {
+      try {
+        await recalcUnpaidCommissionsForAgent(adminSupabase, id, updates.commission_rate);
+      } catch (recalcErr) {
+        console.error('[Agent PUT] commission recalc failed (non-blocking):', recalcErr?.message);
+      }
     }
 
     return NextResponse.json({ agent });

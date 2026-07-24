@@ -73,6 +73,7 @@ function todayKey(now = new Date()) {
  */
 export default function CommissionReportsCard({ agentId, agentName, orgSettlement = null }) {
   const [reports, setReports] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState(null);
 
@@ -83,13 +84,22 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
     setLoadingList(true);
     setListError(null);
     try {
-      const res = await fetch(`/api/commission-reports?agent_id=${encodeURIComponent(agentId)}&limit=24`);
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || `HTTP ${res.status}`);
+      const [repRes, payRes] = await Promise.all([
+        fetch(`/api/commission-reports?agent_id=${encodeURIComponent(agentId)}&limit=24`),
+        fetch(`/api/agent-payments?agent_id=${encodeURIComponent(agentId)}`),
+      ]);
+      if (!repRes.ok) {
+        const j = await repRes.json().catch(() => ({}));
+        throw new Error(j?.error || `HTTP ${repRes.status}`);
       }
-      const j = await res.json();
+      const j = await repRes.json();
       setReports(j.reports || []);
+      if (payRes.ok) {
+        const payData = await payRes.json().catch(() => ({}));
+        setPayments(payData.payments || []);
+      } else {
+        setPayments([]);
+      }
     } catch (err) {
       setListError(err?.message || 'Failed to load reports');
     } finally {
@@ -99,6 +109,51 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
 
   useEffect(() => { loadReports(); }, [loadReports]);
 
+  // Latest report that has not had a payment recorded against it.
+  const replaceableReport = (() => {
+    const latest = reports[0];
+    if (!latest) return null;
+    const paidReportIds = new Set((payments || []).map((p) => p.report_id).filter(Boolean));
+    if (paidReportIds.has(latest.id)) return null;
+    return latest;
+  })();
+
+  const runGenerate = useCallback(async () => {
+    const res = await fetch('/api/commission-reports/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: agentId,
+        send_email: true,
+        upload_to_drive: true,
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(j?.error || `HTTP ${res.status}`);
+    }
+    return j?.result;
+  }, [agentId]);
+
+  const applyGenerateResult = (r) => {
+    if (r?.skipped) {
+      setLastResult({
+        kind: 'skipped',
+        message: 'No paid orders ready to pay — no email was sent.',
+      });
+    } else if (r?.email?.sent === false) {
+      setLastResult({
+        kind: 'partial',
+        message: `Excel saved (Drive ${r?.drive?.ok ? 'OK' : 'failed'}) but email FAILED: ${r?.email?.reason || r?.email?.error || 'unknown'}`,
+      });
+    } else {
+      setLastResult({
+        kind: 'success',
+        message: `Sent to ${r?.email?.recipient || 'recipient'}. Total: ${fmtEuro(r?.totals?.grandTotal || 0)}`,
+      });
+    }
+  };
+
   const handleGenerate = useCallback(async () => {
     if (!agentId) return;
     setBusy(true);
@@ -106,43 +161,38 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
     try {
       // No `month` field — the server snapshot-builds a "ready right now"
       // report and stamps today's date as the title (Sam's 2026-05-13 redesign).
-      const res = await fetch('/api/commission-reports/generate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: agentId,
-          send_email: true,
-          upload_to_drive: true,
-        }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(j?.error || `HTTP ${res.status}`);
-      }
-      const r = j?.result;
-      if (r?.skipped) {
-        setLastResult({
-          kind: 'skipped',
-          message: 'No paid orders ready to pay — no email was sent.',
-        });
-      } else if (r?.email?.sent === false) {
-        setLastResult({
-          kind: 'partial',
-          message: `Excel saved (Drive ${r?.drive?.ok ? 'OK' : 'failed'}) but email FAILED: ${r?.email?.reason || r?.email?.error || 'unknown'}`,
-        });
-      } else {
-        setLastResult({
-          kind: 'success',
-          message: `Sent to ${r?.email?.recipient || 'recipient'}. Total: ${fmtEuro(r?.totals?.grandTotal || 0)}`,
-        });
-      }
+      const r = await runGenerate();
+      applyGenerateResult(r);
       await loadReports();
     } catch (err) {
       setLastResult({ kind: 'error', message: err?.message || 'Generate failed' });
     } finally {
       setBusy(false);
     }
-  }, [agentId, loadReports]);
+  }, [agentId, loadReports, runGenerate]);
+
+  const handleReplaceLast = useCallback(async () => {
+    if (!agentId || !replaceableReport) return;
+    const label = replaceableReport.period_label || replaceableReport.period_key;
+    if (!window.confirm(
+      `Replace “${label}”? Its commissions go back to Ready, then a new report is sent with every order currently Ready (including any you forgot). Drive copy of the old file is kept.`,
+    )) return;
+
+    setBusy(true);
+    setLastResult(null);
+    try {
+      const delRes = await fetch(`/api/commission-reports/${replaceableReport.id}`, { method: 'DELETE' });
+      const delJ = await delRes.json().catch(() => ({}));
+      if (!delRes.ok) throw new Error(delJ?.error || `Delete failed (HTTP ${delRes.status})`);
+      const r = await runGenerate();
+      applyGenerateResult(r);
+      await loadReports();
+    } catch (err) {
+      setLastResult({ kind: 'error', message: err?.message || 'Replace failed' });
+    } finally {
+      setBusy(false);
+    }
+  }, [agentId, replaceableReport, loadReports, runGenerate]);
 
   return (
     <div style={{ background: '#fff', border: `1px solid ${LINE}`, borderRadius: 12, overflow: 'hidden' }}>
@@ -171,6 +221,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
       <div style={{ padding: '14px 16px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: '#fafafa', borderBottom: `1px solid ${LINE}` }}>
         <button
           type="button"
+          data-testid="send-report-now"
           onClick={handleGenerate}
           disabled={busy}
           style={{
@@ -190,9 +241,34 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
         >
           {busy ? 'Sending…' : 'Send report now'}
         </button>
-        <span style={{ fontSize: 11, color: MUTED }}>
+        <button
+          type="button"
+          data-testid="replace-last-report"
+          onClick={handleReplaceLast}
+          disabled={busy || !replaceableReport}
+          title={replaceableReport
+            ? 'Delete the latest report (commissions return to Ready) and send a new combined one'
+            : 'No replaceable report — either none exist, or the latest already has a payment recorded'}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: `1.5px solid ${busy || !replaceableReport ? LINE : PLUM}`,
+            background: '#fff',
+            color: busy || !replaceableReport ? MUTED : PLUM,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: busy || !replaceableReport ? 'default' : 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Replace last report
+        </button>
+        <div style={{ flex: '1 1 220px', fontSize: 11, color: MUTED, lineHeight: 1.4 }}>
           Emails Dionne (never the agent) with every order ticked Paid that isn’t on a report yet, and marks them “Reported”. Forward to the agent yourself when ready.
-        </span>
+          <div style={{ marginTop: 4 }}>
+            Forgot an order? Tick Paid on it, then <strong style={{ color: PLUM }}>Replace last report</strong> (or Delete + Send).
+          </div>
+        </div>
 
         {lastResult && (
           <div
@@ -257,7 +333,9 @@ function ReportRow({ r, agentName, onDeleted }) {
   const [deleteError, setDeleteError] = useState(null);
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete this report (${r.period_label || r.period_key})? The file in Supabase Storage will also be removed. The Google Drive copy is kept.`)) return;
+    if (!window.confirm(
+      `Delete this report (${r.period_label || r.period_key})? Commissions on this report go back to Ready so you can Send again. The file in Supabase Storage is removed; the Google Drive copy is kept.`,
+    )) return;
     setDeleting(true);
     setDeleteError(null);
     try {

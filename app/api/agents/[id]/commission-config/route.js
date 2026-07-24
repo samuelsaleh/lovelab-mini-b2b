@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { recalcUnpaidCommissionsForAgent } from '@/lib/commissionRecalc';
 import { NextResponse } from 'next/server';
 
 function validateConfigSchema(config) {
@@ -107,6 +108,14 @@ export async function PATCH(request, { params }) {
       }
       console.error('[commission-config PATCH] Error:', error.message);
       return NextResponse.json({ error: 'Failed to save commission config' }, { status: 500 });
+    }
+
+    if (updates.commission_rate !== undefined) {
+      try {
+        await recalcUnpaidCommissionsForAgent(adminSupabase, agentId, updates.commission_rate);
+      } catch (recalcErr) {
+        console.error('[commission-config PATCH] commission recalc failed (non-blocking):', recalcErr?.message);
+      }
     }
 
     return NextResponse.json({ agent: updated });

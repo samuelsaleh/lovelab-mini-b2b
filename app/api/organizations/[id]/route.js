@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { recalcUnpaidCommissionsForOrganization } from '@/lib/commissionRecalc';
 
 export async function GET(request, { params }) {
   try {
@@ -108,6 +109,20 @@ export async function PATCH(request, { params }) {
 
     if (!organization) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    // Org rate change → recalc members with no personal rate (they inherit
+    // the org rate). Already-reported / paid rows stay untouched.
+    if (Object.prototype.hasOwnProperty.call(updates, 'commission_rate')) {
+      try {
+        await recalcUnpaidCommissionsForOrganization(
+          adminSupabase,
+          organizationId,
+          updates.commission_rate,
+        );
+      } catch (recalcErr) {
+        console.error('[org PATCH] commission recalc failed (non-blocking):', recalcErr?.message);
+      }
     }
 
     return NextResponse.json({ organization });

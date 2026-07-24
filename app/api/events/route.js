@@ -254,31 +254,12 @@ export async function POST(request) {
 
     // Phase 13 dedup: when an agent-type event is created with the same name
     // (case-insensitive, trimmed) within the same organization, return the
-    // existing one instead of inserting a duplicate. Sam saw two "Corinne"
-    // entries in the dropdown because two admins (or one admin twice) hit
-    // "+ New Event" with the same name; this makes the create idempotent.
+    // existing one instead of inserting a duplicate.
     //
-    // Phase 21: also dedup by `organization_id` alone — once we auto-link
-    // agent folders, the canonical folder for an agent might have a
-    // different display name than the auto-creator's `full_name` lookup
-    // (e.g. profile.full_name = "CORINNE SECRET CODE PARIS" but the legacy
-    // folder is still named "Corinne Ruimy"). Returning that existing row
-    // stops the dropdown growing a duplicate every time SaveDocumentModal
-    // opens.
+    // July 2026: org-only dedup was removed so multi-member orgs (Sarah +
+    // Wassila + …) can each have their own agent folder. Solo-org rename
+    // collisions (Corinne) are handled in SaveDocumentModal auto-create.
     if (eventType === 'agent') {
-      if (targetOrgId) {
-        const { data: orgMatch, error: orgErr } = await adminSupabase
-          .from('events')
-          .select('*')
-          .eq('type', 'agent')
-          .eq('organization_id', targetOrgId)
-          .limit(1);
-        if (orgErr) {
-          console.error('[Events POST] org-dedup probe failed:', orgErr.message);
-        } else if ((orgMatch || []).length > 0) {
-          return NextResponse.json({ event: orgMatch[0], deduplicated: true });
-        }
-      }
       const dedupQuery = adminSupabase
         .from('events')
         .select('*')

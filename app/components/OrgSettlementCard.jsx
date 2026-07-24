@@ -184,6 +184,11 @@ export default function OrgSettlementCard({ organizationId }) {
   }
 
   const summary = ledger?.organization_summary || { total_commission_earned: 0, total_paid_out: 0, pending_balance: 0 }
+  const members = ledger?.per_member || []
+  const hasZeroRatePipeline = members.some((m) => isZeroRateWithCounts(m))
+  const orgEurosZero =
+    (Number(summary.total_commission_earned) || 0) === 0 &&
+    (Number(summary.pending_balance) || 0) === 0
 
   return (
     <div data-testid="org-settlement-card" style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, overflow: 'hidden', marginBottom: 20 }}>
@@ -207,6 +212,24 @@ export default function OrgSettlementCard({ organizationId }) {
           highlight
         />
       </div>
+
+      {orgEurosZero && hasZeroRatePipeline && (
+        <div
+          data-testid="org-settlement-zero-rate-banner"
+          style={{
+            padding: '10px 18px',
+            background: '#fffbeb',
+            borderTop: `1px solid ${colors.lineGray}`,
+            borderBottom: `1px solid ${colors.lineGray}`,
+            fontSize: 12,
+            color: '#92400e',
+            lineHeight: 1.45,
+          }}
+        >
+          Orders are waiting, but commission is €0 because member rates are 0% (and the organization rate is unset).
+          Set a rate under <strong>Edit settings</strong> or on each agent&apos;s page — unpaid amounts will recalculate automatically.
+        </div>
+      )}
 
       {/* One organization payment, transparently allocated back to each
           member through the commissions settled by the linked report. */}
@@ -233,7 +256,9 @@ export default function OrgSettlementCard({ organizationId }) {
               </tr>
             </thead>
             <tbody>
-              {(ledger?.per_member || []).map((member) => (
+              {members.map((member) => {
+                const zeroRateNote = isZeroRateWithCounts(member)
+                return (
                 <tr key={member.user_id} data-testid={`org-settlement-member-${member.user_id}`}>
                   <td style={tableCell}>
                     <div style={{ fontWeight: 700, color: colors.charcoal }}>
@@ -245,6 +270,11 @@ export default function OrgSettlementCard({ organizationId }) {
                     <div style={{ fontSize: 10, color: colors.lovelabMuted }}>
                       {member.awaiting_count || 0} awaiting · {member.ready_count || 0} ready · {member.reported_count || 0} reported
                     </div>
+                    {zeroRateNote && (
+                      <div data-testid={`org-settlement-zero-rate-${member.user_id}`} style={{ fontSize: 10, color: '#92400e', marginTop: 3, fontWeight: 600 }}>
+                        0% rate — set a rate to calculate commission
+                      </div>
+                    )}
                   </td>
                   <td style={moneyCell}>{fmt(member.awaiting_customer)}</td>
                   <td style={{ ...moneyCell, color: '#166534', fontWeight: 700 }}>{fmt(member.ready_to_pay)}</td>
@@ -264,7 +294,8 @@ export default function OrgSettlementCard({ organizationId }) {
                     </a>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -375,6 +406,21 @@ export default function OrgSettlementCard({ organizationId }) {
       )}
     </div>
   )
+}
+
+/** Counts > 0 but every euro column is €0 → almost always a 0% rate. */
+export function isZeroRateWithCounts(member) {
+  const counts =
+    (Number(member?.awaiting_count) || 0) +
+    (Number(member?.ready_count) || 0) +
+    (Number(member?.reported_count) || 0)
+  if (counts <= 0) return false
+  const euros =
+    (Number(member?.awaiting_customer) || 0) +
+    (Number(member?.ready_to_pay) || 0) +
+    (Number(member?.reported) || 0) +
+    (Number(member?.settled_amount) || 0)
+  return euros === 0
 }
 
 function Stat({ label, value, sub, highlight }) {

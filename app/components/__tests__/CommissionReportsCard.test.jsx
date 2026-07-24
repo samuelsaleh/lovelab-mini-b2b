@@ -6,19 +6,7 @@
  * NO `month` field. The server snapshot-builds a "ready right now"
  * report and stamps today's date as the title.
  *
- * Locks the new contract:
- *   ✓ Loads past reports on mount (GET /api/commission-reports?agent_id=...)
- *   ✓ NO month <select> rendered (regression guard)
- *   ✓ Button labelled "Send report now"
- *   ✓ Send report POSTs WITHOUT a `month` field
- *   ✓ Shows success pill when result.email.sent
- *   ✓ Shows skipped pill when result.skipped is true
- *   ✓ Shows partial pill when storage saved but email failed
- *   ✓ Shows error pill on HTTP failure
- *   ✓ Refreshes list after a successful send
- *   ✓ Drive + Download links rendered when present
- *   ✓ Download filename uses period_key (sortable) not period_label
- *   ✓ List error shown inline without crashing
+ * July 2026: also loads payments; "Replace last report" deletes then regenerates.
  */
 
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -63,19 +51,48 @@ const fakeReports = [
   },
 ];
 
+/** Mount loads reports + payments in parallel. */
+function mockMount({ reports = [], payments = [] } = {}) {
+  global.fetch.mockImplementation((url, opts) => {
+    const u = String(url);
+    if (u.includes('/api/commission-reports?')) {
+      return Promise.resolve({ ok: true, json: async () => ({ reports }) });
+    }
+    if (u.includes('/api/agent-payments')) {
+      return Promise.resolve({ ok: true, json: async () => ({ payments }) });
+    }
+    if (u === '/api/commission-reports/generate' && opts?.method === 'POST') {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          mode: 'single',
+          result: {
+            reportId: 'new-r',
+            totals: { grandTotal: 1234 },
+            email: { sent: true, recipient: 'dionne@love-lab.com' },
+            drive: { ok: true, fileId: 'fid' },
+          },
+        }),
+      });
+    }
+    if (u.startsWith('/api/commission-reports/') && opts?.method === 'DELETE') {
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  });
+}
+
 describe('CommissionReportsCard', () => {
   beforeEach(() => {
     global.fetch = jest.fn();
+    window.confirm = jest.fn(() => true);
   });
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   it('loads past reports on mount and renders them', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ reports: fakeReports }),
-    });
+    mockMount({ reports: fakeReports });
 
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
@@ -85,28 +102,26 @@ describe('CommissionReportsCard', () => {
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/commission-reports?agent_id=agent-1'),
     );
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/agent-payments?agent_id=agent-1'),
+    );
     expect(screen.getByText(/5 orders.*1 bonus/i)).toBeInTheDocument();
     expect(screen.getByText(/0 orders/i)).toBeInTheDocument();
   });
 
   it('renders no month <select> (Phase 22 regression guard)', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
+    mockMount({ reports: [] });
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
       await flushPromises();
     });
 
-    // No <select>, no "Month" label.
     expect(document.querySelector('select')).toBeNull();
     expect(screen.queryByLabelText(/Month/i)).toBeNull();
   });
 
   it('button is labelled "Send report now"', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
+    mockMount({ reports: [] });
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
       await flushPromises();
@@ -116,10 +131,7 @@ describe('CommissionReportsCard', () => {
   });
 
   it('renders an empty state mentioning the new button name', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ reports: [] }),
-    });
+    mockMount({ reports: [] });
 
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
@@ -127,17 +139,19 @@ describe('CommissionReportsCard', () => {
     });
 
     expect(screen.getByText(/No reports yet/i)).toBeInTheDocument();
-    // The empty-state strong tag also says "Send report now" — confirm
-    // at least two elements match (button + strong). Use getAllByText to
-    // avoid the "multiple elements" error getByText throws.
     expect(screen.getAllByText(/Send report now/i).length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows list error inline when GET fails', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({ error: 'oh no' }),
+    global.fetch.mockImplementation((url) => {
+      if (String(url).includes('/api/commission-reports?')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'oh no' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ payments: [] }) });
     });
 
     await act(async () => {
@@ -149,24 +163,7 @@ describe('CommissionReportsCard', () => {
   });
 
   it('Send report POSTs WITHOUT a month field and shows success pill', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        mode: 'single',
-        result: {
-          reportId: 'new-r',
-          totals: { grandTotal: 1234 },
-          email: { sent: true, recipient: 'dionne@love-lab.com' },
-          drive: { ok: true, fileId: 'fid' },
-        },
-      }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: fakeReports }),
-    });
+    mockMount({ reports: [] });
 
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
@@ -178,34 +175,39 @@ describe('CommissionReportsCard', () => {
       await flushPromises();
     });
 
-    const postCall = global.fetch.mock.calls[1];
-    expect(postCall[0]).toBe('/api/commission-reports/generate');
+    const postCall = global.fetch.mock.calls.find(
+      ([url, opts]) => url === '/api/commission-reports/generate' && opts?.method === 'POST',
+    );
+    expect(postCall).toBeTruthy();
     const body = JSON.parse(postCall[1].body);
     expect(body).toEqual({
       agent_id: 'agent-1',
       send_email: true,
       upload_to_drive: true,
     });
-    // Phase 22: explicitly NOT sending a month field.
     expect(body.month).toBeUndefined();
 
     expect(await screen.findByText(/Sent to dionne@love-lab.com/i)).toBeInTheDocument();
-    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 
   it('shows skipped pill when the API reports skipped:true', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        mode: 'single',
-        result: { skipped: true, reason: 'empty', totals: { grandTotal: 0 } },
-      }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
+    global.fetch.mockImplementation((url, opts) => {
+      if (String(url).includes('/api/commission-reports?')) {
+        return Promise.resolve({ ok: true, json: async () => ({ reports: [] }) });
+      }
+      if (String(url).includes('/api/agent-payments')) {
+        return Promise.resolve({ ok: true, json: async () => ({ payments: [] }) });
+      }
+      if (url === '/api/commission-reports/generate' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            mode: 'single',
+            result: { skipped: true, reason: 'empty', totals: { grandTotal: 0 } },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
 
     await act(async () => {
@@ -221,23 +223,28 @@ describe('CommissionReportsCard', () => {
   });
 
   it('shows partial pill when email fails but Drive succeeded', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        mode: 'single',
-        result: {
-          reportId: 'r-1',
-          totals: { grandTotal: 1000 },
-          email: { sent: false, reason: 'resend_error' },
-          drive: { ok: true, fileId: 'fid' },
-        },
-      }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
+    global.fetch.mockImplementation((url, opts) => {
+      if (String(url).includes('/api/commission-reports?')) {
+        return Promise.resolve({ ok: true, json: async () => ({ reports: [] }) });
+      }
+      if (String(url).includes('/api/agent-payments')) {
+        return Promise.resolve({ ok: true, json: async () => ({ payments: [] }) });
+      }
+      if (url === '/api/commission-reports/generate' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            mode: 'single',
+            result: {
+              reportId: 'r-1',
+              totals: { grandTotal: 1000 },
+              email: { sent: false, reason: 'resend_error' },
+              drive: { ok: true, fileId: 'fid' },
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
 
     await act(async () => {
@@ -253,11 +260,21 @@ describe('CommissionReportsCard', () => {
   });
 
   it('shows error pill on HTTP failure', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: [] }),
-    });
-    global.fetch.mockResolvedValueOnce({
-      ok: false, status: 500, json: async () => ({ error: 'server kaboom' }),
+    global.fetch.mockImplementation((url, opts) => {
+      if (String(url).includes('/api/commission-reports?')) {
+        return Promise.resolve({ ok: true, json: async () => ({ reports: [] }) });
+      }
+      if (String(url).includes('/api/agent-payments')) {
+        return Promise.resolve({ ok: true, json: async () => ({ payments: [] }) });
+      }
+      if (url === '/api/commission-reports/generate' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'server kaboom' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
 
     await act(async () => {
@@ -273,9 +290,7 @@ describe('CommissionReportsCard', () => {
   });
 
   it('renders Drive + Download links and uses period_key in the download filename', async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: true, json: async () => ({ reports: fakeReports }),
-    });
+    mockMount({ reports: fakeReports });
     await act(async () => {
       render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
       await flushPromises();
@@ -287,12 +302,61 @@ describe('CommissionReportsCard', () => {
 
     const download = screen.getByText('Download');
     expect(download).toHaveAttribute('href', '/api/commission-reports/r1/download');
-    // Phase 22: download attribute mirrors storage path naming —
-    // "<Agent> - <period_key>.xlsx" (sortable, includes HHmm for snapshots).
     expect(download).toHaveAttribute('download', 'Marc Schlund - 2026-05-13-1422.xlsx');
 
     const links = screen.getAllByRole('link');
     expect(links.filter((l) => l.textContent === 'Drive')).toHaveLength(1);
     expect(links.filter((l) => l.textContent === 'Download')).toHaveLength(1);
+  });
+
+  it('Replace last report deletes then generates', async () => {
+    mockMount({ reports: fakeReports, payments: [] });
+
+    await act(async () => {
+      render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
+      await flushPromises();
+    });
+
+    const replaceBtn = screen.getByTestId('replace-last-report');
+    expect(replaceBtn).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(replaceBtn);
+      await flushPromises();
+    });
+
+    expect(window.confirm).toHaveBeenCalled();
+    const deleteCall = global.fetch.mock.calls.find(
+      ([url, opts]) => String(url).includes('/api/commission-reports/r1') && opts?.method === 'DELETE',
+    );
+    expect(deleteCall).toBeTruthy();
+    const generateCall = global.fetch.mock.calls.find(
+      ([url, opts]) => url === '/api/commission-reports/generate' && opts?.method === 'POST',
+    );
+    expect(generateCall).toBeTruthy();
+    expect(await screen.findByText(/Sent to dionne@love-lab.com/i)).toBeInTheDocument();
+  });
+
+  it('disables Replace last report when the latest report already has a payment', async () => {
+    mockMount({
+      reports: fakeReports,
+      payments: [{ id: 'p1', report_id: 'r1', amount: 1500 }],
+    });
+
+    await act(async () => {
+      render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
+      await flushPromises();
+    });
+
+    expect(screen.getByTestId('replace-last-report')).toBeDisabled();
+  });
+
+  it('shows forgot-order helper text', async () => {
+    mockMount({ reports: [] });
+    await act(async () => {
+      render(<CommissionReportsCard agentId="agent-1" agentName="Marc Schlund" />);
+      await flushPromises();
+    });
+    expect(screen.getByText(/Forgot an order/i)).toBeInTheDocument();
   });
 });
