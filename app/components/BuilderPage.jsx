@@ -136,7 +136,7 @@ const PACK2_ROWS = [
   { collection: 'SHAPY SHINE FANCY', carat: '0.50', shape: 'Heart', bpColor: 'Yellow', setting: 'Bezel', size: 'M', colorCord: 'Gold', quantity: '1', unitPrice: '155', cert: 'IGI' },
   { collection: 'SHAPY SHINE FANCY', carat: '0.30', shape: 'Emerald', bpColor: 'White', setting: 'Bezel', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '100', cert: 'IGI' },
   { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Emerald', bpColor: 'White', setting: 'Prong', size: 'M', colorCord: 'Black', quantity: '1', unitPrice: '200', cert: 'IGI' },
-  { collection: 'MATCHY FANCY', carat: '1.00', shape: 'Pear', bpColor: 'YY', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '310', cert: 'IGI' },
+  { collection: 'MATCHY FANCY', carat: '1.00', shape: 'Pear', bpColor: 'Yellow', setting: 'Prong', size: 'M', colorCord: 'Bordeaux', quantity: '1', unitPrice: '310', cert: 'IGI' },
   { collection: 'MATCHY FANCY', carat: '0.60', shape: 'Heart', bpColor: 'WY', setting: 'Bezel', size: 'M', colorCord: 'Red', quantity: '1', unitPrice: '200', cert: 'IGI' },
 ]
 
@@ -1023,6 +1023,13 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           const caratIdx = col.carats.findIndex(c => c === row.carat)
           let housing = row.bpColor || null
           let housingType = row.setting ? row.setting.toLowerCase() : null
+          // Legacy pack sheets wrote MATCHY prong same-metal pairs as WW/YY/PP,
+          // but the catalog names those prong options White/Yellow/Pink.
+          // Normalize so the housing dropdown recognises the stored value.
+          if (col.housing === 'matchy' && housingType === 'prong' && housing) {
+            const prongPairAlias = { WW: 'White', YY: 'Yellow', PP: 'Pink' }
+            housing = prongPairAlias[housing] || housing
+          }
           if (housingType && housing && (col.housing === 'shapyShine' || col.housing === 'matchy')) {
             housing = `${row.setting} ${housing}`
           }

@@ -87,7 +87,7 @@
 | Setting | Options |
 |---|---|
 | **Bezel** | WW (White/White), YY (Yellow/Yellow), PP (Pink/Pink), WY (White/Yellow), WP (White/Pink), YP (Yellow/Pink) |
-| **Prong** | White, Yellow, Pink |
+| **Prong** | White, Yellow, Pink, WY (White/Yellow), WP (White/Pink), YP (Yellow/Pink) |
 
 **Colors (21):** Red, Bordeaux, Dark Pink, Light Pink, Fluo Pink, Orange, Gold, Yellow, Fluo Yellow, Green, Turquoise, Light Blue, Royal Blue, Navy Blue, Lilac, Purple, Brown, Black, Silver Grey, White, Ivory
 
