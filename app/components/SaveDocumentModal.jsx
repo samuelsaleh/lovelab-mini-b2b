@@ -117,6 +117,13 @@ export default function SaveDocumentModal({
   // times out after the server committed, retrying reuses this key/path and the
   // API returns the existing document instead of inserting a duplicate.
   const saveRequestIdRef = useRef(null);
+
+  // Shared-folder collaborators (e.g. Silke on Nordstil/Inhorgenta) and
+  // agents can email the client on save — same UI as admins. Office still
+  // BCCs every send. API enforces document access, not admin-only.
+  const canEmailClient = isAdmin
+    || profile?.is_agent === true
+    || events.some((e) => e.permission === 'edit' || e.permission === 'manage');
   // True while a save is in flight — synchronous double-click guard (state
   // updates are async, so `saving` alone can't stop a rapid second click).
   const savingRef = useRef(false);
@@ -1040,10 +1047,11 @@ export default function SaveDocumentModal({
               )}
             </div>}
 
-            {/* ─── Email to client (B2B orders, admins only) ───
-                Agents and other roles never see this block; the API enforces
-                the same restriction with a 403 if anyone tries to call it. */}
-            {orderChannel === 'b2b' && isAdmin && (
+            {/* ─── Email to client (B2B orders) ───
+                Visible to admins, agents, and anyone with edit/manage on a
+                shared folder (Silke @ Nordstil, July 2026). API allows the
+                same people as long as they can read the saved document. */}
+            {orderChannel === 'b2b' && canEmailClient && (
               <div style={{
                 marginBottom: 16,
                 border: `1px solid ${emailEnabled ? colors.inkPlum : colors.lineGray}`,

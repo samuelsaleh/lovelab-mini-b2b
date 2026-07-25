@@ -160,11 +160,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Admin-only feature: agents and other roles cannot send order emails.
-    // Defense-in-depth — the modal also hides the UI for non-admins.
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    // Anyone who can read the saved document may email the client (admins,
+    // folder collaborators like Silke, document owners). Defense-in-depth is
+    // the canRead check below — not an admin-only gate.
+    // (UI: SaveDocumentModal shows the email block for admins / agents /
+    // users with edit|manage on a shared folder.)
 
     const body = await request.json().catch(() => ({}));
     const {

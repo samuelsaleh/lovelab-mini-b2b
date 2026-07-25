@@ -172,4 +172,16 @@ describe('POST /api/documents/send-email — recipient payload', () => {
     await callRoute(VALID_BODY)
     expect(capturedFetchBody.from).toBe('LoveLab <team@love-lab.com>')
   })
+
+  it('allows a non-admin document owner (shared-folder collaborator) to send', async () => {
+    const { getUserContext } = require('@/app/api/_lib/access')
+    getUserContext.mockResolvedValueOnce({
+      user: { id: 'silke-id', email: 'silke@holdinghausen.com' },
+      isAdmin: false,
+    })
+    const res = await callRoute(VALID_BODY)
+    expect(res.status).toBe(200)
+    expect(capturedFetchBody).toBeTruthy()
+    expect(capturedFetchBody.to).toEqual(['client@example.com'])
+  })
 })
