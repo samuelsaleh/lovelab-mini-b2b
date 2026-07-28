@@ -51,7 +51,7 @@ try {
 
   // 2. CHECK constraint rejects anything but 'offre'.
   const bad = await supabase.from('documents').insert({
-    client_name: MARKER, document_type: 'order', file_name: 'verify.pdf',
+    client_name: MARKER, document_type: 'order', file_name: 'verify.pdf', file_path: 'verify/verify.pdf',
     created_by: admin.id, order_channel: 'b2b', status: 'draft', draft_kind: 'nonsense',
   }).select('id').single();
   check('CHECK constraint rejects an unknown bucket', !!bad.error, bad.error?.code);
@@ -60,7 +60,7 @@ try {
   // 3. Create the Offre exactly as POST /api/documents does.
   const { data: created, error: createErr } = await supabase.from('documents').insert({
     client_name: MARKER, client_company: MARKER, document_type: 'order',
-    file_name: 'verify-offre.pdf', total_amount: 1234, created_by: admin.id,
+    file_name: 'verify-offre.pdf', file_path: 'verify/verify-offre.pdf', total_amount: 1234, created_by: admin.id,
     order_channel: 'b2b', status: 'draft', draft_kind: 'offre', event_id: null,
   }).select('id, status, draft_kind, event_id').single();
   check('an Offre row can be created', !createErr, createErr?.message);
