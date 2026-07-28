@@ -823,6 +823,7 @@ export default function DashboardPage() {
                             documentId: doc.id,
                             order_channel: doc.order_channel || 'b2b',
                             status: doc.status || 'sent',
+                            draft_kind: doc.draft_kind || null,
                           }));
                           router.push('/');
                         }}

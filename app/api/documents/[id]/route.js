@@ -152,6 +152,13 @@ export async function PUT(request, { params }) {
     if (newStatus) {
       updatePayload.status = newStatus;
     }
+    // Offre bucket. Untouched unless the caller explicitly sends the key, so a
+    // promotion to 'sent' (which omits it) keeps the row's provenance and any
+    // other update path cannot silently move a document between folders.
+    // Only admins may move a document into the Offre folder.
+    if (isAdmin && Object.prototype.hasOwnProperty.call(body, 'draft_kind')) {
+      updatePayload.draft_kind = body.draft_kind === 'offre' && newStatus === 'draft' ? 'offre' : null;
+    }
     if (body.order_channel === 'consignment') {
       updatePayload.consignment_agent_id = body.consignment_agent_id || null;
     }

@@ -31,6 +31,8 @@ export async function GET(request) {
     const trashed = searchParams.get('trashed') === 'true';
     const createdByAgent = searchParams.get('created_by_agent');
     const orderChannelFilter = searchParams.get('order_channel'); // e.g. 'internal' or 'consignment'
+    const statusFilter = searchParams.get('status'); // 'draft' | 'sent'
+    const draftKindFilter = searchParams.get('draft_kind'); // 'offre' | 'none' (none = plain Draft)
     const summaryOnly = searchParams.get('summary') === 'true'; // strips heavy metadata.formState
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     // Raise per_page cap to 500 for consignment admin views (only admins can hit this with
@@ -162,6 +164,19 @@ export async function GET(request) {
       }
     }
 
+    // Draft / Offre folders ask for their complete bucket. Without this the
+    // panel could only show whatever drafts happened to be inside the first
+    // paginated page of all documents (invisible drafts for admins with
+    // hundreds of orders).
+    if (statusFilter === 'draft' || statusFilter === 'sent') {
+      query = query.eq('status', statusFilter);
+    }
+    if (draftKindFilter === 'offre') {
+      query = query.eq('draft_kind', 'offre');
+    } else if (draftKindFilter === 'none') {
+      query = query.is('draft_kind', null);
+    }
+
     if (search && search.trim()) {
       // Sanitize search input: escape PostgREST special characters
       const sanitized = search.trim().replace(/[,.()"'\\%_*]/g, '');
@@ -222,6 +237,7 @@ export async function POST(request) {
       order_channel,
       consignment_agent_id,
       status,
+      draft_kind,
     } = body;
 
     // file_path is optional for admin-created auto-generated records (e.g. invoices
@@ -248,6 +264,12 @@ export async function POST(request) {
     // excluded from revenue. Promoted to 'sent' later via PUT.
     const safeStatus = status === 'draft' ? 'draft' : 'sent';
     const isDraft = safeStatus === 'draft';
+
+    // "Offre" is a draft parked in the admin-only Offre folder instead of the
+    // shared Draft folder. Same status, so every draft protection (no folder,
+    // no commission, no email, excluded from revenue) applies unchanged.
+    // Non-admins never get the flag, even if they forge the payload.
+    const safeDraftKind = isAdmin && isDraft && draft_kind === 'offre' ? 'offre' : null;
 
     // Validate consignment-specific fields
     if (isConsignmentOrder) {
@@ -342,9 +364,13 @@ export async function POST(request) {
       docMetadata.save_request_id = saveRequestId;
     }
 
+    // draft_kind is only written for an Offre, so a project where
+    // supabase-phase25-offre-orders.sql has not been applied yet keeps saving
+    // ordinary orders and drafts exactly as before.
     const { data: document, error } = await adminSupabase
       .from('documents')
       .insert({
+        ...(safeDraftKind ? { draft_kind: safeDraftKind } : {}),
         event_id: effectiveEventId,
         client_name,
         client_company: client_company || null,
@@ -364,6 +390,12 @@ export async function POST(request) {
 
     if (error) {
       console.error('[Documents POST] Error:', error.message, error.code, error.details, error.hint);
+      if (safeDraftKind && /draft_kind/.test(error.message || '')) {
+        return NextResponse.json({
+          error: 'Offre storage is not migrated yet — run database-migrations/supabase-phase25-offre-orders.sql in Supabase.',
+          detail: error.message,
+        }, { status: 500 });
+      }
       return NextResponse.json({ error: 'Failed to save document', detail: error.message }, { status: 500 });
     }
 

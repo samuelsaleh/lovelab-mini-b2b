@@ -133,4 +133,60 @@ describe('DocumentsSidebar', () => {
     await userEvent.click(screen.getByText('Internal Orders'))
     expect(setShowInternal).toHaveBeenCalledWith(true)
   })
+
+  // ── Offre — admin-only twin of the Draft folder ──────────────────────────
+  test('shows the Offre folder for admins, next to Draft', () => {
+    render(<DocumentsSidebar {...buildProps({ isAdmin: true, offreCount: 2 })} />)
+    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(screen.getByText('Offre')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-offre')).toHaveTextContent('2')
+  })
+
+  test('hides the Offre folder for non-admins', () => {
+    render(<DocumentsSidebar {...buildProps({ isAdmin: false })} />)
+    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(screen.queryByText('Offre')).not.toBeInTheDocument()
+  })
+
+  test('opening Offre closes every other view', async () => {
+    const setShowOffres = jest.fn()
+    const setShowDrafts = jest.fn()
+    const setShowInternal = jest.fn()
+    const setShowConsignment = jest.fn()
+    const setSelectedEventId = jest.fn()
+    const setSelectedOrgId = jest.fn()
+    render(<DocumentsSidebar {...buildProps({
+      showInternal: true,
+      showConsignment: true,
+      setShowOffres,
+      setShowDrafts,
+      setShowInternal,
+      setShowConsignment,
+      setSelectedEventId,
+      setSelectedOrgId,
+    })} />)
+    await userEvent.click(screen.getByText('Offre'))
+    expect(setShowOffres).toHaveBeenCalledWith(true)
+    expect(setShowDrafts).toHaveBeenCalledWith(false)
+    expect(setShowInternal).toHaveBeenCalledWith(false)
+    expect(setShowConsignment).toHaveBeenCalledWith(false)
+    expect(setSelectedEventId).toHaveBeenCalledWith(null)
+    expect(setSelectedOrgId).toHaveBeenCalledWith(null)
+  })
+
+  test('opening Draft closes the Offre view', async () => {
+    const setShowOffres = jest.fn()
+    const setShowDrafts = jest.fn()
+    render(<DocumentsSidebar {...buildProps({ showOffres: true, setShowOffres, setShowDrafts })} />)
+    await userEvent.click(screen.getByText('Draft'))
+    expect(setShowDrafts).toHaveBeenCalledWith(true)
+    expect(setShowOffres).toHaveBeenCalledWith(false)
+  })
+
+  test('All Documents clears the Offre view too', async () => {
+    const setShowOffres = jest.fn()
+    render(<DocumentsSidebar {...buildProps({ showOffres: true, setShowOffres })} />)
+    await userEvent.click(screen.getByText('All Documents'))
+    expect(setShowOffres).toHaveBeenCalledWith(false)
+  })
 })

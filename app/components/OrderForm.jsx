@@ -614,7 +614,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, editingDocDraftKind = null, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
   // OrderForm reads `pricelistYear` from (in priority): the saved doc's
   // metadata.formState (handled in the formState init below), the parent
   // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
@@ -635,10 +635,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // this, "Save as draft" twice produced two identical drafts (Sam, July 2026).
   const [savedDocId, setSavedDocId] = useState(null)
   const [savedDocStatus, setSavedDocStatus] = useState(null)
+  const [savedDocDraftKind, setSavedDocDraftKind] = useState(null)
   // Editing target changed (re-edit / duplicate) → forget the adopted id.
   useEffect(() => {
     setSavedDocId(null)
     setSavedDocStatus(null)
+    setSavedDocDraftKind(null)
   }, [editingDocumentId])
   const [isPrinting, setIsPrinting] = useState(false)
   const [mobileCardView, setMobileCardView] = useState(true)
@@ -1697,10 +1699,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         onAfterPrint={handleAfterPrint}
         editingDocumentId={editingDocumentId || savedDocId}
         isDraftOrder={editingDocumentId ? editingDocStatus === 'draft' : savedDocStatus === 'draft'}
+        isOffreOrder={editingDocumentId
+          ? (editingDocStatus === 'draft' && editingDocDraftKind === 'offre')
+          : (savedDocStatus === 'draft' && savedDocDraftKind === 'offre')}
         onSaveSuccess={async (savedDoc) => {
           if (savedDoc?.id) {
             setSavedDocId(savedDoc.id)
             setSavedDocStatus(savedDoc.status || 'sent')
+            setSavedDocDraftKind(savedDoc.draft_kind || null)
           }
           await deleteDraft()
           await persistClientExtras()

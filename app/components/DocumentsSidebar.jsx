@@ -31,6 +31,9 @@ export default function DocumentsSidebar({
   showDrafts,
   setShowDrafts,
   draftCount = 0,
+  showOffres,
+  setShowOffres,
+  offreCount = 0,
   renamingEventId,
   renameValue,
   setRenameValue,
@@ -77,16 +80,18 @@ export default function DocumentsSidebar({
     if (typeof fromServer === 'number') return fromServer
     return documents.filter(d => d.events?.organization_id === organizationId).length
   }
-  // Drafts are excluded from the All Documents count — they have their own folder.
+  // Parked orders (Draft + Offre) are excluded from the All Documents count —
+  // they have their own folders.
   const allDocsCount = documents.filter(d => d.status !== 'draft').length
 
   const eventFolders = (events || []).filter(e => (e.type || 'other') !== 'agent')
-  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts
+  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts && !showOffres
 
   const selectAll = () => {
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
+    setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -95,6 +100,7 @@ export default function DocumentsSidebar({
     setSelectedEventId(eventId)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
+    setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -103,6 +109,7 @@ export default function DocumentsSidebar({
     setSelectedOrgId?.(orgId)
     setSelectedEventId(null)
     setShowDrafts?.(false)
+    setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -112,6 +119,7 @@ export default function DocumentsSidebar({
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
+    setShowOffres?.(false)
     if (showConsignment) setShowConsignment?.(false)
   }
 
@@ -120,11 +128,22 @@ export default function DocumentsSidebar({
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setShowDrafts?.(false)
+    setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
   }
 
   const selectDrafts = () => {
     setShowDrafts?.(true)
+    setShowOffres?.(false)
+    setSelectedEventId(null)
+    setSelectedOrgId?.(null)
+    if (showInternal) setShowInternal(false)
+    if (showConsignment) setShowConsignment?.(false)
+  }
+
+  const selectOffres = () => {
+    setShowOffres?.(true)
+    setShowDrafts?.(false)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     if (showInternal) setShowInternal(false)
@@ -272,13 +291,37 @@ export default function DocumentsSidebar({
         </button>
       </div>
 
+      {/* Offre — same parked orders as Draft, on the admin-only page. */}
+      {isAdmin && (
+        <div style={{ padding: '0 8px' }}>
+          <button
+            onClick={selectOffres}
+            data-testid="sidebar-offre"
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 8, border: 'none',
+              background: showOffres ? '#faf5e8' : 'transparent',
+              color: showOffres ? colors.luxeGold : '#555',
+              fontSize: 13, fontWeight: showOffres ? 600 : 400,
+              cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+              marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12 }}>🏷️</span>
+              <span>Offre</span>
+            </span>
+            <span style={{ fontSize: 11, color: '#999' }}>{offreCount}</span>
+          </button>
+        </div>
+      )}
+
       {/* ── EVENTS ── */}
       {eventFolders.length > 0 && (
         <>
           <SectionLabel>Events</SectionLabel>
           <div style={{ padding: '0 8px' }}>
             {eventFolders.map(event => {
-              const isSelected = selectedEventId === event.id && !showInternal && !showConsignment && !showDrafts
+              const isSelected = selectedEventId === event.id && !showInternal && !showConsignment && !showDrafts && !showOffres
               return (
                 <div
                   key={event.id}
@@ -380,7 +423,7 @@ export default function DocumentsSidebar({
           <SectionLabel>Agents</SectionLabel>
           <div style={{ padding: '0 8px' }}>
             {(orgFolders || []).map(org => {
-              const isSelected = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showDrafts
+              const isSelected = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showDrafts && !showOffres
               const docCount = getOrgDocCount(org.organization_id)
               const displayName = org.members?.[0]?.full_name || org.members?.[0]?.email || org.organization_name
               return (

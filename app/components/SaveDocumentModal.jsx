@@ -83,6 +83,7 @@ export default function SaveDocumentModal({
   metadata = {},
   editingDocumentId = null, // ID of document being re-edited (for replacement)
   isDraftOrder = false, // True when the document being edited is currently a draft (parked) order
+  isOffreOrder = false, // True when that draft lives in the admin-only Offre folder
   onSaveSuccess = null, // Callback when save completes successfully
   initialOrderChannel = 'b2b', // 'b2b' | 'b2c' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
@@ -105,7 +106,7 @@ export default function SaveDocumentModal({
   const [showNewEvent, setShowNewEvent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savingAs, setSavingAs] = useState(null); // 'sent' | 'draft' while a save is in flight
+  const [savingAs, setSavingAs] = useState(null); // 'sent' | 'draft' | 'offre' while a save is in flight
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   // orderChannel: 'b2b' | 'internal' | 'consignment' | 'delete_from_stock'
@@ -342,7 +343,11 @@ export default function SaveDocumentModal({
     setLoading(false);
   };
 
-  const handleSave = async (targetStatus = 'sent') => {
+  // intent: 'sent' commits the order, 'draft' parks it in the shared Draft
+  // folder, 'offre' parks it in the admin-only Offre folder. Draft and Offre
+  // are the same 'draft' status — only the folder differs.
+  const handleSave = async (intent = 'sent') => {
+    const targetStatus = intent === 'sent' ? 'sent' : 'draft';
     if (!elementRef?.current) {
       setError('Nothing to save - element not found');
       return;
@@ -356,7 +361,7 @@ export default function SaveDocumentModal({
     savingRef.current = true;
 
     setSaving(true);
-    setSavingAs(targetStatus);
+    setSavingAs(intent);
     setError(null);
 
     try {
@@ -559,6 +564,10 @@ export default function SaveDocumentModal({
           },
           order_channel: orderChannel,
           status: targetStatus,
+          // Only sent for an Offre. Omitted otherwise so an ordinary draft
+          // save never touches the column (and never moves a document out of
+          // the Offre folder by accident).
+          ...(intent === 'offre' ? { draft_kind: 'offre' } : {}),
           consignment_agent_id: orderChannel === 'consignment' && consignmentData?.recipient_type === 'agent'
             ? (consignmentData?.agent_id || null)
             : null,
@@ -657,8 +666,11 @@ export default function SaveDocumentModal({
   // creating a new one or editing one that is still a draft. Editing an
   // already-sent order keeps today's Save/Update behaviour with no draft option.
   const canDraft = documentType === 'order' && (orderChannel === 'b2b' || orderChannel === 'b2c');
-  const showSaveAsDraft = canDraft && (!editingDocumentId || isDraftOrder);
-  // When editing a draft, the primary button promotes it to a sent order.
+  const showSaveAsDraft = canDraft && !isOffreOrder && (!editingDocumentId || isDraftOrder);
+  // Offre: same parking behaviour as a draft, but in the admin-only Offre
+  // folder. Editing an Offre keeps it an Offre (never silently a Draft).
+  const showSaveAsOffre = isAdmin && canDraft && (!editingDocumentId || isOffreOrder);
+  // When editing a draft (or an Offre), the primary button promotes it to a sent order.
   const promoteOnPrimary = !!editingDocumentId && isDraftOrder;
 
   // ─── Localised defaults for every editable email field ───
@@ -1356,6 +1368,31 @@ export default function SaveDocumentModal({
                   }}
                 >
                   {saving && savingAs === 'draft' ? 'Saving draft…' : 'Save as draft'}
+                </button>
+              )}
+              {showSaveAsOffre && (
+                <button
+                  onClick={() => handleSave('offre')}
+                  disabled={saving}
+                  title="Park this order in the Offre folder — no commission and no email until you send it"
+                  style={{
+                    padding: mobile ? '12px 20px' : '10px 20px',
+                    borderRadius: 8,
+                    border: `1px solid ${colors.luxeGold}`,
+                    background: '#fff',
+                    color: colors.luxeGold,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontFamily: fonts.body,
+                    opacity: saving && savingAs !== 'offre' ? 0.5 : 1,
+                    minHeight: mobile ? 48 : 'auto',
+                    width: mobile ? '100%' : 'auto',
+                  }}
+                >
+                  {saving && savingAs === 'offre'
+                    ? 'Enregistrement…'
+                    : isOffreOrder ? "Enregistrer l'Offre" : 'Enregistrer en Offre'}
                 </button>
               )}
               {(() => {

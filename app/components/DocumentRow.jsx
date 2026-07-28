@@ -24,6 +24,8 @@ export default function DocumentRow({
   const { t } = useI18n()
   const isRenaming = renamingDocId === doc.id
   const isDraft = doc.status === 'draft'
+  // An Offre is a draft parked in the admin-only Offre folder.
+  const isOffre = isDraft && doc.draft_kind === 'offre'
 
   return (
     <div style={{
@@ -37,11 +39,11 @@ export default function DocumentRow({
         {/* Icon */}
         <div style={{
           width: 36, height: 36, borderRadius: 8,
-          background: isDraft ? '#fff4e5' : doc.document_type === 'order' ? '#f0f5ff' : '#f5f5f5',
+          background: isOffre ? '#faf5e8' : isDraft ? '#fff4e5' : doc.document_type === 'order' ? '#f0f5ff' : '#f5f5f5',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 16, flexShrink: 0, color: colors.inkPlum, fontWeight: 700,
         }}>
-          {isDraft ? 'D' : doc.document_type === 'order' ? 'PO' : 'Q'}
+          {isOffre ? 'O' : isDraft ? 'D' : doc.document_type === 'order' ? 'PO' : 'Q'}
         </div>
 
         {/* Info */}
@@ -95,9 +97,10 @@ export default function DocumentRow({
               {isDraft && (
                 <span style={{
                   padding: '1px 6px', borderRadius: 4,
-                  background: '#fff4e5', color: '#b9770e',
+                  background: isOffre ? '#faf5e8' : '#fff4e5',
+                  color: isOffre ? colors.luxeGold : '#b9770e',
                   fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                }}>Draft</span>
+                }}>{isOffre ? 'Offre' : 'Draft'}</span>
               )}
               {doc.order_channel === 'internal' && (
                 <span style={{

@@ -95,6 +95,7 @@ export default function App() {
   const [savedFormState, setSavedFormState] = useState(null)
   const [editingDocumentId, setEditingDocumentId] = useState(null) // ID of document being re-edited
   const [editingDocStatus, setEditingDocStatus] = useState(null) // 'draft' | 'sent' of the doc being re-edited (null = new/unknown)
+  const [editingDocDraftKind, setEditingDocDraftKind] = useState(null) // 'offre' when that draft lives in the admin Offre folder
   const [initialOrderChannel, setInitialOrderChannel] = useState('b2b') // 'b2b' | 'internal' | 'consignment'
   const [docsRefreshKey, setDocsRefreshKey] = useState(0)
 
@@ -295,6 +296,7 @@ export default function App() {
     setSavedFormState(formState)
     setEditingDocumentId(doc.id)
     setEditingDocStatus(doc?.status || 'sent')
+    setEditingDocDraftKind(doc?.draft_kind || null)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setShowOrderForm(true)
   }, [setPricelistYear])
@@ -302,7 +304,10 @@ export default function App() {
   // Clear the re-edited doc's status whenever we stop editing (new/blank order,
   // finalize, close). Positive sets happen at the doc-fetch sites below.
   useEffect(() => {
-    if (!editingDocumentId) setEditingDocStatus(null)
+    if (!editingDocumentId) {
+      setEditingDocStatus(null)
+      setEditingDocDraftKind(null)
+    }
   }, [editingDocumentId])
 
   // ─── Deep-link handler — handles all URL params in one place ────────────
@@ -334,6 +339,7 @@ export default function App() {
             setSavedFormState(null)
             setEditingDocumentId(data.document.id)
             setEditingDocStatus(data.document.status || 'sent')
+            setEditingDocDraftKind(data.document.draft_kind || null)
             setInitialOrderChannel(data.document.order_channel || 'b2b')
             setShowOrderForm(true)
             return
@@ -355,6 +361,7 @@ export default function App() {
           setInitialOrderChannel(channel)
           setEditingDocumentId(data.document.id)
           setEditingDocStatus(data.document.status || 'sent')
+          setEditingDocDraftKind(data.document.draft_kind || null)
           // Restore the pricelist year before switching tabs so builder + AI
           // immediately quote the document's saved year — previously this was
           // skipped, so a 2025 doc reopened in the builder at 2026 prices.
@@ -412,6 +419,7 @@ export default function App() {
     setSavedFormState(rest)
     setEditingDocumentId(null)
     setEditingDocStatus(null)
+    setEditingDocDraftKind(null)
     setInitialOrderChannel(doc?.order_channel || 'b2b')
     setClientReady(true)
     explicitClientGateRef.current = false
@@ -734,6 +742,7 @@ export default function App() {
           setOrderFormQuote(null)
           if (documentId) setEditingDocumentId(documentId)
           setEditingDocStatus(parsed.status ?? null)
+          setEditingDocDraftKind(parsed.draft_kind ?? null)
           setInitialOrderChannel(parsed.order_channel || 'b2b')
           setShowOrderForm(true)
         }
@@ -831,7 +840,7 @@ export default function App() {
   return (
     <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 
       {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
       {accountPanelOpen && (

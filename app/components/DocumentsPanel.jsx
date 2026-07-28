@@ -65,8 +65,16 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [showInternal, setShowInternal] = useState(false)
   const [showConsignment, setShowConsignment] = useState(false)
   // Draft (parked orders) view — its own "Draft" folder, separate from the
-  // agent's event folders. Drafts come from the main documents load.
+  // agent's event folders.
   const [showDrafts, setShowDrafts] = useState(false)
+  // Offre view — the admin-only twin of Draft. Same parked orders
+  // (status='draft'), told apart by draft_kind='offre'.
+  const [showOffres, setShowOffres] = useState(false)
+  // Complete list of parked orders (both folders), fetched server-side so a
+  // draft/offre is never hidden just because it fell outside the first
+  // paginated page of all documents.
+  const [parkedDocs, setParkedDocs] = useState([])
+  const [parkedLoading, setParkedLoading] = useState(false)
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const [internalDocs, setInternalDocs] = useState([])
@@ -128,7 +136,25 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   // ── Data fetch ────────────────────────────────────────────────────────────
-  useEffect(() => { fetchData(); fetchSummaryDocs() }, [refreshKey])
+  useEffect(() => { fetchData(); fetchSummaryDocs(); fetchParkedDocs() }, [refreshKey])
+
+  // Parked orders (Draft + Offre). One request for both buckets: the split is
+  // done client-side on draft_kind, so this keeps working unchanged on a
+  // database where supabase-phase25-offre-orders.sql has not been applied yet
+  // (draft_kind simply comes back undefined and everything stays a Draft).
+  const fetchParkedDocs = async () => {
+    setParkedLoading(true)
+    try {
+      const res = await safeFetch('/api/documents?status=draft&per_page=200')
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.documents) setParkedDocs(data.documents)
+      }
+    } catch {
+      // Non-fatal — the folders show empty instead of breaking the panel.
+    }
+    setParkedLoading(false)
+  }
 
   // Fetch ALL documents (lightweight) for the analytics totals. Pages through
   // the full result set so the All Documents revenue/sales-by-date covers every
@@ -280,14 +306,14 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   useEffect(() => {
-    if (showInternal || showConsignment || showDrafts) return
+    if (showInternal || showConsignment || showDrafts || showOffres) return
     if (selectedOrgId || (selectedEventId && selectedEventId !== 'none')) {
       fetchFolderDocs(selectedEventId, selectedOrgId)
     } else {
       setFolderDocs([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts])
+  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts, showOffres])
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const fetchInternalDocs = async () => {
@@ -306,7 +332,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowInternal = (val) => {
     setShowInternal(val)
-    if (val) setShowDrafts(false)
+    if (val) { setShowDrafts(false); setShowOffres(false) }
     if (val && internalDocs.length === 0) fetchInternalDocs()
   }
 
@@ -326,7 +352,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   const handleSetShowConsignment = (val) => {
     setShowConsignment(val)
-    if (val) setShowDrafts(false)
+    if (val) { setShowDrafts(false); setShowOffres(false) }
     if (val && consignmentDocs.length === 0) fetchConsignmentDocs()
   }
 
@@ -516,6 +542,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       setFolderDocs(prev => prev.filter(d => d.id !== doc.id))
       setSummaryDocs(prev => prev.filter(d => d.id !== doc.id))
       setInternalDocs(prev => prev.filter(d => d.id !== doc.id))
+      setParkedDocs(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
       setErrorMsg(t('docs.deleteFailed') + ': ' + err.message)
     }
@@ -543,6 +570,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       } else {
         setDocuments(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
         setFolderDocs(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
+        setParkedDocs(prev => prev.map(d => d.id === docId ? { ...d, file_name: trimmed } : d))
       }
     } catch {
       setErrorMsg('Failed to rename document')
@@ -649,11 +677,11 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // the server-fetched `folderDocs` (complete folder) or the paginated
   // `documents` array (All Documents / No Event views).
   const isFolderView =
-    !showInternal && !showConsignment && !showDrafts &&
+    !showInternal && !showConsignment && !showDrafts && !showOffres &&
     (Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
 
   const filteredDocs = useMemo(() => {
-    if (showInternal || showConsignment || showDrafts) return []
+    if (showInternal || showConsignment || showDrafts || showOffres) return []
     const sourceDocs = isFolderView ? folderDocs : documents
     return sourceDocs.filter(doc => {
       // Drafts (parked orders) never appear in All Documents or event folders —
@@ -679,7 +707,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(search.toLowerCase())
       )
     })
-  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts])
+  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
 
   // Dataset for the analytics widget. Folder/agent views and the rare "No Event"
   // view already have a complete dataset in filteredDocs. For All Documents we
@@ -687,7 +715,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // reflect everything, not just the first loaded page. Falls back to filteredDocs
   // until the summary has loaded.
   const analyticsDocs = useMemo(() => {
-    if (showInternal || showConsignment || showDrafts) return []
+    if (showInternal || showConsignment || showDrafts || showOffres) return []
     if (isFolderView || selectedEventId === 'none') return filteredDocs
     if (summaryDocs.length === 0) return filteredDocs
     const term = search.toLowerCase()
@@ -700,23 +728,32 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         doc.file_name?.toLowerCase().includes(term)
       )
     })
-  }, [showInternal, showConsignment, showDrafts, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
+  }, [showInternal, showConsignment, showDrafts, showOffres, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
 
-  // Drafts live in their own "Draft" folder — never mixed into All Documents or
-  // the agent's own event folders. Search still applies within the folder.
-  const draftDocs = useMemo(() => {
-    return documents.filter(doc => {
-      if (doc.status !== 'draft') return false
-      return (
-        !search ||
-        doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
-        doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
-        doc.file_name?.toLowerCase().includes(search.toLowerCase())
-      )
-    })
-  }, [documents, search])
+  // Parked orders live in their own folders — never mixed into All Documents or
+  // the agent's own event folders. Draft holds every parked order except the
+  // ones an admin filed as an Offre. Search still applies within the folder.
+  const matchesSearch = (doc) => (
+    !search ||
+    doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
+    doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
+    doc.file_name?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const draftDocs = useMemo(
+    () => parkedDocs.filter(doc => doc.draft_kind !== 'offre' && matchesSearch(doc)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parkedDocs, search],
+  )
+
+  const offreDocs = useMemo(
+    () => parkedDocs.filter(doc => doc.draft_kind === 'offre' && matchesSearch(doc)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parkedDocs, search],
+  )
 
   const currentEventName = useMemo(() => {
+    if (showOffres) return 'Offre'
     if (showDrafts) return 'Draft'
     if (showInternal) return 'Internal Orders'
     if (showConsignment) return 'Consignment Orders'
@@ -728,7 +765,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showDrafts, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
+  }, [showDrafts, showOffres, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -742,6 +779,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (search) return {
       title: 'No documents match your search',
       subtitle: 'Try a different client name, company, or file name.',
+    }
+    if (showOffres) return {
+      title: 'Aucune offre pour l’instant',
+      subtitle: 'Enregistrez une commande en Offre pour la garer ici jusqu’à son envoi.',
     }
     if (showDrafts) return {
       title: 'No drafts yet',
@@ -771,8 +812,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const emptyState = getEmptyState()
 
   // ── Display list ──────────────────────────────────────────────────────────
-  const displayDocs = showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
-  const displayLoading = showDrafts ? loading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
+  const displayDocs = showOffres ? offreDocs : showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
+  const displayLoading = showOffres || showDrafts ? parkedLoading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -819,7 +860,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         setShowConsignment={handleSetShowConsignment}
         showDrafts={showDrafts}
         setShowDrafts={setShowDrafts}
-        draftCount={documents.filter(d => d.status === 'draft').length}
+        draftCount={parkedDocs.filter(d => d.draft_kind !== 'offre').length}
+        showOffres={showOffres}
+        setShowOffres={setShowOffres}
+        offreCount={parkedDocs.filter(d => d.draft_kind === 'offre').length}
         renamingEventId={renamingEventId}
         renameValue={renameValue}
         setRenameValue={setRenameValue}
@@ -1004,7 +1048,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 docRenameLoading={docRenameLoading}
               />
             ))}
-            {!showInternal && !showConsignment && !showDrafts && !isFolderView && hasMoreDocs && (
+            {!showInternal && !showConsignment && !showDrafts && !showOffres && !isFolderView && hasMoreDocs && (
               <button
                 onClick={loadMoreDocs}
                 disabled={loadingMore}
