@@ -318,11 +318,13 @@ function computePackTotal(pack, pricelistYear) {
 //
 // We carry the DB id, scope, ownership and is_seed flag through (prefixed with
 // `_`) so the UI can decide which packs are editable/deletable:
-//   - `_custom` (private AND owned by the caller) → "Your pack" badge + delete.
+//   - `_custom` (private AND owned by the caller) → "Your pack" badge + delete
+//     for agents.
 //   - `_isOwner` → the caller created this pack (any scope).
-//   - admins can SEE other users' private packs (Phase 27) but must not get a
-//     delete/edit control on them; `_ownerName` lets the card show whose pack
-//     it is. `is_owner` / `owner_name` come from /api/packs.
+//   - admins can SEE other users' private packs (Phase 27). From Phase 33 they
+//     can also DELETE every type (seed / global / restricted / foreign private)
+//     and drag-reorder the strip. Edit of a foreign private pack stays blocked.
+//   - `_ownerName` lets the card show whose pack it is.
 //   - `_isSeed` / global → editable only by admins (matches the RLS policy).
 function dbPackToDisplay(p) {
   const isOwner = p.is_owner === undefined ? (p.scope === 'private') : !!p.is_owner
@@ -535,16 +537,71 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     [lines],
   )
 
-  // Delete one of the agent's own saved packs. Seed/quick-start packs have no
-  // delete control, and the API blocks seed deletion server-side as a backstop.
+  // Delete a pack. Agents: own private only. Admins: every type (seed /
+  // global / restricted / others' private) — Sam, July 2026.
   const deletePack = useCallback(async (pack) => {
-    if (!pack?._custom || !pack._dbId) return
-    if (typeof window !== 'undefined' && !window.confirm(`Delete your pack "${pack.label}"?`)) return
+    if (!pack?._dbId) return
+    const allowed = pack._custom || isAdmin
+    if (!allowed) return
+    const confirmMsg = pack._isSeed
+      ? `Delete the built-in pack "${pack.label}"?\n\nEvery agent will lose this quick-start pack. This cannot be undone.`
+      : pack._custom
+        ? `Delete your pack "${pack.label}"?`
+        : `Delete pack "${pack.label}"?`
+    if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return
     try {
       const res = await fetch(`/api/packs/${pack._dbId}`, { method: 'DELETE' })
       if (res.ok) setDbPacks(prev => prev.filter(p => p._dbId !== pack._dbId))
     } catch { /* non-fatal — leave the card in place if the request fails */ }
+  }, [isAdmin])
+
+  // Admin drag-to-reorder of the pack strip. Optimistic local move, then
+  // persist via /api/packs/reorder so every user sees the new order.
+  const [dragPackId, setDragPackId] = useState(null)
+  const persistPackOrder = useCallback(async (ordered) => {
+    const ordered_ids = ordered.map((p) => p._dbId).filter(Boolean)
+    if (ordered_ids.length === 0) return
+    try {
+      await fetch('/api/packs/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordered_ids }),
+      })
+    } catch { /* non-fatal — local order still looks right until next refresh */ }
   }, [])
+  const handlePackDragStart = useCallback((e, pack) => {
+    if (!isAdmin || !pack?._dbId) {
+      e.preventDefault()
+      return
+    }
+    setDragPackId(pack.id)
+    e.dataTransfer.effectAllowed = 'move'
+    try { e.dataTransfer.setData('text/plain', pack.id) } catch { /* IE */ }
+  }, [isAdmin])
+  const handlePackDragOver = useCallback((e, pack) => {
+    if (!isAdmin || !dragPackId || !pack?._dbId || pack.id === dragPackId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [isAdmin, dragPackId])
+  const handlePackDrop = useCallback((e, targetPack) => {
+    e.preventDefault()
+    if (!isAdmin || !dragPackId || !targetPack?._dbId || dragPackId === targetPack.id) {
+      setDragPackId(null)
+      return
+    }
+    setDbPacks((prev) => {
+      const from = prev.findIndex((p) => p.id === dragPackId)
+      const to = prev.findIndex((p) => p.id === targetPack.id)
+      if (from < 0 || to < 0) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      persistPackOrder(next)
+      return next
+    })
+    setDragPackId(null)
+  }, [isAdmin, dragPackId, persistPackOrder])
+  const handlePackDragEnd = useCallback(() => { setDragPackId(null) }, [])
 
   // Pending pricelist switch — set to a year string when the agent clicks the
   // other toggle button while there are non-empty lines. Confirms via modal,
@@ -1312,7 +1369,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <span style={{ fontSize: 14, opacity: 0.7 }}>▤</span>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>Packs</div>
-                  <div style={{ fontSize: 10, color: '#aaa' }}>Quick-start with a standard collection</div>
+                  <div style={{ fontSize: 10, color: '#aaa' }}>
+                    {isAdmin
+                      ? 'Quick-start packs — drag cards to reorder, × to delete'
+                      : 'Quick-start with a standard collection'}
+                  </div>
                 </div>
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: '#999', fontWeight: 600 }}>
                   {showPacks ? '▲ Close' : '▼ Browse'}
@@ -1388,17 +1449,39 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     // (global/restricted) packs. An admin viewing another
                     // user's private pack can see + apply it but NOT edit it.
                     const editable = !!pack._dbId && (pack._isOwner || (isAdmin && pack._scope !== 'private'))
+                    // Agents: own private only. Admins: every pack type.
+                    const deletable = !!pack._dbId && (pack._custom || isAdmin)
+                    const draggable = isAdmin && !!pack._dbId
                     // Packs an admin sees but doesn't own — surface whose it is.
                     const foreignOwner = !pack._isOwner && pack._ownerName
+                    const isDragging = dragPackId === pack.id
                     return (
-                    <div key={pack.id} style={{
+                    <div
+                      key={pack.id}
+                      draggable={draggable}
+                      onDragStart={(e) => handlePackDragStart(e, pack)}
+                      onDragOver={(e) => handlePackDragOver(e, pack)}
+                      onDrop={(e) => handlePackDrop(e, pack)}
+                      onDragEnd={handlePackDragEnd}
+                      data-testid={draggable ? `pack-card-draggable-${pack.id}` : `pack-card-${pack.id}`}
+                      title={draggable ? 'Drag to reorder packs' : undefined}
+                      style={{
                       minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 240px' : '0 0 auto',
-                      border: '1px solid #e4dded', borderRadius: 10,
-                      padding: '12px 14px', background: '#fff',
+                      border: isDragging ? `1.5px solid ${colors.inkPlum}` : '1px solid #e4dded', borderRadius: 10,
+                      padding: '12px 14px', background: isDragging ? '#f5eef7' : '#fff',
                       boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
                       display: 'flex', flexDirection: 'column',
+                      opacity: isDragging ? 0.7 : 1,
+                      cursor: draggable ? 'grab' : 'default',
+                      userSelect: draggable ? 'none' : undefined,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        {draggable && (
+                          <span
+                            aria-hidden="true"
+                            style={{ color: '#bbb', fontSize: 12, lineHeight: 1, cursor: 'grab', flexShrink: 0 }}
+                          >⠿</span>
+                        )}
                         <div style={{ fontWeight: 700, fontSize: 13, color: colors.inkPlum }}>
                           {pack.label}
                         </div>
@@ -1424,7 +1507,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                             {pack._ownerName}
                           </span>
                         )}
-                        {pack._custom && (
+                        {deletable && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); deletePack(pack) }}

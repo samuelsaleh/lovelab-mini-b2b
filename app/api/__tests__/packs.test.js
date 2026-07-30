@@ -15,7 +15,8 @@
  *     'global'. Admins keep 'global'.
  *   - PUT returns 403 if a non-admin tries to flip scope to 'global'.
  *   - PUT propagates the €970 floor.
- *   - DELETE refuses seed packs with a 422.
+ *   - DELETE refuses seed packs with a 422 for non-admins.
+ *   - DELETE lets admins remove seed packs (Phase 33).
  *   - DELETE returns 404 for an unknown pack id.
  *
  * The Supabase client is mocked with a chainable query builder so we don't
@@ -488,15 +489,54 @@ describe('DELETE /api/packs/[id]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('refuses to delete a seed pack with a 422', async () => {
+  it('refuses to delete a seed pack with a 422 for non-admins', async () => {
     mockUser.data.user = { id: 'u-1' }
-    mockNextResult = { data: { id: 'p-1', is_seed: true }, error: null }
+    mockProfileRole = 'agent'
+    mockNextResult = { data: { id: 'p-1', is_seed: true, created_by: 'u-1' }, error: null }
 
     const res = await DELETE(
       req(),
       { params: Promise.resolve({ id: 'p-1' }) },
     )
     expect(res.status).toBe(422)
+  })
+
+  it('lets an admin delete a seed pack', async () => {
+    mockUser.data.user = { id: 'admin-1' }
+    mockProfileRole = 'admin'
+    let deleted = false
+    mockAdminSupabase.from.mockImplementation((table) => {
+      if (table === 'profiles') {
+        return {
+          select() { return this }, eq() { return this },
+          single() { return Promise.resolve({ data: { role: 'admin' }, error: null }) },
+          maybeSingle() { return Promise.resolve({ data: { role: 'admin' }, error: null }) },
+        }
+      }
+      const chain = {
+        select() { return chain },
+        eq() { return chain },
+        delete() { deleted = true; return chain },
+        maybeSingle() {
+          return Promise.resolve({
+            data: { id: 'seed-1', is_seed: true, scope: 'global', created_by: null, label: 'Pack 1' },
+            error: null,
+          })
+        },
+        single() {
+          return Promise.resolve({ data: { id: 'seed-1' }, error: null })
+        },
+      }
+      return chain
+    })
+
+    const res = await DELETE(
+      req(),
+      { params: Promise.resolve({ id: 'seed-1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect(deleted).toBe(true)
+    expect(mockDeleteTemplate).toHaveBeenCalledWith(expect.anything(), 'seed-1')
   })
 
   it('returns 200 when an owner deletes their own non-seed pack', async () => {
@@ -515,8 +555,18 @@ describe('DELETE /api/packs/[id]', () => {
       // packs lookup for is_seed check
       const chain = {
         select() { return chain }, eq() { return chain },
-        maybeSingle() { return Promise.resolve({ data: { id: 'p-1', is_seed: false }, error: null }) },
-        single() { return Promise.resolve({ data: { id: 'p-1', is_seed: false }, error: null }) },
+        maybeSingle() {
+          return Promise.resolve({
+            data: { id: 'p-1', is_seed: false, created_by: 'u-1', scope: 'private', label: 'Mine' },
+            error: null,
+          })
+        },
+        single() {
+          return Promise.resolve({
+            data: { id: 'p-1', is_seed: false, created_by: 'u-1' },
+            error: null,
+          })
+        },
       }
       return chain
     })

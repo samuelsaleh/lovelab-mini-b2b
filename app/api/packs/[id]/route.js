@@ -5,8 +5,8 @@
  *          minimum and form_rows shape are re-validated here so we surface
  *          friendly errors rather than raw constraint failures.
  *
- * DELETE → deletes a non-seed pack the caller owns. Seed packs are blocked
- *          server-side AND by the RLS policy.
+ * DELETE → agents delete their own non-seed packs. Admins delete ANY pack
+ *          (seed / global / restricted / others' private) — Sam, July 2026.
  */
 
 import { NextResponse } from 'next/server'
@@ -191,16 +191,12 @@ export async function DELETE(request, { params }) {
 
     const supabase = await createClient()
     const adminSupabase = createAdminClient()
-    const { user } = await getCaller(supabase, adminSupabase)
+    const { user, isAdmin } = await getCaller(supabase, adminSupabase)
     if (!user) return badRequest('Unauthorized', 401)
 
-    // Seed packs are undeletable. We check this server-side before the
-    // delete so the user gets a clear 422 instead of a silent no-op (the RLS
-    // delete policy also filters them out, but it returns 0 rows rather
-    // than an error).
     const { data: existing, error: fetchErr } = await adminSupabase
       .from('packs')
-      .select('id, is_seed')
+      .select('id, is_seed, scope, created_by, label')
       .eq('id', id)
       .maybeSingle()
     if (fetchErr) {
@@ -208,11 +204,22 @@ export async function DELETE(request, { params }) {
       return badRequest('Failed to fetch pack', 500)
     }
     if (!existing) return badRequest('Pack not found', 404)
-    if (existing.is_seed) {
-      return badRequest('Seed packs cannot be deleted', 422)
+
+    // Agents: own non-seed only. Admins: every type (seed included).
+    if (!isAdmin) {
+      if (existing.is_seed) {
+        return badRequest('Seed packs cannot be deleted', 422)
+      }
+      if (existing.created_by !== user.id) {
+        return badRequest('Forbidden', 403)
+      }
     }
 
-    const { error } = await supabase
+    // Admin deletes go through the service-role client so they work even
+    // before the phase-33 RLS policy is applied (and so seeds / foreign
+    // private packs are reachable). Agents stay on the RLS-bearing client.
+    const writer = isAdmin ? adminSupabase : supabase
+    const { error } = await writer
       .from('packs')
       .delete()
       .eq('id', id)

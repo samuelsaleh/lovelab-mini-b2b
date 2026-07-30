@@ -60,11 +60,23 @@ export async function GET(request) {
     if (!user) return badRequest('Unauthorized', 401)
 
     // Use the user-context client so RLS filters rows automatically.
-    const { data, error } = await supabase
+    // sort_order is the admin-dragged permanent order (Phase 33). Fall back to
+    // the legacy is_seed + created_at ordering when the column isn't migrated
+    // yet, or for any row that still has a NULL sort_order.
+    let { data, error } = await supabase
       .from('packs')
-      .select('id, label, description, budget_label, fixed_total, form_rows, scope, created_by, is_seed, created_at, updated_at')
-      .order('is_seed', { ascending: false }) // seed packs first to keep the legacy ordering
+      .select('id, label, description, budget_label, fixed_total, form_rows, scope, created_by, is_seed, sort_order, created_at, updated_at')
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('is_seed', { ascending: false })
       .order('created_at', { ascending: true })
+
+    if (error && /sort_order/.test(error.message || '')) {
+      ;({ data, error } = await supabase
+        .from('packs')
+        .select('id, label, description, budget_label, fixed_total, form_rows, scope, created_by, is_seed, created_at, updated_at')
+        .order('is_seed', { ascending: false })
+        .order('created_at', { ascending: true }))
+    }
 
     if (error) {
       console.error('[packs GET]', error.message)
@@ -160,6 +172,22 @@ export async function POST(request) {
       return badRequest('agent_ids must be an array')
     }
 
+    // Append at the end of the admin-ordered strip. Best-effort: if the
+    // sort_order column isn't migrated yet the insert still succeeds (column
+    // omitted) and GET falls back to the legacy ordering.
+    let nextSortOrder = null
+    try {
+      const { data: last, error: sortErr } = await adminSupabase
+        .from('packs')
+        .select('sort_order')
+        .order('sort_order', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+      if (!sortErr) {
+        nextSortOrder = last?.sort_order != null ? Number(last.sort_order) + 1 : 0
+      }
+    } catch { /* column may not exist yet */ }
+
     // Use the user-context client so RLS WITH CHECK runs.
     const { data: pack, error } = await supabase
       .from('packs')
@@ -172,6 +200,7 @@ export async function POST(request) {
         scope,
         created_by: user.id,
         is_seed: false,
+        ...(nextSortOrder != null ? { sort_order: nextSortOrder } : {}),
       })
       .select()
       .single()

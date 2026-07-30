@@ -241,11 +241,39 @@ describe('BuilderPage — editable packs', () => {
     expect(screen.getByLabelText('Edit pack — My Private Pack')).toBeInTheDocument()
   })
 
+  it('shows Delete on every pack type for an admin (including seeds)', async () => {
+    renderBuilderAdmin(true)
+    await openPacksDrawer()
+    expect(screen.getByLabelText(/Delete.*Standard Pack/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Delete.*My Private Pack/i)).toBeInTheDocument()
+  })
+
+  it('makes admin pack cards draggable for reorder', async () => {
+    renderBuilderAdmin(true)
+    await openPacksDrawer()
+    expect(screen.getByTestId('pack-card-draggable-seed-1')).toBeInTheDocument()
+    expect(screen.getByTestId('pack-card-draggable-priv-1')).toBeInTheDocument()
+  })
+
   it('hides Edit on standard packs for a non-admin but keeps it on their own pack', async () => {
     renderBuilderAdmin(false)
     await openPacksDrawer()
     expect(screen.queryByLabelText('Edit pack — Standard Pack')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Edit pack — My Private Pack')).toBeInTheDocument()
+  })
+
+  it('hides Delete on seed packs for a non-admin but keeps it on their own pack', async () => {
+    renderBuilderAdmin(false)
+    await openPacksDrawer()
+    expect(screen.queryByLabelText(/Delete.*Standard Pack/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Delete.*My Private Pack/i)).toBeInTheDocument()
+  })
+
+  it('does not make pack cards draggable for a non-admin', async () => {
+    renderBuilderAdmin(false)
+    await openPacksDrawer()
+    expect(screen.queryByTestId('pack-card-draggable-seed-1')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pack-card-priv-1')).toBeInTheDocument()
   })
 
   it('clicking Edit loads the pack into the builder and shows the editing banner', async () => {
