@@ -99,7 +99,7 @@ const EAN_FILES = [
 const BRAND_DOCUMENT_FILES = [
   {
     name: 'LoveLab Brand Presentation — French.pdf',
-    path: '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation.pdf',
+    path: '/BRAND PRESENTATION DOCS/LoveLab_Presentation_Marque_FR.pdf',
   },
   {
     name: 'LoveLab Brand Presentation — English.pdf',

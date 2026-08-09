@@ -204,7 +204,7 @@ describe('ResourcesCard — Brand Documents folder', () => {
     const en = screen.getByText('LoveLab Brand Presentation — English.pdf').closest('a')
 
     expect(fr.getAttribute('href')).toBe(
-      '/BRAND%20PRESENTATION%20DOCS/LoveLab_Brand_Presentation.pdf',
+      '/BRAND%20PRESENTATION%20DOCS/LoveLab_Presentation_Marque_FR.pdf',
     )
     expect(en.getAttribute('href')).toBe(
       '/BRAND%20PRESENTATION%20DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
