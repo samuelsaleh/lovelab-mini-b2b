@@ -98,6 +98,7 @@ const CATALOGUE_CANDIDATES = {
     '_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
   ],
   de: [
+    'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
     'DE_LoveLab_B2B_Catalogue.pdf',
   ],
   it: [

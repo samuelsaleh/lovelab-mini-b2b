@@ -132,11 +132,11 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     const selector = screen.getByLabelText('Catalogue preview')
     fireEvent.change(selector, { target: { value: 'en-oct' } })
 
-    expect(screen.getByTitle('Catalogue preview: Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+    expect(screen.getByTitle('Catalogue preview: Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf')
       .getAttribute('src'))
       .toBe('https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed')
     expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
-      .toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm)%20(1).pdf')
+      .toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf')
   })
 
   it('keeps the original English catalogue download in its new folder', () => {
@@ -164,11 +164,23 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     fireEvent.click(screen.getByText('Catalogue'))
 
-    const link = screen.getAllByText('Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm) (1).pdf')
+    const link = screen.getAllByText('Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf')
       .map((element) => element.closest('a'))
       .find(Boolean)
 
     expect(link).not.toBeNull()
-    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm)%20(1).pdf')
+    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf')
+  })
+
+  it('lists the October German PDF in the admin document catalogue folder', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Catalogue'))
+
+    const link = screen.getAllByText('Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
+      .map((element) => element.closest('a'))
+      .find(Boolean)
+
+    expect(link).not.toBeNull()
+    expect(link.getAttribute('href')).toBe('/catalogues/Oct%20DE_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf')
   })
 })
