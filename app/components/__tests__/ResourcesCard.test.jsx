@@ -20,6 +20,7 @@ jest.mock('@/lib/i18n', () => ({
         'resources.packs': 'Packs',
         'resources.priceList': 'Price List',
         'resources.eanCodes': 'EAN Codes',
+        'resources.brandDocuments': 'Brand Documents',
         'resources.sendByEmail': 'Send 1 file by email',
         'resources.sendByEmailPlural': 'Send 2 files by email',
       }
@@ -55,6 +56,7 @@ describe('ResourcesCard — EAN Codes folder', () => {
     render(<ResourcesCard isAdmin={false} />)
     expect(screen.queryByText('EAN Codes')).not.toBeInTheDocument()
     expect(screen.queryByText('Catalogue')).not.toBeInTheDocument()
+    expect(screen.queryByText('Brand Documents')).not.toBeInTheDocument()
   })
 
   it('renders the EAN Codes folder for admins', () => {
@@ -182,5 +184,40 @@ describe('ResourcesCard — French catalogue preview and downloads', () => {
 
     expect(link).not.toBeNull()
     expect(link.getAttribute('href')).toBe('/catalogues/Oct%20DE_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf')
+  })
+})
+
+describe('ResourcesCard — Brand Documents folder', () => {
+  it('renders Brand Documents for admins only', () => {
+    const { rerender } = render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
+    expect(screen.queryByText('Brand Documents')).not.toBeInTheDocument()
+
+    rerender(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    expect(screen.getByText('Brand Documents')).toBeInTheDocument()
+  })
+
+  it('lists French and English brand presentations with encoded download hrefs', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Brand Documents'))
+
+    const fr = screen.getByText('LoveLab Brand Presentation — French.pdf').closest('a')
+    const en = screen.getByText('LoveLab Brand Presentation — English.pdf').closest('a')
+
+    expect(fr.getAttribute('href')).toBe(
+      '/BRAND%20PRESENTATION%20DOCS/LoveLab_Brand_Presentation.pdf',
+    )
+    expect(en.getAttribute('href')).toBe(
+      '/BRAND%20PRESENTATION%20DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
+    )
+    expect(fr.getAttribute('download')).toBe('LoveLab Brand Presentation — French.pdf')
+    expect(en.getAttribute('download')).toBe('LoveLab Brand Presentation — English.pdf')
+  })
+
+  it('enables send-by-email when a brand document is selected', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Brand Documents'))
+
+    fireEvent.click(screen.getByLabelText('Select LoveLab Brand Presentation — French.pdf'))
+    expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
   })
 })
