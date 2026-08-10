@@ -32,7 +32,10 @@ jest.mock('@/lib/useIsMobile', () => ({
 
 const { COLLECTIONS } = require('@/lib/catalog')
 const SILK = COLLECTIONS.find(c => c.cord === 'silk')          // single dropdown: Thin/Thick (label "Thickness")
-const SILK_BRAIDED = COLLECTIONS.find(c => c.cord === 'silkBraided') // combined select (label "Material")
+// No shipping collection offers a choice of threads today (Shapy Sparkle Round
+// moved to silk-only), but the combined "Material" select still has to work if
+// one is added back — exercise it through a stub.
+const SILK_BRAIDED = { ...SILK, cord: 'silkBraided' }
 const CUTY = COLLECTIONS.find(c => c.id === 'CUTY')            // nylon, no thickness
 
 const CollectionConfig = require('../CollectionConfig').default

@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, getPrice, getDefaultCert, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -107,28 +107,8 @@ function emptyRow(no) {
   }
 }
 
-function buildMaterial(cordType, thickness) {
-  // Fallback: if cordType is missing but thickness is set (e.g. silk-only
-  // configs saved before the cordType fix), treat it as silk.
-  const ct = cordType || (thickness ? 'silk' : null)
-  if (!ct) return ''
-  const label = CORD_TYPE_LABELS[ct] || ct
-  if (thickness) return `${label} (${thickness})`
-  return label
-}
-
-function parseMaterial(material) {
-  if (!material) return { cordType: '', thickness: '' }
-  const m = material.match(/^(.+?)\s*\((\w+)\)\s*$/)
-  if (m) {
-    const label = m[1].trim()
-    const thickness = m[2]
-    const cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === label)?.[0] || label.toLowerCase()
-    return { cordType, thickness }
-  }
-  const cordType = Object.entries(CORD_TYPE_LABELS).find(([, v]) => v === material)?.[0] || material.toLowerCase()
-  return { cordType, thickness: '' }
-}
+const buildMaterial = buildMaterialLabel
+const parseMaterial = parseMaterialLabel
 
 // Re-exports of the hardened helpers in lib/orderRowValidation.js. They live
 // outside this file so they can be unit-tested without mounting OrderForm,
@@ -207,6 +187,12 @@ function prefillRows(quote) {
     const setting = isMultiThree
       ? (ln.multiAttached === true ? 'F' : ln.multiAttached === false ? 'LO' : '')
       : splitSetting
+    // Silk lines fall back to their default thread/thickness instead of an
+    // empty MATERIAL cell — an undecided cord also leaves the colour palette
+    // undecided, which used to blank out colours spelled differently across
+    // palettes (silk 'Silver grey' vs nylon 'Silver Grey').
+    const cordType = ln.cordType || getDefaultCordType(colDef)
+    const thickness = ln.thickness || getDefaultThickness(colDef, cordType)
     rows.push({
       no: String(rowNum++),
       quantity: qty ? String(qty) : '',
@@ -221,8 +207,8 @@ function prefillRows(quote) {
       // so the OrderForm select can pre-pick it on prefill.
       closure: ln.closureType || '',
       size: ln.size || '',
-      material: buildMaterial(ln.cordType, ln.thickness),
-      colorCord: ln.colorName || '',
+      material: buildMaterial(cordType, thickness),
+      colorCord: normalizeCordColorName(colDef, cordType, ln.colorName || ''),
       unitPrice: unit ? String(unit) : '',
       total: qty && unit ? String(qty * unit) : '',
       unitOverride: ln.unitOverride ?? null,
@@ -371,6 +357,10 @@ function CellSelect({ value, onChange, options, isPrinting, align, wrapText }) {
       </div>
     )
   }
+  // A value saved before the options changed (a renamed size, a thread colour
+  // spelled differently on another palette) must stay readable — a <select>
+  // with an unknown value renders blank and silently drops it on save.
+  const isOffList = value && !options.some(o => o.value === value)
   return (
     <select
       value={value}
@@ -378,6 +368,7 @@ function CellSelect({ value, onChange, options, isPrinting, align, wrapText }) {
       style={{ ...baseStyle, border: 'none', outline: 'none', background: 'transparent', cursor: 'pointer', color: 'rgb(79, 79, 79)' }}
     >
       <option value=""></option>
+      {isOffList && <option value={value}>{value}</option>}
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   )
@@ -1233,6 +1224,14 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         next[rowIdx].size = ''
         next[rowIdx].material = ''
         next[rowIdx].colorCord = ''
+      }
+      // Switching thread (braided nylon ↔ silk) switches colour palette, and the
+      // two spell shared colours differently — re-snap the picked colour so it
+      // stays selected instead of blanking out.
+      if (key === 'material') {
+        const rowCol = findCollection(next[rowIdx].collection)
+        const { cordType } = parseMaterial(value)
+        next[rowIdx].colorCord = normalizeCordColorName(rowCol, cordType, next[rowIdx].colorCord)
       }
       // For MULTI THREE: when setting changes to Fix (F), YWP is no longer valid
       if (key === 'setting' && value === 'F') {
@@ -2649,8 +2648,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             return opts
                           })() : null
                           const { cordType: parsedCord } = parseMaterial(row.material)
-                          const effectiveCord = rowCol?.cord === 'silkBraided' ? (parsedCord || 'silk') : rowCol?.cord
-                          const cordOptions = isColorCordCol && rowCol?.cord ? (CORD_COLORS[effectiveCord] || CORD_COLORS.silk || []).filter(c => !rowCol.allowedColors || rowCol.allowedColors.includes(c.n)).map(c => ({ value: c.n, label: c.n })) : null
+                          const cordOptions = isColorCordCol && rowCol?.cord
+                            ? cordPaletteFor(rowCol, parsedCord).map(c => ({ value: c.n, label: c.n }))
+                            : null
                           // Closure dropdown opts — only built for collections that opt-in (CUTY, CUBIX).
                           // Labels are localised via the same i18n keys used by the builder.
                           const closureOptions = isClosureCol && rowCol?.hasClosure

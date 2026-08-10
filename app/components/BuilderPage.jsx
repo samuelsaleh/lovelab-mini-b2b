@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, getDefaultCert, getPrice, getVisibleCollections, getCollectionsByType, getProductType, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, cordPaletteFor, getDefaultCert, getDefaultCordType, getDefaultThickness, getPrice, getVisibleCollections, getCollectionsByType, getProductType, normalizeCordColorName, parseMaterialLabel, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -834,11 +834,14 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           ? (action.closureType === 'braided' || action.closureType === 'nonBraided' ? action.closureType : null)
           : null
         const certType = action.certType === 'igi' || action.certType === 'inhouse' ? action.certType : null
+        const cordType = getDefaultCordType(col)
         newConfigsToAdd.push({
           collectionId: col.id,
           config: {
             id: newId,
-            colorName: action.color || 'White',
+            colorName: normalizeCordColorName(col, cordType, action.color || 'White'),
+            cordType,
+            thickness: getDefaultThickness(col, cordType),
             caratIdx: caratIdx >= 0 ? caratIdx : null,
             housing: action.housing || null,
             housingType: null,
@@ -1107,9 +1110,16 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             )
             certType = match ? match[0] : (String(row.cert).toLowerCase().includes('house') ? 'inhouse' : 'igi')
           }
+          // Restore the thread from the stored MATERIAL label. Packs saved
+          // before this round-trip existed have no material, so fall back to
+          // the collection default instead of leaving the cord — and therefore
+          // the colour palette — undefined.
+          const parsedMaterial = parseMaterialLabel(row.material)
+          const cordType = parsedMaterial.cordType || getDefaultCordType(col)
+          const thickness = parsedMaterial.thickness || getDefaultThickness(col, cordType)
           return {
             id: uniqueId(),
-            colorName: row.colorCord || '',
+            colorName: normalizeCordColorName(col, cordType, row.colorCord || ''),
             qty: parseInt(row.quantity) || 1,
             caratIdx: caratIdx >= 0 ? caratIdx : null,
             housing,
@@ -1117,8 +1127,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             shape: row.shape || null,
             size: row.size || null,
             multiAttached,
-            cordType: null,
-            thickness: null,
+            cordType,
+            thickness,
             priceOverride: null,
             closureType,
             certType,
@@ -1133,15 +1143,18 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     const newLines = pack.lines.map(packLine => {
       const col = COLLECTIONS.find(c => c.id === packLine.collectionId)
       if (!col) return null
-      const palette = CORD_COLORS[col.cord] || []
+      const cordType = getDefaultCordType(col)
+      const thickness = getDefaultThickness(col, cordType)
       const configs = []
-      palette.forEach(color => {
+      cordPaletteFor(col, cordType).forEach(color => {
         packLine.caratIndices.forEach(caratIdx => {
           configs.push({
             ...mkColorConfig(color.n, col.minC || 1),
             caratIdx,
             housing: packLine.housing,
             size: packLine.size,
+            cordType,
+            thickness,
           })
         })
       })

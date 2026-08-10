@@ -16,6 +16,9 @@ const M3   = COLLECTIONS.find(c => c.id === 'M3');
 const SSF  = COLLECTIONS.find(c => c.id === 'SSF');
 const SSPF = COLLECTIONS.find(c => c.id === 'SSPF');
 const SSRG = COLLECTIONS.find(c => c.id === 'SSRG');
+// Shapy Sparkle Round is silk-only, so no shipping collection offers a choice
+// of threads any more. The builder still supports one — cover it with a stub.
+const MULTI_CORD = { ...SSRG, cord: 'silkBraided' };
 
 function makeConfig(overrides = {}) {
   return {
@@ -74,16 +77,22 @@ test('isConfigComplete: sparkleProng housing does NOT require housing value', ()
   })), true);
 });
 
-test('isConfigComplete: false when cordType required (silkBraided) and missing (SSRG)', () => {
-  assert.equal(isConfigComplete(SSRG, makeConfig({
+test('isConfigComplete: false when cordType required (multi-thread) and missing', () => {
+  assert.equal(isConfigComplete(MULTI_CORD, makeConfig({
     caratIdx: 0, housing: null, shape: 'Round', size: 'S/M', cordType: null, thickness: null,
   })), false);
 });
 
-test('isConfigComplete: true when silkBraided has cordType set (SSRG)', () => {
-  assert.equal(isConfigComplete(SSRG, makeConfig({
+test('isConfigComplete: true when a multi-thread collection has cordType set', () => {
+  assert.equal(isConfigComplete(MULTI_CORD, makeConfig({
     caratIdx: 0, housing: null, shape: 'Round', size: 'S/M', cordType: 'braidedNylon', thickness: null,
   })), true);
+});
+
+test('isConfigComplete: false for Shapy Sparkle Round (silk) without thickness', () => {
+  assert.equal(isConfigComplete(SSRG, makeConfig({
+    caratIdx: 0, housing: null, shape: 'Round', size: 'S/M', cordType: null, thickness: null,
+  })), false);
 });
 
 test('isConfigComplete: false for silk cord without thickness', () => {
