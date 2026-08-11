@@ -174,7 +174,7 @@ SELECT 'Pack 2',
          {"collection":"SHAPY SHINE FANCY","carat":"0.50","shape":"Heart","bpColor":"Yellow","setting":"Bezel","size":"M","colorCord":"Gold","quantity":"1","unitPrice":"155","cert":"IGI"},
          {"collection":"SHAPY SHINE FANCY","carat":"0.30","shape":"Emerald","bpColor":"White","setting":"Bezel","size":"M","colorCord":"Black","quantity":"1","unitPrice":"100","cert":"IGI"},
          {"collection":"MATCHY FANCY","carat":"0.60","shape":"Emerald","bpColor":"White","setting":"Prong","size":"M","colorCord":"Black","quantity":"1","unitPrice":"200","cert":"IGI"},
-         {"collection":"MATCHY FANCY","carat":"1.00","shape":"Pear","bpColor":"YY","setting":"Prong","size":"M","colorCord":"Bordeaux","quantity":"1","unitPrice":"310","cert":"IGI"},
+         {"collection":"MATCHY FANCY","carat":"1.00","shape":"Pear","bpColor":"Yellow","setting":"Prong","size":"M","colorCord":"Bordeaux","quantity":"1","unitPrice":"310","cert":"IGI"},
          {"collection":"MATCHY FANCY","carat":"0.60","shape":"Heart","bpColor":"WY","setting":"Bezel","size":"M","colorCord":"Red","quantity":"1","unitPrice":"200","cert":"IGI"}
        ]'::jsonb,
        'global',
