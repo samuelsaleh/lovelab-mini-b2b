@@ -10,6 +10,11 @@ import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
+  buildAnalyticsExportRows,
+  analyticsExportFilename,
+  generateAnalyticsWorkbookBuffer,
+} from '@/lib/analyticsExport'
+import {
   ComposedChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Area, CartesianGrid, Legend,
 } from 'recharts'
@@ -383,6 +388,46 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     return channelDocs.filter(d => d.event_id === selectedEventId)
   }, [channelDocs, selectedEventId])
 
+  // ─── Excel export ─────────────────────────────────────────────────────
+  // Exports exactly what the dashboard is showing: the channel pills and the
+  // Event dropdown decide the rows. One row per order/quote, including the
+  // client contact details, so a fair selection doubles as a follow-up list.
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState(null)
+
+  const selectedEventName = useMemo(
+    () => events.find(e => e.id === selectedEventId)?.name || '',
+    [events, selectedEventId],
+  )
+
+  const handleExport = async () => {
+    if (exporting || docs.length === 0) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const rows = buildAnalyticsExportRows(docs)
+      const subtitle = [
+        selectedEventName || 'All Events',
+        channelScope === 'all' ? 'All channels' : channelScope.toUpperCase(),
+        `${rows.length} row${rows.length === 1 ? '' : 's'}`,
+      ].join('   ·   ')
+      const buffer = await generateAnalyticsWorkbookBuffer({ rows, subtitle })
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = analyticsExportFilename({ eventName: selectedEventName, channelScope })
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Could not build the Excel file. Try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // ─── KPIs ─────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
     const orderDocs = docs.filter(d => d.document_type === 'order')
@@ -701,16 +746,41 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             </span>
           )}
           </div>
-          <button
-            onClick={() => setShowChat(true)}
-            style={{
-              padding: '8px 16px', borderRadius: 8, border: 'none',
-              background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', fontFamily: fonts.body,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={handleExport}
+              disabled={exporting || docs.length === 0}
+              title={docs.length === 0
+                ? 'Nothing to export for the current filters'
+                : `Export ${docs.length} row${docs.length === 1 ? '' : 's'} with client contact details`}
+              style={{
+                padding: '8px 16px', borderRadius: 8,
+                border: `1px solid ${colors.lineGray}`,
+                background: '#fff', color: colors.inkPlum, fontSize: 13, fontWeight: 700,
+                cursor: exporting || docs.length === 0 ? 'default' : 'pointer',
+                opacity: exporting || docs.length === 0 ? 0.5 : 1,
+                fontFamily: fonts.body,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              {exporting ? 'Building…' : 'Export Excel'}
+            </button>
+            <button
+              onClick={() => setShowChat(true)}
+              style={{
+                padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', fontFamily: fonts.body,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
+          </div>
         </div>
+        {exportError && (
+          <div role="alert" style={{ maxWidth: 1400, margin: '8px auto 0', fontSize: 12, color: '#dc2626' }}>
+            {exportError}
+          </div>
+        )}
       </div>
 
       {/* ─── Dashboard body ─── */}
