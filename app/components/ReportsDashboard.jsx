@@ -6,11 +6,24 @@ import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { normalizeCountry } from '@/lib/countries'
+import { deriveCity, cityFoldKey, buildCityLabels } from '@/lib/clientAddress'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 
 // ─── Column config ─────────────────────────────────────────────────────────
 
 const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount']
+
+const UNKNOWN_CITY = 'Unknown'
+
+// The kinds of folder an event can be, in the order they're shown.
+const EVENT_TYPES = [
+  { key: 'fair', label: 'Fairs' },
+  { key: 'agent', label: 'Agents' },
+  { key: 'partner', label: 'Partners' },
+  { key: 'other', label: 'Other' },
+]
+
+const NO_EVENT_TYPE = 'none'
 
 // Map column label → row field
 function getCellValue(row, col) {
@@ -31,13 +44,43 @@ function getCellValue(row, col) {
 const initialFilters = {
   dateFrom: '',
   dateTo: '',
-  eventId: '',
+  eventIds: [],
+  eventTypes: [],
   country: 'all',
   city: 'all',
   type: 'all',
   search: '',
   minAmount: '',
   maxAmount: '',
+}
+
+/**
+ * Read a saved preset back into filters.
+ *
+ * Presets saved before events became multi-select hold a single `eventId`;
+ * they keep working and become a selection of one. `visibleColumns` is
+ * dropped here because it's restored separately, not a filter.
+ */
+export function filtersFromSavedConfig(cfg = {}) {
+  const { eventId, visibleColumns, ...rest } = cfg || {}
+  const next = { ...initialFilters, ...rest }
+  next.eventIds = Array.isArray(next.eventIds) ? next.eventIds.filter(Boolean) : []
+  next.eventTypes = Array.isArray(next.eventTypes) ? next.eventTypes.filter(Boolean) : []
+  if (!next.eventIds.length && typeof eventId === 'string' && eventId) next.eventIds = [eventId]
+  return next
+}
+
+/**
+ * Does this row fall inside the event selection?
+ *
+ * Ticked events win. With none ticked the type chips stand on their own, so
+ * "Fairs" means every fair rather than nothing — otherwise picking a type
+ * would empty the table until you also ticked an event.
+ */
+export function matchesEventFilter(row, { eventIds = [], eventTypes = [] } = {}) {
+  if (eventIds.length) return eventIds.includes(row.event_id)
+  if (eventTypes.length) return eventTypes.includes(row.eventType)
+  return true
 }
 
 export default function ReportsDashboard() {
@@ -119,7 +162,9 @@ export default function ReportsDashboard() {
       sourceLabel: 'Order',
       sourceComment: null,
       country: normalizeCountry(d.metadata?.formState?.country),
-      city: (d.metadata?.formState?.city || d.metadata?.formState?.location || '').trim() || 'Unknown',
+      // The order form has no city field — the city is typed into the address
+      // line labelled "Postal code, City", so it has to be read back out.
+      cityRaw: deriveCity(d.metadata?.formState || {}),
       amount: Number(d.total_amount) || 0,
       dateISO: d.created_at ? new Date(d.created_at).toISOString().slice(0, 10) : '',
       clientLabel: d.client_company || d.client_name || 'Unknown',
@@ -136,7 +181,9 @@ export default function ReportsDashboard() {
         sourceLabel: 'Salesforce',
         sourceComment: c.source_comment || 'Under Salesforce',
         country: normalizeCountry(c.country),
-        city: (c.city || '').trim() || 'Unknown',
+        // `clients.city` holds whatever was in the second address line, so it
+        // gets the same treatment as an order.
+        cityRaw: deriveCity({ addressLine1: c.address, addressLine2: c.city }),
         amount: 0,
         dateISO: c.source_imported_at ? new Date(c.source_imported_at).toISOString().slice(0, 10) : '—',
         clientLabel: c.company || c.name || 'Unknown',
@@ -146,15 +193,31 @@ export default function ReportsDashboard() {
       }))
   }, [clients])
 
-  const rows = useMemo(() => [...documentRows, ...salesforceRows], [documentRows, salesforceRows])
+  const eventTypeById = useMemo(() => {
+    const map = new Map()
+    for (const e of events) map.set(e.id, EVENT_TYPES.some(t => t.key === e.type) ? e.type : 'other')
+    return map
+  }, [events])
+
+  const rows = useMemo(() => {
+    const raw = [...documentRows, ...salesforceRows]
+    // One spelling per city, so "LYON" and "Lyon" are one line in the filter.
+    const cityLabels = buildCityLabels(raw.map((r) => r.cityRaw))
+    return raw.map((r) => ({
+      ...r,
+      city: cityLabels.get(cityFoldKey(r.cityRaw)) || UNKNOWN_CITY,
+      eventType: r.event_id ? (eventTypeById.get(r.event_id) || 'other') : NO_EVENT_TYPE,
+    }))
+  }, [documentRows, salesforceRows, eventTypeById])
 
   useEffect(() => { setPage(0) }, [filters])
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
-      if (filters.eventId && r.event_id !== filters.eventId) return false
+      if (!matchesEventFilter(r, filters)) return false
       if (filters.country !== 'all' && r.country !== filters.country) return false
-      if (filters.city !== 'all' && r.city !== filters.city) return false
+      // Compared on the folded key so a preset saved as "LYON" still matches.
+      if (filters.city !== 'all' && cityFoldKey(r.city) !== cityFoldKey(filters.city)) return false
       if (filters.type !== 'all' && r.document_type !== filters.type) return false
       if (filters.dateFrom && r.dateISO && r.dateISO < filters.dateFrom) return false
       if (filters.dateTo && r.dateISO && r.dateISO > filters.dateTo) return false
@@ -200,8 +263,41 @@ export default function ReportsDashboard() {
         .filter((r) => (filters.country === 'all' ? true : r.country === filters.country))
         .map((r) => r.city),
     )
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
+    // "Unknown" sits at the bottom instead of between Turin and Utrecht.
+    return Array.from(set).sort((a, b) => {
+      if (a === UNKNOWN_CITY) return 1
+      if (b === UNKNOWN_CITY) return -1
+      return a.localeCompare(b)
+    })
   }, [rows, filters.country])
+
+  /** Events the picker offers: narrowed by the type chips, newest first. */
+  const eventOptions = useMemo(() => {
+    if (!filters.eventTypes.length) return events
+    return events.filter((e) => filters.eventTypes.includes(eventTypeById.get(e.id)))
+  }, [events, filters.eventTypes, eventTypeById])
+
+  const setEventTypes = (eventTypes) => {
+    setFilters((p) => {
+      // Drop ticked events that the new type selection hides, so the picker
+      // never filters on something you can no longer see.
+      const allowed = eventTypes.length
+        ? new Set(events.filter((e) => eventTypes.includes(eventTypeById.get(e.id))).map((e) => e.id))
+        : null
+      return {
+        ...p,
+        eventTypes,
+        eventIds: allowed ? p.eventIds.filter((id) => allowed.has(id)) : p.eventIds,
+      }
+    })
+  }
+
+  const toggleEventId = (id) => {
+    setFilters((p) => ({
+      ...p,
+      eventIds: p.eventIds.includes(id) ? p.eventIds.filter((x) => x !== id) : [...p.eventIds, id],
+    }))
+  }
 
   const exportXLSX = async () => {
     const ExcelJSModule = await import('exceljs')
@@ -253,8 +349,12 @@ export default function ReportsDashboard() {
     const countryLabel = filters.country !== 'all' ? filters.country : 'All Countries'
     const dateLabel    = [filters.dateFrom, filters.dateTo].filter(Boolean).join(' – ') || 'All Dates'
     const reportLabel  = selectedReportId ? reports.find(r => r.id === selectedReportId)?.name : null
+    // Which events the file covers, so a printed sheet stands on its own.
+    const eventLabel = filters.eventIds.length
+      ? filters.eventIds.map(id => events.find(e => e.id === id)?.name).filter(Boolean).join(', ')
+      : filters.eventTypes.map(t => EVENT_TYPES.find(x => x.key === t)?.label || t).join(' + ')
     const subtitleCell = ws.getCell('A2')
-    subtitleCell.value = [reportLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
+    subtitleCell.value = [reportLabel, eventLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
     subtitleCell.font  = { size: 10, color: { argb: 'FFCFAECF' }, italic: true, name: 'Calibri' }
     subtitleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
     subtitleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
@@ -386,7 +486,7 @@ export default function ReportsDashboard() {
     const report = reports.find((r) => r.id === reportId)
     if (!report) return
     const cfg = report.config || {}
-    setFilters({ ...initialFilters, ...cfg })
+    setFilters(filtersFromSavedConfig(cfg))
     // Restore saved column visibility if present (fall back to all columns)
     if (Array.isArray(cfg.visibleColumns) && cfg.visibleColumns.length > 0) {
       setVisibleColumns(new Set(cfg.visibleColumns.filter(c => ALL_COLUMNS.includes(c))))
@@ -461,10 +561,16 @@ export default function ReportsDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
             <input type="date" value={filters.dateFrom} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value }))} style={inputStyle} />
             <input type="date" value={filters.dateTo} onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value }))} style={inputStyle} />
-            <select value={filters.eventId} onChange={(e) => setFilters((p) => ({ ...p, eventId: e.target.value }))} style={inputStyle}>
-              <option value="">All events</option>
-              {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <EventFilter
+              events={events}
+              options={eventOptions}
+              selectedIds={filters.eventIds}
+              selectedTypes={filters.eventTypes}
+              onToggleId={toggleEventId}
+              onChangeTypes={setEventTypes}
+              onClear={() => setFilters((p) => ({ ...p, eventIds: [], eventTypes: [] }))}
+              onSelectShown={(ids) => setFilters((p) => ({ ...p, eventIds: [...new Set([...p.eventIds, ...ids])] }))}
+            />
             <select
               value={filters.country}
               onChange={(e) => setFilters((p) => ({ ...p, country: e.target.value, city: 'all' }))}
@@ -670,6 +776,148 @@ export default function ReportsDashboard() {
   )
 }
 
+/**
+ * Event filter: pick whole kinds of event, or tick individual ones.
+ *
+ * A plain <select> only ever holds one event, which is no use for "how did
+ * the three German fairs do together".
+ */
+function EventFilter({ events, options, selectedIds, selectedTypes, onToggleId, onChangeTypes, onClear, onSelectShown }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const shown = query.trim()
+    ? options.filter((e) => (e.name || '').toLowerCase().includes(query.trim().toLowerCase()))
+    : options
+
+  const label = (() => {
+    if (selectedIds.length === 1) {
+      return events.find((e) => e.id === selectedIds[0])?.name || '1 event'
+    }
+    if (selectedIds.length > 1) return `${selectedIds.length} events`
+    if (selectedTypes.length) {
+      return selectedTypes.map((t) => EVENT_TYPES.find((x) => x.key === t)?.label || t).join(' + ')
+    }
+    return 'All events'
+  })()
+
+  const active = selectedIds.length > 0 || selectedTypes.length > 0
+
+  const toggleType = (key) => {
+    onChangeTypes(selectedTypes.includes(key) ? selectedTypes.filter((t) => t !== key) : [...selectedTypes, key])
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        style={{
+          ...inputStyle,
+          width: '100%',
+          textAlign: 'left',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          color: active ? colors.inkPlum : colors.charcoal,
+          fontWeight: active ? 700 : 400,
+          borderColor: active ? colors.inkPlum : colors.lineGray,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ fontSize: 9, color: '#999' }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, width: 300, maxWidth: '90vw',
+        }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+            {EVENT_TYPES.map((t) => {
+              const on = selectedTypes.includes(t.key)
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => toggleType(t.key)}
+                  aria-pressed={on}
+                  style={{
+                    padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: fonts.body,
+                    border: `1px solid ${on ? colors.inkPlum : colors.lineGray}`,
+                    background: on ? colors.inkPlum : '#fff',
+                    color: on ? '#fff' : '#666',
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search events"
+            style={{ ...inputStyle, width: '100%', padding: '7px 9px', fontSize: 12, marginBottom: 6 }}
+          />
+
+          <div style={{ maxHeight: 220, overflowY: 'auto', margin: '0 -4px' }}>
+            {shown.length === 0 ? (
+              <div style={{ padding: '10px 14px', fontSize: 12, color: '#999' }}>No events match.</div>
+            ) : shown.map((e) => {
+              const on = selectedIds.includes(e.id)
+              return (
+                <label key={e.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                  cursor: 'pointer', fontSize: 12.5,
+                  color: on ? colors.inkPlum : '#555', fontWeight: on ? 600 : 400,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => onToggleId(e.id)}
+                    style={{ accentColor: colors.inkPlum, flexShrink: 0 }}
+                  />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                </label>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => onSelectShown(shown.map((e) => e.id))}
+              disabled={shown.length === 0}
+              style={miniBtn}
+            >
+              Select all shown
+            </button>
+            <button type="button" onClick={onClear} disabled={!active} style={miniBtn}>Clear</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Kpi({ label, value }) {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '14px 16px' }}>
@@ -695,6 +943,19 @@ const btnPrimary = {
   background: colors.inkPlum,
   color: '#fff',
   fontSize: 12,
+  fontWeight: 700,
+  fontFamily: fonts.body,
+  cursor: 'pointer',
+}
+
+const miniBtn = {
+  flex: 1,
+  padding: '6px 8px',
+  borderRadius: 6,
+  border: `1px solid ${colors.lineGray}`,
+  background: '#fff',
+  color: colors.inkPlum,
+  fontSize: 11,
   fontWeight: 700,
   fontFamily: fonts.body,
   cursor: 'pointer',
