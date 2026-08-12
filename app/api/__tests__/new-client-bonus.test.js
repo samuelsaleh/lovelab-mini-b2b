@@ -84,6 +84,8 @@ let previewResponse = { rows: [], customer_count: 0, total: 0 };
 
 jest.mock('@/lib/newClientBonus', () => ({
   __esModule: true,
+  // Real value — the route validates the incoming mode against it.
+  BONUS_MODES: ['off', 'manual', 'auto'],
   executeBackfill: jest.fn((_admin, agentId, amount) => {
     backfillCalls.push({ agentId, amount });
     if (backfillThrows) return Promise.reject(backfillThrows);
@@ -216,7 +218,9 @@ describe('PATCH /api/agents/[id]/new-client-bonus — success', () => {
       new_client_bonus_amount: 200,
     });
     expect(body.backfill).toEqual({ created: 5, total: 1000, rows: [] });
+    // Legacy `enabled: true` still means the automatic mode.
     expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'auto',
       new_client_bonus_enabled: true,
       new_client_bonus_amount: 200,
     });
@@ -235,6 +239,7 @@ describe('PATCH /api/agents/[id]/new-client-bonus — success', () => {
     );
     expect(res.status).toBe(200);
     expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'auto',
       new_client_bonus_enabled: true,
       new_client_bonus_amount: 200,
     });
@@ -251,6 +256,7 @@ describe('PATCH /api/agents/[id]/new-client-bonus — success', () => {
     );
     expect(res.status).toBe(200);
     expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'off',
       new_client_bonus_enabled: false,
       new_client_bonus_amount: 200,
     });
@@ -271,6 +277,7 @@ describe('PATCH /api/agents/[id]/new-client-bonus — success', () => {
     expect(body.error).toMatch(/backfill failed/i);
     // Settings still persisted before backfill ran.
     expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'auto',
       new_client_bonus_enabled: true,
       new_client_bonus_amount: 200,
     });
@@ -286,9 +293,96 @@ describe('PATCH /api/agents/[id]/new-client-bonus — success', () => {
     );
     expect(res.status).toBe(200);
     expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'off',
       new_client_bonus_enabled: false,
       new_client_bonus_amount: null,
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// PATCH — three modes
+//
+// 'manual' is the mode that matters most here: it must save like an
+// enabled agent (so the button shows up and the amount is kept) while
+// creating absolutely nothing, neither on save nor retroactively.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/agents/[id]/new-client-bonus — modes', () => {
+  const patchMode = (mode, extra = {}) =>
+    PATCH(
+      makeRequest('http://localhost/api/agents/agent-1/new-client-bonus', 'PATCH', {
+        mode,
+        amount: 200,
+        ...extra,
+      }),
+      { params: { id: 'agent-1' } },
+    );
+
+  test('manual saves the mode, keeps the agent enabled, and never backfills', async () => {
+    backfillResponse = { created: 9, total: 1800, rows: [] };
+    const res = await patchMode('manual');
+    expect(res.status).toBe(200);
+    expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'manual',
+      new_client_bonus_enabled: true,
+      new_client_bonus_amount: 200,
+    });
+    expect(backfillCalls).toEqual([]);
+    const body = await res.json();
+    expect(body.backfill).toEqual({ created: 0, total: 0, rows: [] });
+    expect(body.agent.new_client_bonus_mode).toBe('manual');
+  });
+
+  test('auto saves the mode and still backfills', async () => {
+    backfillResponse = { created: 3, total: 600, rows: [] };
+    const res = await patchMode('auto');
+    expect(res.status).toBe(200);
+    expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'auto',
+      new_client_bonus_enabled: true,
+      new_client_bonus_amount: 200,
+    });
+    expect(backfillCalls).toEqual([{ agentId: 'agent-1', amount: 200 }]);
+  });
+
+  test('off saves the mode, disables, and never backfills', async () => {
+    const res = await patchMode('off');
+    expect(res.status).toBe(200);
+    expect(updatePayload).toEqual({
+      new_client_bonus_mode: 'off',
+      new_client_bonus_enabled: false,
+      new_client_bonus_amount: 200,
+    });
+    expect(backfillCalls).toEqual([]);
+  });
+
+  test('manual still requires a positive amount', async () => {
+    const res = await PATCH(
+      makeRequest('http://localhost/api/agents/agent-1/new-client-bonus', 'PATCH', {
+        mode: 'manual',
+        amount: 0,
+      }),
+      { params: { id: 'agent-1' } },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/positive amount/i);
+  });
+
+  test('an unknown mode is rejected', async () => {
+    const res = await patchMode('sometimes');
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/mode must be one of/i);
+    expect(updatePayload).toBe(null);
+  });
+
+  test('mode wins over a contradicting legacy enabled flag', async () => {
+    const res = await patchMode('manual', { enabled: false });
+    expect(res.status).toBe(200);
+    expect(updatePayload.new_client_bonus_mode).toBe('manual');
+    expect(updatePayload.new_client_bonus_enabled).toBe(true);
   });
 });
 

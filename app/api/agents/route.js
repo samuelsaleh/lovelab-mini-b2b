@@ -22,16 +22,27 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
-    const AGENT_SELECT = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
+    const AGENT_SELECT_BASE = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
+    let AGENT_SELECT = `${AGENT_SELECT_BASE}, new_client_bonus_mode`;
 
     // Use OR so agents whose is_agent flag was lost (NULL after a profile migration
     // race or partial upsert) are still visible as long as agent_status is set.
-    const { data: agents, error } = await adminSupabase
-      .from('profiles')
-      .select(AGENT_SELECT)
-      .or('is_agent.eq.true,agent_status.in.(invited,active,inactive)')
-      .is('agent_deleted_at', null)
-      .order('agent_since', { ascending: false, nullsFirst: false });
+    const listAgents = (cols) =>
+      adminSupabase
+        .from('profiles')
+        .select(cols)
+        .or('is_agent.eq.true,agent_status.in.(invited,active,inactive)')
+        .is('agent_deleted_at', null)
+        .order('agent_since', { ascending: false, nullsFirst: false });
+
+    let { data: agents, error } = await listAgents(AGENT_SELECT);
+    if (error) {
+      // Most likely the new_client_bonus_mode migration hasn't been applied
+      // yet. Retry without it rather than 500 the whole agent list; the UI
+      // falls back to the legacy boolean when the mode is absent.
+      AGENT_SELECT = AGENT_SELECT_BASE;
+      ({ data: agents, error } = await listAgents(AGENT_SELECT));
+    }
 
     if (error) {
       console.error('[Agents GET] Error:', error.message);

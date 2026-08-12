@@ -3,18 +3,21 @@
  *
  * Body:
  *   {
- *     enabled: boolean,
+ *     mode: 'off' | 'manual' | 'auto',
  *     amount: number | null,
- *     runBackfill?: boolean   // default true when enabling
+ *     runBackfill?: boolean   // default true, only ever applies to 'auto'
  *   }
  *
- * Saves the agent's new_client_bonus_enabled + new_client_bonus_amount
- * settings. When enabling, retroactively creates one new_client_bonus
- * commission row per distinct historical customer the agent has
- * already brought in (via lib/newClientBonus.executeBackfill).
+ * Legacy callers may still send `enabled: boolean`, which maps to
+ * 'auto' / 'off'.
  *
- * Disable behaviour: existing bonus rows are LEFT UNTOUCHED. Once a
- * bonus is earned it stays earned. Future orders simply won't trigger
+ * Saves the agent's bonus mode + amount. Only 'auto' retroactively
+ * creates one new_client_bonus row per distinct historical customer
+ * (via lib/newClientBonus.executeBackfill) — 'manual' deliberately
+ * creates nothing, because there the admin decides per order.
+ *
+ * Switching off behaviour: existing bonus rows are LEFT UNTOUCHED. Once
+ * a bonus is earned it stays earned. Future orders simply won't trigger
  * new ones.
  *
  * Access: admin only.
@@ -23,7 +26,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { executeBackfill } from '@/lib/newClientBonus';
+import { executeBackfill, BONUS_MODES } from '@/lib/newClientBonus';
 import { recordHealthEvent } from '@/lib/healthEvent';
 
 export async function PATCH(request, { params }) {
@@ -60,7 +63,21 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const enabled = body?.enabled === true;
+    // `mode` is authoritative; `enabled` is the pre-mode wire format.
+    let mode;
+    if (body?.mode !== undefined) {
+      if (!BONUS_MODES.includes(body.mode)) {
+        return NextResponse.json(
+          { error: `mode must be one of ${BONUS_MODES.join(', ')}` },
+          { status: 400 },
+        );
+      }
+      mode = body.mode;
+    } else {
+      mode = body?.enabled === true ? 'auto' : 'off';
+    }
+    const enabled = mode !== 'off';
+
     const rawAmount = body?.amount;
     const amount =
       rawAmount === null || rawAmount === undefined || rawAmount === ''
@@ -100,6 +117,7 @@ export async function PATCH(request, { params }) {
     const { error: updateErr } = await adminSupabase
       .from('profiles')
       .update({
+        new_client_bonus_mode: mode,
         new_client_bonus_enabled: enabled,
         new_client_bonus_amount: amount,
       })
@@ -112,11 +130,13 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    // Backfill only runs when ENABLING with a positive amount AND the
-    // caller didn't explicitly opt out via runBackfill: false.
+    // Backfill only runs for 'auto' with a positive amount AND when the
+    // caller didn't explicitly opt out via runBackfill: false. 'manual'
+    // never backfills — creating bonuses for the whole history is the
+    // exact opposite of deciding one order at a time.
     let backfill = { created: 0, total: 0, rows: [] };
     const shouldBackfill =
-      enabled && amount > 0 && body?.runBackfill !== false;
+      mode === 'auto' && amount > 0 && body?.runBackfill !== false;
     if (shouldBackfill) {
       try {
         backfill = await executeBackfill(adminSupabase, agentId, amount);
@@ -142,6 +162,7 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({
       agent: {
         id: agentId,
+        new_client_bonus_mode: mode,
         new_client_bonus_enabled: enabled,
         new_client_bonus_amount: amount,
       },

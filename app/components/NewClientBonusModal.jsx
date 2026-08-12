@@ -1,21 +1,21 @@
 'use client';
 
 /**
- * NewClientBonusModal — Phase 19
+ * NewClientBonusModal — Phase 19, three modes since 2026-08.
  *
- * Per-agent toggle for "earn €X every time you bring in a new client".
+ * Per-agent setting for "earn €X every time you bring in a new client":
  *
- * UX flow:
- *   1. Modal opens with current state (enabled/disabled + amount).
- *   2. Sam tweaks the amount and the LIVE PREVIEW underneath updates
- *      (debounced 300ms): "Enabling at €200 will create N retroactive
- *      bonuses across these N customers — total: €X,XXX."
- *   3. Confirm button calls PATCH /api/agents/[id]/new-client-bonus
- *      which saves settings AND runs the backfill atomically.
- *   4. Disabling skips the backfill — earned bonuses stay earned.
+ *   off    — never.
+ *   manual — the admin adds the bonus per order from the commission
+ *            table. Nothing happens on save. This is the normal choice:
+ *            most new clients should not earn a bonus.
+ *   auto   — the original behaviour, created on the first order.
+ *
+ * Only 'auto' runs the retroactive backfill, so the live preview and
+ * its warning are shown for that mode alone.
  *
  * Props:
- *   - agent     {{ id, full_name?, email?, new_client_bonus_enabled?, new_client_bonus_amount? }}
+ *   - agent     {{ id, full_name?, email?, new_client_bonus_mode?, new_client_bonus_enabled?, new_client_bonus_amount? }}
  *   - onClose   () => void
  *   - onSuccess (response) => void   called after PATCH 200 OK
  */
@@ -23,20 +23,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors, fonts } from '@/lib/styles';
 import { fmt } from '@/lib/utils';
+import { resolveBonusMode } from '@/lib/newClientBonus';
 
 const DEFAULT_AMOUNT = 200;
 
+const MODE_OPTIONS = [
+  { id: 'off', label: 'Off', hint: 'No bonus is ever paid for a new client.' },
+  { id: 'manual', label: 'I decide', hint: 'Nothing is added on save. Each new client gets a button in the commission table below, and the bonus only exists if you click it.' },
+  { id: 'auto', label: 'Automatic', hint: 'Every first order from a new client creates the bonus by itself, and switching this on pays retroactively for the clients won so far.' },
+];
+
 export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
-  const startEnabled = !!agent?.new_client_bonus_enabled;
+  const startMode = resolveBonusMode(agent);
   const startAmount =
     agent?.new_client_bonus_amount != null
       ? String(agent.new_client_bonus_amount)
       : String(DEFAULT_AMOUNT);
 
-  const [enabled, setEnabled] = useState(startEnabled);
+  const [mode, setMode] = useState(startMode);
   const [amount, setAmount] = useState(startAmount);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const enabled = mode !== 'off';
+  const isAuto = mode === 'auto';
 
   // Live preview state
   const [preview, setPreview] = useState(null);
@@ -45,10 +55,10 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
   const previewAbortRef = useRef(null);
 
   // Debounced preview fetch — fires 300ms after the user stops typing.
-  // We always run the preview when toggling ON. Toggling OFF skips it.
+  // Only 'auto' backfills, so only 'auto' has anything to preview.
   useEffect(() => {
     if (!agent?.id) return;
-    if (!enabled) {
+    if (!isAuto) {
       setPreview(null);
       return;
     }
@@ -80,16 +90,16 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
       }
     }, 300);
     return () => clearTimeout(handle);
-  }, [agent?.id, enabled, amount]);
+  }, [agent?.id, isAuto, amount]);
 
   const previewRows = preview?.rows || [];
   const previewTotal = preview?.total || 0;
   const previewCount = preview?.customer_count || 0;
 
   const isDirty = useMemo(() => {
-    if (enabled !== startEnabled) return true;
+    if (mode !== startMode) return true;
     return Number(amount) !== Number(startAmount);
-  }, [enabled, amount, startEnabled, startAmount]);
+  }, [mode, amount, startMode, startAmount]);
 
   const isAmountValid = useMemo(() => {
     if (!enabled) return true; // amount is optional when disabling
@@ -108,7 +118,7 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
     setError('');
     try {
       const body = {
-        enabled,
+        mode,
         amount: amount === '' ? null : Number(amount),
       };
       const res = await fetch(
@@ -174,9 +184,9 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
           </span>
         </div>
         <p style={{ fontSize: 12, color: colors.lovelabMuted, margin: '0 0 20px' }}>
-          Pay this agent a flat fee every time they bring in a brand-new
-          client (matched by company name, fuzzy). Existing customers
-          earned retroactively when you enable.
+          A flat fee for bringing in a brand-new client, matched on
+          company name. Choose whether it is added by itself or only
+          when you say so.
         </p>
 
         {error && (
@@ -197,71 +207,63 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* Enabled toggle */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              padding: '12px 14px',
-              background: '#faf7fb',
-              border: `1px solid ${colors.lineGray}`,
-              borderRadius: 10,
-              marginBottom: 14,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: colors.charcoal }}>
-                Bonus enabled
-              </div>
-              <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 2 }}>
-                {enabled
-                  ? 'New clients trigger a bonus on save.'
-                  : 'No bonus is paid for new clients.'}
-              </div>
+          {/* Mode picker */}
+          <div role="radiogroup" aria-label="New client bonus mode" style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {MODE_OPTIONS.map((opt) => {
+                const active = mode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setMode(opt.id)}
+                    style={{
+                      flex: 1,
+                      padding: '9px 6px',
+                      borderRadius: 8,
+                      border: `1px solid ${active ? colors.inkPlum : colors.lineGray}`,
+                      background: active ? colors.inkPlum : '#fff',
+                      color: active ? '#fff' : colors.charcoal,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: fonts.body,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
-            <label
+            <div style={{ fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, padding: '0 2px' }}>
+              {MODE_OPTIONS.find((o) => o.id === mode)?.hint}
+            </div>
+          </div>
+
+          {/* Switching to automatic runs the retroactive backfill, which also
+              covers every customer won while it was off or manual. */}
+          {startMode !== 'auto' && isAuto && (
+            <div
+              role="note"
               style={{
-                position: 'relative',
-                display: 'inline-block',
-                width: 44,
-                height: 24,
-                flexShrink: 0,
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                color: '#92400e',
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontSize: 11,
+                lineHeight: 1.5,
+                marginBottom: 14,
               }}
             >
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-                style={{ opacity: 0, width: 0, height: 0 }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  cursor: 'pointer',
-                  inset: 0,
-                  background: enabled ? colors.inkPlum : '#d1d5db',
-                  borderRadius: 24,
-                  transition: 'background .15s',
-                }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  height: 18,
-                  width: 18,
-                  left: enabled ? 23 : 3,
-                  top: 3,
-                  background: '#fff',
-                  borderRadius: '50%',
-                  transition: 'left .15s',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                  pointerEvents: 'none',
-                }}
-              />
-            </label>
-          </div>
+              Automatic also pays retroactively: confirming creates a bonus for
+              every new client won so far that doesn&apos;t have one yet. Check
+              the preview below first — pick <strong>I decide</strong> if you
+              only want to grant them one by one.
+            </div>
+          )}
 
           {/* Amount input */}
           <div style={{ marginBottom: 16 }}>
@@ -305,8 +307,8 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
             )}
           </div>
 
-          {/* Live preview */}
-          {enabled && (
+          {/* Live preview — only 'auto' creates anything retroactively */}
+          {isAuto && (
             <div
               style={{
                 background: '#fff',
@@ -419,11 +421,13 @@ export default function NewClientBonusModal({ agent, onClose, onSuccess }) {
             >
               {saving
                 ? 'Saving…'
-                : enabled
+                : isAuto
                 ? previewCount > 0
                   ? `Confirm — ${fmt(previewTotal)}`
-                  : 'Enable bonus'
-                : 'Disable bonus'}
+                  : 'Save — automatic'
+                : mode === 'manual'
+                ? 'Save — I decide'
+                : 'Turn bonus off'}
             </button>
           </div>
         </form>

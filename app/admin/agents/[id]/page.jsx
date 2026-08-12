@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import { useResponsive } from '@/lib/useIsMobile';
 import { fmt } from '@/lib/utils';
 import { parseAmount } from '@/lib/parseAmount';
+import {
+  applyCustomerPaidLocally,
+  selectableForBulk,
+  sendBulkCustomerPaid,
+} from '@/lib/bulkCustomerPaid';
+import { eligibleManualBonusRowIds } from '@/lib/newClientBonusEligibility';
+import { resolveBonusMode } from '@/lib/newClientBonus';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
@@ -233,6 +240,46 @@ export default function AdminAgentDetailsPage() {
     }
   }, [agentId]);
 
+  // Row-level mutations (Paid?, Undo, Delete) only change commission rows and
+  // the KPI summary, both of which come from a single endpoint. load() fires
+  // 8-11 requests — including three /api/documents pages of 200 — and hides
+  // the page behind a spinner, which is what made ticking Paid? feel like a
+  // five second freeze. This refetches just what changed, with no spinner.
+  //
+  // Calls that arrive while one is in flight collapse into a single follow-up
+  // pass, so ticking ten boxes in a row still costs at most two requests.
+  const refreshInFlight = useRef(null);
+  const refreshQueued = useRef(false);
+  const refreshCommissions = useCallback(() => {
+    if (!agentId) return Promise.resolve();
+    if (refreshInFlight.current) {
+      refreshQueued.current = true;
+      return refreshInFlight.current;
+    }
+    const run = async () => {
+      do {
+        refreshQueued.current = false;
+        try {
+          const res = await fetch(`/api/commissions?agent_id=${encodeURIComponent(agentId)}`);
+          const json = await res.json().catch(() => ({}));
+          if (res.ok) {
+            setCommissions(json.commissions || []);
+            setSummary(json.summary || null);
+          }
+        } catch {
+          // Silent: the optimistic state already reflects the change and the
+          // next interaction will resync. Surfacing a refresh error here would
+          // be more confusing than the stale KPI it replaces.
+        }
+      } while (refreshQueued.current);
+    };
+    const promise = run().finally(() => {
+      refreshInFlight.current = null;
+    });
+    refreshInFlight.current = promise;
+    return promise;
+  }, [agentId]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -431,21 +478,33 @@ export default function AdminAgentDetailsPage() {
   // Optimistic: flips the local row immediately so the checkbox reacts
   // instantly, then revalidates from the server. On failure, reverts and
   // surfaces the error.
-  const [togglingCommissionId, setTogglingCommissionId] = useState(null);
+  //
+  // Rows are tracked in a Set rather than a single id so several ticks can be
+  // in flight at once — waiting for the previous row to finish was the other
+  // half of the "Paid? is slow" complaint.
+  const [togglingIds, setTogglingIds] = useState(() => new Set());
+  const inFlightPaidRef = useRef(new Set());
   const [togglingSynaliaDocId, setTogglingSynaliaDocId] = useState(null);
   const [savingInvoiceId, setSavingInvoiceId] = useState(null);
   const [invoiceDrafts, setInvoiceDrafts] = useState({});
   const [invoiceSaveState, setInvoiceSaveState] = useState(null);
+
+  const markToggling = useCallback((ids, busy) => {
+    setTogglingIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (busy) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
   const handleToggleCustomerPaid = useCallback(async (commissionId, nextPaid) => {
-    if (!commissionId || togglingCommissionId === commissionId) return;
-    setTogglingCommissionId(commissionId);
-    setCommissions((prev) =>
-      prev.map((c) =>
-        c.id === commissionId
-          ? { ...c, customer_paid_at: nextPaid ? new Date().toISOString() : null }
-          : c,
-      ),
-    );
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
+    setCommissions((prev) => applyCustomerPaidLocally(prev, [commissionId], nextPaid));
     try {
       const res = await fetch(`/api/commissions/${commissionId}/customer-paid`, {
         method: 'PATCH',
@@ -455,20 +514,72 @@ export default function AdminAgentDetailsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update');
       // Refresh the summary KPIs from the source of truth.
-      await load();
+      await refreshCommissions();
     } catch (err) {
-      setCommissions((prev) =>
-        prev.map((c) =>
-          c.id === commissionId
-            ? { ...c, customer_paid_at: nextPaid ? null : c.customer_paid_at }
-            : c,
-        ),
-      );
+      setCommissions((prev) => applyCustomerPaidLocally(prev, [commissionId], !nextPaid));
       setError(err.message || 'Failed to update commission');
     } finally {
-      setTogglingCommissionId(null);
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
     }
-  }, [load, togglingCommissionId]);
+  }, [refreshCommissions, markToggling]);
+
+  // Bulk Paid?/Unpaid for the rows selected with the checkbox column.
+  // One request for the whole selection instead of one per row, which keeps it
+  // well inside the per-IP rate limit and makes twenty rows feel like one.
+  const [selectedCommissionIds, setSelectedCommissionIds] = useState(() => new Set());
+  const [bulkPaidBusy, setBulkPaidBusy] = useState(false);
+
+  const toggleCommissionSelected = useCallback((commissionId) => {
+    setSelectedCommissionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(commissionId)) next.delete(commissionId);
+      else next.add(commissionId);
+      return next;
+    });
+  }, []);
+
+  const clearCommissionSelection = useCallback(() => {
+    setSelectedCommissionIds(new Set());
+  }, []);
+
+  const handleBulkCustomerPaid = useCallback(async (nextPaid) => {
+    if (bulkPaidBusy) return;
+    const ids = [...selectedCommissionIds];
+    if (ids.length === 0) return;
+    // Skip rows already in the requested state so we never re-stamp a
+    // customer_paid_at that mom set weeks ago.
+    const toSend = selectableForBulk(commissions, ids, nextPaid);
+    if (toSend.length === 0) {
+      clearCommissionSelection();
+      return;
+    }
+    setBulkPaidBusy(true);
+    markToggling(toSend, true);
+    setCommissions((prev) => applyCustomerPaidLocally(prev, toSend, nextPaid));
+    try {
+      await sendBulkCustomerPaid(toSend, nextPaid);
+      clearCommissionSelection();
+      await refreshCommissions();
+    } catch (err) {
+      setCommissions((prev) => applyCustomerPaidLocally(prev, toSend, !nextPaid));
+      setError(err.message || 'Failed to update commissions');
+    } finally {
+      markToggling(toSend, false);
+      setBulkPaidBusy(false);
+    }
+  }, [bulkPaidBusy, selectedCommissionIds, commissions, clearCommissionSelection, markToggling, refreshCommissions]);
+
+  // Drop selected ids that no longer exist (deleted, or settled by a payout in
+  // another tab) so the bulk bar can never act on a stale row.
+  useEffect(() => {
+    setSelectedCommissionIds((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(commissions.map((c) => c.id));
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [commissions]);
 
   const handleChangeJewelerGroup = useCallback(async (docId, nextJewelerGroup) => {
     if (!docId || togglingSynaliaDocId === docId) return;
@@ -528,8 +639,9 @@ export default function AdminAgentDetailsPage() {
   // customer-paid tick) so it returns to "Ready to pay" and re-enters the next
   // payout. For "we marked it paid but didn't actually pay the agent".
   const handleRevertPaid = useCallback(async (commissionId) => {
-    if (!commissionId || togglingCommissionId === commissionId) return;
-    setTogglingCommissionId(commissionId);
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
     // Optimistic: flip the row back to pending immediately.
     const prevRows = commissions;
     setCommissions((prev) =>
@@ -545,36 +657,68 @@ export default function AdminAgentDetailsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to undo payout');
       // Refresh the summary KPIs from the source of truth.
-      await load();
+      await refreshCommissions();
     } catch (err) {
       setCommissions(prevRows);
       setError(err.message || 'Failed to undo payout');
     } finally {
-      setTogglingCommissionId(null);
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
     }
-  }, [load, commissions, togglingCommissionId]);
+  }, [refreshCommissions, commissions, markToggling]);
 
   // Delete a manual commission entry (quick order or ad-hoc bonus). Used to
   // remove a mistakenly-added row. The API refuses order-linked and paid-out
   // rows, so we only surface this button on safe-to-delete manual entries.
   const handleDeleteCommission = useCallback(async (commissionId) => {
-    if (!commissionId || togglingCommissionId === commissionId) return;
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
     const ok = typeof window !== 'undefined'
       ? window.confirm('Delete this entry? This cannot be undone.')
       : true;
     if (!ok) return;
-    setTogglingCommissionId(commissionId);
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
     try {
       const res = await fetch(`/api/commissions/${commissionId}`, { method: 'DELETE' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to delete entry');
-      await load();
+      await refreshCommissions();
     } catch (err) {
       setError(err.message || 'Failed to delete entry');
     } finally {
-      setTogglingCommissionId(null);
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
     }
-  }, [load, togglingCommissionId]);
+  }, [refreshCommissions, markToggling]);
+
+  // Grant the new-client bonus for one order. In 'manual' mode nothing is
+  // created on save, so this button is the only way a bonus comes into
+  // existence — the admin decides per client whether it is warranted.
+  const [addingBonusRowId, setAddingBonusRowId] = useState(null);
+  // A refusal here is about one row, so it gets its own message above the
+  // table. The page-level `error` replaces the whole page, which would
+  // throw away the commission history over a single declined click.
+  const [bonusError, setBonusError] = useState('');
+  const handleAddNewClientBonus = useCallback(async (row) => {
+    const documentId = row?.document_id || row?.document?.id;
+    if (!documentId || !agentId || addingBonusRowId) return;
+    setAddingBonusRowId(row.id);
+    setBonusError('');
+    try {
+      const res = await fetch('/api/commissions/new-client-bonus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId, document_id: documentId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to add the bonus');
+      await refreshCommissions();
+    } catch (err) {
+      setBonusError(err.message || 'Failed to add the bonus');
+    } finally {
+      setAddingBonusRowId(null);
+    }
+  }, [agentId, addingBonusRowId, refreshCommissions]);
 
   // Save the manual invoice number an admin types against a commission row.
   // Optimistic + fire-on-blur: writes the local row immediately so the field
@@ -748,16 +892,25 @@ export default function AdminAgentDetailsPage() {
                       {commRate}% rate
                     </span>
                     {(() => {
-                      const bonusOn = !!agent?.new_client_bonus_enabled;
+                      const bonusMode = resolveBonusMode(agent);
+                      const bonusOn = bonusMode !== 'off';
                       const bonusAmt = Number(agent?.new_client_bonus_amount) || 0;
-                      const label = bonusOn && bonusAmt > 0
-                        ? `+${fmt(bonusAmt)} / new client`
-                        : '+ New client bonus';
+                      const label = !bonusOn || bonusAmt <= 0
+                        ? '+ New client bonus'
+                        : bonusMode === 'manual'
+                        ? `${fmt(bonusAmt)} / new client — you decide`
+                        : `+${fmt(bonusAmt)} / new client`;
                       return (
                         <button
                           type="button"
                           onClick={() => setShowNewClientBonusModal(true)}
-                          title={bonusOn ? 'Adjust new-client bonus' : 'Enable new-client bonus'}
+                          title={
+                            bonusMode === 'manual'
+                              ? 'Nothing is added automatically — add the bonus per order from the table below'
+                              : bonusMode === 'auto'
+                              ? 'Added automatically on the first order from a new client'
+                              : 'Set up the new-client bonus'
+                          }
                           style={{
                             fontSize: 11,
                             fontWeight: 700,
@@ -996,11 +1149,55 @@ export default function AdminAgentDetailsPage() {
                     const visibleRows = activeFilter === 'all'
                       ? allRows
                       : allRows.filter((r) => commissionStatusKey(r) === activeFilter);
+                    // Orders where the new-client bonus is still an open
+                    // decision. Empty unless the agent has a bonus amount and
+                    // a mode other than 'off'.
+                    const bonusEligibleIds = eligibleManualBonusRowIds(allRows, { agent, isDerived });
+                    const bonusAmount = Number(agent?.new_client_bonus_amount) || 0;
+                    // Rows the bulk Paid? action can act on — same rule as the
+                    // per-row checkbox, so the two can never disagree.
+                    const selectableVisibleIds = isDerived
+                      ? []
+                      : visibleRows
+                          .filter((r) =>
+                            r.status !== 'paid' &&
+                            r.status !== 'cancelled' &&
+                            !!r.id &&
+                            !String(r.id).startsWith('doc-'))
+                          .map((r) => r.id);
+                    const selectedVisibleIds = selectableVisibleIds.filter((id) => selectedCommissionIds.has(id));
+                    const allVisibleSelected =
+                      selectableVisibleIds.length > 0 &&
+                      selectedVisibleIds.length === selectableVisibleIds.length;
+                    const toggleSelectAllVisible = () => {
+                      setSelectedCommissionIds((prev) => {
+                        const next = new Set(prev);
+                        for (const id of selectableVisibleIds) {
+                          if (allVisibleSelected) next.delete(id);
+                          else next.add(id);
+                        }
+                        return next;
+                      });
+                    };
+                    const selectedCount = selectedCommissionIds.size;
                     return (
                       <>
                         {isDerived && (
                           <div style={{ padding: '7px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
                             Estimated from order documents — save an order to create real commission rows.
+                          </div>
+                        )}
+                        {bonusError && (
+                          <div role="alert" style={{ padding: '8px 14px', background: '#fef2f2', fontSize: 12, color: '#991b1b', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                            <span>{bonusError}</span>
+                            <button
+                              type="button"
+                              onClick={() => setBonusError('')}
+                              aria-label="Dismiss"
+                              style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', fontWeight: 700, fontSize: 12, padding: 0 }}
+                            >
+                              ×
+                            </button>
                           </div>
                         )}
                         {/* Status filter chips */}
@@ -1030,15 +1227,61 @@ export default function AdminAgentDetailsPage() {
                             );
                           })}
                         </div>
+                        {selectedCount > 0 && (
+                          <div
+                            data-testid="bulk-paid-bar"
+                            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '9px 14px', borderBottom: `1px solid ${colors.lineGray}`, background: '#f3f0f8' }}
+                          >
+                            <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum }}>
+                              {selectedCount} selected
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleBulkCustomerPaid(true)}
+                              disabled={bulkPaidBusy}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: colors.inkPlum, color: '#fff', cursor: bulkPaidBusy ? 'default' : 'pointer', fontFamily: fonts.body, opacity: bulkPaidBusy ? 0.6 : 1 }}
+                            >
+                              {bulkPaidBusy ? 'Saving…' : `Mark ${selectedCount} as paid`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleBulkCustomerPaid(false)}
+                              disabled={bulkPaidBusy}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: bulkPaidBusy ? 'default' : 'pointer', fontFamily: fonts.body, opacity: bulkPaidBusy ? 0.6 : 1 }}
+                            >
+                              Mark as unpaid
+                            </button>
+                            <button
+                              type="button"
+                              onClick={clearCommissionSelection}
+                              disabled={bulkPaidBusy}
+                              style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, background: 'none', border: 'none', cursor: bulkPaidBusy ? 'default' : 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        )}
                         {visibleRows.length === 0 ? (
                           <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>
                             No {activeFilter} commissions.
                           </div>
                         ) : (
                         <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
+                              <th style={{ ...th, textAlign: 'center', width: 34 }}>
+                                {selectableVisibleIds.length > 0 && (
+                                  <input
+                                    type="checkbox"
+                                    checked={allVisibleSelected}
+                                    onChange={toggleSelectAllVisible}
+                                    aria-label="Select all rows"
+                                    title="Select every row shown, then use the bulk Paid? buttons"
+                                    style={{ width: 14, height: 14, cursor: 'pointer', accentColor: colors.inkPlum }}
+                                  />
+                                )}
+                              </th>
                               <th style={th}>Date</th>
                               <th style={th}>Client</th>
                               <th style={{ ...th, textAlign: 'right' }} title="The full order total as invoiced to the customer (includes shipping).">Total</th>
@@ -1057,6 +1300,7 @@ export default function AdminAgentDetailsPage() {
                               const isPaidOut = row.status === 'paid';
                               const isCancelled = row.status === 'cancelled';
                               const canToggle = !isDerived && !isPaidOut && !isCancelled && !!row.id && !String(row.id).startsWith('doc-');
+                              const rowBusy = togglingIds.has(row.id);
                               // Any real commission row can be deleted (quick order,
                               // bonus, order commission, paid-out, cancelled…).
                               // Doc-derived placeholder rows aren't real DB rows so
@@ -1104,6 +1348,18 @@ export default function AdminAgentDetailsPage() {
                               const canEditOrder = row.type === 'order' && !isCancelled && !!docId;
                               return (
                                 <tr key={row.id} style={isCancelled ? { opacity: 0.55 } : undefined}>
+                                  <td style={{ ...td, textAlign: 'center', width: 34 }}>
+                                    {canToggle ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedCommissionIds.has(row.id)}
+                                        onChange={() => toggleCommissionSelected(row.id)}
+                                        aria-label={`Select ${clientLabel}`}
+                                        title="Select this row for a bulk Paid? action"
+                                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: colors.inkPlum }}
+                                      />
+                                    ) : null}
+                                  </td>
                                   <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
                                   <td style={{ ...td, fontSize: 12 }}>
                                     {clientLabel}
@@ -1113,18 +1369,36 @@ export default function AdminAgentDetailsPage() {
                                     {row.document?.order_channel === 'b2c' && (
                                       <span style={{ marginLeft: 5, fontSize: 9, color: colors.luxeGold, fontWeight: 700, background: '#fef9ec', padding: '1px 5px', borderRadius: 3 }}>B2C</span>
                                     )}
-                                    {canEditOrder && (
-                                      <div style={{ marginTop: 3 }}>
-                                        <a
-                                          href={`/?reEdit=${docId}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          title="Open this order to edit its items and amount. Saving recalculates the commission."
-                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                                        >
-                                          Edit order
-                                          <span aria-hidden="true">↗</span>
-                                        </a>
+                                    {bonusEligibleIds.has(row.id) && (
+                                      <span style={{ marginLeft: 5, fontSize: 9, color: '#9a3412', fontWeight: 700, background: '#fff7ed', padding: '1px 5px', borderRadius: 3 }} title="First order from this customer for this agent — no new-client bonus has been given yet.">
+                                        NEW CLIENT
+                                      </span>
+                                    )}
+                                    {(canEditOrder || bonusEligibleIds.has(row.id)) && (
+                                      <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        {canEditOrder && (
+                                          <a
+                                            href={`/?reEdit=${docId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="Open this order to edit its items and amount. Saving recalculates the commission."
+                                            style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                          >
+                                            Edit order
+                                            <span aria-hidden="true">↗</span>
+                                          </a>
+                                        )}
+                                        {bonusEligibleIds.has(row.id) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAddNewClientBonus(row)}
+                                            disabled={addingBonusRowId === row.id}
+                                            title={`Give this agent the ${fmt2(bonusAmount)} new-client bonus for this customer. Nothing is added unless you click.`}
+                                            style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: '#f3f0f8', border: `1px solid ${colors.inkPlum}`, borderRadius: 4, padding: '2px 7px', cursor: addingBonusRowId === row.id ? 'default' : 'pointer', fontFamily: 'inherit', opacity: addingBonusRowId === row.id ? 0.5 : 1 }}
+                                          >
+                                            {addingBonusRowId === row.id ? 'Adding…' : `+ ${fmt2(bonusAmount)} bonus`}
+                                          </button>
+                                        )}
                                       </div>
                                     )}
                                   </td>
@@ -1165,7 +1439,7 @@ export default function AdminAgentDetailsPage() {
                                       <input
                                         type="checkbox"
                                         checked={isCustomerPaid}
-                                        disabled={togglingCommissionId === row.id}
+                                        disabled={rowBusy}
                                         onChange={(e) => handleToggleCustomerPaid(row.id, e.target.checked)}
                                         title={isCustomerPaid ? 'Tick removes from next payout' : 'Tick when customer has paid the order'}
                                         style={{ width: 16, height: 16, cursor: 'pointer', accentColor: colors.inkPlum }}
@@ -1183,9 +1457,9 @@ export default function AdminAgentDetailsPage() {
                                         <button
                                           type="button"
                                           onClick={() => handleRevertPaid(row.id)}
-                                          disabled={togglingCommissionId === row.id}
+                                          disabled={rowBusy}
                                           title="Mark unpaid — returns to Ready to pay and re-enters the next payout"
-                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: togglingCommissionId === row.id ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: togglingCommissionId === row.id ? 0.5 : 1 }}
+                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
                                         >
                                           Undo
                                         </button>
@@ -1196,11 +1470,11 @@ export default function AdminAgentDetailsPage() {
                                         <button
                                           type="button"
                                           onClick={() => handleDeleteCommission(row.id)}
-                                          disabled={togglingCommissionId === row.id}
+                                          disabled={rowBusy}
                                           title="Delete this entry permanently"
-                                          style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', background: 'none', border: 'none', cursor: togglingCommissionId === row.id ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: togglingCommissionId === row.id ? 0.5 : 1 }}
+                                          style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
                                         >
-                                          {togglingCommissionId === row.id ? '…' : 'Delete'}
+                                          {rowBusy ? '…' : 'Delete'}
                                         </button>
                                       </div>
                                     )}
