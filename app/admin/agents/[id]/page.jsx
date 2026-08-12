@@ -376,6 +376,10 @@ export default function AdminAgentDetailsPage() {
     return m;
   }, [reports]);
 
+  // The report a manual "Mark reported" would attach a row to. The list comes
+  // back newest first, so it's simply the first one.
+  const lastReport = useMemo(() => (reports || [])[0] || null, [reports]);
+
   // Picking a report in the modal prefills the amount with its total so mom
   // just confirms. She can still override before saving.
   const handleSelectPaymentReport = (reportId) => {
@@ -666,6 +670,37 @@ export default function AdminAgentDetailsPage() {
       markToggling([commissionId], false);
     }
   }, [refreshCommissions, commissions, markToggling]);
+
+  const [reportedError, setReportedError] = useState('');
+  // Force a row into or out of "Reported" by hand.
+  //
+  // Report generation sets report_id itself, but rows do get stranded: swept
+  // into a report before the Paid? tick existed, or linked when the send went
+  // wrong. A linked row is excluded from every later report, so without this
+  // there is no way back — the commission just sits there.
+  const handleToggleReported = useCallback(async (commissionId, nextReported) => {
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
+    setReportedError('');
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}/reported`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reported: nextReported }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update the report link');
+      await refreshCommissions();
+    } catch (err) {
+      // Its own banner, not the page-level error: a refusal on one row must
+      // not replace the whole commission history.
+      setReportedError(err.message || 'Failed to update the report link');
+    } finally {
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
+    }
+  }, [refreshCommissions, markToggling]);
 
   // Delete a manual commission entry (quick order or ad-hoc bonus). Used to
   // remove a mistakenly-added row. The API refuses order-linked and paid-out
@@ -1200,6 +1235,19 @@ export default function AdminAgentDetailsPage() {
                             </button>
                           </div>
                         )}
+                        {reportedError && (
+                          <div role="alert" style={{ padding: '8px 14px', background: '#fef2f2', fontSize: 12, color: '#991b1b', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                            <span>{reportedError}</span>
+                            <button
+                              type="button"
+                              onClick={() => setReportedError('')}
+                              aria-label="Dismiss"
+                              style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', fontWeight: 700, fontSize: 12, padding: 0 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
                         {/* Status filter chips */}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 14px', borderBottom: `1px solid ${colors.lineGray}`, background: '#fcfbfe' }}>
                           {COMMISSION_FILTERS.filter((f) => f.key === 'all' || counts[f.key] > 0).map((f) => {
@@ -1307,11 +1355,15 @@ export default function AdminAgentDetailsPage() {
                               // there's nothing to delete.
                               const canDelete = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
                               const canEditInvoice = !isDerived && !!row.id && !String(row.id).startsWith('doc-');
-                              // Phase 29: a customer-paid row that's been pulled
-                              // into a report (report_id set) but not yet paid out
-                              // is "Reported" — sent to the agent, awaiting the
-                              // Record Payment step.
-                              const isReported = !isPaidOut && !isCancelled && isCustomerPaid && !!row.report_id;
+                              // Phase 29: a row that's been pulled into a report
+                              // (report_id set) but not yet paid out is
+                              // "Reported" — sent, awaiting the Record Payment
+                              // step. The Paid? tick is deliberately NOT part of
+                              // this: rows swept into a report before that tick
+                              // existed have no date, and calling them "Awaiting"
+                              // hid them while report_id kept them out of every
+                              // later report.
+                              const isReported = !isPaidOut && !isCancelled && !!row.report_id;
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
@@ -1452,6 +1504,23 @@ export default function AdminAgentDetailsPage() {
                                     <span style={{ fontSize: 10, fontWeight: 700, color: status.fg, background: status.bg, borderRadius: 12, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                       {status.label}
                                     </span>
+                                    {canToggle && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleReported(row.id, !isReported)}
+                                          disabled={rowBusy}
+                                          title={isReported
+                                            ? `Take this line off ${reportsById[row.report_id]?.period_label || 'the report'} — it goes back in the pool and the next report picks it up again.`
+                                            : lastReport
+                                            ? `Put this line on the last report (${lastReport.period_label || lastReport.period_key}) by hand, as if it had been sent with it. Ticks Paid? if it isn't ticked yet.`
+                                            : 'No report has been sent for this agent yet.'}
+                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
+                                        >
+                                          {isReported ? 'Not reported' : 'Mark reported'}
+                                        </button>
+                                      </div>
+                                    )}
                                     {isPaidOut && !!row.id && !String(row.id).startsWith('doc-') && (
                                       <div style={{ marginTop: 4 }}>
                                         <button
@@ -1487,7 +1556,7 @@ export default function AdminAgentDetailsPage() {
                         </div>
                         )}
                         <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, background: '#fafafa' }}>
-                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>). <strong style={{ color: colors.charcoal }}>Send report now</strong> emails Dionne (not the agent) and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>. Then <strong style={{ color: colors.charcoal }}>Record Payment</strong> (pick the report + invoice) settles them as <strong style={{ color: colors.charcoal }}>Paid</strong>.
+                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>). <strong style={{ color: colors.charcoal }}>Send report now</strong> emails Dionne (not the agent) and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>. Then <strong style={{ color: colors.charcoal }}>Record Payment</strong> (pick the report + invoice) settles them as <strong style={{ color: colors.charcoal }}>Paid</strong>. If a line ended up on the wrong side of that, <strong style={{ color: colors.charcoal }}>Mark reported</strong> / <strong style={{ color: colors.charcoal }}>Not reported</strong> under the status moves it by hand.
                         </div>
                       </>
                     );
@@ -1911,9 +1980,8 @@ function commissionStatusKey(row) {
   if (!row) return 'awaiting';
   if (row.status === 'cancelled') return 'cancelled';
   if (row.status === 'paid') return 'paid';
-  const customerPaid = !!row.customer_paid_at;
-  if (customerPaid && row.report_id) return 'reported';
-  if (customerPaid) return 'ready';
+  if (row.report_id) return 'reported';
+  if (row.customer_paid_at) return 'ready';
   return 'awaiting';
 }
 
