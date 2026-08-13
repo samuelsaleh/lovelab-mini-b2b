@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, cordPaletteFor, getDefaultCert, getDefaultCordType, getDefaultThickness, getPrice, getVisibleCollections, getCollectionsByType, getProductType, normalizeCordColorName, parseMaterialLabel, DEFAULT_PRICELIST, PRICELISTS, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, cordPaletteFor, getDefaultCert, getDefaultCordType, getDefaultThickness, getPrice, getVisibleCollections, getVisiblePricelists, getCollectionsByType, getProductType, normalizeCordColorName, parseMaterialLabel, DEFAULT_PRICELIST, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -507,6 +507,14 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Resolve once per render so every downstream getter / calculator sees the
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
+  // The October list is preview-only (it reprices Moonlight / Sienna / Za-Ha,
+  // which most agents cannot sell), so the toggle offers it to admins and the
+  // granted agents only. The active list is always offered so the button state
+  // keeps matching the prices in the builder.
+  const offeredPricelists = useMemo(
+    () => getVisiblePricelists(isAdmin ? { ...profile, role: 'admin' } : profile, activePricelist),
+    [isAdmin, profile, activePricelist],
+  )
 
   // Load every visible pack once on mount. RLS already scopes the response to
   // global/seed packs + this user's own private packs.
@@ -1857,16 +1865,21 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: mobile ? 'flex-start' : 'flex-end' }}>
-                    {/* ─── Pricelist toggle (2025 / 2026) ─── */}
+                    {/* ─── Pricelist toggle (2025 / 2026 / 2026 from Oct.) ─── */}
                     {/* Wraps in a fieldset for screen-reader semantics: a clear
                         radiogroup label avoids confusing AT users who
-                        otherwise hear two unconnected buttons. */}
+                        otherwise hear three unconnected buttons. */}
                     <fieldset
                       data-testid="pricelist-toggle"
                       aria-label="Active price list"
-                      title="Choose 2025 for legacy clients still on the old pricing during the 6-month transition. New clients use 2026."
+                      title={
+                        'Choose 2025 for legacy clients still on the old pricing during the 6-month transition. 2026 is the current list.'
+                        + (offeredPricelists.includes('2026-10')
+                          ? ' The October revision reprices Moonlight, Sienna and Za-Ha.'
+                          : '')
+                      }
                       style={{
-                        display: 'inline-flex', border: '1px solid #ddd',
+                        display: 'inline-flex', flexWrap: 'wrap', border: '1px solid #ddd',
                         borderRadius: 8, padding: 0, margin: 0, gap: 0,
                         background: '#fafafa',
                       }}
@@ -1874,7 +1887,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       <legend style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
                         Active price list
                       </legend>
-                      {PRICELISTS.map((year) => {
+                      {offeredPricelists.map((year) => {
                         const isActive = activePricelist === year
                         return (
                           <button

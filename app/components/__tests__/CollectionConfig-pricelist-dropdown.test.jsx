@@ -24,8 +24,9 @@ const CollectionConfig = require('../CollectionConfig').default
 const { COLLECTIONS } = require('@/lib/catalog')
 
 const CUTY = COLLECTIONS.find((c) => c.id === 'CUTY')
+const MNH = COLLECTIONS.find((c) => c.id === 'MNH')
 
-function renderCarat({ pricelistYear, certType }) {
+function renderCarat({ pricelistYear, certType, col = CUTY }) {
   const cfg = mockColorConfig({
     caratIdx: 0,
     qty: 1,
@@ -36,7 +37,7 @@ function renderCarat({ pricelistYear, certType }) {
   })
   const line = {
     uid: 'l1',
-    collectionId: 'CUTY',
+    collectionId: col.id,
     colorConfigs: [cfg],
     expanded: true,
     sameForAll: false,
@@ -45,7 +46,7 @@ function renderCarat({ pricelistYear, certType }) {
   return renderWithI18n(
     <CollectionConfig
       line={line}
-      col={CUTY}
+      col={col}
       onChange={jest.fn()}
       onRemove={jest.fn()}
       pricelistYear={pricelistYear}
@@ -131,5 +132,49 @@ describe('CollectionConfig — carat dropdown reflects pricelistYear', () => {
       />,
     )
     expect(caratOptionLabels()[0]).toContain('€20')
+  })
+})
+
+// The October list is the first one whose SIZES differ, not just its prices.
+// Moonlight Multi sells 0.20 / 0.40 on 2026 and gains 0.70 / 1.10 in October,
+// so the dropdown must grow — and must never offer a size at €0.
+describe('CollectionConfig — carat dropdown per-pricelist sizes', () => {
+  it('2026 offers only the two sizes Moonlight Multi sells on that list', () => {
+    renderCarat({ pricelistYear: '2026', certType: 'igi', col: MNH })
+    const labels = caratOptionLabels()
+    expect(labels).toHaveLength(2)
+    expect(labels[0]).toContain('0.20 ct - €75')
+    expect(labels[1]).toContain('0.40 ct - €130')
+  })
+
+  it('October offers all four sizes at the new prices', () => {
+    renderCarat({ pricelistYear: '2026-10', certType: 'igi', col: MNH })
+    const labels = caratOptionLabels()
+    expect(labels).toHaveLength(4)
+    expect(labels[0]).toContain('0.20 ct - €90')
+    expect(labels[1]).toContain('0.40 ct - €150')
+    expect(labels[2]).toContain('0.70 ct - €200')
+    expect(labels[3]).toContain('1.10 ct - €320')
+  })
+
+  it('never offers a carat at €0 on any pricelist', () => {
+    for (const year of ['2025', '2026', '2026-10']) {
+      const { unmount } = renderCarat({ pricelistYear: year, certType: 'igi', col: MNH })
+      for (const label of caratOptionLabels()) {
+        expect(`${year}: ${label}`).not.toMatch(/- €0$/)
+      }
+      unmount()
+    }
+  })
+
+  it('an October-only size keeps its own option value (index into col.carats)', () => {
+    renderCarat({ pricelistYear: '2026-10', certType: 'igi', col: MNH })
+    const select = Array.from(document.querySelectorAll('select'))
+      .find((s) => Array.from(s.options).some((o) => / ct - €\d/.test(o.textContent || '')))
+    const values = Array.from(select.options)
+      .filter((o) => / ct - €/.test(o.textContent || ''))
+      .map((o) => o.value)
+    expect(values).toEqual(['0', '1', '2', '3'])
+    expect(MNH.carats[2]).toBe('0.70')
   })
 })

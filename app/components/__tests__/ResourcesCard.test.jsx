@@ -57,6 +57,15 @@ describe('ResourcesCard — EAN Codes folder', () => {
     expect(screen.queryByText('EAN Codes')).not.toBeInTheDocument()
     expect(screen.queryByText('Catalogue')).not.toBeInTheDocument()
     expect(screen.queryByText('Brand Documents')).not.toBeInTheDocument()
+    // Price lists are wholesale documents — no agent downloads or emails them,
+    // Piotr included. Only the builder's price list toggle is per-agent.
+    expect(screen.queryByText('Price List')).not.toBeInTheDocument()
+  })
+
+  it('does not render the price list folder for Piotr either', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="piotr.kicinski84@gmail.com" />)
+    expect(screen.queryByText('Price List')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pricelist_LoveLab_2026_October.pdf')).not.toBeInTheDocument()
   })
 
   it('renders the EAN Codes folder for admins', () => {
@@ -218,6 +227,32 @@ describe('ResourcesCard — Brand Documents folder', () => {
     fireEvent.click(screen.getByText('Brand Documents'))
 
     fireEvent.click(screen.getByLabelText('Select LoveLab Brand Presentation — French.pdf'))
+    expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
+  })
+})
+
+describe('ResourcesCard — Price List folder', () => {
+  it('lists all three price lists with encoded download hrefs', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Price List'))
+
+    const link = (fileName) => screen.getAllByText(fileName)
+      .map((element) => element.closest('a'))
+      .find(Boolean)
+
+    expect(link('Pricelist_LoveLab_2025.pdf').getAttribute('href'))
+      .toBe('/Price%20Lists/Pricelist_LoveLab_2025.pdf')
+    expect(link('Pricelist_LoveLab_2026.pdf').getAttribute('href'))
+      .toBe('/Price%20Lists/Pricelist_LoveLab_2026.pdf')
+    expect(link('Pricelist_LoveLab_2026_October.pdf').getAttribute('href'))
+      .toBe('/Price%20Lists/Pricelist_LoveLab_2026_October.pdf')
+  })
+
+  it('can email the October price list to a client', () => {
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Price List'))
+
+    fireEvent.click(screen.getByLabelText('Select Pricelist_LoveLab_2026_October.pdf'))
     expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
   })
 })

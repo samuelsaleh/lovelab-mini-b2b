@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -86,6 +86,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   // Single normalization point so a missing or invalid year never leaks
   // into a getPrice call inside this huge component.
   const yr = resolvePricelist(pricelistYear)
+  // Sizes this collection sells on the active pricelist. Every carat picker
+  // renders from this so a size that only exists on another list (or was
+  // discontinued) is never offered at €0.
+  const caratOptions = useMemo(() => getAvailableCarats(col, yr), [col, yr])
   const { t } = useI18n()
   // Compact = phone OR iPad portrait → use the card layout (not the wide table).
   const { isCompact: mobile } = useResponsive()
@@ -780,7 +784,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             {t(`productType.${getProductType(col)}`)}
           </span>
           <span style={{ fontSize: 12, color: '#999' }}>
-            {fmt(getPrice(col, 0, getDefaultCert(col), yr))}-{fmt(getPrice(col, col.carats.length - 1, getDefaultCert(col), yr))}
+            {fmt(getPrice(col, caratOptions[0]?.idx ?? 0, getDefaultCert(col), yr))}-{fmt(getPrice(col, caratOptions[caratOptions.length - 1]?.idx ?? col.carats.length - 1, getDefaultCert(col), yr))}
           </span>
           {line.colorConfigs.length > 0 && (
             <span style={{
@@ -1106,8 +1110,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                           >
                             <option value="">{t('collection.caratPlaceholder')}</option>
-                            {col.carats.map((ct, ci) => (
-                              <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, getDefaultCert(col), yr)}</option>
+                            {caratOptions.map(({ carat, idx }) => (
+                              <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, getDefaultCert(col), yr)}</option>
                             ))}
                           </select>
                         )}
@@ -1312,8 +1316,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                   style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                 >
                   <option value="">{t('collection.caratPlaceholder')}</option>
-                  {col.carats.map((ct, ci) => (
-                    <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, sharedSettings.certType || getDefaultCert(col), yr)}</option>
+                  {caratOptions.map(({ carat, idx }) => (
+                    <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, sharedSettings.certType || getDefaultCert(col), yr)}</option>
                   ))}
                 </select>
 
@@ -1563,7 +1567,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           ) : (
                             <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); const certType = getCertForCarat(cfg.certType, val); updateConfig(cfg.id, { caratIdx: val, certType, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                               <option value="">{t('collection.selectPlaceholder')}</option>
-                              {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType, yr)}</option>)}
+                              {caratOptions.map(({ carat, idx }) => <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, cfg?.certType, yr)}</option>)}
                             </select>
                           )}
                           {canFillCarat && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'carat', line.colorConfigs, selectedConfigs)} />}
@@ -1890,7 +1894,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.carat')}</span>
                           <select value={cfg.caratIdx !== null ? cfg.caratIdx : ''} onChange={(e) => { const val = e.target.value === '' ? null : parseInt(e.target.value); const certType = getCertForCarat(cfg.certType, val); updateConfig(cfg.id, { caratIdx: val, certType, housing: null, housingType: null, multiAttached: null, shape: null, size: null }) }} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-carat`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
-                            {col.carats.map((ct, ci) => <option key={ct} value={ci}>{ct} ct - €{getPrice(col, ci, cfg?.certType, yr)}</option>)}
+                            {caratOptions.map(({ carat, idx }) => <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, cfg?.certType, yr)}</option>)}
                           </select>
                         </div>
                       )}

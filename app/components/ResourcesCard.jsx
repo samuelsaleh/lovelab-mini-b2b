@@ -90,6 +90,7 @@ const CATALOGUE_FILES = [
 const PRICE_LIST_FILES = [
   { name: 'Pricelist_LoveLab_2025.pdf', path: '/Price Lists/Pricelist_LoveLab_2025.pdf' },
   { name: 'Pricelist_LoveLab_2026.pdf', path: '/Price Lists/Pricelist_LoveLab_2026.pdf' },
+  { name: 'Pricelist_LoveLab_2026_October.pdf', path: '/Price Lists/Pricelist_LoveLab_2026_October.pdf' },
 ]
 
 const EAN_FILES = [

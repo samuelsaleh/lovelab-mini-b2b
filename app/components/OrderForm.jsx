@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -2728,7 +2728,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                 <CellSelect
                                   value={row.carat}
                                   onChange={(val) => updateCell(globalIdx, 'carat', val)}
-                                  options={rowCol.carats.map(c => ({ value: c, label: `${c} ct` }))}
+                                  options={getAvailableCarats(rowCol, pricelistYear).map(({ carat }) => ({ value: carat, label: `${carat} ct` }))}
                                   isPrinting={isPrinting}
                                   align="center"
                                 />
