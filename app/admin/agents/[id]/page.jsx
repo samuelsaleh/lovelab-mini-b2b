@@ -671,7 +671,11 @@ export default function AdminAgentDetailsPage() {
     }
   }, [refreshCommissions, commissions, markToggling]);
 
-  const [reportedError, setReportedError] = useState('');
+  // Refusals from the per-row status actions below. Their own banner, not the
+  // page-level `error`: one declined click must not replace the whole
+  // commission history.
+  const [rowActionError, setRowActionError] = useState('');
+
   // Force a row into or out of "Reported" by hand.
   //
   // Report generation sets report_id itself, but rows do get stranded: swept
@@ -682,7 +686,7 @@ export default function AdminAgentDetailsPage() {
     if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
     inFlightPaidRef.current.add(commissionId);
     markToggling([commissionId], true);
-    setReportedError('');
+    setRowActionError('');
     try {
       const res = await fetch(`/api/commissions/${commissionId}/reported`, {
         method: 'PATCH',
@@ -693,9 +697,45 @@ export default function AdminAgentDetailsPage() {
       if (!res.ok) throw new Error(json?.error || 'Failed to update the report link');
       await refreshCommissions();
     } catch (err) {
-      // Its own banner, not the page-level error: a refusal on one row must
-      // not replace the whole commission history.
-      setReportedError(err.message || 'Failed to update the report link');
+      setRowActionError(err.message || 'Failed to update the report link');
+    } finally {
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
+    }
+  }, [refreshCommissions, markToggling]);
+
+  // Settle one line by hand, skipping Record Payment.
+  //
+  // Reported rows are excluded from every later report, so when the agent was
+  // paid outside the app — or the payment got recorded against a different
+  // report — Record Payment can never reach that line again and it sits in
+  // Reported forever. This is the way out. Undo reverses it.
+  const handleForcePaid = useCallback(async (commissionId) => {
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
+    const ok = typeof window !== 'undefined'
+      ? window.confirm(
+        'Mark this commission as paid out?\n\n'
+        + 'Use this when the agent has already been paid but the line stayed on '
+        + 'Reported. It does not send money or record a payment — it only moves '
+        + 'the line to Paid. You can Undo it afterwards.',
+      )
+      : true;
+    if (!ok) return;
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
+    setRowActionError('');
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}/force-paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to mark the commission paid');
+      // Refetch rather than patch locally: the request may also have settled
+      // the order's new-client bonus, which is a different row.
+      await refreshCommissions();
+    } catch (err) {
+      setRowActionError(err.message || 'Failed to mark the commission paid');
     } finally {
       inFlightPaidRef.current.delete(commissionId);
       markToggling([commissionId], false);
@@ -1235,12 +1275,12 @@ export default function AdminAgentDetailsPage() {
                             </button>
                           </div>
                         )}
-                        {reportedError && (
+                        {rowActionError && (
                           <div role="alert" style={{ padding: '8px 14px', background: '#fef2f2', fontSize: 12, color: '#991b1b', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                            <span>{reportedError}</span>
+                            <span>{rowActionError}</span>
                             <button
                               type="button"
-                              onClick={() => setReportedError('')}
+                              onClick={() => setRowActionError('')}
                               aria-label="Dismiss"
                               style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', fontWeight: 700, fontSize: 12, padding: 0 }}
                             >
@@ -1364,6 +1404,12 @@ export default function AdminAgentDetailsPage() {
                               // hid them while report_id kept them out of every
                               // later report.
                               const isReported = !isPaidOut && !isCancelled && !!row.report_id;
+                              // Settling by hand only makes sense once the money
+                              // is owed: the customer paid, or the line already
+                              // went out on a report. An "Awaiting" row needs
+                              // the Paid? tick first, so a stray click can't
+                              // pay out an order nobody has settled.
+                              const canForcePaid = canToggle && (isCustomerPaid || isReported);
                               const status = isCancelled
                                 ? { label: 'Cancelled', bg: '#fee2e2', fg: '#991b1b' }
                                 : isPaidOut
@@ -1521,6 +1567,19 @@ export default function AdminAgentDetailsPage() {
                                         </button>
                                       </div>
                                     )}
+                                    {canForcePaid && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleForcePaid(row.id)}
+                                          disabled={rowBusy}
+                                          title="Move this line to Paid by hand — for when the agent was already paid but the line stayed on Reported. No payment is recorded, and Undo reverses it."
+                                          style={{ fontSize: 10, fontWeight: 700, color: '#15803d', background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
+                                        >
+                                          Force paid
+                                        </button>
+                                      </div>
+                                    )}
                                     {isPaidOut && !!row.id && !String(row.id).startsWith('doc-') && (
                                       <div style={{ marginTop: 4 }}>
                                         <button
@@ -1556,7 +1615,7 @@ export default function AdminAgentDetailsPage() {
                         </div>
                         )}
                         <div style={{ padding: '10px 14px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted, lineHeight: 1.5, background: '#fafafa' }}>
-                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>). <strong style={{ color: colors.charcoal }}>Send report now</strong> emails Dionne (not the agent) and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>. Then <strong style={{ color: colors.charcoal }}>Record Payment</strong> (pick the report + invoice) settles them as <strong style={{ color: colors.charcoal }}>Paid</strong>. If a line ended up on the wrong side of that, <strong style={{ color: colors.charcoal }}>Mark reported</strong> / <strong style={{ color: colors.charcoal }}>Not reported</strong> under the status moves it by hand.
+                          <strong style={{ color: colors.charcoal }}>Total</strong> = full invoice. <strong style={{ color: colors.charcoal }}>Net</strong> = Total − shipping. <strong style={{ color: colors.charcoal }}>Commission</strong> = Rate × Net. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles the order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>). <strong style={{ color: colors.charcoal }}>Send report now</strong> emails Dionne (not the agent) and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>. Then <strong style={{ color: colors.charcoal }}>Record Payment</strong> (pick the report + invoice) settles them as <strong style={{ color: colors.charcoal }}>Paid</strong>. If a line ended up on the wrong side of that, <strong style={{ color: colors.charcoal }}>Mark reported</strong> / <strong style={{ color: colors.charcoal }}>Not reported</strong> under the status moves it by hand, and <strong style={{ color: colors.charcoal }}>Force paid</strong> settles a line the agent was already paid for outside the app (<strong style={{ color: colors.charcoal }}>Undo</strong> reverses it).
                         </div>
                       </>
                     );
