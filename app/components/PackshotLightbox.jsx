@@ -17,6 +17,12 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
   const lastTap = useRef(0)
   const [zoomed, setZoomed] = useState(false)
 
+  // Mouse state — desktop users try to "swipe" by dragging with the cursor
+  // or trackpad, which never produces touch events. Track mouse drags via
+  // pointer events (touch keeps using the dedicated touch handlers below).
+  const mouseStart = useRef(null)
+  const suppressClick = useRef(false)
+
   const goPrev = useCallback(() => {
     if (hasNav && currentIndex > 0) onNavigate(currentIndex - 1)
   }, [hasNav, currentIndex, onNavigate])
@@ -92,14 +98,47 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
     }
   }
 
+  const handlePointerDown = (e) => {
+    if (e.pointerType !== 'mouse') return
+    mouseStart.current = { x: e.clientX, y: e.clientY }
+  }
+
+  const handlePointerUp = (e) => {
+    if (e.pointerType !== 'mouse') return
+    const start = mouseStart.current
+    mouseStart.current = null
+    if (!start) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+
+    // Any real drag must not fall through to the backdrop's onClick — the
+    // browser still fires a click after mouseup even when the mouse moved.
+    suppressClick.current = true
+    if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) && !zoomed) {
+      if (dx < 0) goNext()
+      else goPrev()
+    }
+  }
+
+  const handleBackdropClick = () => {
+    if (suppressClick.current) {
+      suppressClick.current = false
+      return
+    }
+    onClose()
+  }
+
   if (!src) return null
 
   const content = (
     <div
-      onClick={onClose}
+      onClick={handleBackdropClick}
       data-testid="lightbox-backdrop"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       style={{
         position: 'fixed', inset: 0, zIndex: 500,
         background: 'rgba(0,0,0,0.85)',
@@ -151,12 +190,15 @@ export default function PackshotLightbox({ images, currentIndex, onClose, onNavi
           src={typeof src === 'string' ? src : src.url}
           alt={label || 'Product packshot'}
           data-testid="lightbox-image"
+          draggable={false}
           style={{
             maxWidth: zoomed ? 'none' : '85vw',
             maxHeight: zoomed ? 'none' : '80vh',
             width: zoomed ? '170vw' : 'auto',
             objectFit: 'contain', borderRadius: zoomed ? 0 : 8,
             transition: 'border-radius .15s',
+            cursor: hasNav && !zoomed ? 'grab' : undefined,
+            userSelect: 'none', WebkitUserSelect: 'none',
           }}
         />
         {!zoomed && label && (
