@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import { useResponsive } from '@/lib/useIsMobile'
 import { getAllCollectionIds, getCollectionLabel, getCollectionImages, getCollectionFilters } from '@/lib/packshot-lookup'
 import { canSeeCollection } from '@/lib/catalog'
 import PackshotLightbox from './PackshotLightbox'
@@ -21,6 +22,9 @@ const NECKLACE_COLLECTION_ORDER = [
 ]
 
 export default function PackshotGallery({ onClose, inline = false, isAdmin = false, profile = null }) {
+  // On phones the wrapping pill rows used to fill nearly the whole screen,
+  // leaving a sliver of grid — collapse them into single scrollable rows.
+  const { isMobile } = useResponsive()
   const availableIds = getAllCollectionIds()
   const viewer = profile ?? (isAdmin ? { role: 'admin' } : null)
   const getOrderedIds = (productType) => (
@@ -120,11 +124,17 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
           </button>
         </div>
 
-        {/* Collection Tabs */}
-        <div style={{
-          padding: '12px 24px', borderBottom: `1px solid ${colors.lineGray}`,
-          display: 'flex', flexWrap: 'wrap', gap: 6,
-        }}>
+        {/* Collection Tabs — one scrollable row on mobile, wrapping rows on desktop */}
+        <div
+          className="topnav-tabbar"
+          style={{
+            padding: isMobile ? '12px 12px' : '12px 24px', borderBottom: `1px solid ${colors.lineGray}`,
+            display: 'flex', gap: 6, flexShrink: 0,
+            flexWrap: isMobile ? 'nowrap' : 'wrap',
+            overflowX: isMobile ? 'auto' : 'visible',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           {orderedIds.map(id => (
             <button
               key={id}
@@ -133,6 +143,7 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
                 padding: '6px 14px', borderRadius: 20,
                 fontSize: 12, fontWeight: 600, fontFamily: fonts.body,
                 cursor: 'pointer', transition: 'all .12s',
+                whiteSpace: 'nowrap', flexShrink: 0,
                 border: activeCollection === id ? `1px solid ${colors.inkPlum}` : `1px solid ${colors.lineGray}`,
                 background: activeCollection === id ? colors.inkPlum : '#fff',
                 color: activeCollection === id ? '#fff' : colors.charcoal,
@@ -145,10 +156,15 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
 
         {/* Sub-filters */}
         {(filters.housings.length > 1 || filters.shapes.length > 0 || filters.subgroups.length > 0) && (
-          <div style={{
-            padding: '10px 24px', borderBottom: `1px solid ${colors.lineGray}`,
-            display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center',
-          }}>
+          <div
+            className="topnav-tabbar"
+            style={{
+              padding: isMobile ? '10px 12px' : '10px 24px', borderBottom: `1px solid ${colors.lineGray}`,
+              display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0,
+              flexWrap: isMobile ? 'nowrap' : 'wrap',
+              overflowX: isMobile ? 'auto' : 'visible',
+              WebkitOverflowScrolling: 'touch',
+            }}>
             {filters.subgroups.length > 0 && (
               <FilterGroup
                 label="Type"
@@ -179,7 +195,7 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
 
         {/* Image Grid */}
         <div style={{
-          flex: 1, overflowY: 'auto', padding: '20px 24px',
+          flex: 1, overflowY: 'auto', padding: isMobile ? '16px 12px' : '20px 24px',
         }}>
           {images.length === 0 ? (
             <div style={{
@@ -191,8 +207,8 @@ export default function PackshotGallery({ onClose, inline = false, isAdmin = fal
           ) : (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 16,
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+              gap: isMobile ? 12 : 16,
             }}>
               {images.map((img, idx) => (
                 <div
@@ -283,7 +299,7 @@ const HOUSING_LABELS = {
 
 function FilterGroup({ label, options, value, onChange, labelMap }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
       <span style={{
         fontSize: 11, fontWeight: 700, color: colors.lovelabMuted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -314,6 +330,7 @@ const pillStyle = (active) => ({
   padding: '6px 14px', borderRadius: 20,
   fontSize: 12, fontWeight: 600, fontFamily: fonts.body,
   cursor: 'pointer', transition: 'all .12s',
+  whiteSpace: 'nowrap', flexShrink: 0,
   border: active ? `1.5px solid ${colors.inkPlum}` : `1px solid ${colors.lineGray}`,
   background: active ? colors.inkPlum : '#fff',
   color: active ? '#fff' : '#666',
