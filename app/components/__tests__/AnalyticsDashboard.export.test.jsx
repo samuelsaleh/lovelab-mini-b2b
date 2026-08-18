@@ -159,7 +159,7 @@ describe('Export Excel button', () => {
 describe('the export follows the dashboard filters', () => {
   test('selecting a fair exports only that fair', async () => {
     await renderDashboard();
-    fireEvent.change(screen.getByDisplayValue('All Events'), { target: { value: FAIR_A } });
+    fireEvent.change(screen.getByDisplayValue('All Events & Agents'), { target: { value: FAIR_A } });
     fireEvent.click(exportButton());
     await waitFor(() => expect(capturedWorkbookCalls).toHaveLength(1));
     expect(companiesInLastExport()).toEqual(['ACME JEWELS', 'BIJOUX LYON']);
@@ -167,7 +167,7 @@ describe('the export follows the dashboard filters', () => {
 
   test('the filename carries the fair name', async () => {
     await renderDashboard();
-    fireEvent.change(screen.getByDisplayValue('All Events'), { target: { value: FAIR_B } });
+    fireEvent.change(screen.getByDisplayValue('All Events & Agents'), { target: { value: FAIR_B } });
     fireEvent.click(exportButton());
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(downloads[0]).toMatch(/^LoveLab_Analytics_Nordstil_\d{4}-\d{2}-\d{2}\.xlsx$/);
@@ -192,7 +192,7 @@ describe('the export follows the dashboard filters', () => {
 
   test('the subtitle records which filters produced the file', async () => {
     await renderDashboard();
-    fireEvent.change(screen.getByDisplayValue('All Events'), { target: { value: FAIR_A } });
+    fireEvent.change(screen.getByDisplayValue('All Events & Agents'), { target: { value: FAIR_A } });
     fireEvent.click(exportButton());
     await waitFor(() => expect(capturedWorkbookCalls).toHaveLength(1));
     expect(capturedWorkbookCalls[0].subtitle).toContain('INHORGENTA');

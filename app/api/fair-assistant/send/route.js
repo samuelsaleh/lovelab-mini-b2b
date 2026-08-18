@@ -4,6 +4,7 @@ import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { sendEmail } from '@/lib/send-email';
 import { findB2BFileByPath } from '@/lib/b2b-files';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
+import { publicAssetUrl } from '@/lib/publicAssetHref';
 
 // Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
 // the batch size, we time-box the loop: each worker checks an 8.5s deadline
@@ -96,7 +97,7 @@ export async function POST(request) {
       continue;
     }
     try {
-      const fileUrl = `${siteOrigin.replace(/\/$/, '')}${path}`;
+      const fileUrl = publicAssetUrl(siteOrigin, path);
       const fileRes = await fetch(fileUrl);
       if (!fileRes.ok) {
         console.error('[fair-send] attachment fetch failed', file.path, fileRes.status);

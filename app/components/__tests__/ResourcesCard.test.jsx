@@ -96,103 +96,81 @@ describe('ResourcesCard — EAN Codes folder', () => {
   })
 })
 
-describe('ResourcesCard — French catalogue preview and downloads', () => {
-  it('does not show French catalogue preview choices to regular non-Nicolas agents', () => {
+describe('ResourcesCard — role-aware catalogue access', () => {
+  const SHOWROOM_ORG = '171e2660-88f9-4677-a346-72d7c71462e9'
+  const optionNames = () => screen.queryAllByRole('option').map((option) => option.textContent)
+
+  it('shows no catalogue preview to an unassigned agent', () => {
     render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
-
-    expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Catalogue preview')).not.toBeInTheDocument()
   })
 
-  it('shows Nicolas the two September French catalogue preview choices only', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="nicolas.vial@ascension-france.com" />)
-
-    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf' })).not.toBeInTheDocument()
-    expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
+  it('shows Sarah’s organization the September and October non-General French catalogues', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="wassila@showroomaccestory.com" organizationId={SHOWROOM_ORG} />)
+    expect(optionNames()).toEqual([
+      'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
+      '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+    ])
   })
 
-  it('shows admins all four French catalogue preview choices, not quick links', () => {
+  it('does not grant Sarah’s catalogues from a lookalike email without membership', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="outsider@showroomaccestory.com" organizationId="other-org" />)
+    expect(screen.queryByLabelText('Catalogue preview')).not.toBeInTheDocument()
+  })
+
+  it('shows Nicolas the September and October General French catalogues', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="NICOLAS.VIAL@ASCENSION-FRANCE.COM" />)
+    expect(optionNames()).toEqual([
+      'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
+      'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+    ])
+  })
+
+  it('shows Piotr only October English and Polish', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="piotr.kicinski84@gmail.com" />)
+    expect(optionNames()).toEqual([
+      'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+      'Oct PL_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+    ])
+  })
+
+  it('shows Bastian only October English and German', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="bastianmeyer319@hotmail.com" />)
+    expect(optionNames()).toEqual([
+      'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
+      'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
+    ])
+  })
+
+  it('shows admins all eight retained catalogues, including admin-only Greek', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
-
-    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf' })).toBeInTheDocument()
-    expect(screen.queryByText('French catalogues')).not.toBeInTheDocument()
+    expect(optionNames()).toHaveLength(8)
+    expect(optionNames()).toContain('Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
+    expect(optionNames()).not.toContain('EN_LoveLab_B2B_Catalogue.pdf')
   })
 
-  it('switches the embedded demo and matching PDF when an admin selects a catalogue', () => {
+  test.each([
+    ['fr-general-sept', 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf', FRENCH_LINKS.generalSept, FRENCH_PDFS.generalSept],
+    ['fr-bijorka-sept', 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf', FRENCH_LINKS.bijorkaSept, FRENCH_PDFS.bijorkaSept],
+    ['fr-premiere-france-oct', '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf', FRENCH_LINKS.premiereFrance, FRENCH_PDFS.premiereFrance],
+    ['fr-premiere-general-oct', 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf', FRENCH_LINKS.premiereGeneral, FRENCH_PDFS.premiereGeneral],
+    ['en-oct', 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf', 'https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed', '/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf'],
+    ['de-oct', 'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf', 'https://www.canva.com/design/DAHPRJuRdEE/1afvONAix_iVpw1g-amYpA/view?embed', '/catalogues/Oct%20DE_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf'],
+    ['pl-oct', 'Oct PL_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf', 'https://www.canva.com/design/DAHQGQ1u494/hPqGe37Hk1ARHkoXuLc6JA/view?embed', '/catalogues/Oct%20PL_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf'],
+    ['gr-oct', 'Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf', 'https://www.canva.com/design/DAHQGQ87t08/QA0XcMNgmBtRNhcIzVlhOA/view?embed', '/catalogues/Oct%20GR_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf'],
+  ])('keeps the %s Canva preview paired with its PDF', (id, label, canva, pdf) => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
-
-    const selector = screen.getByLabelText('Catalogue preview')
-    fireEvent.change(selector, { target: { value: 'fr-premiere-general-oct' } })
-
-    const preview = screen.getByTitle('Catalogue preview: Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
-    expect(preview.getAttribute('src')).toBe(FRENCH_LINKS.premiereGeneral)
-    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
-      .toBe(FRENCH_PDFS.premiereGeneral)
+    fireEvent.change(screen.getByLabelText('Catalogue preview'), { target: { value: id } })
+    expect(screen.getByTitle(`Catalogue preview: ${label}`).getAttribute('src')).toBe(canva)
+    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href')).toBe(pdf)
   })
 
-  it('shows the second English catalogue with its matching Canva demo and PDF', () => {
-    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
-
-    const selector = screen.getByLabelText('Catalogue preview')
-    fireEvent.change(selector, { target: { value: 'en-oct' } })
-
-    expect(screen.getByTitle('Catalogue preview: Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf')
-      .getAttribute('src'))
-      .toBe('https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed')
-    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
-      .toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf')
-  })
-
-  it('keeps the original English catalogue download in its new folder', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
-
-    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
-      .toBe('/catalogues/English/EN_LoveLab_B2B_Catalogue.pdf')
-  })
-
-  it('lists every new French PDF in the admin document catalogue folder', () => {
-    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
-    fireEvent.click(screen.getByText('Catalogue'))
-
-    const documentLink = (fileName) => screen.getAllByText(fileName)
-      .map((element) => element.closest('a'))
-      .find(Boolean)
-
-    expect(documentLink('Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.generalSept)
-    expect(documentLink('Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.bijorkaSept)
-    expect(documentLink('_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereFrance)
-    expect(documentLink('Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf').getAttribute('href')).toBe(FRENCH_PDFS.premiereGeneral)
-  })
-
-  it('lists the second English PDF in the admin document catalogue folder', () => {
+  it('lists all eight retained PDFs in the admin catalogue folder', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     fireEvent.click(screen.getByText('Catalogue'))
-
-    const link = screen.getAllByText('Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf')
-      .map((element) => element.closest('a'))
-      .find(Boolean)
-
-    expect(link).not.toBeNull()
-    expect(link.getAttribute('href')).toBe('/catalogues/English/Oct%20EN_LoveLab_B2B_Catalogue%20(210%20x%20210%20mm).pdf')
-  })
-
-  it('lists the October German PDF in the admin document catalogue folder', () => {
-    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
-    fireEvent.click(screen.getByText('Catalogue'))
-
-    const link = screen.getAllByText('Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
-      .map((element) => element.closest('a'))
-      .find(Boolean)
-
-    expect(link).not.toBeNull()
-    expect(link.getAttribute('href')).toBe('/catalogues/Oct%20DE_LoveLab_B2B_Catalogue%20General%20(210%20x%20210%20mm).pdf')
+    const checkboxes = screen.getAllByRole('checkbox', { name: /^Select .*Catalogue.*\.pdf$/ })
+    expect(checkboxes).toHaveLength(8)
+    expect(screen.queryByText('EN — LoveLab B2B Catalogue.pdf')).not.toBeInTheDocument()
   })
 })
 

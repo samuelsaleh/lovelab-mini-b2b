@@ -109,6 +109,16 @@ export default function DocumentRow({
                   fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
                 }}>Internal</span>
               )}
+              {doc.creator_is_assistant && (
+                <span
+                  title={doc.creator?.full_name ? `Created by assistant ${doc.creator.full_name}` : 'Created by a commercial assistant'}
+                  style={{
+                    padding: '1px 6px', borderRadius: 4,
+                    background: '#fdf2f8', color: '#9d174d',
+                    fontSize: 10, fontWeight: 600,
+                  }}
+                >Assistant{doc.creator?.full_name ? ` · ${doc.creator.full_name}` : ''}</span>
+              )}
               {doc.total_amount && (
                 <span style={{ fontWeight: 600, color: colors.inkPlum }}>{fmt(doc.total_amount)}</span>
               )}

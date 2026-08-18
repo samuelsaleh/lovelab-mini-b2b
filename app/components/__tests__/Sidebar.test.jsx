@@ -71,6 +71,60 @@ describe('Sidebar — desktop', () => {
   })
 })
 
+describe('Sidebar — grouped items (submenus)', () => {
+  const GROUPED = [
+    { id: 'dashboard', label: 'Dashboard', href: '/admin' },
+    {
+      id: 'people',
+      label: 'People',
+      children: [
+        { id: 'agents',     label: 'Agents',     href: '/admin/agents' },
+        { id: 'assistants', label: 'Assistants', href: '/admin/assistants' },
+      ],
+    },
+  ]
+
+  it('renders the group header and hides children while closed', () => {
+    render(<Sidebar items={GROUPED} activeId="dashboard" onSelect={jest.fn()} />)
+    expect(screen.getByTestId('sidebar-group-people')).toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-item-agents')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-item-assistants')).not.toBeInTheDocument()
+  })
+
+  it('clicking the group header expands and collapses the children', () => {
+    render(<Sidebar items={GROUPED} activeId="dashboard" onSelect={jest.fn()} />)
+    const header = screen.getByTestId('sidebar-group-people')
+    fireEvent.click(header)
+    expect(screen.getByTestId('sidebar-item-agents')).toBeInTheDocument()
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(header)
+    expect(screen.queryByTestId('sidebar-item-agents')).not.toBeInTheDocument()
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('auto-opens the group that contains the active page', () => {
+    render(<Sidebar items={GROUPED} activeId="assistants" onSelect={jest.fn()} />)
+    expect(screen.getByTestId('sidebar-item-assistants')).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('sidebar-item-agents')).toBeInTheDocument()
+  })
+
+  it('collapsed desktop mode flattens groups so every page keeps an icon', () => {
+    render(<Sidebar items={GROUPED} activeId="dashboard" onSelect={jest.fn()} collapsed onToggleCollapse={jest.fn()} />)
+    expect(screen.queryByTestId('sidebar-group-people')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-item-agents')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-item-assistants')).toBeInTheDocument()
+  })
+
+  it('mobile: toggling a group does NOT close the drawer, picking a child does', () => {
+    const onClose = jest.fn()
+    render(<Sidebar mobile items={GROUPED} activeId="dashboard" onSelect={jest.fn()} isOpen={true} onClose={onClose} />)
+    fireEvent.click(screen.getByTestId('sidebar-group-people'))
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('sidebar-item-agents'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('Sidebar — mobile drawer', () => {
   it('renders backdrop when isOpen=true', () => {
     render(<Sidebar mobile items={ITEMS} activeId="home" onSelect={jest.fn()} isOpen={true} onClose={jest.fn()} />)

@@ -13,6 +13,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors } from '@/lib/styles'
+import SalesTeamTabs from '@/app/components/SalesTeamTabs'
 
 const fmt = (n) => {
   if (n == null) return '—'
@@ -109,6 +110,7 @@ export default function AdminOrganizationsPage() {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <SalesTeamTabs active="partners" />
         {error && (
           <div style={{ padding: 14, marginBottom: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {error}
@@ -118,22 +120,22 @@ export default function AdminOrganizationsPage() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Organizations</h1>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Partner Teams</h2>
             <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 4 }}>
-              Each agent invite auto-creates an organization — rename it and set territory/rate from its page.
+              One company can contain one or more agents with shared totals and payments.
             </div>
           </div>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, territory or owner..."
+            placeholder="Search partner teams..."
             style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', width: 260 }}
           />
         </div>
 
         {cards.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13, background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}` }}>
-            No organizations found
+            No partner teams found
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>

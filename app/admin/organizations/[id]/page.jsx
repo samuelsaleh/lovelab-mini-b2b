@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Admin — Organization detail.
+ * Admin — Partner Team detail.
  *
  * The same accumulated TeamDashboard the org owner sees on /agent/team,
  * plus admin-only controls:
@@ -102,7 +102,7 @@ export default function AdminOrganizationDetailPage() {
               onClick={() => router.push('/admin/organizations')}
               style={{ background: 'none', border: 'none', color: colors.lovelabMuted, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 6 }}
             >
-              ← All organizations
+              ← All partner teams
             </button>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>{organization.name}</h1>
             <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 4 }}>
@@ -121,7 +121,7 @@ export default function AdminOrganizationDetailPage() {
         {editing && (
           <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 18px', marginBottom: 20 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
-              <Field label="Organization name">
+              <Field label="Partner team name">
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
               </Field>
               <Field label="Territory">

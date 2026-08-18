@@ -16,7 +16,7 @@ import PackshotGallery from './PackshotGallery'
  *   onCreateOrder(type)  — opens the order form with the given channel type
  */
 export default function HomeTab({ onSwitchTab, onCreateOrder }) {
-  const { profile, user } = useAuth()
+  const { profile, user, orgMembership } = useAuth()
   const { t } = useI18n()
   const [showTypePicker, setShowTypePicker] = useState(false)
   const [showGallery, setShowGallery] = useState(false)
@@ -166,7 +166,11 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
 
         {/* Resources card */}
         <div style={{ marginTop: 36 }}>
-          <ResourcesCard isAdmin={isAdmin} userEmail={user?.email || profile?.email} />
+          <ResourcesCard
+            isAdmin={isAdmin}
+            userEmail={user?.email || profile?.email}
+            organizationId={orgMembership?.organization_id}
+          />
         </div>
       </div>
     </div>

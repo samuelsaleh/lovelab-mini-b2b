@@ -7,6 +7,7 @@ import { colors, fonts } from '@/lib/styles';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { useI18n } from '@/lib/i18n';
 import { getClientOrderLocale, clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
+import { suggestFairForDate } from '@/lib/fairSuggestion';
 import { useAuth } from './AuthProvider';
 import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 
@@ -101,6 +102,11 @@ export default function SaveDocumentModal({
 
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
+  // Selling agent ("who brought the order"), independent of the event/fair.
+  // Agents default to themselves; admins pick from the list to attribute an
+  // order they typed on someone's behalf. '' means "no change / no agent".
+  const [agents, setAgents] = useState([]);
+  const [selectedAgentId, setSelectedAgentId] = useState('');
   const [newEventName, setNewEventName] = useState('');
   const [newEventType, setNewEventType] = useState('fair');
   const [showNewEvent, setShowNewEvent] = useState(false);
@@ -158,6 +164,9 @@ export default function SaveDocumentModal({
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
       setSelectedEventId('');
+      // Default the selling agent to the logged-in agent (they usually save
+      // their own orders). Admins / assistants start blank and choose.
+      setSelectedAgentId(profile?.is_agent ? (profile.id || '') : '');
       setShowNewEvent(false);
       setSuccess(false);
       setError(null);
@@ -212,6 +221,20 @@ export default function SaveDocumentModal({
 
       let allEvents = data.events || [];
 
+      // Parse the agents list once (used both by the admin agent selector and
+      // by the agent-folder auto-create below). /api/agents is admin-scoped, so
+      // for non-admins this stays empty and the selector is not shown.
+      let activeAgents = [];
+      if (agentsRes?.ok) {
+        try {
+          const agentsData = await agentsRes.json();
+          activeAgents = (agentsData.agents || []).filter(
+            a => a.agent_status === 'active' || a.agent_status === 'invited'
+          );
+          setAgents(activeAgents);
+        } catch { /* non-blocking */ }
+      }
+
       // Auto-create missing agent folders so every agent (including org
       // sub-agents like Wassila under Sarah) appears in the picker.
       //
@@ -224,11 +247,7 @@ export default function SaveDocumentModal({
       //
       // We pass organization_id so commission attribution can resolve the
       // person by folder name within the org.
-      if (isAdmin && agentsRes?.ok) {
-        const agentsData = await agentsRes.json();
-        const activeAgents = (agentsData.agents || []).filter(
-          a => a.agent_status === 'active' || a.agent_status === 'invited'
-        );
+      if (isAdmin && activeAgents.length > 0) {
         const agentEvents = allEvents.filter(e => e.type === 'agent');
         const existingAgentNames = new Set(
           agentEvents.map(e => (e.name || '').toLowerCase().trim())
@@ -548,6 +567,12 @@ export default function SaveDocumentModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
           event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
+          // Selling agent. On a NEW order we always send it (null = no agent);
+          // on an EDIT we only send it when a value is chosen, so we never wipe
+          // an existing attribution just because the modal opened blank.
+          ...(((CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && (!editingDocumentId || selectedAgentId))
+            ? { agent_id: selectedAgentId || null }
+            : {}),
           client_name: resolvedClientName,
           client_company: clientCompany || null,
           document_type: documentType,
@@ -911,6 +936,44 @@ export default function SaveDocumentModal({
               </div>
             )}
 
+            {/* Agent selector ("who brought the order") — independent of the
+                fair below, so one order can be both "by Bastian" and "at
+                Nordstil" without being counted twice. Admins pick from the
+                list; agents saving their own order see a confirmation line. */}
+            {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && (isAdmin || profile?.is_agent) && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{
+                  display: 'block', fontSize: 11, fontWeight: 600, color: colors.lovelabMuted,
+                  marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  Saved by (Agent)
+                </label>
+                {isAdmin ? (
+                  <select
+                    value={selectedAgentId}
+                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: 8,
+                      border: `1px solid ${colors.lineGray}`, fontSize: 13,
+                      fontFamily: fonts.body, color: colors.charcoal, background: '#fff', cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">
+                      {editingDocumentId ? 'Keep current agent' : 'No agent (office / direct)'}
+                    </option>
+                    {agents.map(a => (
+                      <option key={a.id} value={a.id}>{a.full_name || a.email}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{ fontSize: 13, color: colors.charcoal, padding: '2px 0' }}>
+                    {profile?.full_name || profile?.email}
+                    <span style={{ color: colors.lovelabMuted }}> — this order is credited to you.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Event selector — shown only for channels where showEvent is true */}
             {(CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && <div style={{ marginBottom: 16 }}>
               <label style={{
@@ -922,7 +985,7 @@ export default function SaveDocumentModal({
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
               }}>
-                Select Event / Folder
+                Link to Fair / Event
               </label>
 
               {loading ? (
@@ -962,6 +1025,36 @@ export default function SaveDocumentModal({
                       );
                     })}
                   </select>
+
+                  {/* Date-based fair suggestion. Only a hint — one click to
+                      apply, never auto-assigned. Helps tag an untagged order
+                      to the fair whose dates contain the order date. */}
+                  {(() => {
+                    if (selectedEventId) return null;
+                    const suggested = suggestFairForDate(metadata?.created_at || new Date().toISOString(), events);
+                    if (!suggested) return null;
+                    return (
+                      <div style={{
+                        marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
+                        fontSize: 12, color: colors.charcoal,
+                        background: '#faf8fc', border: `1px solid ${colors.lineGray}`,
+                        borderRadius: 6, padding: '6px 10px',
+                      }}>
+                        <span>Looks like <strong>{suggested.name}</strong> (based on the date).</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEventId(suggested.id)}
+                          style={{
+                            background: colors.inkPlum, color: '#fff', border: 'none',
+                            borderRadius: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: fonts.body,
+                          }}
+                        >
+                          Use this fair
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {!showNewEvent ? (
                     <button

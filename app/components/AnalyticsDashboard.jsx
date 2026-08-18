@@ -100,6 +100,56 @@ export function bucketTimeline(docs, group = 'day') {
   return Array.from(map.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 }
 
+// ─── Agent / fair aggregators (pure, exported for tests) ───────────────────
+// One order is one row with an agent_id (who) AND an event_id (where). These
+// helpers slice that single row two independent ways, so revenue is never
+// double-counted: an order counts once under its agent and once under its fair,
+// and the grand total still equals the raw sum.
+
+// Revenue + order count per selling agent (agent_id). Orders with no agent_id
+// fall under an "unassigned" bucket the caller can choose to show or hide.
+export function revenuePerAgent(docs, agentNameById = {}) {
+  const map = new Map();
+  ;(docs || []).forEach((d) => {
+    if (d.document_type !== 'order') return;
+    const id = d.agent_id || '__none__';
+    const name = d.agent_id ? (agentNameById[d.agent_id] || 'Unknown agent') : 'No agent';
+    if (!map.has(id)) map.set(id, { id, name, revenue: 0, orders: 0 });
+    const entry = map.get(id);
+    entry.revenue += d.total_amount || 0;
+    entry.orders++;
+  });
+  return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+}
+
+// Agent x fair cross-tab: "at fair F, agent A brought N orders / EUR X". Only
+// rows that have BOTH an agent and a fair event are included (that is the
+// question being answered). Returns { fairs, agents, cells, rows } where cells
+// is keyed `${agentId}|${eventId}`.
+export function buildAgentFairMatrix(docs, { agentNameById = {}, fairNameById = {}, fairIds = null } = {}) {
+  const isFair = (eid) => (fairIds ? fairIds.has(eid) : true);
+  const cells = new Map();
+  const fairSet = new Map();
+  const agentSet = new Map();
+  ;(docs || []).forEach((d) => {
+    if (d.document_type !== 'order') return;
+    if (!d.agent_id || !d.event_id) return;
+    if (!isFair(d.event_id)) return;
+    const key = `${d.agent_id}|${d.event_id}`;
+    if (!cells.has(key)) cells.set(key, { agentId: d.agent_id, eventId: d.event_id, orders: 0, revenue: 0 });
+    const c = cells.get(key);
+    c.orders++;
+    c.revenue += d.total_amount || 0;
+    if (!fairSet.has(d.event_id)) fairSet.set(d.event_id, { id: d.event_id, name: fairNameById[d.event_id] || 'Fair', revenue: 0 });
+    fairSet.get(d.event_id).revenue += d.total_amount || 0;
+    if (!agentSet.has(d.agent_id)) agentSet.set(d.agent_id, { id: d.agent_id, name: agentNameById[d.agent_id] || 'Unknown agent', revenue: 0 });
+    agentSet.get(d.agent_id).revenue += d.total_amount || 0;
+  });
+  const fairs = Array.from(fairSet.values()).sort((a, b) => b.revenue - a.revenue);
+  const agents = Array.from(agentSet.values()).sort((a, b) => b.revenue - a.revenue);
+  return { fairs, agents, cells };
+}
+
 // ─── Custom Recharts tooltip ───────────────────────────────────────────────
 function ChartTooltip({ active, payload, label, formatter }) {
   if (!active || !payload?.length) return null
@@ -311,9 +361,13 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   const [documents, setDocuments] = useState([])
   const [events, setEvents] = useState([])
+  const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [selectedEventId, setSelectedEventId] = useState(initialEventId ?? '')
+  // Agent dimension (documents.agent_id). Mutually exclusive with the event
+  // filter — the dropdown sets one and clears the other.
+  const [selectedAgentId, setSelectedAgentId] = useState('')
   const [selectedCountry, setSelectedCountry] = useState('')
   const [showChat, setShowChat] = useState(false)
   // Channel scope: 'all' | 'b2b' | 'b2c'. B2C gets its own personalized view
@@ -354,11 +408,18 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     setLoading(true)
     setFetchError(null)
     try {
-      const [allDocs, eventsRes] = await Promise.all([
+      const [allDocs, eventsRes, agentsRes] = await Promise.all([
         fetchAllDocuments(),
         safeFetch('/api/events'),
+        safeFetch('/api/agents?summary=true').catch(() => null),
       ])
       const eventsData = await eventsRes.json()
+      if (agentsRes?.ok) {
+        try {
+          const agentsData = await agentsRes.json()
+          setAgents((agentsData.agents || []).filter(a => a.agent_status === 'active' || a.agent_status === 'invited'))
+        } catch { /* non-blocking — agent names just won't resolve */ }
+      }
       // Exclude non-revenue channels (internal supplier orders, consignment,
       // stock write-offs, samples) and drafts (parked, unsent orders) from
       // every analytics number — same rule as teamStats / commission logic.
@@ -381,12 +442,27 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     return documents
   }, [documents, channelScope])
 
-  // ─── Filtered docs based on event selector ────────────────────────────
+  // ─── Lookup maps for the agent / fair dimensions ──────────────────────
+  const agentNameById = useMemo(
+    () => Object.fromEntries((agents || []).map(a => [a.id, a.full_name || a.email])),
+    [agents],
+  )
+  const fairNameById = useMemo(
+    () => Object.fromEntries((events || []).filter(e => (e.type || 'other') === 'fair').map(e => [e.id, e.name])),
+    [events],
+  )
+  const fairIds = useMemo(
+    () => new Set((events || []).filter(e => (e.type || 'other') === 'fair').map(e => e.id)),
+    [events],
+  )
+
+  // ─── Filtered docs based on the event OR agent selector ───────────────
   // (drafts + non-revenue channels are already excluded at load time)
   const docs = useMemo(() => {
-    if (!selectedEventId) return channelDocs
-    return channelDocs.filter(d => d.event_id === selectedEventId)
-  }, [channelDocs, selectedEventId])
+    if (selectedAgentId) return channelDocs.filter(d => d.agent_id === selectedAgentId)
+    if (selectedEventId) return channelDocs.filter(d => d.event_id === selectedEventId)
+    return channelDocs
+  }, [channelDocs, selectedEventId, selectedAgentId])
 
   // ─── Excel export ─────────────────────────────────────────────────────
   // Exports exactly what the dashboard is showing: the channel pills and the
@@ -464,6 +540,22 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     })
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
   }, [channelDocs, selectedEventId])
+
+  // ─── Revenue per agent (who brought the order) ────────────────────────
+  // Uses documents.agent_id, so an order an admin typed on Bastian's behalf
+  // still counts for Bastian, and a fair-tagged order still counts for its
+  // agent. Only shown on the unfiltered / event views.
+  const revenuePerAgentData = useMemo(() => {
+    if (selectedAgentId) return []
+    return revenuePerAgent(docs, agentNameById).filter(r => r.id !== '__none__')
+  }, [docs, agentNameById, selectedAgentId])
+
+  // ─── Agent x Fair cross-tab ───────────────────────────────────────────
+  // "At fair F, agent A brought N orders." Only meaningful on the global view.
+  const agentFairMatrix = useMemo(() => {
+    if (selectedEventId || selectedAgentId) return { fairs: [], agents: [], cells: new Map() }
+    return buildAgentFairMatrix(channelDocs, { agentNameById, fairNameById, fairIds })
+  }, [channelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => {
@@ -714,18 +806,38 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             onChange={(v) => { setChannelScope(v); setSelectedCountry('') }}
           />
           <select
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
+            value={selectedAgentId ? `agent:${selectedAgentId}` : selectedEventId}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val.startsWith('agent:')) {
+                setSelectedAgentId(val.slice('agent:'.length))
+                setSelectedEventId('')
+              } else {
+                setSelectedEventId(val)
+                setSelectedAgentId('')
+              }
+              setSelectedCountry('')
+            }}
             style={{
               padding: '8px 14px', borderRadius: 8, border: `1px solid ${colors.lineGray}`,
               fontSize: 13, fontFamily: fonts.body, color: colors.charcoal, background: '#fff',
               cursor: 'pointer', minWidth: 180,
             }}
           >
-            <option value="">All Events</option>
+            <option value="">All Events & Agents</option>
+            {/* Agents are their own dimension now (documents.agent_id), not
+                agent-folder events. */}
+            {agents.length > 0 && (
+              <optgroup label="Agents">
+                {[...agents]
+                  .sort((a, b) => (a.full_name || a.email || '').localeCompare(b.full_name || b.email || ''))
+                  .map(a => (
+                    <option key={a.id} value={`agent:${a.id}`}>{a.full_name || a.email}</option>
+                  ))}
+              </optgroup>
+            )}
             {[
               { key: 'fair', label: 'Fairs' },
-              { key: 'agent', label: 'Agents' },
               { key: 'partner', label: 'Partners' },
               { key: 'other', label: 'Other' },
             ].map(group => {
@@ -898,6 +1010,72 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No country data</div>}
           </Section>
         </div>
+
+        {/* ─── Row 1b: Revenue per Agent + Agent x Fair cross-tab ─── */}
+        {!isB2C && (revenuePerAgentData.length > 0 || agentFairMatrix.agents.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: gridGap, marginBottom: gridGap }}>
+            {revenuePerAgentData.length > 0 && (
+              <Section title="Revenue per Agent">
+                <ResponsiveContainer width="100%" height={Math.min(revenuePerAgentData.length * 34 + 40, 300)}>
+                  <BarChart data={revenuePerAgentData} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <XAxis type="number" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
+                    <YAxis type="category" dataKey="name" width={120} fontSize={11} tick={{ fill: colors.charcoal }} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
+                    <Bar dataKey="revenue" radius={[0, 6, 6, 0]} maxBarSize={26}>
+                      {revenuePerAgentData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <RankedTable
+                  columns={[
+                    { label: 'Agent', key: 'name' },
+                    { label: 'Orders', key: 'orders', align: 'center' },
+                    { label: 'Revenue', key: 'revenue', align: 'right', bold: true, render: (r) => fmt(r.revenue) },
+                  ]}
+                  rows={revenuePerAgentData}
+                  onRowClick={(row) => setSelectedAgentId((prev) => (prev === row.id ? '' : row.id))}
+                  isRowActive={(row) => selectedAgentId === row.id}
+                />
+              </Section>
+            )}
+
+            {agentFairMatrix.agents.length > 0 && agentFairMatrix.fairs.length > 0 && (
+              <Section title="Who sold what, at which fair">
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thStyleMini, textAlign: 'left', position: 'sticky', left: 0, background: '#fff' }}>Agent</th>
+                        {agentFairMatrix.fairs.map((f) => (
+                          <th key={f.id} style={{ ...thStyleMini, textAlign: 'center' }}>{f.name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agentFairMatrix.agents.map((a) => (
+                        <tr key={a.id}>
+                          <td style={{ ...tdStyleMini, fontWeight: 600, position: 'sticky', left: 0, background: '#fff' }}>{a.name}</td>
+                          {agentFairMatrix.fairs.map((f) => {
+                            const c = agentFairMatrix.cells.get(`${a.id}|${f.id}`)
+                            return (
+                              <td key={f.id} style={{ ...tdStyleMini, textAlign: 'center' }}
+                                title={c ? `${c.orders} order${c.orders === 1 ? '' : 's'} · ${fmt(c.revenue)}` : ''}>
+                                {c ? c.orders : <span style={{ color: '#ddd' }}>—</span>}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: 11, color: '#999', marginTop: 8 }}>
+                  Number of orders each agent brought at each fair. Hover a cell for revenue. Each order is counted once.
+                </div>
+              </Section>
+            )}
+          </div>
+        )}
 
         {/* ─── Row 2: Top Products + Top Clients ─── */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: gridGap, marginBottom: gridGap }}>

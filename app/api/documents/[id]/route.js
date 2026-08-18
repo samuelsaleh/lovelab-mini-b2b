@@ -7,6 +7,7 @@ import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
@@ -161,6 +162,16 @@ export async function PUT(request, { params }) {
     }
     if (body.order_channel === 'consignment') {
       updatePayload.consignment_agent_id = body.consignment_agent_id || null;
+    }
+    // Selling agent. Only touched when the caller explicitly sends the key
+    // (so older clients that never send agent_id can't wipe it) and only when
+    // the column exists. Normalized against oldDoc.created_by so an agent's
+    // own order keeps its agent when the field is left blank.
+    const putAgentColumn = await documentsHaveAgentIdColumn(adminSupabase);
+    if (putAgentColumn && Object.prototype.hasOwnProperty.call(body, 'agent_id')) {
+      updatePayload.agent_id = await normalizeAgentId(adminSupabase, body.agent_id, {
+        creatorId: oldDoc.created_by,
+      });
     }
     const { data: doc, error: updateError } = await adminSupabase
       .from('documents')
@@ -382,6 +393,7 @@ export async function PATCH(request, { params }) {
     const newEventId = body.event_id;
     const newMetadata = body.metadata; // optional partial metadata merge
     const newConsignmentAgentId = body.consignment_agent_id; // optional
+    const hasAgentId = Object.prototype.hasOwnProperty.call(body, 'agent_id'); // optional re-tag
 
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
@@ -401,10 +413,12 @@ export async function PATCH(request, { params }) {
     // Must provide at least one updatable field
     const hasName = newName && newName.length <= 255;
     const hasChannel = ['b2b', 'b2c', 'internal', 'consignment'].includes(newChannel);
-    const hasEventId = newEventId !== undefined && newEventId !== null;
+    // event_id may legitimately be set to null here (re-tagging an order back to
+    // "no fair"), so treat the mere presence of the key as an update intent.
+    const hasEventId = Object.prototype.hasOwnProperty.call(body, 'event_id');
     const hasMetadata = newMetadata !== undefined && newMetadata !== null;
-    if (!hasName && !hasChannel && !hasMetadata && !hasEventId) {
-      return NextResponse.json({ error: 'Provide file_name, order_channel, event_id, or metadata' }, { status: 400 });
+    if (!hasName && !hasChannel && !hasMetadata && !hasEventId && !hasAgentId) {
+      return NextResponse.json({ error: 'Provide file_name, order_channel, event_id, agent_id, or metadata' }, { status: 400 });
     }
     // Changing order_channel is admin-only
     if (hasChannel && !isAdmin) {
@@ -432,6 +446,14 @@ export async function PATCH(request, { params }) {
     if (newConsignmentAgentId !== undefined) {
       patchPayload.consignment_agent_id = newConsignmentAgentId || null;
     }
+    // Re-tag the selling agent (the "who brought it" control). Guarded by the
+    // column probe so a migration-behind environment ignores it gracefully.
+    const patchAgentColumn = await documentsHaveAgentIdColumn(adminSupabase);
+    if (patchAgentColumn && hasAgentId) {
+      patchPayload.agent_id = await normalizeAgentId(adminSupabase, body.agent_id, {
+        creatorId: doc.created_by,
+      });
+    }
 
     const { data: updated, error: updateError } = await adminSupabase
       .from('documents')
@@ -443,6 +465,31 @@ export async function PATCH(request, { params }) {
     if (updateError) {
       console.error('[Documents PATCH] DB error:', updateError);
       return NextResponse.json({ error: 'Failed to update document', detail: updateError.message }, { status: 500 });
+    }
+
+    // Re-tagging the agent or the fair on a revenue order must refresh the
+    // commission ledger so the agent's totals follow the new attribution.
+    // Mirrors the PUT recalc; isolated so a recalc hiccup never fails the patch.
+    if ((hasAgentId || hasEventId) &&
+        updated?.total_amount > 0 && updated?.status !== 'draft' &&
+        updated?.order_channel !== 'internal' && updated?.order_channel !== 'consignment') {
+      try {
+        const attribution = await resolveCommissionAgent(adminSupabase, updated);
+        if (attribution) {
+          await upsertCommissionForDocument(adminSupabase, {
+            document: updated,
+            profile: attribution.profile,
+            agentId: attribution.agentId,
+          });
+        }
+      } catch (recalcErr) {
+        await recordHealthEvent({
+          source: 'documents_patch_commission_recalc',
+          severity: 'warn',
+          message: recalcErr.message || 'Commission recalc on re-tag failed',
+          context: { documentId: id },
+        }).catch(() => {});
+      }
     }
 
     // Lovelab Sync: Sync returned consignment orders

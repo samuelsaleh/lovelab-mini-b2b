@@ -75,6 +75,7 @@ export async function POST(request, { params }) {
 
     let targetUserId = body?.user_id || null;
     const targetEmail = (body?.email || '').trim().toLowerCase();
+    let resolvedTargetEmail = targetEmail;
 
     if (!targetUserId && !targetEmail) {
       return NextResponse.json({ error: 'Provide user_id or email' }, { status: 400 });
@@ -83,13 +84,25 @@ export async function POST(request, { params }) {
     if (!targetUserId) {
       const { data: profileByEmail } = await adminSupabase
         .from('profiles')
-        .select('id')
+        .select('id, email')
         .ilike('email', targetEmail)
         .maybeSingle();
       if (!profileByEmail?.id) {
         return NextResponse.json({ error: 'User not found by email' }, { status: 404 });
       }
       targetUserId = profileByEmail.id;
+      resolvedTargetEmail = (profileByEmail.email || targetEmail).trim().toLowerCase();
+    } else if (!resolvedTargetEmail) {
+      const { data: profileById } = await adminSupabase
+        .from('profiles')
+        .select('email')
+        .eq('id', targetUserId)
+        .maybeSingle();
+      resolvedTargetEmail = (profileById?.email || '').trim().toLowerCase();
+    }
+
+    if (!resolvedTargetEmail) {
+      return NextResponse.json({ error: 'Target user has no email address' }, { status: 400 });
     }
 
     const { data: eventRow } = await adminSupabase
@@ -107,6 +120,9 @@ export async function POST(request, { params }) {
       .upsert({
         event_id: eventId,
         user_id: targetUserId,
+        // Legacy production schema requires this denormalized email in
+        // addition to the authoritative user_id.
+        user_email: resolvedTargetEmail,
         granted_by: user.id,
         permission,
       }, { onConflict: 'event_id,user_id' })

@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (loading) return;
     if (!profile) return;
-    if (!profile.is_agent) return;
+    if (!profile.is_agent && !profile.is_assistant) return;
     if (profile.has_password_set) return;
     if (!pathname) return;
     if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) return;

@@ -1,87 +1,13 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
-import { isSynaliaAgentEmail } from '@/lib/jewelerGroup'
+import { CATALOGUE_FILES, getVisibleCatalogues } from '@/lib/catalogues'
 import { publicAssetHref } from '@/lib/publicAssetHref'
 import SendResourcesModal from './SendResourcesModal'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
-
-const FRENCH_CATALOGUES = [
-  {
-    id: 'fr-general-sept',
-    label: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-    fileName: 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-    pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAHPPy7GKXc/fzRUgvGrbqq5jf1DJ_DcTQ/view?embed',
-    audience: 'nicolas',
-    period: 'September',
-  },
-  {
-    id: 'fr-bijorka-sept',
-    label: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
-    fileName: 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
-    pdf: '/catalogues/Francais/Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAHPPw_T2xI/Z_Tyy6Lp6OWkBRy1x5dCOg/view?embed',
-    audience: 'nicolas',
-    period: 'September',
-  },
-  {
-    id: 'fr-premiere-france-oct',
-    label: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    fileName: '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    pdf: '/catalogues/Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAG8QTSZGDA/00BwwxPy9ZTg_g18XWm9EQ/view?embed',
-    audience: 'admin',
-    period: 'October',
-  },
-  {
-    id: 'fr-premiere-general-oct',
-    label: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    fileName: 'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    pdf: '/catalogues/Francais/Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAHPP8Z87Jw/ke6GNZN7sohPEteltgMNQw/view?embed',
-    audience: 'admin',
-    period: 'October',
-  },
-]
-
-const STANDARD_CATALOGUES = [
-  {
-    id: 'en',
-    label: 'English',
-    fileName: 'EN_LoveLab_B2B_Catalogue.pdf',
-    pdf: '/catalogues/English/EN_LoveLab_B2B_Catalogue.pdf',
-    canva: 'https://www.canva.com/design/DAG96CBWaMA/H62MROtgbWLqbfqQLMI7cQ/view?embed',
-  },
-  {
-    id: 'en-oct',
-    label: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    fileName: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    documentName: 'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    pdf: '/catalogues/English/Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAHPRGqBzAM/SfktKLBglSZg6NRcaJUVPQ/view?embed',
-  },
-  {
-    id: 'de',
-    label: 'Deutsch',
-    fileName: 'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    documentName: 'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    pdf: '/catalogues/Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    canva: 'https://www.canva.com/design/DAG_PqDSDhQ/K2FvRij-94kg6L0eD9oCgQ/view?embed',
-  },
-]
-
-const CATALOGUE_FILES = [
-  ...FRENCH_CATALOGUES.map(({ fileName, pdf }) => ({ name: fileName, path: pdf })),
-  ...STANDARD_CATALOGUES.map(({ label, fileName, documentName, pdf }) => ({
-    name: documentName || `${label} — LoveLab B2B Catalogue.pdf`,
-    fileName,
-    path: pdf,
-  })),
-]
 
 // Pack order templates are now generated per pack and served from
 // /api/pack-templates (see lib/packTemplates.js). The Packs folder fetches
@@ -199,30 +125,14 @@ function LinkButton({ href, children, variant = 'outline' }) {
   )
 }
 
-export default function ResourcesCard({ isAdmin = false, userEmail }) {
+export default function ResourcesCard({ isAdmin = false, userEmail, organizationId }) {
   const { lang, t } = useI18n()
-  const isNicolas = isSynaliaAgentEmail(userEmail)
-  const visibleFrenchCatalogues = useMemo(() => (
-    isAdmin
-      ? FRENCH_CATALOGUES
-      : isNicolas
-        ? FRENCH_CATALOGUES.filter((cat) => cat.audience === 'nicolas')
-        : []
-  ), [isAdmin, isNicolas])
-  const standardDefault = STANDARD_CATALOGUES.find((cat) => cat.id === lang) || STANDARD_CATALOGUES[0]
-  const previewCatalogues = useMemo(
-    () => [...visibleFrenchCatalogues, ...STANDARD_CATALOGUES],
-    [visibleFrenchCatalogues],
-  )
-  const defaultPreviewCatalogue = visibleFrenchCatalogues[0] || standardDefault
-  const [selectedPreviewId, setSelectedPreviewId] = useState(defaultPreviewCatalogue.id)
-  const selectedPreviewCatalogue = previewCatalogues.find((cat) => cat.id === selectedPreviewId) || defaultPreviewCatalogue
-
-  useEffect(() => {
-    if (!previewCatalogues.some((cat) => cat.id === selectedPreviewId)) {
-      setSelectedPreviewId(defaultPreviewCatalogue.id)
-    }
-  }, [selectedPreviewId, defaultPreviewCatalogue.id, previewCatalogues])
+  const previewCatalogues = getVisibleCatalogues({ isAdmin, userEmail, organizationId })
+  const defaultPreviewCatalogue = previewCatalogues.find((catalogue) => catalogue.language === lang)
+    || previewCatalogues[0]
+  const [selectedPreviewId, setSelectedPreviewId] = useState(null)
+  const selectedPreviewCatalogue = previewCatalogues.find((catalogue) => catalogue.id === selectedPreviewId)
+    || defaultPreviewCatalogue
 
   // Selection is lifted here so a single email can bundle picks from
   // Catalogue + Packs + Price List together.
@@ -392,6 +302,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail }) {
       </div>
 
       {/* Catalogue preview — selected Canva demo + matching local PDF */}
+      {selectedPreviewCatalogue && (
       <div style={{ borderTop: `1px solid ${colors.lineGray}`, padding: '0 24px 24px' }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
@@ -460,6 +371,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail }) {
           />
         </div>
       </div>
+      )}
     </div>
   )
 }

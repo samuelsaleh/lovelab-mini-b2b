@@ -1,6 +1,6 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 
@@ -171,6 +171,28 @@ function InternalOrdersIcon() {
   )
 }
 
+function AssistantIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+      <circle cx="8.5" cy="7" r="4"/>
+      <line x1="20" y1="8" x2="20" y2="14"/>
+      <line x1="17" y1="11" x2="23" y2="11"/>
+    </svg>
+  )
+}
+
+function OrganizationsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2"/>
+      <line x1="9" y1="7" x2="9.01" y2="7"/><line x1="15" y1="7" x2="15.01" y2="7"/>
+      <line x1="9" y1="11" x2="9.01" y2="11"/><line x1="15" y1="11" x2="15.01" y2="11"/>
+      <path d="M10 22v-4h4v4"/>
+    </svg>
+  )
+}
+
 const ICONS = {
   home:             <HomeIcon />,
   builder:          <BuilderIcon />,
@@ -182,7 +204,13 @@ const ICONS = {
   documents:        <DocumentsIcon />,
   dashboard:        <DashboardIcon />,
   agents:           <AgentsIcon />,
+  assistants:       <AssistantIcon />,
+  organizations:    <OrganizationsIcon />,
+  people:           <AgentsIcon />,
+  'sales-team':     <AgentsIcon />,
   fairs:            <FairsIcon />,
+  'fairs-group':    <FairsIcon />,
+  'fair-assistant': <AIIcon />,
   clients:          <ClientsIcon />,
   photos:           <PhotosIcon />,
   back:             <BackIcon />,
@@ -199,17 +227,49 @@ const ICONS = {
  * Sidebar navigation component.
  *
  * Props:
- *   items            — array of { id, label, href?, isBack? }
- *   activeId         — currently active item id
+ *   items            — array of { id, label, href?, isBack? } leaf items, or
+ *                      { id, label, children: [leaf items] } expandable groups
+ *   activeId         — currently active item id (always a LEAF id)
  *   onSelect(id)     — called when an item without href is clicked
  *   mobile           — boolean; when true, renders as a fixed drawer
  *   isOpen           — controls drawer visibility (mobile only)
  *   onClose          — called when backdrop is clicked (mobile only)
- *   collapsed        — desktop collapsed state (icon-only mode)
+ *   collapsed        — desktop collapsed state (icon-only mode; groups are
+ *                      flattened to their children so every page stays reachable)
  *   onToggleCollapse — toggles desktop collapsed state
  */
 function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, collapsed, onToggleCollapse }) {
   const router = useRouter()
+
+  const groupWithActiveChild = items.find(
+    (item) => item.children?.some((child) => child.id === activeId)
+  )?.id || null
+
+  // Groups start closed (that's the whole decluttering point) except the one
+  // holding the current page. Navigating into a group's page auto-opens it;
+  // manually opened groups stay open until toggled.
+  const [openGroups, setOpenGroups] = useState(
+    () => new Set(groupWithActiveChild ? [groupWithActiveChild] : [])
+  )
+
+  useEffect(() => {
+    if (!groupWithActiveChild) return
+    setOpenGroups((prev) => {
+      if (prev.has(groupWithActiveChild)) return prev
+      const next = new Set(prev)
+      next.add(groupWithActiveChild)
+      return next
+    })
+  }, [groupWithActiveChild])
+
+  const toggleGroup = (groupId) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
 
   const handleItemClick = (item) => {
     if (item.href) {
@@ -218,6 +278,76 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
       onSelect?.(item.id)
     }
     if (mobile) onClose?.()
+  }
+
+  const renderLeaf = (item, indented = false) => {
+    const isActive = item.id === activeId
+    const icon = ICONS[item.id] || ICONS.home
+    const indent = indented && (!collapsed || mobile)
+
+    return (
+      <button
+        key={item.id}
+        data-testid={`sidebar-item-${item.id}`}
+        onClick={() => handleItemClick(item)}
+        title={collapsed && !mobile ? item.label : undefined}
+        aria-current={isActive ? 'page' : undefined}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: indent ? 10 : 12,
+          padding: collapsed && !mobile ? '12px 0' : indent ? '9px 16px 9px 34px' : '11px 16px',
+          justifyContent: collapsed && !mobile ? 'center' : 'flex-start',
+          border: 'none',
+          borderRadius: 8,
+          margin: '1px 6px',
+          width: 'calc(100% - 12px)',
+          background: isActive ? 'rgba(255,255,255,0.18)' : 'transparent',
+          color: isActive ? '#fff' : item.isBack ? 'rgba(255,255,255,0.65)' : indent ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.88)',
+          fontWeight: isActive ? 700 : 500,
+          fontSize: 13,
+          cursor: 'pointer',
+          fontFamily: fonts.body,
+          transition: 'background .12s, color .12s',
+          textAlign: 'left',
+          whiteSpace: 'nowrap',
+          minHeight: mobile ? (indent ? 44 : 48) : (indent ? 36 : 40),
+          position: 'relative',
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+            e.currentTarget.style.color = '#fff'
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = item.isBack ? 'rgba(255,255,255,0.65)' : indent ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.88)'
+          }
+        }}
+      >
+        {/* Active indicator bar */}
+        {isActive && (
+          <span style={{
+            position: 'absolute',
+            left: -6,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 3,
+            height: 24,
+            background: colors.luxeGold,
+            borderRadius: '0 3px 3px 0',
+          }} />
+        )}
+        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', ...(indent ? { transform: 'scale(0.85)' } : {}) }}>
+          {icon}
+        </span>
+        {(!collapsed || mobile) && (
+          <span style={{ fontSize: indent ? 12.5 : 13 }}>{item.label}</span>
+        )}
+      </button>
+    )
   }
 
   const sidebarContent = (
@@ -255,74 +385,61 @@ function Sidebar({ items = [], activeId, onSelect, mobile, isOpen, onClose, coll
 
       {/* Nav items */}
       <nav style={{ flex: 1, padding: '8px 0' }}>
-        {items.map((item) => {
-          const isActive = item.id === activeId
-          const icon = ICONS[item.id] || ICONS.home
-
-          return (
-            <button
-              key={item.id}
-              data-testid={`sidebar-item-${item.id}`}
-              onClick={() => handleItemClick(item)}
-              title={collapsed && !mobile ? item.label : undefined}
-              aria-current={isActive ? 'page' : undefined}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: collapsed && !mobile ? '12px 0' : '11px 16px',
-                justifyContent: collapsed && !mobile ? 'center' : 'flex-start',
-                border: 'none',
-                borderRadius: 8,
-                margin: '1px 6px',
-                width: 'calc(100% - 12px)',
-                background: isActive ? 'rgba(255,255,255,0.18)' : 'transparent',
-                color: isActive ? '#fff' : item.isBack ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.88)',
-                fontWeight: isActive ? 700 : 500,
-                fontSize: 13,
-                cursor: 'pointer',
-                fontFamily: fonts.body,
-                transition: 'background .12s, color .12s',
-                textAlign: 'left',
-                whiteSpace: 'nowrap',
-                minHeight: mobile ? 48 : 40,
-                position: 'relative',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
-                  e.currentTarget.style.color = '#fff'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = item.isBack ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.88)'
-                }
-              }}
-            >
-              {/* Active indicator bar */}
-              {isActive && (
-                <span style={{
-                  position: 'absolute',
-                  left: -6,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 3,
-                  height: 24,
-                  background: colors.luxeGold,
-                  borderRadius: '0 3px 3px 0',
-                }} />
-              )}
-              <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-                {icon}
-              </span>
-              {(!collapsed || mobile) && (
-                <span style={{ fontSize: 13 }}>{item.label}</span>
-              )}
-            </button>
-          )
+        {items.flatMap((item) => {
+          // Collapsed desktop mode flattens groups so every page keeps an
+          // icon; group headers would be dead weight without labels.
+          if (item.children && collapsed && !mobile) {
+            return item.children.map((child) => renderLeaf(child))
+          }
+          if (item.children) {
+            const isOpenGroup = openGroups.has(item.id)
+            const hasActiveChild = item.children.some((child) => child.id === activeId)
+            const groupIcon = ICONS[item.id] || ICONS.home
+            return [
+              <button
+                key={item.id}
+                data-testid={`sidebar-group-${item.id}`}
+                onClick={() => toggleGroup(item.id)}
+                aria-expanded={isOpenGroup}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '11px 16px',
+                  border: 'none',
+                  borderRadius: 8,
+                  margin: '1px 6px',
+                  width: 'calc(100% - 12px)',
+                  background: 'transparent',
+                  color: hasActiveChild ? '#fff' : 'rgba(255,255,255,0.88)',
+                  fontWeight: hasActiveChild ? 700 : 500,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  fontFamily: fonts.body,
+                  transition: 'background .12s, color .12s',
+                  textAlign: 'left',
+                  whiteSpace: 'nowrap',
+                  minHeight: mobile ? 48 : 40,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = hasActiveChild ? '#fff' : 'rgba(255,255,255,0.88)' }}
+              >
+                <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  {groupIcon}
+                </span>
+                <span style={{ fontSize: 13, flex: 1 }}>{item.label}</span>
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: isOpenGroup ? 'rotate(90deg)' : 'none', transition: 'transform .15s', opacity: 0.7, flexShrink: 0 }}
+                >
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>,
+              ...(isOpenGroup ? item.children.map((child) => renderLeaf(child, true)) : []),
+            ]
+          }
+          return [renderLeaf(item)]
         })}
       </nav>
 

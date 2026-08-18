@@ -16,16 +16,27 @@ export async function getUserContext(supabase) {
   if (!user) return { user: null, profile: null, isAdmin: false };
 
   const adminSupabase = createAdminClient();
-  const { data: profile } = await adminSupabase
+  let { data: profile, error: profileErr } = await adminSupabase
     .from('profiles')
-    .select('id, role, is_agent, full_name, email')
+    .select('id, role, is_agent, is_assistant, full_name, email')
     .eq('id', user.id)
     .single();
+
+  // Fallback for a DB where the commercial-assistants migration has not been
+  // applied yet — an unknown column must never break every API route.
+  if (profileErr) {
+    ({ data: profile } = await adminSupabase
+      .from('profiles')
+      .select('id, role, is_agent, full_name, email')
+      .eq('id', user.id)
+      .single());
+  }
 
   return {
     user,
     profile: profile || null,
     isAdmin: profile?.role === 'admin',
+    isAssistant: profile?.role !== 'admin' && Boolean(profile?.is_assistant),
   };
 }
 

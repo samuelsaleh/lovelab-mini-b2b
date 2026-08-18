@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import AgentFormModal from '../../components/AgentFormModal';
 import AddBonusModal from '../../components/AddBonusModal';
+import SalesTeamTabs from '../../components/SalesTeamTabs';
 
 const fmt = (n) => {
   if (n == null) return '—';
@@ -205,6 +206,7 @@ export default function AdminAgentsPage() {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', fontFamily: fonts.body }}>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+        <SalesTeamTabs active="agents" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>
             Agents ({activeCount} active)

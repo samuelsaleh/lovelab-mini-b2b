@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
 import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
+import { readOrderEmailCatalogue } from '@/lib/orderEmailCatalogue';
 
 // All client-facing order emails are BCC'd to the LoveLab office inboxes (so
 // every conversation funnels through inboxes someone actually reads) PLUS the
@@ -75,67 +76,11 @@ async function sendAdminAlert({ apiKey, recipient, bccEmail, lang, documentId, r
     console.error('[send-email] Admin alert failed:', alertErr?.message);
   }
 }
-import path from 'node:path';
-import fs from 'node:fs/promises';
-
 export const runtime = 'nodejs';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORTED_LANGS = ['en', 'fr', 'de', 'it', 'nl'];
-
-// Drop-in localized catalogue PDFs in /public/catalogues.
-// Prefer language subfolders (English / Francais); keep flat-root fallbacks
-// for older deploys. IT/NL fall back to EN until localized files exist.
-const CATALOGUE_CANDIDATES = {
-  en: [
-    'English/EN_LoveLab_B2B_Catalogue.pdf',
-    'EN_LoveLab_B2B_Catalogue.pdf',
-  ],
-  fr: [
-    'Francais/Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-    'Francais/_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    '_FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-  ],
-  de: [
-    'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    'DE_LoveLab_B2B_Catalogue.pdf',
-  ],
-  it: [
-    'IT_LoveLab_B2B_Catalogue.pdf',
-    'English/EN_LoveLab_B2B_Catalogue.pdf',
-  ],
-  nl: [
-    'NL_LoveLab_B2B_Catalogue.pdf',
-    'English/EN_LoveLab_B2B_Catalogue.pdf',
-  ],
-};
-
-async function readCatalogue(lang) {
-  const tryRead = async (filename) => {
-    const fullPath = path.join(process.cwd(), 'public', 'catalogues', filename);
-    try {
-      const buf = await fs.readFile(fullPath);
-      return { filename: path.basename(filename), buffer: buf };
-    } catch {
-      return null;
-    }
-  };
-
-  const candidates = CATALOGUE_CANDIDATES[lang] || CATALOGUE_CANDIDATES.en;
-  for (const filename of candidates) {
-    const result = await tryRead(filename);
-    if (result) return result;
-  }
-
-  if (lang !== 'en') {
-    for (const filename of CATALOGUE_CANDIDATES.en) {
-      const result = await tryRead(filename);
-      if (result) return result;
-    }
-  }
-  return null;
-}
 
 function sanitizeEmail(value) {
   if (typeof value !== 'string') return null;
@@ -272,7 +217,7 @@ export async function POST(request) {
     // Catalogue is ALWAYS attached on admin sends — there's no opt-out toggle
     // anymore. Falls back to the EN PDF for languages that don't have a
     // localised version on disk yet.
-    const cat = await readCatalogue(langCode);
+    const cat = await readOrderEmailCatalogue(langCode);
     if (cat) {
       attachments.push({
         filename: cat.filename,

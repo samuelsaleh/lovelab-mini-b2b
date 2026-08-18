@@ -8,6 +8,7 @@ import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUse
 import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // GET - List documents (optionally filtered by event_id)
@@ -44,9 +45,15 @@ export async function GET(request) {
     // For summary/dashboard views strip the heavy formState from the metadata payload.
     // We must hint which FK to use for the profiles embed since documents now has two
     // FK columns pointing at profiles (created_by and consignment_agent_id).
+    // Selling-agent embed. Only added once the agent_id column + FK exist,
+    // otherwise PostgREST would reject the whole select on a migration-behind
+    // environment. The '*' branch already returns agent_id, so it only needs
+    // the joined name; the summary branch needs both the id and the name.
+    const hasAgentCol = await documentsHaveAgentIdColumn(adminSupabase);
+    const agentEmbed = hasAgentCol ? ', agent:profiles!agent_id(full_name, email)' : '';
     const selectFields = summaryOnly
-      ? 'id, created_at, client_name, client_company, total_amount, order_channel, status, file_path, file_name, consignment_agent_id, metadata, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)'
-      : '*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)';
+      ? `id, created_at, client_name, client_company, total_amount, order_channel, status, file_path, file_name, consignment_agent_id, metadata${hasAgentCol ? ', agent_id' : ''}, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}`
+      : `*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}`;
 
     let query = adminSupabase
       .from('documents')
@@ -196,6 +203,28 @@ export async function GET(request) {
     // of an OR match. Keep a defensive ID-based dedupe at the API boundary so
     // no client or future joined query can render/count the same row twice.
     const uniqueDocuments = [...new Map((documents || []).map((doc) => [doc.id, doc])).values()];
+
+    // Annotate documents created by commercial assistants so the UI can badge
+    // them. Done as a separate query (not in the creator embed) so a DB where
+    // the assistants migration is missing degrades to "no badge", never a 500.
+    try {
+      const creatorIdsInPage = [...new Set(uniqueDocuments.map((d) => d.created_by).filter(Boolean))];
+      if (creatorIdsInPage.length > 0) {
+        const { data: assistantRows } = await adminSupabase
+          .from('profiles')
+          .select('id')
+          .in('id', creatorIdsInPage)
+          .eq('is_assistant', true);
+        const assistantIds = new Set((assistantRows || []).map((r) => r.id));
+        if (assistantIds.size > 0) {
+          for (const doc of uniqueDocuments) {
+            if (assistantIds.has(doc.created_by)) doc.creator_is_assistant = true;
+          }
+        }
+      }
+    } catch (annotateErr) {
+      console.error('[Documents GET] assistant annotation failed (non-blocking):', annotateErr?.message);
+    }
     // Prefer the database total. Never let the current page length inflate
     // total_count — that made dashboards page forever and freeze /admin.
     const totalCount = Number.isFinite(Number(count)) ? Number(count) : uniqueDocuments.length;
@@ -218,10 +247,13 @@ export async function POST(request) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, profile, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Pure assistants (not agents) may only file into fairs they were granted.
+    const isAssistantUser = isAssistant && !profile?.is_agent;
 
     const body = await request.json();
     const {
@@ -236,6 +268,7 @@ export async function POST(request) {
       metadata,
       order_channel,
       consignment_agent_id,
+      agent_id,
       status,
       draft_kind,
     } = body;
@@ -285,12 +318,24 @@ export async function POST(request) {
     // Drafts are never filed into a folder — they live in the Draft view until promoted to sent.
     let effectiveEventId = isDraft ? null : (event_id || null);
 
+    // Commercial assistants must file every sent document into one of their
+    // assigned fairs — never "No Event", and never the agent auto-file path
+    // below (which would fabricate an agent folder for a non-agent).
+    // requireEventPermission further down enforces that the chosen fair is
+    // actually one she has edit access to.
+    if (isAssistantUser && !isDraft && !effectiveEventId) {
+      return NextResponse.json(
+        { error: 'Please choose one of your assigned fairs before saving this document.' },
+        { status: 400 }
+      );
+    }
+
     // MANDATORY agent filing (Sam, July 2026): a sent b2b/b2c order saved by a
     // non-admin with no folder (e.g. the save modal's event list hadn't loaded
     // yet, or the fetch failed) is auto-filed into the creator's agent folder.
     // Without this the order lands in "No Event" and vanishes from the agent's
     // folder view (Sarah / Nicolas complaints).
-    if (!effectiveEventId && !isDraft && !isAdmin && ['b2b', 'b2c'].includes(safeOrderChannel)) {
+    if (!effectiveEventId && !isDraft && !isAdmin && !isAssistantUser && ['b2b', 'b2c'].includes(safeOrderChannel)) {
       try {
         effectiveEventId = await resolveAgentFolderEventId(adminSupabase, user.id);
       } catch (autoFileErr) {
@@ -364,6 +409,17 @@ export async function POST(request) {
       docMetadata.save_request_id = saveRequestId;
     }
 
+    // Selling agent (who brought the order), independent of created_by. Only
+    // written when the migration that adds documents.agent_id has been applied,
+    // so a migration-behind environment keeps saving orders exactly as before.
+    const agentColumn = await documentsHaveAgentIdColumn(adminSupabase);
+    const effectiveAgentId = agentColumn
+      ? await normalizeAgentId(adminSupabase, agent_id, {
+          creatorId: user.id,
+          creatorIsAgent: profile?.is_agent === true,
+        })
+      : null;
+
     // draft_kind is only written for an Offre, so a project where
     // supabase-phase25-offre-orders.sql has not been applied yet keeps saving
     // ordinary orders and drafts exactly as before.
@@ -371,6 +427,7 @@ export async function POST(request) {
       .from('documents')
       .insert({
         ...(safeDraftKind ? { draft_kind: safeDraftKind } : {}),
+        ...(agentColumn ? { agent_id: effectiveAgentId } : {}),
         event_id: effectiveEventId,
         client_name,
         client_company: client_company || null,

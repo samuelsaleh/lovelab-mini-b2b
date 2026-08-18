@@ -17,6 +17,7 @@ jest.mock('../AuthProvider', () => ({
   useAuth: () => ({
     profile: { full_name: 'Alice Martin', role: 'agent' },
     user: { email: 'alice@example.com' },
+    orgMembership: { organization_id: 'org-alice' },
   }),
 }))
 
@@ -87,11 +88,12 @@ describe('HomeTab', () => {
     expect(container.textContent).not.toMatch(/€\d/)
   })
 
-  it('passes the user email to ResourcesCard for role-aware catalogue links', () => {
+  it('passes the user email and organization to ResourcesCard for catalogue access', () => {
     render(<HomeTab onSwitchTab={jest.fn()} />)
     expect(mockResourcesCard).toHaveBeenCalledWith(expect.objectContaining({
       isAdmin: false,
       userEmail: 'alice@example.com',
+      organizationId: 'org-alice',
     }))
   })
 })
