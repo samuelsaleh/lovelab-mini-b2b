@@ -1,18 +1,11 @@
 /**
- * DocumentsPanel — folder fetch regression tests
+ * DocumentsPanel — complete loading and folder fetch regression tests
  *
- * Bug: the sidebar shows a server-authoritative per-event count (events.doc_count),
- * but selecting a folder filtered only the first page of the global, paginated
- * `documents` load (created_at DESC, per_page=50). Once the total exceeded one
- * page, older folders' files were not in that page, so clicking them showed
- * "No documents in <event>" even though the count said otherwise.
+ * The All Documents search is local. Loading only the first page meant older
+ * orders could appear in the complete analytics summary but not in search.
  *
- * Fix: selecting an event/agent folder fetches that folder straight from the
- * server (/api/documents?event_id=... | organization_id=...), so the list always
- * matches the count.
- *
- * These tests simulate exactly that: the folder's document is NOT in the first
- * page, and only appears via the server-side event_id fetch.
+ * The panel now loads every page with a stable page size. Folder selection still
+ * fetches its scoped dataset directly from the server.
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -88,27 +81,28 @@ const EVENT = {
   doc_count: 1, // server says 1 document exists
 }
 
-// The first page of /api/documents (per_page=50) does NOT contain the Tari doc —
-// it belongs to a different, more recent event. This reproduces the bug.
+// The first page does not contain the older Tari/Farandole document.
 const FIRST_PAGE_DOCS = [
-  { id: 'recent-1', event_id: 'evt-other', status: 'sent', file_name: 'Recent.pdf', client_name: 'Acme' },
+  {
+    id: 'recent-1',
+    event_id: 'evt-other',
+    status: 'sent',
+    file_name: 'Recent.pdf',
+    client_name: 'Acme',
+    total_amount: 100,
+  },
 ]
 
-// The Tari folder's actual document, only reachable via the event_id fetch.
-const TARI_DOC = { id: 'tari-1', event_id: 'evt-tari', status: 'sent', file_name: 'TariDoc.pdf', client_name: 'Napoli Client' }
-
-// Complete dataset returned by the summary endpoint — far more than the single
-// first-page doc. Includes a draft that must be excluded from analytics totals.
-const SUMMARY_ALL = [
-  { id: 'recent-1', status: 'sent', total_amount: 100, created_at: '2026-06-09T10:00:00Z', file_name: 'Recent.pdf', client_name: 'Acme' },
-  { id: 'tari-1', status: 'sent', total_amount: 250, created_at: '2026-06-06T10:00:00Z', file_name: 'TariDoc.pdf', client_name: 'Napoli Client' },
-  { id: 'old-1', status: 'sent', total_amount: 400, created_at: '2026-05-01T10:00:00Z', file_name: 'Old1.pdf', client_name: 'Old Co' },
-  { id: 'old-2', status: 'sent', total_amount: 50, created_at: '2026-04-01T10:00:00Z', file_name: 'Old2.pdf', client_name: 'Old Co 2' },
-  { id: 'draft-1', status: 'draft', total_amount: 9999, created_at: '2026-06-08T10:00:00Z', file_name: 'Draft.pdf', client_name: 'Drafty' },
-]
-// Sum of non-draft total_amount = 100 + 250 + 400 + 50 = 800
-const SUMMARY_BILLABLE_TOTAL = 800
-const SUMMARY_BILLABLE_COUNT = 4
+// The older document is returned by page 2 and by its direct folder request.
+const TARI_DOC = {
+  id: 'tari-1',
+  event_id: 'evt-tari',
+  status: 'sent',
+  file_name: 'FARANDOLE_Order.pdf',
+  client_name: 'Valerie',
+  client_company: 'FARANDOLE',
+  total_amount: 1841,
+}
 
 function mockFetchRouter() {
   return jest.fn((url) => {
@@ -118,14 +112,13 @@ function mockFetchRouter() {
       body = { events: [EVENT] }
     } else if (u.startsWith('/api/org-folders')) {
       body = { orgFolders: [] }
-    } else if (u.includes('summary=true')) {
-      // Complete lightweight dataset for analytics (one page covers it).
-      body = { documents: SUMMARY_ALL, total_count: SUMMARY_ALL.length }
     } else if (u.includes('event_id=evt-tari')) {
       body = { documents: [TARI_DOC], total_count: 1 }
     } else if (u.startsWith('/api/documents')) {
-      // Initial paginated load (per_page=50) — Tari + older docs absent on purpose.
-      body = { documents: FIRST_PAGE_DOCS, total_count: 60 }
+      const page = new URL(u, 'http://localhost').searchParams.get('page')
+      body = page === '2'
+        ? { documents: [TARI_DOC], total_count: 2 }
+        : { documents: FIRST_PAGE_DOCS, total_count: 2 }
     }
     return Promise.resolve({
       ok: true,
@@ -143,21 +136,40 @@ afterEach(() => {
   jest.clearAllMocks()
 })
 
-describe('DocumentsPanel — folder selection fetches from server', () => {
-  it('shows the folder document even when it is NOT in the first page of documents', async () => {
+describe('DocumentsPanel — complete list and folder loading', () => {
+  it('loads documents beyond the first page before rendering All Documents', async () => {
     render(<DocumentsPanel />)
 
-    // Initial All Documents view shows the first-page doc.
     expect(await screen.findByText('Recent.pdf')).toBeInTheDocument()
+    expect(screen.getByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
 
-    // Sanity: the Tari doc is not loaded yet.
-    expect(screen.queryByText('TariDoc.pdf')).not.toBeInTheDocument()
+    const calledUrls = global.fetch.mock.calls.map((c) => String(c[0]))
+    expect(calledUrls).toContain('/api/documents?per_page=200&page=1')
+    expect(calledUrls).toContain('/api/documents?per_page=200&page=2')
+  })
+
+  it('finds an older document returned only by a later page', async () => {
+    render(<DocumentsPanel />)
+    await screen.findByText('FARANDOLE_Order.pdf')
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search by client name or company...'),
+      { target: { value: 'farandole' } },
+    )
+
+    expect(screen.getByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Recent.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No documents match your search/i)).not.toBeInTheDocument()
+  })
+
+  it('still fetches a selected folder directly from the server', async () => {
+    render(<DocumentsPanel />)
+    await screen.findByText('FARANDOLE_Order.pdf')
 
     // Select the Tari folder.
     fireEvent.click(screen.getByText('select-evt-tari'))
 
-    // The fix: the panel fetches the folder by event_id and renders its doc.
-    expect(await screen.findByText('TariDoc.pdf')).toBeInTheDocument()
+    expect(await screen.findByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
 
     // Regression guard: the buggy empty state must NOT appear.
     expect(
@@ -176,9 +188,13 @@ describe('DocumentsPanel — folder selection fetches from server', () => {
       let body = {}
       if (u.startsWith('/api/events')) body = { events: [EVENT] }
       else if (u.startsWith('/api/org-folders')) body = { orgFolders: [] }
-      else if (u.includes('summary=true')) body = { documents: SUMMARY_ALL, total_count: SUMMARY_ALL.length }
       else if (u.includes('event_id=evt-tari')) body = { documents: [], total_count: 0 }
-      else if (u.startsWith('/api/documents')) body = { documents: FIRST_PAGE_DOCS, total_count: 60 }
+      else if (u.startsWith('/api/documents')) {
+        const page = new URL(u, 'http://localhost').searchParams.get('page')
+        body = page === '2'
+          ? { documents: [TARI_DOC], total_count: 2 }
+          : { documents: FIRST_PAGE_DOCS, total_count: 2 }
+      }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
     })
 
@@ -192,21 +208,18 @@ describe('DocumentsPanel — folder selection fetches from server', () => {
     ).toBeInTheDocument()
   })
 
-  it('All Documents analytics reflects EVERY document (summary), not just the first page', async () => {
+  it('All Documents analytics uses the same complete dataset as the list', async () => {
     render(<DocumentsPanel />)
 
-    // First-page list still shows only the paginated doc.
     expect(await screen.findByText('Recent.pdf')).toBeInTheDocument()
 
-    // Analytics is driven by the complete summary dataset, excluding drafts.
     await waitFor(() => {
-      expect(screen.getByTestId('analytics-count')).toHaveTextContent(String(SUMMARY_BILLABLE_COUNT))
+      expect(screen.getByTestId('analytics-count')).toHaveTextContent('2')
     })
-    expect(screen.getByTestId('analytics-total')).toHaveTextContent(String(SUMMARY_BILLABLE_TOTAL))
+    expect(screen.getByTestId('analytics-total')).toHaveTextContent('1941')
 
-    // The summary endpoint was queried.
     const calledUrls = global.fetch.mock.calls.map((c) => String(c[0]))
-    expect(calledUrls.some((u) => u.includes('summary=true'))).toBe(true)
+    expect(calledUrls.some((u) => u.includes('summary=true'))).toBe(false)
   })
 
   it('returns to the global documents list when All Documents is reselected', async () => {
@@ -214,13 +227,13 @@ describe('DocumentsPanel — folder selection fetches from server', () => {
     await screen.findByText('Recent.pdf')
 
     fireEvent.click(screen.getByText('select-evt-tari'))
-    await screen.findByText('TariDoc.pdf')
+    await screen.findByText('FARANDOLE_Order.pdf')
 
     fireEvent.click(screen.getByText('select-all'))
 
     await waitFor(() => {
       expect(screen.getByText('Recent.pdf')).toBeInTheDocument()
-      expect(screen.queryByText('TariDoc.pdf')).not.toBeInTheDocument()
+      expect(screen.getByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
     })
   })
 })

@@ -120,22 +120,22 @@ export default function AdminOrganizationsPage() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Partner Teams</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Agent Teams</h2>
             <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 4 }}>
-              One company can contain one or more agents with shared totals and payments.
+              One team can contain one or more agents with shared totals and payments.
             </div>
           </div>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search partner teams..."
+            placeholder="Search agent teams..."
             style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', width: 260 }}
           />
         </div>
 
         {cards.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13, background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}` }}>
-            No partner teams found
+            No agent teams found
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>

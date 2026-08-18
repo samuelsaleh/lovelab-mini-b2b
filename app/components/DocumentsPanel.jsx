@@ -35,29 +35,12 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [orgFoldersError, setOrgFoldersError] = useState(null)
   const orgFoldersCacheRef = useRef(null)
 
-  // ── Pagination ────────────────────────────────────────────────────────────
-  const [docsPage, setDocsPage] = useState(1)
-  const [docsTotalCount, setDocsTotalCount] = useState(null)
-  const [hasMoreDocs, setHasMoreDocs] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-
   // ── Folder view (server-fetched per event / agent folder) ──────────────────
   // The sidebar counts are server-authoritative (see /api/events doc_count), but
-  // the main documents load is paginated (created_at DESC). Filtering that
-  // single page client-side made older folders show "No documents" once the
-  // total exceeded one page. When a folder is selected we fetch it straight from
-  // the server (which already supports event_id / organization_id) so the list
-  // always matches the count.
+  // folder views stay server-scoped so they match the sidebar permissions and
+  // counts without reimplementing those rules client-side.
   const [folderDocs, setFolderDocs] = useState([])
   const [folderLoading, setFolderLoading] = useState(false)
-
-  // ── Analytics dataset ──────────────────────────────────────────────────────
-  // The document list stays paginated for performance, but the All Documents
-  // analytics widget must reflect EVERY document (total revenue, sales-by-date),
-  // not just the first loaded page. We fetch a complete, lightweight summary
-  // (summary=true strips the heavy formState) once on load and use it to drive
-  // the analytics totals.
-  const [summaryDocs, setSummaryDocs] = useState([])
 
   // ── Navigation selection ──────────────────────────────────────────────────
   const [selectedEventId, setSelectedEventId] = useState(null)
@@ -136,7 +119,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   // ── Data fetch ────────────────────────────────────────────────────────────
-  useEffect(() => { fetchData(); fetchSummaryDocs(); fetchParkedDocs() }, [refreshKey])
+  useEffect(() => { fetchData(); fetchParkedDocs() }, [refreshKey])
 
   // Parked orders (Draft + Offre). One request for both buckets: the split is
   // done client-side on draft_kind, so this keeps working unchanged on a
@@ -156,42 +139,18 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setParkedLoading(false)
   }
 
-  // Fetch ALL documents (lightweight) for the analytics totals. Pages through
-  // the full result set so the All Documents revenue/sales-by-date covers every
-  // document, independent of the paginated list shown below.
-  const fetchSummaryDocs = async () => {
-    const perPage = 200
-    let all = []
-    let total = null
-    try {
-      for (let page = 1; page <= 100; page++) {
-        const res = await safeFetch(`/api/documents?summary=true&per_page=${perPage}&page=${page}`)
-        if (!res.ok) break
-        const data = await res.json().catch(() => ({}))
-        const docs = data.documents || []
-        all = all.concat(docs)
-        total = data.total_count ?? total
-        const done = total != null ? all.length >= total : docs.length < perPage
-        if (done) break
-      }
-      setSummaryDocs(all)
-    } catch {
-      // Non-fatal — analytics falls back to the paginated list when empty.
-    }
-  }
-
   const fetchData = async () => {
     setLoading(true)
     setLoadIssue(null)
     try {
-      const [eventsRes, docsRes, orgFoldersRes] = await Promise.all([
+      const [eventsRes, docsResult, orgFoldersRes] = await Promise.all([
         safeFetch('/api/events'),
-        safeFetch('/api/documents?per_page=50'),
+        fetchAllListDocs(),
         safeFetch('/api/org-folders'),
       ])
 
-      if (!eventsRes.ok || !docsRes.ok) {
-        if (eventsRes.status === 401 || docsRes.status === 401) {
+      if (!eventsRes.ok || !docsResult.ok) {
+        if (eventsRes.status === 401 || docsResult.status === 401) {
           setLoadIssue('unauthorized')
           setErrorMsg('Session expired or unauthorized. Please sign out and sign in again.')
           setEvents([])
@@ -204,7 +163,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       }
 
       const eventsData = await eventsRes.json().catch(() => ({}))
-      const docsData = await docsRes.json().catch(() => ({}))
+      const docsData = docsResult.data
 
       if (eventsData.error || docsData.error) {
         const msg = String(eventsData.error || docsData.error || '')
@@ -221,14 +180,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       }
 
       if (eventsData.events) setEvents(eventsData.events)
-      if (docsData.documents) {
-        setDocuments(docsData.documents)
-        setDocsPage(1)
-        setDocsTotalCount(docsData.total_count ?? null)
-        setHasMoreDocs(
-          docsData.total_count != null && docsData.documents.length < docsData.total_count,
-        )
-      }
+      if (docsData.documents) setDocuments(docsData.documents)
 
       try {
         if (!orgFoldersRes.ok) {
@@ -254,27 +206,35 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     }
   }
 
-  const loadMoreDocs = async () => {
-    if (loadingMore || !hasMoreDocs) return
-    setLoadingMore(true)
-    try {
-      const nextPage = docsPage + 1
-      const res = await safeFetch(`/api/documents?per_page=200&page=${nextPage}`)
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}))
-        if (data.documents) {
-          setDocuments(prev => [...prev, ...data.documents])
-          setDocsPage(nextPage)
-          setHasMoreDocs(
-            data.total_count != null &&
-            (documents.length + data.documents.length) < data.total_count,
-          )
-        }
-      }
-    } catch (err) {
-      setErrorMsg('Failed to load more documents')
+  // Load the complete visible list in stable 200-row pages. Search is local,
+  // so keeping only the first page made older orders impossible to find.
+  const fetchAllListDocs = async () => {
+    const perPage = 200
+    const documents = []
+    let totalCount = null
+
+    for (let page = 1; page <= 100; page++) {
+      const res = await safeFetch(`/api/documents?per_page=${perPage}&page=${page}`)
+      if (!res.ok) return { ok: false, status: res.status, data: {} }
+
+      const data = await res.json().catch(() => ({}))
+      if (data.error) return { ok: false, status: res.status, data }
+
+      const batch = Array.isArray(data.documents) ? data.documents : []
+      documents.push(...batch)
+      totalCount = data.total_count ?? totalCount
+
+      const done = totalCount != null
+        ? documents.length >= totalCount
+        : batch.length < perPage
+      if (done) break
     }
-    setLoadingMore(false)
+
+    return {
+      ok: true,
+      status: 200,
+      data: { documents, total_count: totalCount ?? documents.length },
+    }
   }
 
   // ── Folder fetch ──────────────────────────────────────────────────────────
@@ -371,7 +331,6 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       if (res.ok) {
         setDocuments(prev => prev.filter(d => d.id !== doc.id))
         setFolderDocs(prev => prev.filter(d => d.id !== doc.id))
-        setSummaryDocs(prev => prev.filter(d => d.id !== doc.id))
         if (showInternal) fetchInternalDocs()
       }
     } catch {
@@ -540,7 +499,6 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to delete')
       setDocuments(prev => prev.filter(d => d.id !== doc.id))
       setFolderDocs(prev => prev.filter(d => d.id !== doc.id))
-      setSummaryDocs(prev => prev.filter(d => d.id !== doc.id))
       setInternalDocs(prev => prev.filter(d => d.id !== doc.id))
       setParkedDocs(prev => prev.filter(d => d.id !== doc.id))
     } catch (err) {
@@ -709,26 +667,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     })
   }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
 
-  // Dataset for the analytics widget. Folder/agent views and the rare "No Event"
-  // view already have a complete dataset in filteredDocs. For All Documents we
-  // use the complete server summary (every document) so revenue and sales-by-date
-  // reflect everything, not just the first loaded page. Falls back to filteredDocs
-  // until the summary has loaded.
-  const analyticsDocs = useMemo(() => {
-    if (showInternal || showConsignment || showDrafts || showOffres) return []
-    if (isFolderView || selectedEventId === 'none') return filteredDocs
-    if (summaryDocs.length === 0) return filteredDocs
-    const term = search.toLowerCase()
-    return summaryDocs.filter(doc => {
-      if (doc.status === 'draft') return false
-      return (
-        !search ||
-        doc.client_name?.toLowerCase().includes(term) ||
-        doc.client_company?.toLowerCase().includes(term) ||
-        doc.file_name?.toLowerCase().includes(term)
-      )
-    })
-  }, [showInternal, showConsignment, showDrafts, showOffres, isFolderView, selectedEventId, summaryDocs, filteredDocs, search])
+  // The global list is complete, so the rows and analytics always use the same
+  // filtered dataset. This prevents a result from appearing only in analytics.
+  const analyticsDocs = filteredDocs
 
   // Parked orders live in their own folders — never mixed into All Documents or
   // the agent's own event folders. Draft holds every parked order except the
@@ -1048,22 +989,6 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 docRenameLoading={docRenameLoading}
               />
             ))}
-            {!showInternal && !showConsignment && !showDrafts && !showOffres && !isFolderView && hasMoreDocs && (
-              <button
-                onClick={loadMoreDocs}
-                disabled={loadingMore}
-                style={{
-                  width: '100%', padding: 12, marginTop: 8, borderRadius: 8,
-                  border: '1px solid #e3e3e3', background: '#fafafa', color: colors.inkPlum,
-                  fontSize: 13, fontWeight: 600, cursor: loadingMore ? 'wait' : 'pointer',
-                  fontFamily: fonts.body,
-                }}
-              >
-                {loadingMore
-                  ? 'Loading...'
-                  : `Load more (${docsTotalCount != null ? `${documents.length} of ${docsTotalCount}` : '...'})`}
-              </button>
-            )}
           </div>
         )}
       </div>

@@ -149,6 +149,13 @@ describe('ResourcesCard — role-aware catalogue access', () => {
     expect(optionNames()).not.toContain('EN_LoveLab_B2B_Catalogue.pdf')
   })
 
+  it('gives the Samuel commercial assistant the same eight catalogues as admins', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="SAMUEL@LOVE-LAB.COM" />)
+    expect(optionNames()).toHaveLength(8)
+    expect(optionNames()).toContain('Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
+    expect(optionNames()).toContain('Oct PL_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
+  })
+
   test.each([
     ['fr-general-sept', 'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf', FRENCH_LINKS.generalSept, FRENCH_PDFS.generalSept],
     ['fr-bijorka-sept', 'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf', FRENCH_LINKS.bijorkaSept, FRENCH_PDFS.bijorkaSept],

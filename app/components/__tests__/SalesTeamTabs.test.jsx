@@ -17,7 +17,7 @@ describe('SalesTeamTabs', () => {
     expect(screen.getByRole('heading', { name: 'Sales Team' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Assistants' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Partner Teams' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Agent Teams' })).toBeInTheDocument()
     expect(screen.getByText(/Independent salespeople.*earn commission/i)).toBeInTheDocument()
   })
 
@@ -33,7 +33,7 @@ describe('SalesTeamTabs', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Assistants' }))
     expect(push).toHaveBeenCalledWith('/admin/assistants')
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Partner Teams' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent Teams' }))
     expect(push).toHaveBeenCalledWith('/admin/organizations')
   })
 })

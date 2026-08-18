@@ -18,9 +18,9 @@ const TABS = [
   },
   {
     id: 'partners',
-    label: 'Partner Teams',
+    label: 'Agent Teams',
     href: '/admin/organizations',
-    description: 'Companies with one or more agents, shared totals, and one settlement.',
+    description: 'Teams with one or more agents, shared totals, and one settlement.',
   },
 ]
 

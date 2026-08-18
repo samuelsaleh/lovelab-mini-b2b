@@ -102,7 +102,7 @@ export default function AdminOrganizationDetailPage() {
               onClick={() => router.push('/admin/organizations')}
               style={{ background: 'none', border: 'none', color: colors.lovelabMuted, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', padding: 0, marginBottom: 6 }}
             >
-              ← All partner teams
+              ← All agent teams
             </button>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>{organization.name}</h1>
             <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 4 }}>
