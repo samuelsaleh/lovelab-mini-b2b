@@ -8,6 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { useI18n } from '@/lib/i18n';
 import { getClientOrderLocale, clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 import { suggestFairForDate } from '@/lib/fairSuggestion';
+import { findAgentFolderEvent } from '@/lib/agentFolderSelection';
 import { useAuth } from './AuthProvider';
 import ConsignmentRecipientForm from './ConsignmentRecipientForm';
 
@@ -310,18 +311,14 @@ export default function SaveDocumentModal({
         }
         // Prefer the agent's own named folder (Wassila → "Wassila Mekidiche")
         // before falling back to any folder in their organization.
-        if (!pick && profile?.full_name) {
-          const nameKey = profile.full_name.toLowerCase().trim();
-          pick = allEvents.find(e =>
-            e.type === 'agent' && (e.name || '').toLowerCase().trim() === nameKey
-          ) || null;
+        if (!pick && profile?.is_agent) {
+          pick = findAgentFolderEvent(allEvents, profile);
         }
-        if (!pick && profile?.organization_id) {
-          pick = allEvents.find(e =>
-            e.type === 'agent' && e.organization_id === profile.organization_id
-          ) || null;
-        }
-        if (!pick && allEvents.length > 0) {
+        // Admins start with no arbitrary event selected. Previously the first
+        // row (often INOVA FRANKFURT) was silently selected, so choosing
+        // Corinne as the selling agent could still file the order under INOVA.
+        // Non-admins retain the historical first-visible-folder fallback.
+        if (!pick && !isAdmin && allEvents.length > 0) {
           pick = allEvents[0];
         }
         if (pick) setSelectedEventId(pick.id);
@@ -951,7 +948,20 @@ export default function SaveDocumentModal({
                 {isAdmin ? (
                   <select
                     value={selectedAgentId}
-                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                    onChange={(e) => {
+                      const agentId = e.target.value
+                      setSelectedAgentId(agentId)
+                      if (!agentId) {
+                        setSelectedEventId('')
+                        return
+                      }
+                      const selectedAgent = agents.find((agent) => agent.id === agentId)
+                      const agentFolder = findAgentFolderEvent(events, selectedAgent)
+                      // Never leave an unrelated fair selected after choosing
+                      // an agent. If a folder is missing, "No event" is safer
+                      // than silently placing the order under another fair.
+                      setSelectedEventId(agentFolder?.id || '')
+                    }}
                     style={{
                       width: '100%', padding: '10px 12px', borderRadius: 8,
                       border: `1px solid ${colors.lineGray}`, fontSize: 13,
@@ -969,6 +979,11 @@ export default function SaveDocumentModal({
                   <div style={{ fontSize: 13, color: colors.charcoal, padding: '2px 0' }}>
                     {profile?.full_name || profile?.email}
                     <span style={{ color: colors.lovelabMuted }}> — this order is credited to you.</span>
+                  </div>
+                )}
+                {isAdmin && selectedAgentId && (
+                  <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>
+                    The matching agent folder is selected automatically below.
                   </div>
                 )}
               </div>

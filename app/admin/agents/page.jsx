@@ -6,6 +6,7 @@ import { colors, fonts } from '@/lib/styles';
 import AgentFormModal from '../../components/AgentFormModal';
 import AddBonusModal from '../../components/AddBonusModal';
 import SalesTeamTabs from '../../components/SalesTeamTabs';
+import { resolveEffectiveRate } from '@/lib/effectiveRate';
 
 const fmt = (n) => {
   if (n == null) return '—';
@@ -17,6 +18,18 @@ const statusColors = {
   paused: colors.warning,
   inactive: colors.danger,
   invited: colors.info,
+};
+
+const secondaryActionStyle = {
+  padding: '6px 10px',
+  border: `1px solid ${colors.lineGray}`,
+  borderRadius: 7,
+  background: '#fff',
+  color: colors.charcoal,
+  cursor: 'pointer',
+  fontFamily: fonts.body,
+  fontSize: 11,
+  fontWeight: 600,
 };
 
 export default function AdminAgentsPage() {
@@ -74,11 +87,10 @@ export default function AdminAgentsPage() {
     return matchSearch && matchStatus;
   });
 
-  const activeCount = activeAgents.filter((a) => a.agent_status === 'active').length;
-
-  const orgGroups = useMemo(() => {
+  const { soloAgents, sharedOrganizations } = useMemo(() => {
+    const visibleIds = new Set(filteredAgents.map((agent) => agent.id));
     const groups = new Map();
-    for (const agent of filteredAgents) {
+    for (const agent of agents) {
       const key = agent.organization_id || `solo_${agent.id}`;
       if (!groups.has(key)) {
         groups.set(key, {
@@ -89,13 +101,20 @@ export default function AdminAgentsPage() {
       }
       groups.get(key).agents.push(agent);
     }
-    const sorted = [...groups.values()].sort((a, b) => {
-      if (a.agents.length > 1 && b.agents.length <= 1) return -1;
-      if (a.agents.length <= 1 && b.agents.length > 1) return 1;
-      return 0;
-    });
-    return sorted;
-  }, [filteredAgents]);
+    const visibleGroups = [...groups.values()]
+      .map((group) => ({
+        ...group,
+        visibleAgents: group.agents.filter((agent) => visibleIds.has(agent.id)),
+      }))
+      .filter((group) => group.visibleAgents.length > 0);
+
+    return {
+      soloAgents: visibleGroups
+        .filter((group) => group.agents.length === 1)
+        .map((group) => group.visibleAgents[0]),
+      sharedOrganizations: visibleGroups.filter((group) => group.agents.length >= 2),
+    };
+  }, [agents, filteredAgents]);
 
   const handleDelete = async (agent) => {
     try {
@@ -198,80 +217,197 @@ export default function AdminAgentsPage() {
     fetchAgents();
   };
 
-  const formatAgentSince = (d) => {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const renderAgentEntry = (agent, { nested = false } = {}) => {
+    const effectiveRate = resolveEffectiveRate(
+      agent,
+      { commission_rate: agent.organization_rate }
+    ).rate;
+    const outstanding = agent.stats?.effective_pending_commission
+      ?? agent.stats?.pending_commission;
+    const initials = (agent.full_name || agent.email || '?')
+      .split(/\s+/)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+
+    return (
+      <article
+        key={agent.id}
+        style={{
+          background: '#fff',
+          borderTop: nested ? `1px solid ${colors.lineGray}` : 'none',
+        }}
+      >
+        <button
+          type="button"
+          className="agent-main-row"
+          onClick={() => router.push(`/admin/agents/${agent.id}`)}
+          aria-label={`Open ${agent.full_name || agent.email || 'agent'} profile`}
+          style={{
+            width: '100%',
+            display: 'grid',
+            alignItems: 'center',
+            gap: 16,
+            padding: nested ? '16px 18px' : '18px 20px',
+            border: 'none',
+            background: '#fff',
+            color: colors.charcoal,
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontFamily: fonts.body,
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: nested ? 34 : 38,
+                height: nested ? 34 : 38,
+                flexShrink: 0,
+                borderRadius: '50%',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f4edf3',
+                color: colors.inkPlum,
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {initials}
+            </span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {agent.full_name || agent.email || 'Unknown'}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, color: colors.lovelabMuted, fontSize: 11 }}>
+                <span
+                  aria-hidden="true"
+                  style={{ width: 6, height: 6, borderRadius: '50%', background: statusColors[agent.agent_status] || colors.lovelabMuted }}
+                />
+                <span>{agent.agent_status || 'Unknown status'}</span>
+                {!nested && agent.organization_id && (
+                  <span>· {agent.organization_name || 'own organization'}</span>
+                )}
+                {!nested && !agent.organization_id && <span>· Independent</span>}
+              </span>
+            </span>
+          </span>
+          <span>
+            <span style={{ display: 'block', color: colors.lovelabMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rate</span>
+            <span style={{ display: 'block', marginTop: 3, color: colors.inkPlum, fontSize: 14, fontWeight: 700 }}>{effectiveRate}%</span>
+          </span>
+          <span>
+            <span style={{ display: 'block', color: colors.lovelabMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Outstanding</span>
+            <span style={{ display: 'block', marginTop: 3, color: colors.charcoal, fontSize: 14, fontWeight: 700 }}>{fmt(outstanding)}</span>
+          </span>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colors.lovelabMuted} strokeWidth="1.8">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+
+        <details style={{ borderTop: `1px solid ${colors.lineGray}`, padding: '0 20px' }}>
+          <summary
+            style={{
+              width: 'fit-content',
+              padding: '9px 0',
+              color: colors.lovelabMuted,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            Manage agent
+          </summary>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', padding: '2px 0 14px' }}>
+            <button type="button" onClick={() => handleEdit(agent)} style={secondaryActionStyle}>Edit</button>
+            <button type="button" onClick={() => handleAddBonus(agent)} style={secondaryActionStyle}>Bonus</button>
+            {(!agent.organization_id || agent.agent_status === 'invited') && (
+              <button type="button" onClick={() => handleRepair(agent)} disabled={repairingId === agent.id} style={secondaryActionStyle}>
+                {repairingId === agent.id ? 'Repairing…' : 'Repair'}
+              </button>
+            )}
+            <button type="button" onClick={() => handleResetPassword(agent)} disabled={resettingId === agent.id} style={secondaryActionStyle}>
+              {resettingId === agent.id ? 'Resetting…' : 'Reset password'}
+            </button>
+            <button type="button" onClick={() => setConfirmDelete(agent)} style={{ ...secondaryActionStyle, color: colors.danger }}>Delete</button>
+          </div>
+          {repairResult?.agentId === agent.id && (
+            <div role="status" style={{ marginBottom: 12, padding: '8px 10px', background: '#f0fdf4', borderRadius: 7, color: '#166534', fontSize: 11 }}>
+              {repairResult.message}
+              {repairResult.fixes?.length > 0 && ` Fixed: ${repairResult.fixes.map((fix) => fix.item).join(', ')}`}
+            </div>
+          )}
+          {resetResult?.agentId === agent.id && (
+            <div role="status" style={{ marginBottom: 12, padding: '8px 10px', background: '#f5f3ff', borderRadius: 7, color: '#5b21b6', fontSize: 11 }}>
+              {resetResult.message}
+            </div>
+          )}
+        </details>
+      </article>
+    );
   };
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', fontFamily: fonts.body }}>
+      <style>{`
+        .agent-main-row {
+          grid-template-columns: minmax(180px, 1fr) minmax(90px, 120px) minmax(110px, 150px) 24px;
+        }
+        @media (max-width: 640px) {
+          .agent-main-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px !important;
+          }
+          .agent-main-row > span:nth-child(2),
+          .agent-main-row > span:nth-child(3) {
+            grid-row: 2;
+          }
+          .agent-main-row > span:nth-child(2) {
+            grid-column: 1;
+            padding-left: 50px;
+          }
+          .agent-main-row > span:nth-child(3) {
+            grid-column: 2;
+          }
+          .agent-main-row > svg {
+            grid-column: 2;
+            grid-row: 1;
+          }
+        }
+      `}</style>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
         <SalesTeamTabs active="agents" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>
-            Agents ({activeCount} active)
-          </h1>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {trashedAgents.length > 0 && (
-              <button
-                onClick={() => setShowTrash(!showTrash)}
-                style={{
-                  padding: '10px 16px',
-                  border: `1px solid ${colors.lineGray}`,
-                  background: showTrash ? '#fef2f2' : '#fff',
-                  color: showTrash ? '#dc2626' : '#888',
-                  borderRadius: 10,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: fonts.body,
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}
-              >
-                🗑 Trash ({trashedAgents.length})
-              </button>
-            )}
-            <button
-              onClick={handleAddAgent}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1, minWidth: 230, position: 'relative' }}>
+            <span style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>Search agents</span>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.lovelabMuted} strokeWidth="2" style={{ position: 'absolute', left: 13, top: 12 }}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Search agents"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               style={{
-                padding: '10px 24px',
-                border: 'none',
-                background: colors.inkPlum,
-                color: '#fff',
+                width: '100%',
+                padding: '11px 14px 11px 39px',
                 borderRadius: 10,
+                border: `1px solid ${colors.lineGray}`,
                 fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
                 fontFamily: fonts.body,
               }}
-            >
-              + Add Agent
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-          <input
-            type="search"
-            placeholder="Search by name, email, company..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              flex: 1,
-              minWidth: 200,
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: `1px solid ${colors.lineGray}`,
-              fontSize: 13,
-              fontFamily: fonts.body,
-            }}
-          />
+            />
+          </label>
           <select
+            aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             style={{
-              padding: '10px 14px',
-              borderRadius: 8,
+              padding: '11px 14px',
+              borderRadius: 10,
               border: `1px solid ${colors.lineGray}`,
               fontSize: 13,
               fontFamily: fonts.body,
@@ -285,6 +421,34 @@ export default function AdminAgentsPage() {
             <option value="inactive">Inactive</option>
             <option value="invited">Invited</option>
           </select>
+          {trashedAgents.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowTrash(!showTrash)}
+              aria-expanded={showTrash}
+              style={{ ...secondaryActionStyle, minHeight: 41, padding: '9px 13px', color: showTrash ? colors.danger : colors.lovelabMuted }}
+            >
+              Trash ({trashedAgents.length})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleAddAgent}
+            style={{
+              minHeight: 41,
+              padding: '10px 19px',
+              border: 'none',
+              background: colors.inkPlum,
+              color: '#fff',
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: fonts.body,
+            }}
+          >
+            + Add Agent
+          </button>
         </div>
 
         {error && (
@@ -321,177 +485,57 @@ export default function AdminAgentsPage() {
             No agents found
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {orgGroups.map((group) => {
-              const hasOrg = !!group.organizationId;
-              const orgTerritory = group.agents[0]?.organization_territory;
-              const orgRate = group.agents[0]?.organization_rate;
-              return (
-                <div key={group.organizationId || group.agents[0]?.id}>
-                  {hasOrg && (
-                    <div
-                      onClick={() => router.push(`/admin/organizations/${group.organizationId}`)}
-                      title="Open organization — team overview, totals and payment"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                        padding: '10px 16px',
-                        background: '#f4f0f5', borderRadius: '12px 12px 0 0',
-                        border: `1px solid ${colors.lineGray}`, borderBottom: 'none',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.inkPlum} strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>
-                        {group.organizationName || 'Organization'}
-                      </span>
-                      <span style={{ fontSize: 12, color: colors.lovelabMuted }}>
-                        {group.agents.length} agent{group.agents.length !== 1 ? 's' : ''}
-                      </span>
-                      {orgTerritory && (
-                        <span style={{ fontSize: 11, color: '#666', background: '#fff', padding: '2px 8px', borderRadius: 5, border: '1px solid #e3e3e3' }}>
-                          {orgTerritory}
-                        </span>
-                      )}
-                      {orgRate != null && (
-                        <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#fff', padding: '2px 8px', borderRadius: 5, border: `1px solid ${colors.inkPlum}33` }}>
-                          {orgRate}%
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); router.push(`/admin/organizations/${group.organizationId}`); }}
-                        style={{
-                          marginLeft: 'auto', padding: '6px 14px', borderRadius: 7, border: 'none',
-                          background: colors.inkPlum, color: '#fff', fontSize: 11, fontWeight: 700,
-                          cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
-                        }}
-                      >
-                        Open organization →
-                      </button>
-                    </div>
-                  )}
-                  <div style={{
-                    display: 'flex', flexDirection: 'column', gap: hasOrg ? 0 : 12,
-                    ...(hasOrg ? {
-                      border: `1px solid ${colors.lineGray}`,
-                      borderRadius: hasOrg ? '0 0 12px 12px' : 12,
-                      overflow: 'hidden',
-                    } : {}),
-                  }}>
-                    {group.agents.map((agent, idx) => (
-                      <div
-                        key={agent.id}
-                        style={{
-                          background: '#fff',
-                          padding: 18,
-                          ...(hasOrg
-                            ? { borderBottom: idx < group.agents.length - 1 ? `1px solid ${colors.lineGray}` : 'none' }
-                            : { borderRadius: 12, border: `1px solid ${colors.lineGray}` }
-                          ),
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-                          <div style={{ width: 44, height: 44, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                            {(agent.full_name || agent.email || '?')[0].toUpperCase()}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-                              <span style={{ fontSize: 15, fontWeight: 600, color: colors.charcoal }}>
-                                {agent.full_name || agent.email || 'Unknown'}
-                              </span>
-                              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 8px', borderRadius: 6, background: statusColors[agent.agent_status] || colors.lovelabMuted, color: '#fff' }}>
-                                {agent.agent_status || '—'}
-                              </span>
-                              {!agent.organization_id && (
-                                <span title="Missing organization / folders — click Repair to fix" style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', cursor: 'default' }}>
-                                  ⚠ Setup incomplete
-                                </span>
-                              )}
-                              {!hasOrg && agent.organization_name && (
-                                <span style={{ fontSize: 11, color: colors.inkPlum, fontWeight: 600, background: '#f4f0f5', padding: '3px 8px', borderRadius: 5 }}>
-                                  {agent.organization_name}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: 13, color: colors.lovelabMuted, marginBottom: 6 }}>{agent.email}</div>
-                            {(agent.agent_city || agent.agent_country || agent.agent_region) && (
-                              <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4 }}>
-                                Territory: {[agent.agent_city, agent.agent_country].filter(Boolean).join(', ')}
-                                {agent.agent_region && ` · ${agent.agent_region}`}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 12, color: colors.charcoal, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                              Rate: {agent.commission_rate ?? '—'}% · Since: {formatAgentSince(agent.agent_since)}
-                              {agent.agent_contract_url && (
-                                <span title="Contract on file" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#059669', fontWeight: 600, background: '#ecfdf5', borderRadius: 5, padding: '2px 7px' }}>
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                  Contract
-                                </span>
-                              )}
-                            </div>
-                            {agent.stats && (
-                              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginBottom: 4 }}>
-                                Orders: {agent.stats.effective_orders ?? agent.stats.total_orders ?? 0} · Revenue: {fmt(agent.stats.effective_revenue ?? agent.stats.total_revenue)} ·
-                                Commission Owed: {fmt(agent.stats.effective_pending_commission ?? agent.stats.pending_commission)}
-                              </div>
-                            )}
-                            {agent.agent_conditions && (
-                              <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 6, maxWidth: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {agent.agent_conditions.length > 100 ? agent.agent_conditions.slice(0, 100) + '...' : agent.agent_conditions}
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                              <button onClick={() => router.push(`/admin/agents/${agent.id}`)} style={{ padding: '6px 14px', fontSize: 12, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
-                                View Details
-                              </button>
-                              <button onClick={() => handleEdit(agent)} style={{ padding: '6px 14px', fontSize: 12, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
-                                Edit
-                              </button>
-                              <button onClick={() => handleAddBonus(agent)} style={{ padding: '6px 14px', fontSize: 12, border: 'none', background: colors.inkPlum, color: '#fff', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
-                                Add Bonus
-                              </button>
-                              {(!agent.organization_id || agent.agent_status === 'invited') && (
-                                <button
-                                  onClick={() => handleRepair(agent)}
-                                  disabled={repairingId === agent.id}
-                                  style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fde68a', background: '#fffbeb', color: '#b45309', borderRadius: 8, fontWeight: 600, cursor: repairingId === agent.id ? 'not-allowed' : 'pointer', fontFamily: fonts.body, opacity: repairingId === agent.id ? 0.6 : 1 }}
-                                >
-                                  {repairingId === agent.id ? 'Repairing…' : 'Repair'}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleResetPassword(agent)}
-                                disabled={resettingId === agent.id}
-                                title="Generate a new temporary password and email it to the agent"
-                                style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #c4b5fd', background: '#f5f3ff', color: '#5b21b6', borderRadius: 8, fontWeight: 600, cursor: resettingId === agent.id ? 'not-allowed' : 'pointer', fontFamily: fonts.body, opacity: resettingId === agent.id ? 0.6 : 1 }}
-                              >
-                                {resettingId === agent.id ? 'Resetting…' : 'Reset Password'}
-                              </button>
-                              <button onClick={() => setConfirmDelete(agent)} style={{ padding: '6px 14px', fontSize: 12, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}>
-                                Delete
-                              </button>
-                            </div>
-                            {repairResult?.agentId === agent.id && (
-                              <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, fontSize: 12, color: '#166534' }}>
-                                {repairResult.message}
-                                {repairResult.fixes?.length > 0 && (
-                                  <span style={{ marginLeft: 8, color: '#065f46' }}>Fixed: {repairResult.fixes.map(f => f.item).join(', ')}</span>
-                                )}
-                              </div>
-                            )}
-                            {resetResult?.agentId === agent.id && (
-                              <div style={{ marginTop: 8, padding: '8px 12px', background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 12, color: '#5b21b6' }}>
-                                {resetResult.message}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            {soloAgents.length > 0 && (
+              <section aria-labelledby="solo-agents-heading">
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                  <h2 id="solo-agents-heading" style={{ margin: 0, color: colors.inkPlum, fontSize: 15, fontWeight: 700 }}>Solo agents</h2>
+                  <span style={{ color: colors.lovelabMuted, fontSize: 11 }}>{soloAgents.length}</span>
                 </div>
-              );
-            })}
+                <div style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 12px rgba(74,37,69,0.04)' }}>
+                  {soloAgents.map((agent, index) => (
+                    <div key={agent.id} style={{ borderTop: index === 0 ? 'none' : `1px solid ${colors.lineGray}` }}>
+                      {renderAgentEntry(agent)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {sharedOrganizations.length > 0 && (
+              <section aria-labelledby="shared-organizations-heading">
+                <h2 id="shared-organizations-heading" style={{ margin: '0 0 10px', color: colors.inkPlum, fontSize: 15, fontWeight: 700 }}>Shared organizations</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {sharedOrganizations.map((group) => (
+                    <details
+                      key={group.organizationId}
+                      open
+                      style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 14, overflow: 'hidden', background: '#fff', boxShadow: '0 2px 12px rgba(74,37,69,0.04)' }}
+                    >
+                      <summary style={{ padding: '16px 18px', cursor: 'pointer', color: colors.inkPlum }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, marginLeft: 5 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700 }}>{group.organizationName || 'Organization'}</span>
+                          <span style={{ color: colors.lovelabMuted, fontSize: 11 }}>
+                            {group.agents.length} members
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              router.push(`/admin/organizations/${group.organizationId}`);
+                            }}
+                            style={{ ...secondaryActionStyle, marginLeft: 4, padding: '5px 9px', color: colors.inkPlum }}
+                          >
+                            Open organization
+                          </button>
+                        </span>
+                      </summary>
+                      {group.visibleAgents.map((agent) => renderAgentEntry(agent, { nested: true }))}
+                    </details>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 

@@ -35,6 +35,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
   const [clientsLoading, setClientsLoading] = useState(false)
   const [showSavedClients, setShowSavedClients] = useState(false)
   const searchDebounceRef = useRef(null)
+  const clientRequestRef = useRef(0)
 
   const canLookup = client.company.trim() && client.country.trim()
   const canStart = client.company.trim()
@@ -42,18 +43,35 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
   // Fetch saved clients on mount
   useEffect(() => {
     fetchClients()
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+      clientRequestRef.current += 1
+    }
   }, [])
 
-  const fetchClients = async (search = '') => {
+  const fetchClients = async (search = '', { autoSelectExact = false } = {}) => {
+    const requestId = ++clientRequestRef.current
     setClientsLoading(true)
     try {
       const url = search ? `/api/clients?search=${encodeURIComponent(search)}` : '/api/clients'
       const res = await fetch(url)
       const data = await res.json()
-      if (data.clients) setSavedClients(data.clients)
+      if (requestId !== clientRequestRef.current) return
+      if (data.clients) {
+        setSavedClients(data.clients)
+        if (autoSelectExact) {
+          const companyKey = search.trim().toLowerCase()
+          const exactMatches = data.clients.filter(
+            (candidate) => (candidate.company || '').trim().toLowerCase() === companyKey,
+          )
+          if (exactMatches.length === 1) selectSavedClient(exactMatches[0])
+        }
+      }
     } catch (err) {
+      if (requestId !== clientRequestRef.current) return
+    } finally {
+      if (requestId === clientRequestRef.current) setClientsLoading(false)
     }
-    setClientsLoading(false)
   }
 
   // Debounced search
@@ -62,7 +80,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
     setShowSavedClients(true)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
-      fetchClients(value)
+      fetchClients(value, { autoSelectExact: true })
     }, 300)
   }
 
@@ -433,6 +451,16 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               if (perplexityDone) {
                 setViesResult(null)
                 setPerplexityDone(false)
+              }
+              // Typing a complete, already-saved company name should behave
+              // exactly like selecting it from Search Saved Clients. Only one
+              // exact match is accepted, so partial/new company names are
+              // never overwritten by a fuzzy result.
+              if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+              if (nextCompany.trim()) {
+                searchDebounceRef.current = setTimeout(() => {
+                  fetchClients(nextCompany, { autoSelectExact: true })
+                }, 300)
               }
             }}
             aria-required="true"

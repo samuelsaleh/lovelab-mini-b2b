@@ -63,7 +63,12 @@ function commissions() {
       commission_amount: 150,
       customer_paid_at: null,
       created_at: '2026-08-01T10:00:00.000Z',
-      document: { id: 'doc-1', client_company: 'ACME JEWELS', total_amount: 1000 },
+      document: {
+        id: 'doc-1',
+        client_company: 'ACME JEWELS',
+        total_amount: 1000,
+        created_at: '2026-02-21T11:40:53.000Z',
+      },
     },
     {
       id: BONUS_1,
@@ -323,5 +328,25 @@ describe('bulk selection', () => {
     // ORDER_1 and its cascaded bonus are already paid locally, so only the
     // remaining order goes over the wire.
     expect(JSON.parse(bulkCalls()[0].body).ids).toEqual([ORDER_2]);
+  });
+
+  test('shows one clear rate, three money cards, and the fair-aware orders table', async () => {
+    await renderPage();
+
+    expect(screen.getByTestId('effective-rate-card')).toHaveTextContent('15%');
+    expect(screen.getByTestId('effective-rate-card')).toHaveTextContent('custom agent rate');
+    expect(screen.getByText('EARNED')).toBeInTheDocument();
+    expect(screen.getByText('PAID OUT')).toBeInTheDocument();
+    expect(screen.getByText('OUTSTANDING')).toBeInTheDocument();
+    expect(screen.getByText('Orders & Commission')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Fair' })).toBeInTheDocument();
+    expect(screen.queryByText(/Estimated from order documents/i)).not.toBeInTheDocument();
+  });
+
+  test('shows the original document date, not the later commission materialization date', async () => {
+    await renderPage();
+    const row = screen.getByText('ACME JEWELS').closest('tr');
+    expect(within(row).getByText('21 Feb')).toBeInTheDocument();
+    expect(within(row).queryByText('1 Aug')).not.toBeInTheDocument();
   });
 });

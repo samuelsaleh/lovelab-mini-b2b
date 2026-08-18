@@ -163,4 +163,44 @@ describe('ClientGate — select saved client fills page fields only', () => {
     // Must NOT fetch documents for past-order restore
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('/api/documents'))).toBe(false)
   }, 12000)
+
+  it('auto-loads the one exact company typed into saved-client search', async () => {
+    let latestClient = { ...emptyClient }
+
+    function Harness() {
+      const [client, setClient] = useState({ ...emptyClient })
+      latestClient = client
+      return <ClientGate client={client} setClient={setClient} onComplete={jest.fn()} />
+    }
+
+    render(<Harness />)
+    fireEvent.change(screen.getByPlaceholderText('Search…'), {
+      target: { value: 'SAS GALA' },
+    })
+
+    await waitFor(() => expect(latestClient.savedClientId).toBe('c1'), { timeout: 3000 })
+    expect(latestClient.name).toBe('David')
+    expect(latestClient.email).toBe('d@x.com')
+    expect(latestClient.phone).toBe('01')
+  })
+
+  it('auto-loads the one exact saved company typed into Company Name', async () => {
+    let latestClient = { ...emptyClient }
+
+    function Harness() {
+      const [client, setClient] = useState({ ...emptyClient })
+      latestClient = client
+      return <ClientGate client={client} setClient={setClient} onComplete={jest.fn()} />
+    }
+
+    render(<Harness />)
+    fireEvent.change(screen.getByPlaceholderText('Company'), {
+      target: { value: 'SAS GALA' },
+    })
+
+    await waitFor(() => expect(latestClient.savedClientId).toBe('c1'), { timeout: 3000 })
+    expect(latestClient.name).toBe('David')
+    expect(latestClient.email).toBe('d@x.com')
+    expect(latestClient.company).toBe('SAS GALA')
+  })
 })

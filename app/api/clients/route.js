@@ -3,6 +3,27 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { normalizeJewelerGroup } from '@/lib/jewelerGroup';
 
+const CLIENT_SHIPPING_FIELDS = new Set([
+  'shipping_same_as_billing',
+  'shipping_address',
+  'shipping_address_line2',
+  'shipping_country',
+]);
+
+function withoutClientShipping(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !CLIENT_SHIPPING_FIELDS.has(key))
+  );
+}
+
+function isMissingClientShippingSchema(error) {
+  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
+  return (
+    error?.code === '42703' ||
+    error?.code === 'PGRST204'
+  ) && [...CLIENT_SHIPPING_FIELDS].some((field) => message.includes(field));
+}
+
 // GET - List all clients (with optional search)
 export async function GET(request) {
   try {
@@ -145,9 +166,7 @@ export async function POST(request) {
       // sourcePayload above. We deliberately do NOT scope this by created_by:
       // agents routinely onboard a client the office first entered and need to
       // keep its address / VAT / contact up to date.
-      const { data: client, error } = await adminSupabase
-        .from('clients')
-        .update({
+      const updatePayload = {
           name: name?.trim() || null,
           company: company.trim(),
           country: country?.trim() || null,
@@ -161,12 +180,24 @@ export async function POST(request) {
           ...extrasPayload,
           ...sourcePayload,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        // maybeSingle (not single): a missing id matches 0 rows → handled as a
-        // 404 below instead of throwing.
-        .maybeSingle();
+      };
+      const runUpdate = (payload) => adminSupabase
+          .from('clients')
+          .update(payload)
+          .eq('id', id)
+          .select()
+          // maybeSingle (not single): a missing id matches 0 rows → handled as a
+          // 404 below instead of throwing.
+          .maybeSingle();
+      let { data: client, error } = await runUpdate(updatePayload);
+
+      // Phase 32 added remembered shipping fields. Production installations
+      // that have not applied that additive migration must still save the
+      // contact name/email/phone instead of rejecting the entire update.
+      if (error && isMissingClientShippingSchema(error)) {
+        console.warn('[Clients POST update] Shipping columns unavailable; saving core client fields only');
+        ({ data: client, error } = await runUpdate(withoutClientShipping(updatePayload)));
+      }
 
       if (error) {
         console.error('[Clients POST update] Error:', error.message);
@@ -181,9 +212,7 @@ export async function POST(request) {
       return NextResponse.json({ client });
     } else {
       // Create new client
-      const { data: client, error } = await supabase
-        .from('clients')
-        .insert({
+      const insertPayload = {
           name: name?.trim() || null,
           company: company.trim(),
           country: country?.trim() || null,
@@ -203,9 +232,18 @@ export async function POST(request) {
           ...sourcePayload,
           created_by: user.id,
           updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      };
+      const runInsert = (payload) => supabase
+          .from('clients')
+          .insert(payload)
+          .select()
+          .single();
+      let { data: client, error } = await runInsert(insertPayload);
+
+      if (error && isMissingClientShippingSchema(error)) {
+        console.warn('[Clients POST insert] Shipping columns unavailable; saving core client fields only');
+        ({ data: client, error } = await runInsert(withoutClientShipping(insertPayload)));
+      }
 
       if (error) {
         console.error('[Clients POST insert] Error:', error.message);

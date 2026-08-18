@@ -42,7 +42,7 @@ export default function SalesTeamTabs({ active }) {
           Sales Team
         </h1>
         <p style={{ margin: '5px 0 0', color: colors.lovelabMuted, fontSize: 13 }}>
-          Everyone who sells or supports sales, organized by how they work.
+          One agent = one clear profile
         </p>
       </div>
 

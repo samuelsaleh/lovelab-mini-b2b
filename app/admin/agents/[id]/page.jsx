@@ -13,6 +13,8 @@ import {
 } from '@/lib/bulkCustomerPaid';
 import { eligibleManualBonusRowIds } from '@/lib/newClientBonusEligibility';
 import { resolveBonusMode } from '@/lib/newClientBonus';
+import { resolveEffectiveRate } from '@/lib/effectiveRate';
+import { commissionDisplayDate } from '@/lib/commissionDate';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
 import KpiCard from '@/app/components/KpiCard';
@@ -57,7 +59,6 @@ export default function AdminAgentDetailsPage() {
   const [docDerivedRows, setDocDerivedRows] = useState([]);
   // Commission History status filter ('all' | awaiting | ready | reported | paid | cancelled)
   const [commissionFilter, setCommissionFilter] = useState('all');
-  const [organizationLedger, setOrganizationLedger] = useState(null);
   const [organizationMembers, setOrganizationMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
@@ -93,12 +94,8 @@ export default function AdminAgentDetailsPage() {
   // Consignment orders assigned to this agent
   const [agentConsignmentOrders, setAgentConsignmentOrders] = useState([]);
 
-  // Org editing
+  // Organization context (editing/settlement now lives on the org page).
   const [orgData, setOrgData] = useState(null);
-  const [editingOrg, setEditingOrg] = useState(false);
-  const [orgForm, setOrgForm] = useState({ name: '', territory: '', commission_rate: '', conditions: '' });
-  const [savingOrg, setSavingOrg] = useState(false);
-  const [orgMsg, setOrgMsg] = useState(null);
 
   const load = useCallback(async () => {
     if (!agentId) return;
@@ -132,28 +129,20 @@ export default function AdminAgentDetailsPage() {
       setPayments(payJson.payments || []);
       setReports(reportsRes.ok ? (reportsJson.reports || []) : []);
 
+      let loadedOrganization = null;
       if (found.organization_id) {
-        const [ledgerRes, membersRes, orgRes] = await Promise.all([
-          fetch(`/api/organizations/${found.organization_id}/ledger`),
+        const [membersRes, orgRes] = await Promise.all([
           fetch(`/api/organizations/${found.organization_id}/members`),
           fetch(`/api/organizations/${found.organization_id}`),
         ]);
-        const ledgerJson = await ledgerRes.json().catch(() => ({}));
         const membersJson = await membersRes.json().catch(() => ({}));
         const orgJson = await orgRes.json().catch(() => ({}));
-        setOrganizationLedger(ledgerRes.ok ? ledgerJson : null);
         setOrganizationMembers(membersJson?.members || []);
         if (orgRes.ok && orgJson.organization) {
+          loadedOrganization = orgJson.organization;
           setOrgData(orgJson.organization);
-          setOrgForm({
-            name: orgJson.organization.name || '',
-            territory: orgJson.organization.territory || '',
-            commission_rate: orgJson.organization.commission_rate != null ? String(orgJson.organization.commission_rate) : '',
-            conditions: orgJson.organization.conditions || '',
-          });
         }
       } else {
-        setOrganizationLedger(null);
         setOrganizationMembers([]);
         setOrgData(null);
       }
@@ -200,7 +189,7 @@ export default function AdminAgentDetailsPage() {
         const orderDocs = fetchedOrgDocs.filter(
           (d) => d.document_type === 'order' && !d.deleted_at && (Number(d.total_amount) || 0) > 0
         );
-        const rate = Number(found.commission_rate) || 0;
+        const { rate } = resolveEffectiveRate(found, loadedOrganization);
         setDocDerivedRows(orderDocs.map((d) => {
           const grossTotal = Number(d.total_amount) || 0;
           const rawShipping = Number(
@@ -226,6 +215,7 @@ export default function AdminAgentDetailsPage() {
               id: d.id,
               order_channel: d.order_channel,
               total_amount: grossTotal,
+              event: d.events || null,
             },
             _derived: true,
           };
@@ -835,36 +825,6 @@ export default function AdminAgentDetailsPage() {
     }
   }, [commissions]);
 
-  const handleSaveOrg = async () => {
-    if (!agent?.organization_id) return;
-    setSavingOrg(true);
-    setOrgMsg(null);
-    try {
-      const body = {
-        name: orgForm.name.trim(),
-        territory: orgForm.territory.trim() || null,
-        commission_rate: orgForm.commission_rate ? Number(orgForm.commission_rate) : null,
-        conditions: orgForm.conditions.trim() || null,
-      };
-      const res = await fetch(`/api/organizations/${agent.organization_id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'Failed to update organization');
-      setOrgData(json.organization);
-      setEditingOrg(false);
-      setOrgMsg('Organization updated');
-      setTimeout(() => setOrgMsg(null), 3000);
-      await load();
-    } catch (err) {
-      setOrgMsg(err.message || 'Failed to save');
-    } finally {
-      setSavingOrg(false);
-    }
-  };
-
   const orderRows = useMemo(
     () => commissions.filter((c) => c.type === 'order'),
     [commissions]
@@ -881,7 +841,7 @@ export default function AdminAgentDetailsPage() {
   // ── derived financials ──────────────────────────────────────────────────────
   const s = summary || {};
   const st = agent?.stats || {};
-  const commRate = Number(agent?.commission_rate) || 0;
+  const { rate: commRate, source: commRateSource } = resolveEffectiveRate(agent, orgData);
   const orderDocsList = orgDocuments.filter(d => d.document_type === 'order' && !d.deleted_at);
   const docRevenue = orderDocsList.reduce((acc, d) => acc + (Number(d.total_amount) || 0), 0);
   const docCommission = Math.round(docRevenue * commRate / 100 * 100) / 100;
@@ -936,12 +896,12 @@ export default function AdminAgentDetailsPage() {
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', fontFamily: fonts.body, background: '#f8f7fb' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
 
-        {/* back */}
+        {/* breadcrumb */}
         <button
           onClick={() => router.push('/admin/agents')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 18, padding: '6px 12px', borderRadius: 7, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 18, padding: 0, border: 'none', background: 'transparent', color: colors.lovelabMuted, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
         >
-          ← Back to Agents
+          Sales Team <span aria-hidden="true">/</span> <span style={{ color: colors.inkPlum }}>{agent?.full_name || 'Agent'}</span>
         </button>
 
         {loading ? (
@@ -950,22 +910,25 @@ export default function AdminAgentDetailsPage() {
           <div style={{ padding: 14, borderRadius: 8, background: '#fef2f2', color: '#dc2626', fontSize: 13 }}>{error}</div>
         ) : (
           <>
-            {/* ── Hero card ────────────────────────────────────────────────── */}
-            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 14, padding: '20px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* ── Agent identity ────────────────────────────────────────────── */}
+            <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 16, padding: '22px 24px', marginBottom: 16, boxShadow: '0 8px 30px rgba(74,37,69,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 {/* avatar */}
-                <div style={{ width: 48, height: 48, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 800, flexShrink: 0 }}>
+                <div style={{ width: 58, height: 58, borderRadius: '50%', background: colors.inkPlum, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 800, flexShrink: 0 }}>
                   {initials}
                 </div>
                 <div>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: colors.charcoal, marginBottom: 3 }}>
-                    {agent?.full_name || agent?.email}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <h1 style={{ fontFamily: fonts.heading, fontSize: 24, fontWeight: 700, color: colors.charcoal, margin: 0 }}>
+                      {agent?.full_name || agent?.email}
+                    </h1>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: agent?.agent_status === 'active' ? '#166534' : '#6b7280', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f3f4f6', border: `1px solid ${agent?.agent_status === 'active' ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 20, padding: '3px 9px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {agent?.agent_status || 'unknown'}
+                    </span>
                   </div>
                   <div style={{ fontSize: 12, color: colors.lovelabMuted }}>{agent?.email}</div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, background: '#f3f0f8', borderRadius: 20, padding: '2px 9px' }}>
-                      {commRate}% rate
-                    </span>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     {(() => {
                       const bonusMode = resolveBonusMode(agent);
                       const bonusOn = bonusMode !== 'off';
@@ -1005,14 +968,25 @@ export default function AdminAgentDetailsPage() {
                         </button>
                       );
                     })()}
-                    <span style={{ fontSize: 11, fontWeight: 700, color: agent?.agent_status === 'active' ? '#374151' : '#9ca3af', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f5f5f5', border: `1px solid ${agent?.agent_status === 'active' ? '#d1fae5' : '#e5e7eb'}`, borderRadius: 20, padding: '2px 9px' }}>
-                      {agent?.agent_status || 'unknown'}
-                    </span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div data-testid="effective-rate-card" style={{ minWidth: 180, padding: '14px 18px', borderRadius: 12, border: `1px solid ${colors.lineGray}`, background: '#fcfbfd', textAlign: 'center' }}>
+                  <div style={{ color: colors.inkPlum, fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{commRate}%</div>
+                  <div style={{ color: colors.lovelabMuted, fontSize: 10, lineHeight: 1.35, marginTop: 7 }}>
+                    Commission rate
+                    <br />
+                    {commRateSource === 'organization'
+                      ? `from ${orgData?.name || 'organization'}`
+                      : commRateSource === 'agent'
+                        ? 'custom agent rate'
+                        : 'not configured'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
                 {agent?.agent_contract_url && (
                   <button
                     onClick={() => setContractChatOpen(true)}
@@ -1053,52 +1027,29 @@ export default function AdminAgentDetailsPage() {
               </div>
             </div>
 
-            {/* ── 4 KPI cards ──────────────────────────────────────────────── */}
-            {/*
-              Phase 19b — four-bucket split.
-                READY TO PAY      = customer has paid the order (green); will be
-                                    included in next month's payout export.
-                AWAITING CUSTOMER = customer hasn't paid yet (orange); commission
-                                    is on hold; rolls over to next month.
-                PAID OUT          = already transferred to the agent.
-                REVENUE           = total post-shipping revenue brought in.
-            */}
-            <div style={{ display: 'grid', gridTemplateColumns: isCompact ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+            {/* ── The three numbers an admin needs first ───────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
               {[
                 {
-                  label: 'READY TO PAY',
-                  value: fmt2(s.ready_to_pay || 0),
-                  sub: s.ready_to_pay_count ? `${s.ready_to_pay_count} commission${s.ready_to_pay_count === 1 ? '' : 's'}` : 'customer paid',
-                  accent: '#16a34a',
-                  background: '#f0fdf4',
-                  border: '#bbf7d0',
-                },
-                {
-                  label: 'AWAITING CUSTOMER',
-                  value: fmt2(s.awaiting_customer || 0),
-                  sub: s.awaiting_customer_count ? `${s.awaiting_customer_count} on hold` : 'customer not paid yet',
-                  accent: '#c2410c',
-                  background: '#fff7ed',
-                  border: '#fed7aa',
+                  label: 'EARNED',
+                  value: fmt2(totalEarned),
+                  sub: `${s.order_count || orderDocsList.length} order commission${(s.order_count || orderDocsList.length) === 1 ? '' : 's'}`,
+                  accent: colors.inkPlum,
                 },
                 {
                   label: 'PAID OUT',
-                  value: fmt2(s.paid_amount || s.total_paid_out || 0),
-                  sub: 'transferred',
-                  accent: colors.charcoal,
-                  background: '#fff',
-                  border: colors.lineGray,
+                  value: fmt2(totalPaid),
+                  sub: 'transferred to agent',
+                  accent: '#15803d',
                 },
                 {
-                  label: 'REVENUE',
-                  value: fmt2(orderRevenue),
-                  sub: `${orderDocsList.length} order${orderDocsList.length === 1 ? '' : 's'}`,
-                  accent: colors.charcoal,
-                  background: '#fff',
-                  border: colors.lineGray,
+                  label: 'OUTSTANDING',
+                  value: fmt2(pendingBalance),
+                  sub: 'still owed to agent',
+                  accent: '#b45309',
                 },
               ].map(k => (
-                <div key={k.label} style={{ background: k.background, border: `1px solid ${k.border}`, borderRadius: 12, padding: '16px 18px' }}>
+                <div key={k.label} style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 14, padding: '18px 20px', boxShadow: '0 5px 18px rgba(74,37,69,0.035)' }}>
                   <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: colors.lovelabMuted, marginBottom: 6, textTransform: 'uppercase' }}>{k.label}</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: k.accent, lineHeight: 1 }}>{k.value}</div>
                   <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>{k.sub}</div>
@@ -1205,7 +1156,7 @@ export default function AdminAgentDetailsPage() {
                 {/* Commission */}
                 <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.lineGray}`, fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
-                    Commission History
+                    Orders &amp; Commission
                   </div>
                   {(() => {
                     const allRows = commissions.length > 0 ? commissions : docDerivedRows;
@@ -1257,11 +1208,6 @@ export default function AdminAgentDetailsPage() {
                     const selectedCount = selectedCommissionIds.size;
                     return (
                       <>
-                        {isDerived && (
-                          <div style={{ padding: '7px 14px', background: '#fffbeb', fontSize: 11, color: '#92400e', borderBottom: `1px solid ${colors.lineGray}` }}>
-                            Estimated from order documents — save an order to create real commission rows.
-                          </div>
-                        )}
                         {bonusError && (
                           <div role="alert" style={{ padding: '8px 14px', background: '#fef2f2', fontSize: 12, color: '#991b1b', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                             <span>{bonusError}</span>
@@ -1355,7 +1301,7 @@ export default function AdminAgentDetailsPage() {
                           </div>
                         ) : (
                         <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                           <thead>
                             <tr style={{ background: '#faf8fc' }}>
                               <th style={{ ...th, textAlign: 'center', width: 34 }}>
@@ -1372,6 +1318,7 @@ export default function AdminAgentDetailsPage() {
                               </th>
                               <th style={th}>Date</th>
                               <th style={th}>Client</th>
+                              <th style={th}>Fair</th>
                               <th style={{ ...th, textAlign: 'right' }} title="The full order total as invoiced to the customer (includes shipping).">Total</th>
                               <th style={{ ...th, textAlign: 'right' }} title="Order total minus shipping. Commission is a % of this number.">Net</th>
                               <th style={{ ...th, textAlign: 'right' }}>Rate</th>
@@ -1424,6 +1371,9 @@ export default function AdminAgentDetailsPage() {
                                 : row.type === 'bonus'
                                 ? 'Bonus'
                                 : (row.document?.client_company || row.document?.client_name || row.client_label || 'Order');
+                              const fairLabel = row.document?.event?.type === 'fair'
+                                ? row.document.event.name
+                                : row.document?.event?.name || 'Direct';
                               // Resolve gross total: doc-derived rows pre-compute it; real
                               // commission rows get it from the joined document. Fallback
                               // to net total when shipping data isn't available.
@@ -1458,7 +1408,11 @@ export default function AdminAgentDetailsPage() {
                                       />
                                     ) : null}
                                   </td>
-                                  <td style={td}>{new Date(row.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                                  <td style={td}>
+                                    {commissionDisplayDate(row)
+                                      ? new Date(commissionDisplayDate(row)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                                      : '—'}
+                                  </td>
                                   <td style={{ ...td, fontSize: 12 }}>
                                     {clientLabel}
                                     {row.type === 'new_client_bonus' && (
@@ -1499,6 +1453,9 @@ export default function AdminAgentDetailsPage() {
                                         )}
                                       </div>
                                     )}
+                                  </td>
+                                  <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>
+                                    {isBonus ? '—' : fairLabel}
                                   </td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt2(grossTotal)}</td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt2(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt2(netTotal)}</td>
@@ -1781,104 +1738,27 @@ export default function AdminAgentDetailsPage() {
                 {agent?.organization_id && orgData ? (
                   <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 18 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{orgData.name}</div>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>{orgData.name}</div>
+                        <div style={{ marginTop: 4, fontSize: 11, color: colors.lovelabMuted }}>
+                          Shared settings and team settlement live on the organization page.
+                        </div>
+                      </div>
                       <button
-                        onClick={() => { setEditingOrg(!editingOrg); setOrgMsg(null); }}
-                        style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: editingOrg ? '#fef2f2' : '#fff', color: editingOrg ? '#dc2626' : colors.charcoal, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                        onClick={() => router.push(`/admin/organizations/${agent.organization_id}`)}
+                        style={{ padding: '7px 12px', borderRadius: 7, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
                       >
-                        {editingOrg ? 'Cancel' : 'Edit'}
+                        Open organization
                       </button>
                     </div>
-                    {editingOrg ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Name</label>
-                            <input value={orgForm.name} onChange={(e) => setOrgForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Territory</label>
-                            <input value={orgForm.territory} onChange={(e) => setOrgForm(f => ({ ...f, territory: e.target.value }))} style={inputStyle} />
-                          </div>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Org Rate (%)</label>
-                            <input type="number" min="0" max="100" step="0.5" value={orgForm.commission_rate} onChange={(e) => setOrgForm(f => ({ ...f, commission_rate: e.target.value }))} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: colors.lovelabMuted, display: 'block', marginBottom: 4 }}>Conditions</label>
-                            <input value={orgForm.conditions} onChange={(e) => setOrgForm(f => ({ ...f, conditions: e.target.value }))} style={inputStyle} />
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <button onClick={handleSaveOrg} disabled={savingOrg || !orgForm.name.trim()} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: colors.inkPlum, color: '#fff', cursor: savingOrg ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, opacity: savingOrg ? 0.6 : 1 }}>
-                            {savingOrg ? 'Saving...' : 'Save'}
-                          </button>
-                          {orgMsg && <span style={{ fontSize: 12, color: /fail|error/i.test(orgMsg) ? '#dc2626' : '#059669' }}>{orgMsg}</span>}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 20, fontSize: 13, color: colors.charcoal, flexWrap: 'wrap' }}>
-                        {orgData.territory && <span>Territory: <strong>{orgData.territory}</strong></span>}
-                        {orgData.commission_rate != null && <span>Rate: <strong>{orgData.commission_rate}%</strong></span>}
-                        {orgData.conditions && <span>Conditions: <strong>{orgData.conditions}</strong></span>}
-                        {!orgData.territory && orgData.commission_rate == null && !orgData.conditions && <span style={{ color: colors.lovelabMuted }}>No settings yet</span>}
-                      </div>
-                    )}
-
-                    {organizationLedger?.organization_summary && (
-                      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.lineGray}` }}>
-                        {(() => {
-                          const ledger = organizationLedger.organization_summary
-                          const ledgerIsEmpty = !ledger.total_commission_earned && !ledger.total_paid_out && !ledger.pending_balance
-                          const usesDerived = ledgerIsEmpty && totalEarned > 0
-                          const displayEarned = usesDerived ? totalEarned : (ledger.total_commission_earned || 0)
-                          const displayPaid = usesDerived ? totalPaid : (ledger.total_paid_out || 0)
-                          const displayPending = usesDerived ? pendingBalance : (ledger.pending_balance || 0)
-                          return (
-                            <>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase' }}>Company Totals</div>
-                                {usesDerived && (
-                                  <span style={{ fontSize: 10, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
-                                    Estimated from orders
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                                <Stat label="Earned" value={fmt2(displayEarned)} />
-                                <Stat label="Paid" value={fmt2(displayPaid)} />
-                                <Stat label="Pending" value={fmt2(displayPending)} />
-                              </div>
-                            </>
-                          )
-                        })()}
-                        {(organizationLedger.per_member || []).length > 0 && (
-                          <>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', marginBottom: 8 }}>Per Member</div>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                              <thead>
-                                <tr style={{ background: '#faf8fc' }}>
-                                  <th style={th}>Member</th>
-                                  <th style={{ ...th, textAlign: 'right' }}>Earned</th>
-                                  <th style={{ ...th, textAlign: 'right' }}>Paid</th>
-                                  <th style={{ ...th, textAlign: 'right' }}>Pending</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(organizationLedger.per_member || []).map((m) => (
-                                  <tr key={m.user_id}>
-                                    <td style={td}>{m.profile?.full_name || m.profile?.email || m.user_id}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.total_commission_earned || 0)}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.total_paid_out || 0)}</td>
-                                    <td style={{ ...td, textAlign: 'right' }}>{fmt2(m.pending_balance || 0)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </>
-                        )}
+                    <div style={{ display: 'flex', gap: 20, fontSize: 12, color: colors.charcoal, flexWrap: 'wrap', paddingTop: 14, borderTop: `1px solid ${colors.lineGray}` }}>
+                      <span>Territory: <strong>{orgData.territory || 'Not set'}</strong></span>
+                      <span>Default rate: <strong>{Number(orgData.commission_rate) || 0}%</strong></span>
+                      <span>Members: <strong>{organizationMembers.length}</strong></span>
+                    </div>
+                    {orgData.conditions && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: colors.lovelabMuted }}>
+                        {orgData.conditions}
                       </div>
                     )}
                   </div>
@@ -2052,15 +1932,6 @@ const COMMISSION_FILTERS = [
   { key: 'paid', label: 'Paid' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
-
-function Stat({ label, value, color }) {
-  return (
-    <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 10, padding: 12 }}>
-      <div style={{ fontSize: 11, color: colors.lovelabMuted, textTransform: 'uppercase', fontWeight: 700 }}>{label}</div>
-      <div style={{ marginTop: 6, fontSize: 20, color: color || colors.charcoal, fontWeight: 800 }}>{value}</div>
-    </div>
-  );
-}
 
 const th = {
   padding: '10px 12px',

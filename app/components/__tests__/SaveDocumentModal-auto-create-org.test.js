@@ -43,4 +43,13 @@ describe('SaveDocumentModal — auto-create agent folders for sub-agents', () =>
   test('still POSTs to /api/events for actually-missing folders', () => {
     expect(SOURCE).toMatch(/fetch\(\s*'\/api\/events'/);
   });
+
+  test('choosing an agent automatically selects that agent folder', () => {
+    expect(SOURCE).toMatch(/findAgentFolderEvent\(events,\s*selectedAgent\)/);
+    expect(SOURCE).toMatch(/setSelectedEventId\(agentFolder\?\.id\s*\|\|\s*''\)/);
+  });
+
+  test('admins do not silently default to the first unrelated event', () => {
+    expect(SOURCE).toMatch(/!isAdmin\s*&&\s*allEvents\.length\s*>\s*0/);
+  });
 });

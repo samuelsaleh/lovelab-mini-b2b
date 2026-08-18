@@ -210,4 +210,47 @@ describe('POST /api/clients — update on shared directory', () => {
       shipping_country: 'France',
     }))
   })
+
+  test('still saves contact details when client shipping columns are not migrated yet', async () => {
+    mockQuery.maybeSingle
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message: "Could not find the 'shipping_country' column of 'clients' in the schema cache",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'c-legacy-schema',
+          company: 'Legacy Co',
+          name: 'Sophie Client',
+          email: 'sophie@example.com',
+        },
+        error: null,
+      })
+
+    const res = await POST(makePost({
+      id: 'c-legacy-schema',
+      company: 'Legacy Co',
+      name: 'Sophie Client',
+      email: 'sophie@example.com',
+      shipping_same_as_billing: false,
+      shipping_country: 'France',
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockQuery.update).toHaveBeenCalledTimes(2)
+    expect(mockQuery.update.mock.calls[0][0]).toEqual(expect.objectContaining({
+      name: 'Sophie Client',
+      email: 'sophie@example.com',
+      shipping_country: 'France',
+    }))
+    expect(mockQuery.update.mock.calls[1][0]).toEqual(expect.objectContaining({
+      name: 'Sophie Client',
+      email: 'sophie@example.com',
+    }))
+    expect(mockQuery.update.mock.calls[1][0]).not.toHaveProperty('shipping_country')
+    expect(mockQuery.update.mock.calls[1][0]).not.toHaveProperty('shipping_same_as_billing')
+  })
 })

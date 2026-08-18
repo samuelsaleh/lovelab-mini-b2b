@@ -113,8 +113,21 @@ export async function GET(request) {
         .select('id, client_name, client_company, document_type, created_at, event_id, total_amount, order_channel, metadata')
         .in('id', docIds);
 
+      const eventIds = [...new Set((docs || []).map((doc) => doc.event_id).filter(Boolean))];
+      let eventsMap = {};
+      if (eventIds.length > 0) {
+        const { data: events } = await adminSupabase
+          .from('events')
+          .select('id, name, type')
+          .in('id', eventIds);
+        eventsMap = Object.fromEntries((events || []).map((event) => [event.id, event]));
+      }
+
       for (const d of docs || []) {
-        docsMap[d.id] = d;
+        docsMap[d.id] = {
+          ...d,
+          event: d.event_id ? eventsMap[d.event_id] || null : null,
+        };
       }
     }
 
