@@ -13,6 +13,9 @@
  *     (no created_by filter), so an agent can keep an office-created client
  *     up to date. created_by is never part of the update filter.
  *   - POST update of a missing id returns 404.
+ *   - Contact columns (name/email/phone) are guarded: an update reads the
+ *     stored row first and only replaces a filled contact detail when the
+ *     caller confirms, so a browser autofill cannot rewrite them silently.
  */
 
 // ── Mock Supabase query chain ────────────────────────────────────────────────
@@ -131,9 +134,16 @@ describe('GET /api/clients — shared directory', () => {
   })
 })
 
+// An update first reads the stored contact columns, then runs the update.
+// Both use maybeSingle, so the pre-read has to be queued first.
+function mockStoredContact(row = { name: null, email: null, phone: null }) {
+  mockQuery.maybeSingle.mockResolvedValueOnce({ data: row, error: null })
+}
+
 describe('POST /api/clients — update on shared directory', () => {
   test('non-admin updating a client they DO own: persists and returns it', async () => {
     mockRole = 'member'
+    mockStoredContact()
     mockQuery.maybeSingle.mockResolvedValueOnce({
       data: { id: 'c-1', company: 'Owned Co', created_by: 'agent-1' },
       error: null,
@@ -147,6 +157,7 @@ describe('POST /api/clients — update on shared directory', () => {
 
   test('non-admin can edit ANY client (shared directory): persists and returns it, no created_by filter', async () => {
     mockRole = 'member'
+    mockStoredContact()
     // The update matches the row (no ownership filter) and returns it.
     mockQuery.maybeSingle.mockResolvedValueOnce({
       data: { id: 'c-bld', company: 'sas bld', address: 'New Street 1', created_by: 'admin-sunita' },
@@ -179,6 +190,7 @@ describe('POST /api/clients — update on shared directory', () => {
 
   test('persists dzb_client_number, jeweler_group, and shipping on update', async () => {
     mockRole = 'member'
+    mockStoredContact()
     mockQuery.maybeSingle.mockResolvedValueOnce({
       data: {
         id: 'c-dzb',
@@ -212,6 +224,7 @@ describe('POST /api/clients — update on shared directory', () => {
   })
 
   test('still saves contact details when client shipping columns are not migrated yet', async () => {
+    mockStoredContact()
     mockQuery.maybeSingle
       .mockResolvedValueOnce({
         data: null,
@@ -252,5 +265,102 @@ describe('POST /api/clients — update on shared directory', () => {
     }))
     expect(mockQuery.update.mock.calls[1][0]).not.toHaveProperty('shipping_country')
     expect(mockQuery.update.mock.calls[1][0]).not.toHaveProperty('shipping_same_as_billing')
+  })
+})
+
+describe('POST /api/clients — contact overwrite guard', () => {
+  test('a different contact is NOT written without confirmation and warnings are returned', async () => {
+    mockRole = 'member'
+    mockStoredContact({ name: 'Marie Dupont', email: 'contact@littlefactory.re', phone: null })
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-1', company: 'SAS LITTLE FACTORY' },
+      error: null,
+    })
+
+    const res = await POST(makePost({
+      id: 'c-1',
+      company: 'SAS LITTLE FACTORY',
+      name: 'Dionne Saleh',
+      email: 'dionnesaleh@gmail.com',
+    }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    const payload = mockQuery.update.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('name')
+    expect(payload).not.toHaveProperty('email')
+    expect(json.contact_warnings).toEqual([
+      { field: 'name', stored: 'Marie Dupont', incoming: 'Dionne Saleh' },
+      { field: 'email', stored: 'contact@littlefactory.re', incoming: 'dionnesaleh@gmail.com' },
+    ])
+  })
+
+  test('a different contact IS written when confirm_contact_overwrite is true', async () => {
+    mockRole = 'member'
+    mockStoredContact({ name: 'Marie Dupont', email: 'contact@littlefactory.re', phone: null })
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-1', company: 'SAS LITTLE FACTORY' },
+      error: null,
+    })
+
+    const res = await POST(makePost({
+      id: 'c-1',
+      company: 'SAS LITTLE FACTORY',
+      name: 'Sophie Martin',
+      confirm_contact_overwrite: true,
+    }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(mockQuery.update.mock.calls[0][0]).toEqual(expect.objectContaining({ name: 'Sophie Martin' }))
+    expect(json.contact_warnings).toBeUndefined()
+  })
+
+  test('an empty contact field never wipes the stored value', async () => {
+    mockRole = 'member'
+    mockStoredContact({ name: 'Marie Dupont', email: 'contact@littlefactory.re', phone: '+262693218939' })
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-1', company: 'SAS LITTLE FACTORY' },
+      error: null,
+    })
+
+    const res = await POST(makePost({
+      id: 'c-1',
+      company: 'SAS LITTLE FACTORY',
+      name: '',
+      email: '   ',
+    }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    const payload = mockQuery.update.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('name')
+    expect(payload).not.toHaveProperty('email')
+    expect(payload).not.toHaveProperty('phone')
+    expect(json.contact_warnings).toBeUndefined()
+  })
+
+  test('filling an empty stored contact column needs no confirmation', async () => {
+    mockRole = 'member'
+    mockStoredContact({ name: null, email: null, phone: null })
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-1', company: 'SAS LITTLE FACTORY' },
+      error: null,
+    })
+
+    const res = await POST(makePost({
+      id: 'c-1',
+      company: 'SAS LITTLE FACTORY',
+      name: 'Marie Dupont',
+      email: 'contact@littlefactory.re',
+    }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(mockQuery.update.mock.calls[0][0]).toEqual(expect.objectContaining({
+      name: 'Marie Dupont',
+      email: 'contact@littlefactory.re',
+    }))
+    expect(json.contact_warnings).toBeUndefined()
   })
 })

@@ -45,10 +45,12 @@ function buildAgentFoldersMock() {
   return chain;
 }
 
+let profilesToReturn = [];
+
 function buildProfilesMock() {
   const chain = {};
   chain.select = jest.fn().mockReturnValue(chain);
-  chain.in = jest.fn().mockResolvedValue({ data: [], error: null });
+  chain.in = jest.fn().mockResolvedValue({ data: profilesToReturn, error: null });
   return chain;
 }
 
@@ -107,6 +109,7 @@ beforeEach(() => {
   rootFoldersToReturn = [];
   orgEventsToReturn = [];
   docsToReturn = [];
+  profilesToReturn = [];
 });
 
 describe('/api/org-folders GET — server-authoritative doc_count', () => {
@@ -175,6 +178,82 @@ describe('/api/org-folders GET — server-authoritative doc_count', () => {
     const body = await res.json();
     const folder = body.orgFolders.find((f) => f.organization_id === 'org-J');
     expect(folder.doc_count).toBe(0);
+  });
+
+  test('breaks the count down per member so the sidebar can nest them', async () => {
+    // Sarah Goutard Organization, the case that motivated this: nine members,
+    // four of whom actually sell. The team count alone told an admin nothing
+    // about who an order came from.
+    orgsToReturn = [{ id: 'org-S', name: 'Sarah Goutard Organization' }];
+    membershipsToReturn = [
+      { organization_id: 'org-S', user_id: 'sarah', role: 'owner' },
+      { organization_id: 'org-S', user_id: 'wassila', role: 'agent' },
+      { organization_id: 'org-S', user_id: 'ruby', role: 'agent' },
+    ];
+    profilesToReturn = [
+      { id: 'sarah', full_name: 'Sarah Goutard', email: 'sarah@example.com' },
+      { id: 'wassila', full_name: 'Wassila Mekidiche', email: 'wassila@example.com' },
+      { id: 'ruby', full_name: 'Ruby Robin', email: 'ruby@example.com' },
+    ];
+    orgEventsToReturn = [{ id: 'evt-sarah', organization_id: 'org-S' }];
+    docsToReturn = [
+      // Two of Wassila's orders are still filed in Sarah's folder — they must
+      // count for Wassila, because created_by is the reliable signal.
+      { id: 'd1', created_by: 'wassila', event_id: 'evt-sarah' },
+      { id: 'd2', created_by: 'wassila', event_id: 'evt-sarah' },
+      { id: 'd3', created_by: 'wassila', event_id: null },
+      { id: 'd4', created_by: 'ruby', event_id: null },
+      // Entered by an admin into the team's folder: counts for the team, for
+      // nobody in particular.
+      { id: 'd5', created_by: 'admin-id', event_id: 'evt-sarah' },
+    ];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const folder = body.orgFolders.find((f) => f.organization_id === 'org-S');
+
+    expect(folder.doc_count).toBe(5);
+    const byId = new Map(folder.members.map((m) => [m.user_id, m.doc_count]));
+    expect(byId.get('wassila')).toBe(3);
+    expect(byId.get('ruby')).toBe(1);
+    expect(byId.get('sarah')).toBe(0);
+    // The per-member counts never exceed the team count.
+    const memberSum = folder.members.reduce((acc, m) => acc + m.doc_count, 0);
+    expect(memberSum).toBeLessThanOrEqual(folder.doc_count);
+  });
+
+  test('every member gets a numeric per-member count, even with no documents', async () => {
+    orgsToReturn = [{ id: 'org-J', name: 'Josephine' }];
+    membershipsToReturn = [{ organization_id: 'org-J', user_id: 'jo-id', role: 'agent' }];
+    profilesToReturn = [{ id: 'jo-id', full_name: 'Josephine Berazzal', email: 'jo@example.com' }];
+    docsToReturn = [];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const folder = body.orgFolders.find((f) => f.organization_id === 'org-J');
+    expect(folder.members.every((m) => typeof m.doc_count === 'number')).toBe(true);
+    expect(folder.members[0].doc_count).toBe(0);
+  });
+
+  test('a member of two organizations has their documents counted in both', async () => {
+    orgsToReturn = [
+      { id: 'org-A', name: 'Team A' },
+      { id: 'org-B', name: 'Team B' },
+    ];
+    membershipsToReturn = [
+      { organization_id: 'org-A', user_id: 'dual', role: 'agent' },
+      { organization_id: 'org-B', user_id: 'dual', role: 'agent' },
+    ];
+    profilesToReturn = [{ id: 'dual', full_name: 'Dual Member', email: 'dual@example.com' }];
+    docsToReturn = [{ id: 'd1', created_by: 'dual', event_id: null }];
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    for (const orgId of ['org-A', 'org-B']) {
+      const folder = body.orgFolders.find((f) => f.organization_id === orgId);
+      expect(folder.doc_count).toBe(1);
+      expect(folder.members.find((m) => m.user_id === 'dual').doc_count).toBe(1);
+    }
   });
 
   test('attributes correctly across multiple orgs in one request', async () => {

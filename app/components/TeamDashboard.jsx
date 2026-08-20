@@ -3,13 +3,15 @@
 /**
  * TeamDashboard — shared accumulated team view for an organization.
  *
- * Used by:
- *   - /agent/team (every org member sees it; owners get management controls)
- *   - /admin/organizations/[id] (admins get the same dashboard + extras)
+ * Used by /agent/team: every org member sees it; owners get management
+ * controls. Everyone inside the org sees the SAME data (KPIs, per-member
+ * revenue, revenue by fair). Management (invite / resend / pause / remove)
+ * renders only for owners and admins — the API enforces the same rule
+ * server-side.
  *
- * Everyone inside the org sees the SAME data (KPIs, per-member revenue,
- * revenue by fair). Management (invite / resend / pause / remove) renders
- * only for owners and admins — the API enforces the same rule server-side.
+ * /admin/organizations/[id] no longer renders this component: that page has
+ * its own single members table and reuses only TeamInviteForm and
+ * RevenueByFairChart, both extracted from here.
  *
  * Props:
  *   organizationId — required
@@ -21,6 +23,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { colors } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import { useResponsive } from '@/lib/useIsMobile'
+import TeamInviteForm from './TeamInviteForm'
+import RevenueByFairChart from './RevenueByFairChart'
 
 const fmt = (n) => {
   if (n == null) return '—'
@@ -38,12 +42,6 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
   const [callerRole, setCallerRole] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-
-  // Invite form
-  const [inviteInput, setInviteInput] = useState('')
-  const [inviteRole, setInviteRole] = useState('member')
-  const [inviting, setInviting] = useState(false)
-  const [inviteFeedback, setInviteFeedback] = useState(null)
 
   // Row-level busy flag (pause / resend / remove)
   const [busyUserId, setBusyUserId] = useState(null)
@@ -72,55 +70,6 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
   }, [organizationId, t])
 
   useEffect(() => { loadData() }, [loadData])
-
-  const parseEmails = (raw) =>
-    [...new Set(
-      String(raw || '')
-        .split(/[\s,;\n]+/)
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean)
-    )]
-
-  const handleInvite = async () => {
-    const emails = parseEmails(inviteInput)
-    if (emails.length === 0) return
-    setInviting(true)
-    setInviteFeedback(null)
-    try {
-      const body = emails.length === 1
-        ? { email: emails[0], role: inviteRole }
-        : { emails, role: inviteRole }
-      const res = await fetch(`/api/organizations/${organizationId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (emails.length === 1) {
-        if (res.ok) {
-          setInviteFeedback({ ok: true, message: t('team.inviteSuccess', { email: emails[0] }) })
-          setInviteInput('')
-        } else {
-          setInviteFeedback({ ok: false, message: data.error || t('team.inviteFailed') })
-        }
-      } else {
-        const failed = (data.results || []).filter((r) => !r.ok)
-        setInviteFeedback({
-          ok: failed.length === 0,
-          message: t('team.inviteSummary', {
-            ok: data.invited_count ?? 0,
-            failed: data.failed_count ?? failed.length,
-          }),
-          details: failed.map((f) => `${f.email}: ${f.error}`),
-        })
-        if (failed.length === 0) setInviteInput('')
-      }
-      await loadData()
-    } catch {
-      setInviteFeedback({ ok: false, message: t('team.inviteFailed') })
-    }
-    setInviting(false)
-  }
 
   const memberAction = async (userId, action) => {
     setBusyUserId(userId)
@@ -177,17 +126,13 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
 
   const totals = stats?.totals || {}
   const perMember = stats?.per_member || []
-  const revenueByEvent = (stats?.revenue_by_event || []).slice(0, 8).map((e) => ({
-    ...e,
-    name: e.name?.length > 20 ? e.name.slice(0, 18) + '...' : (e.name || '—'),
-  }))
   const statsByUserId = new Map(perMember.map((m) => [m.user_id, m]))
   const removedWithActivity = perMember.filter((m) => m.is_removed)
 
   return (
     <div>
       {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+      <div data-testid="team-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
         <Kpi label={t('team.kpi.revenue')} value={fmt(totals.revenue || 0)} sub={`${totals.orders || 0} ${t('team.orders')} · ${totals.quotes || 0} ${t('team.quotes')}`} accent={colors.inkPlum} />
         <Kpi label={t('team.kpi.orders')} value={totals.orders || 0} sub={t('team.kpi.ordersSub')} accent={colors.luxeGold} />
         <Kpi label={t('team.kpi.activeMembers')} value={totals.active_members || 0} sub={t('team.kpi.activeMembersSub')} accent={colors.success} />
@@ -197,52 +142,7 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
       {/* Invite form — owners and admins only */}
       {canManage && (
         <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 18px', marginBottom: 20 }}>
-          <div style={{ ...sectionLabel, marginBottom: 10 }}>{t('team.inviteTitle')}</div>
-          <textarea
-            data-testid="team-invite-input"
-            value={inviteInput}
-            onChange={(e) => setInviteInput(e.target.value)}
-            placeholder={t('team.invitePlaceholder')}
-            rows={2}
-            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', marginBottom: 10 }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              data-testid="team-invite-submit"
-              onClick={handleInvite}
-              disabled={inviting || parseEmails(inviteInput).length === 0}
-              style={{
-                padding: '9px 20px', borderRadius: 8, border: 'none',
-                background: inviting || parseEmails(inviteInput).length === 0 ? '#ccc' : colors.inkPlum,
-                color: '#fff', fontSize: 13, fontWeight: 700,
-                cursor: inviting || parseEmails(inviteInput).length === 0 ? 'default' : 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {inviting ? t('team.sending') : t('team.sendInvites')}
-            </button>
-            {adminView && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: colors.charcoal }}>
-                <input
-                  type="checkbox"
-                  checked={inviteRole === 'owner'}
-                  onChange={(e) => setInviteRole(e.target.checked ? 'owner' : 'member')}
-                />
-                Invite as organization owner
-              </label>
-            )}
-            <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{t('team.inviteHint')}</span>
-          </div>
-          {inviteFeedback && (
-            <div
-              data-testid="team-invite-feedback"
-              style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12, background: inviteFeedback.ok ? '#f0fdf4' : '#fef2f2', color: inviteFeedback.ok ? '#15803d' : '#dc2626' }}
-            >
-              <div>{inviteFeedback.message}</div>
-              {(inviteFeedback.details || []).map((line, i) => (
-                <div key={i} style={{ marginTop: 2 }}>{line}</div>
-              ))}
-            </div>
-          )}
+          <TeamInviteForm organizationId={organizationId} adminView={adminView} onInvited={loadData} />
         </div>
       )}
 
@@ -344,7 +244,7 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
       {/* Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr', gap: 20 }}>
         {/* Revenue by member */}
-        <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 18px' }}>
+        <div data-testid="team-revenue-by-member" style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 18px' }}>
           <div style={{ ...sectionLabel, marginBottom: 14 }}>{t('team.revenueByMember')}</div>
           {perMember.filter((m) => m.revenue > 0).length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>{t('team.noData')}</div>
@@ -362,22 +262,7 @@ export default function TeamDashboard({ organizationId, adminView = false }) {
         </div>
 
         {/* Revenue by fair/event */}
-        <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '16px 18px' }}>
-          <div style={{ ...sectionLabel, marginBottom: 14 }}>{t('team.revenueByEvent')}</div>
-          {revenueByEvent.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: colors.lovelabMuted, fontSize: 13 }}>{t('team.noData')}</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(120, revenueByEvent.length * 42)}>
-              <BarChart data={revenueByEvent} layout="vertical" barCategoryGap="24%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#999' }} axisLine={false} tickLine={false} tickFormatter={(v) => `€${v >= 1000 ? Math.round(v / 1000) + 'k' : v}`} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#666' }} axisLine={false} tickLine={false} width={120} />
-                <Tooltip formatter={(v) => fmt(v)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                <Bar dataKey="revenue" name={t('team.col.revenue')} fill={colors.luxeGold} radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <RevenueByFairChart data={stats?.revenue_by_event} />
       </div>
     </div>
   )

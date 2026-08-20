@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { colors, fonts } from '@/lib/styles'
+import { noAutofill } from '@/lib/noAutofill'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
@@ -1089,11 +1090,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       if (!clientId) {
         const res = await fetch(`/api/clients?search=${encodeURIComponent(company)}`)
         const data = await res.json().catch(() => ({}))
-        const match = (data.clients || []).find(
+        // Only one exact match may be adopted. With duplicate company names we
+        // would otherwise write into an arbitrary record.
+        const matches = (data.clients || []).filter(
           (c) => (c.company || '').trim().toLowerCase() === company.toLowerCase(),
         )
-        clientId = match?.id || null
+        clientId = matches.length === 1 ? matches[0].id : null
       }
+      // confirm_contact_overwrite is deliberately never sent: saving an order
+      // is no moment to arbitrate a contact conflict, so the API keeps the
+      // stored name/email/phone of an existing client. Address, VAT, DZB and
+      // shipping still persist, and a brand new client takes everything.
       await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2159,21 +2166,21 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <img src="/logo.png" alt="LoveLab" style={{ height: compact ? 40 : 50, width: 'auto', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
-                    <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                    <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h1')} />
                     {/* Contact Person — i18n'd label + hint to prevent the
                         "Cher Oxygene Marie Schultz" bug. The hint is hidden
                         in print mode so the PDF stays clean. */}
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>{t('order.contactName')} :</div>
-                    <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                    <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h2')} />
                     {!isPrinting && (
                       <div style={{ fontSize: 9, fontStyle: 'italic', color: colors.lovelabMuted, marginTop: 2, lineHeight: 1.3 }}>
                         {t('order.contactNameHint')}
                       </div>
                     )}
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Billing Address :</div>
-                    <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
-                    <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
-                    <PrintableInput value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+                    <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h3')} />
+                    <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h4')} />
+                    <PrintableInput value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h5')} />
 
                     {(!isPrinting || !shippingSameAsBilling) && (
                       <div style={{ marginTop: 8 }}>
@@ -2191,9 +2198,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         {!shippingSameAsBilling && (
                           <div style={{ marginTop: isPrinting ? 0 : 4 }}>
                             <div style={{ ...hFieldLabel }}>Shipping Address :</div>
-                            <PrintableInput value={shippingAddressLine1} onChange={(e) => setShippingAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} />
-                            <PrintableInput value={shippingAddressLine2} onChange={(e) => setShippingAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
-                            <PrintableInput value={shippingCountry} onChange={(e) => setShippingCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} />
+                            <PrintableInput value={shippingAddressLine1} onChange={(e) => setShippingAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h6')} />
+                            <PrintableInput value={shippingAddressLine2} onChange={(e) => setShippingAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h7')} />
+                            <PrintableInput value={shippingCountry} onChange={(e) => setShippingCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h8')} />
                           </div>
                         )}
                       </div>
@@ -2205,7 +2212,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
-                      <PrintableInput value={vatNumber} onChange={(e) => { setVatNumber(e.target.value); setVatLocalValid(null) }} style={hFieldInput} isPrinting={isPrinting} />
+                      <PrintableInput value={vatNumber} onChange={(e) => { setVatNumber(e.target.value); setVatLocalValid(null) }} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h9')} />
                     </div>
                     {!isPrinting && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
@@ -2247,11 +2254,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   </div>
                   <div>
                     <div style={hFieldLabel}>E-mail :</div>
-                    <PrintableInput value={email} onChange={(e) => setEmail(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                    <PrintableInput value={email} onChange={(e) => setEmail(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h10')} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Phone :</div>
-                    <PrintableInput value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} isPrinting={isPrinting} />
+                    <PrintableInput value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h11')} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Event / Fair :</div>
@@ -2408,6 +2415,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                               border: '1px solid #ddd', fontSize: 10, fontFamily: fonts.body,
                             }}
                             isPrinting={isPrinting}
+                            {...noAutofill('h12')}
                           />
                         )}
                       </div>

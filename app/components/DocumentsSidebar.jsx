@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 
@@ -24,6 +25,8 @@ export default function DocumentsSidebar({
   setSelectedEventId,
   selectedOrgId,
   setSelectedOrgId,
+  selectedOrgMemberId,
+  setSelectedOrgMemberId,
   showInternal,
   setShowInternal,
   showConsignment,
@@ -53,6 +56,7 @@ export default function DocumentsSidebar({
   fetchData,
 }) {
   const router = useRouter()
+  const [manuallyExpandedOrgIds, setManuallyExpandedOrgIds] = useState(() => new Set())
 
   // Server-authoritative counts (events.doc_count is computed in /api/events
   // with the same filters as /api/documents — see Phase 12 fix). Falls back to
@@ -80,6 +84,27 @@ export default function DocumentsSidebar({
     if (typeof fromServer === 'number') return fromServer
     return documents.filter(d => d.events?.organization_id === organizationId).length
   }
+  // Per-member counts are keyed on created_by, so a member's order still counts
+  // for them when it was auto-filed into a team-mate's folder.
+  const getOrgMemberDocCount = (member) => {
+    if (typeof member?.doc_count === 'number') return member.doc_count
+    return documents.filter(d => d.created_by === member?.user_id).length
+  }
+  const memberLabel = (member) => member?.full_name || member?.email || 'Unnamed member'
+  const sortedOrgMembers = (org) => [...(org?.members || [])].sort((a, b) => {
+    const diff = getOrgMemberDocCount(b) - getOrgMemberDocCount(a)
+    if (diff !== 0) return diff
+    if ((a.role === 'owner') !== (b.role === 'owner')) return a.role === 'owner' ? -1 : 1
+    return memberLabel(a).localeCompare(memberLabel(b))
+  })
+  const toggleOrgExpanded = (organizationId) => {
+    setManuallyExpandedOrgIds(prev => {
+      const next = new Set(prev)
+      if (next.has(organizationId)) next.delete(organizationId)
+      else next.add(organizationId)
+      return next
+    })
+  }
   // Parked orders (Draft + Offre) are excluded from the All Documents count —
   // they have their own folders.
   const allDocsCount = documents.filter(d => d.status !== 'draft').length
@@ -90,6 +115,7 @@ export default function DocumentsSidebar({
   const selectAll = () => {
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     setShowDrafts?.(false)
     setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
@@ -99,14 +125,17 @@ export default function DocumentsSidebar({
   const selectEvent = (eventId) => {
     setSelectedEventId(eventId)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     setShowDrafts?.(false)
     setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
 
-  const selectOrg = (orgId) => {
+  // memberId narrows the team folder to one person; null shows the whole team.
+  const selectOrg = (orgId, memberId = null) => {
     setSelectedOrgId?.(orgId)
+    setSelectedOrgMemberId?.(memberId)
     setSelectedEventId(null)
     setShowDrafts?.(false)
     setShowOffres?.(false)
@@ -118,6 +147,7 @@ export default function DocumentsSidebar({
     setShowInternal(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     setShowDrafts?.(false)
     setShowOffres?.(false)
     if (showConsignment) setShowConsignment?.(false)
@@ -127,6 +157,7 @@ export default function DocumentsSidebar({
     setShowConsignment?.(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     setShowDrafts?.(false)
     setShowOffres?.(false)
     if (showInternal) setShowInternal(false)
@@ -137,6 +168,7 @@ export default function DocumentsSidebar({
     setShowOffres?.(false)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -146,6 +178,7 @@ export default function DocumentsSidebar({
     setShowDrafts?.(false)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
     if (showInternal) setShowInternal(false)
     if (showConsignment) setShowConsignment?.(false)
   }
@@ -423,30 +456,83 @@ export default function DocumentsSidebar({
           <SectionLabel>Agents</SectionLabel>
           <div style={{ padding: '0 8px' }}>
             {(orgFolders || []).map(org => {
-              const isSelected = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showDrafts && !showOffres
+              const inThisOrg = selectedOrgId === org.organization_id && !showInternal && !showConsignment && !showDrafts && !showOffres
+              const isTeamSelected = inThisOrg && !selectedOrgMemberId
               const docCount = getOrgDocCount(org.organization_id)
-              const displayName = org.members?.[0]?.full_name || org.members?.[0]?.email || org.organization_name
+              const members = sortedOrgMembers(org)
+              // A one-person team has nothing to nest — keep it a single row, and
+              // keep labelling it with the person, whose trading name is more
+              // recognisable than the auto-generated "X Organization".
+              const canExpand = members.length > 1
+              const isExpanded = canExpand && (manuallyExpandedOrgIds.has(org.organization_id) || inThisOrg)
+              const soloName = members.length === 1 ? memberLabel(members[0]) : ''
+              const teamName = canExpand
+                ? (org.organization_name || memberLabel(members[0]))
+                : (soloName || org.organization_name || 'Agent')
               return (
-                <button
-                  key={org.organization_id}
-                  onClick={() => selectOrg(org.organization_id)}
-                  style={{
-                    width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',
-                    background: isSelected ? '#f3f0f5' : 'transparent',
-                    color: isSelected ? colors.inkPlum : '#555',
-                    fontSize: 13, fontWeight: isSelected ? 600 : 400,
-                    cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    marginBottom: 2,
-                  }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {displayName}
-                  </span>
-                  <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>
-                    {docCount}
-                  </span>
-                </button>
+                <div key={org.organization_id} style={{ marginBottom: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {canExpand && (
+                      <button
+                        onClick={() => toggleOrgExpanded(org.organization_id)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${teamName}`}
+                        style={{
+                          border: 'none', background: 'transparent', cursor: 'pointer',
+                          color: '#aaa', fontSize: 10, padding: '6px 2px 6px 4px',
+                          lineHeight: 1, flexShrink: 0, fontFamily: fonts.body,
+                        }}
+                      >{isExpanded ? '▾' : '▸'}</button>
+                    )}
+                    <button
+                      onClick={() => selectOrg(org.organization_id)}
+                      style={{
+                        flex: 1, minWidth: 0,
+                        padding: canExpand ? '8px 12px 8px 4px' : '8px 12px',
+                        borderRadius: 8, border: 'none',
+                        background: isTeamSelected ? '#f3f0f5' : 'transparent',
+                        color: isTeamSelected ? colors.inkPlum : '#555',
+                        fontSize: 13, fontWeight: isTeamSelected ? 600 : 400,
+                        cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {teamName}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>
+                        {docCount}
+                      </span>
+                    </button>
+                  </div>
+
+                  {isExpanded && members.map(member => {
+                    const isMemberSelected = inThisOrg && selectedOrgMemberId === member.user_id
+                    const memberCount = getOrgMemberDocCount(member)
+                    return (
+                      <button
+                        key={member.user_id}
+                        onClick={() => selectOrg(org.organization_id, member.user_id)}
+                        style={{
+                          width: 'calc(100% - 18px)', marginLeft: 18,
+                          padding: '6px 12px', borderRadius: 8, border: 'none',
+                          background: isMemberSelected ? '#f3f0f5' : 'transparent',
+                          color: isMemberSelected ? colors.inkPlum : '#777',
+                          fontSize: 12, fontWeight: isMemberSelected ? 600 : 400,
+                          cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {memberLabel(member)}
+                        </span>
+                        <span style={{ fontSize: 11, color: '#aaa', flexShrink: 0, marginLeft: 8 }}>
+                          {memberCount}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               )
             })}
           </div>

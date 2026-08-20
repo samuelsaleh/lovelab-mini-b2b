@@ -141,6 +141,7 @@ export async function GET(request) {
           email: p?.email || '',
           subfolder_id: subfolder?.id || null,
           subfolder_name: subfolder?.name || null,
+          doc_count: 0,
         };
       });
 
@@ -212,6 +213,11 @@ export async function GET(request) {
         if (docsErr) throw docsErr;
 
         const countByOrg = new Map();
+        // Per-member counts let the sidebar nest one child row per person under
+        // the team. Keyed on created_by (never event_id) so an order that was
+        // auto-filed into another member's folder before per-person folders
+        // existed still counts for whoever actually made it.
+        const countByOrgMember = new Map(); // `${org_id}|${user_id}` -> count
         const countedKeys = new Set(); // doc_id|org_id
         for (const d of docs || []) {
           const orgsForDoc = new Set();
@@ -225,10 +231,17 @@ export async function GET(request) {
             if (countedKeys.has(key)) continue;
             countedKeys.add(key);
             countByOrg.set(oid, (countByOrg.get(oid) || 0) + 1);
+            if (d.created_by && memberOrgs?.has(oid)) {
+              const memberKey = `${oid}|${d.created_by}`;
+              countByOrgMember.set(memberKey, (countByOrgMember.get(memberKey) || 0) + 1);
+            }
           }
         }
         for (const f of orgFolders) {
           f.doc_count = countByOrg.get(f.organization_id) || 0;
+          for (const m of f.members) {
+            m.doc_count = countByOrgMember.get(`${f.organization_id}|${m.user_id}`) || 0;
+          }
         }
       }
     } catch (countErr) {

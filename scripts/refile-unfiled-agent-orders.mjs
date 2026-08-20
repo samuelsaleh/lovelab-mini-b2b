@@ -7,7 +7,9 @@
  * Found by scripts/diagnose-unfiled-agent-orders.mjs (2026-07-19):
  *   ROSTFLECKHAUS €1695 (Bastian Mayer) → "Bastian Mayer"
  *   SAS BLD (LE DONJON) €376 (Nicolas)  → "NICOLAS WHOLESALE FRANCE"
- *   MARIE ET HORTENSE €1630 (Wassila)   → "Sarah Goutard"
+ *   MARIE ET HORTENSE €1630 (Wassila)   → "Sarah Goutard" (owner folder — the
+ *     wrong target that motivated the name-based matcher below; a member's order
+ *     now resolves to their own folder)
  *   SARL LANOUE AND CO €2128 (Nicolas)  → "NICOLAS WHOLESALE FRANCE"
  *   SAS GALA €2503 (Nicolas)            → "NICOLAS WHOLESALE FRANCE"
  *
@@ -17,6 +19,7 @@
 import { createClient } from '@supabase/supabase-js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { matchAgentFolderEvent } from '../lib/events/agentFolderMatch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 for (const f of ['.env.local', '.env']) {
@@ -58,11 +61,27 @@ for (const p of profiles || []) {
   }
 }
 
+const idsByEmail = new Map();
+for (const p of profiles || []) {
+  const email = String(p.email || '').trim().toLowerCase();
+  if (!email) continue;
+  if (!idsByEmail.has(email)) idsByEmail.set(email, []);
+  idsByEmail.get(email).push(p.id);
+}
+
+// Name-based match, shared with the live save path. Picking "the first agent
+// folder of the org" (the original behaviour) filed every team member's order
+// under the owner's name, which is exactly the mess this repairs.
 function folderForUser(userId) {
-  const orgIds = orgsByUser.get(userId) || new Set();
-  const byOrg = (agentEvents || []).find((e) => e.organization_id && orgIds.has(e.organization_id));
-  if (byOrg) return byOrg;
-  return (agentEvents || []).find((e) => e.created_by === userId) || null;
+  const profile = profileById.get(userId);
+  if (!profile) return null;
+  const email = String(profile.email || '').trim().toLowerCase();
+  return matchAgentFolderEvent({
+    profile,
+    orgIds: orgsByUser.get(userId) || new Set(),
+    agentEvents: agentEvents || [],
+    userIds: email ? (idsByEmail.get(email) || [userId]) : [userId],
+  });
 }
 
 const { data: docs } = await supabase

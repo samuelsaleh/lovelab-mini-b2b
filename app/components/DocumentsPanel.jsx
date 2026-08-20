@@ -7,6 +7,7 @@ import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
+import { documentAttributionSearchText } from '@/lib/documentAttribution'
 import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './AuthProvider'
 import DocumentsSidebar from './DocumentsSidebar'
@@ -45,6 +46,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // ── Navigation selection ──────────────────────────────────────────────────
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [selectedOrgId, setSelectedOrgId] = useState(null)
+  // Optional child selection inside an agent team: narrows the org folder down
+  // to one member. Matched on created_by, so it stays correct for the historical
+  // orders whose event_id still points at another member's folder.
+  const [selectedOrgMemberId, setSelectedOrgMemberId] = useState(null)
   const [showInternal, setShowInternal] = useState(false)
   const [showConsignment, setShowConsignment] = useState(false)
   // Draft (parked orders) view — its own "Draft" folder, separate from the
@@ -631,6 +636,20 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     return new Set(org.members.map(m => m.user_id))
   }, [selectedOrgId, orgFolders])
 
+  // Search covers the client, the file name, and the people behind the order
+  // (selling agent, whoever typed it, consignment recipient) so "wassila"
+  // finds her orders without having to remember which client she sold to.
+  const matchesSearch = (doc) => {
+    if (!search) return true
+    const needle = search.toLowerCase()
+    return (
+      doc.client_name?.toLowerCase().includes(needle) ||
+      doc.client_company?.toLowerCase().includes(needle) ||
+      doc.file_name?.toLowerCase().includes(needle) ||
+      documentAttributionSearchText(doc).includes(needle)
+    )
+  }
+
   // A specific event or agent folder is selected — drives whether we read from
   // the server-fetched `folderDocs` (complete folder) or the paginated
   // `documents` array (All Documents / No Event views).
@@ -649,6 +668,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         const byMember = selectedOrgMemberIds?.has(doc.created_by)
         const byEvent = doc.events?.organization_id === selectedOrgId
         if (!byMember && !byEvent) return false
+        if (selectedOrgMemberId && doc.created_by !== selectedOrgMemberId) return false
       } else {
         const matchesEvent =
           selectedEventId === null
@@ -658,14 +678,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
               : doc.event_id === selectedEventId
         if (!matchesEvent) return false
       }
-      return (
-        !search ||
-        doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
-        doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
-        doc.file_name?.toLowerCase().includes(search.toLowerCase())
-      )
+      return matchesSearch(doc)
     })
-  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedOrgMemberId, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
 
   // The global list is complete, so the rows and analytics always use the same
   // filtered dataset. This prevents a result from appearing only in analytics.
@@ -674,13 +690,6 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // Parked orders live in their own folders — never mixed into All Documents or
   // the agent's own event folders. Draft holds every parked order except the
   // ones an admin filed as an Offre. Search still applies within the folder.
-  const matchesSearch = (doc) => (
-    !search ||
-    doc.client_name?.toLowerCase().includes(search.toLowerCase()) ||
-    doc.client_company?.toLowerCase().includes(search.toLowerCase()) ||
-    doc.file_name?.toLowerCase().includes(search.toLowerCase())
-  )
-
   const draftDocs = useMemo(
     () => parkedDocs.filter(doc => doc.draft_kind !== 'offre' && matchesSearch(doc)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -700,13 +709,24 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (showConsignment) return 'Consignment Orders'
     if (selectedOrgId) {
       const org = orgFolders.find(o => o.organization_id === selectedOrgId)
-      return org?.members?.[0]?.full_name || org?.members?.[0]?.email || org?.organization_name || 'Agent'
+      const members = org?.members || []
+      // Solo teams are labelled with the person — their trading name says more
+      // than the auto-generated "X Organization". Same rule as the sidebar.
+      const orgName = members.length === 1
+        ? (members[0].full_name || members[0].email || org?.organization_name || 'Agent')
+        : (org?.organization_name || members[0]?.full_name || members[0]?.email || 'Agent')
+      if (selectedOrgMemberId) {
+        const member = members.find(m => m.user_id === selectedOrgMemberId)
+        const memberName = member?.full_name || member?.email
+        if (memberName) return `${orgName} › ${memberName}`
+      }
+      return orgName
     }
     if (selectedEventId && selectedEventId !== 'none')
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showDrafts, showOffres, showInternal, showConsignment, selectedOrgId, selectedEventId, orgFolders, events])
+  }, [showDrafts, showOffres, showInternal, showConsignment, selectedOrgId, selectedOrgMemberId, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -728,6 +748,12 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (showDrafts) return {
       title: 'No drafts yet',
       subtitle: 'Save an order as a draft to park it here until it’s ready to send.',
+    }
+    if (selectedOrgId) return {
+      title: `No documents in ${currentEventName}`,
+      subtitle: selectedOrgMemberId
+        ? 'Select the team above to see everyone, or All Documents for every folder.'
+        : 'Switch to All Documents to see files from other folders.',
     }
     if (selectedEventId && selectedEventId !== 'none') return {
       title: `No documents in ${currentEventName}`,
@@ -795,6 +821,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         setSelectedEventId={setSelectedEventId}
         selectedOrgId={selectedOrgId}
         setSelectedOrgId={setSelectedOrgId}
+        selectedOrgMemberId={selectedOrgMemberId}
+        setSelectedOrgMemberId={setSelectedOrgMemberId}
         showInternal={showInternal}
         setShowInternal={handleSetShowInternal}
         showConsignment={showConsignment}
@@ -826,6 +854,21 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
       {/* Main content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: mobile ? 12 : 20 }}>
+        {/* Which folder am I looking at — the sidebar selection is easy to lose
+            track of once a team is narrowed down to one member. */}
+        <div style={{ marginBottom: 12 }}>
+          <h2 style={{
+            margin: 0, fontSize: mobile ? 15 : 17, fontWeight: 700,
+            color: colors.inkPlum, fontFamily: fonts.body,
+          }}>{currentEventName}</h2>
+          {!displayLoading && (
+            <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
+              {displayDocs.length} {displayDocs.length === 1 ? 'document' : 'documents'}
+              {search && ' matching your search'}
+            </div>
+          )}
+        </div>
+
         {/* Toolbar */}
         <div style={{
           marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center',

@@ -167,3 +167,30 @@ describe('TeamDashboard', () => {
     expect(screen.getByText('Retry')).toBeInTheDocument()
   })
 })
+
+/**
+ * /agent/team must keep the complete dashboard even though the admin org page
+ * stopped using this component: KPIs, invite form (via TeamInviteForm), the
+ * full members table and both charts (fair chart via RevenueByFairChart).
+ */
+describe('TeamDashboard keeps the full layout for /agent/team', () => {
+  afterEach(() => jest.resetAllMocks())
+
+  it('renders KPIs, both charts and the full members table', async () => {
+    mockFetch('owner')
+    renderDashboard()
+    await waitFor(() => expect(screen.getByText('Sarah Dupont')).toBeInTheDocument())
+
+    expect(screen.getByTestId('team-kpis')).toBeInTheDocument()
+    expect(screen.getByTestId('team-revenue-by-member')).toBeInTheDocument()
+    expect(screen.getByTestId('team-revenue-by-event')).toBeInTheDocument()
+    expect(screen.getByText('Members (2)')).toBeInTheDocument()
+    expect(screen.getByText('€9,000')).toBeInTheDocument()
+
+    const row = screen.getByTestId('team-member-row-member-1')
+    const table = row.closest('table')
+    // member, role, status, revenue, orders, commission, actions
+    expect(table.querySelectorAll('thead th').length).toBe(7)
+    expect(row.querySelectorAll('td').length).toBe(7)
+  })
+})

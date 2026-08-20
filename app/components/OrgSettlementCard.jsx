@@ -51,6 +51,9 @@ export default function OrgSettlementCard({ organizationId }) {
   const [payError, setPayError] = useState(null)
   const [paySuccess, setPaySuccess] = useState(null)
 
+  // Per-member breakdown, needed at payout time only
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
+
   const owner = useMemo(
     () => (ledger?.per_member || []).find((m) => m.role === 'owner') || null,
     [ledger],
@@ -197,20 +200,12 @@ export default function OrgSettlementCard({ organizationId }) {
           Organization settlement
         </span>
         <span style={{ fontSize: 11, color: colors.lovelabMuted }}>
-          One report, one payment — settles the entire team at once
+          {/* Earned / paid out / outstanding are on the summary cards above, so
+              this card only names who the single payment goes to. */}
+          One report, one payment — {owner
+            ? `payable to ${owner.profile?.full_name || owner.profile?.email || 'the owner'}`
+            : 'no owner found'}
         </span>
-      </div>
-
-      {/* Totals strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 0 }}>
-        <Stat label="Commission earned" value={fmt(summary.total_commission_earned)} sub="all team members" />
-        <Stat label="Paid out" value={fmt(summary.total_paid_out)} sub="payments recorded" />
-        <Stat
-          label="Owed to organization"
-          value={fmt(summary.pending_balance)}
-          sub={owner ? `payable to ${owner.profile?.full_name || owner.profile?.email || 'owner'}` : 'no owner found'}
-          highlight
-        />
       </div>
 
       {orgEurosZero && hasZeroRatePipeline && (
@@ -231,17 +226,25 @@ export default function OrgSettlementCard({ organizationId }) {
         </div>
       )}
 
-      {/* One organization payment, transparently allocated back to each
-          member through the commissions settled by the linked report. */}
+      {/* One organization payment, transparently allocated back to each member
+          through the commissions settled by the linked report. The per-member
+          table is collapsed by default: it is only needed at payout time, and
+          leaving it open made this page show the same member list three times. */}
       <div style={{ borderTop: `1px solid ${colors.lineGray}` }}>
-        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Team settlement breakdown
           </span>
-          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>
-            One bank payment; each person&apos;s share is tracked separately.
-          </span>
+          <button
+            data-testid="org-settlement-breakdown-toggle"
+            onClick={() => setBreakdownOpen((v) => !v)}
+            aria-expanded={breakdownOpen}
+            style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', color: colors.inkPlum, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {breakdownOpen ? 'Hide breakdown' : `Show breakdown (${members.length} ${members.length === 1 ? 'member' : 'members'})`}
+          </button>
         </div>
+        {breakdownOpen && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
             <thead>
@@ -299,6 +302,7 @@ export default function OrgSettlementCard({ organizationId }) {
             </tbody>
           </table>
         </div>
+        )}
         {payments.length > 0 && (
           <div style={{ padding: '10px 18px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted }}>
             <strong style={{ color: colors.charcoal }}>Latest organization payment:</strong>{' '}
@@ -421,16 +425,6 @@ export function isZeroRateWithCounts(member) {
     (Number(member?.reported) || 0) +
     (Number(member?.settled_amount) || 0)
   return euros === 0
-}
-
-function Stat({ label, value, sub, highlight }) {
-  return (
-    <div style={{ padding: '16px 18px', borderRight: `1px solid ${colors.lineGray}`, background: highlight ? '#fdf6e3' : '#fff' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: highlight ? '#8a6a2c' : colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: highlight ? '#8a6a2c' : colors.inkPlum }}>{value}</div>
-      <div style={{ fontSize: 11, color: highlight ? '#a68a4e' : colors.lovelabMuted, marginTop: 2 }}>{sub}</div>
-    </div>
-  )
 }
 
 function ModalField({ label, children }) {

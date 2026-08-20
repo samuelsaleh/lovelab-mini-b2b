@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import { colors, fonts, inp, lbl } from '@/lib/styles'
+import { noAutofill } from '@/lib/noAutofill'
 import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '@/lib/vat'
@@ -27,6 +28,8 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
   const [showManualAddress, setShowManualAddress] = useState(false)
   const [countryOpen, setCountryOpen] = useState(false)
   const [countryHi, setCountryHi] = useState(0)
+  const [starting, setStarting] = useState(false)
+  const [contactConflict, setContactConflict] = useState(null)
   const countryListRef = useRef(null)
 
   // Client search state
@@ -116,15 +119,17 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
     setShowManualAddress(true)
   }
 
-  // Save current client to DB
-  const saveClient = async () => {
-    if (!client.company.trim()) return
+  // Save current client to DB. Resolves with the contact conflicts the API
+  // refused to apply, so the caller can ask the user before overwriting.
+  const saveClient = async ({ confirmContactOverwrite = false } = {}) => {
+    if (!client.company.trim()) return []
     try {
       const res = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: client.savedClientId || undefined,
+          ...(confirmContactOverwrite ? { confirm_contact_overwrite: true } : {}),
           name: client.name,
           company: client.company,
           country: client.country,
@@ -156,7 +161,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           shipping_country: data.client.shipping_country || prev.shipping_country || '',
         }))
       }
+      return data.contact_warnings || []
     } catch (err) {
+      return []
     }
   }
 
@@ -223,9 +230,34 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
 
   const handleSkip = useCallback(() => { onComplete() }, [onComplete])
 
-  const handleStart = useCallback(() => {
-    // Auto-save client to DB before starting
-    if (client.company.trim()) saveClient()
+  const handleStart = useCallback(async () => {
+    if (!client.company.trim()) {
+      onComplete()
+      return
+    }
+    // Auto-save client to DB before starting. The API refuses to replace an
+    // existing contact name/email/phone on its own, so a conflict pauses here
+    // instead of quietly rewriting the shared client record.
+    setStarting(true)
+    const warnings = await saveClient()
+    setStarting(false)
+    if (warnings.length) {
+      setContactConflict(warnings)
+      return
+    }
+    onComplete()
+  }, [onComplete, client])
+
+  const handleKeepStoredContact = useCallback(() => {
+    setContactConflict(null)
+    onComplete()
+  }, [onComplete])
+
+  const handleReplaceStoredContact = useCallback(async () => {
+    setStarting(true)
+    await saveClient({ confirmContactOverwrite: true })
+    setStarting(false)
+    setContactConflict(null)
     onComplete()
   }, [onComplete, client])
 
@@ -329,6 +361,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               onBlur={() => setTimeout(() => setShowSavedClients(false), 150)}
               placeholder={t('client.searchPlaceholder')}
               style={{ ...inp, width: '100%' }}
+              {...noAutofill('q')}
             />
             {showSavedClients && (savedClients.length > 0 || clientsLoading) && (
               <div style={{
@@ -388,6 +421,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
             placeholder={t('client.namePlaceholder')}
             style={{ ...inp, width: '100%' }}
+            {...noAutofill('f1')}
           />
         </div>
 
@@ -401,6 +435,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               placeholder={t('client.phonePlaceholder')}
               type="tel"
               style={{ ...inp, width: '100%' }}
+              {...noAutofill('f2')}
             />
           </div>
           <div style={{ flex: 1 }}>
@@ -411,6 +446,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               placeholder={t('client.emailPlaceholder')}
               type="email"
               style={{ ...inp, width: '100%' }}
+              {...noAutofill('f3')}
             />
           </div>
         </div>
@@ -467,6 +503,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             aria-label={t('client.companyName')}
             placeholder={t('client.companyPlaceholder')}
             style={{ ...inp, width: '100%' }}
+            {...noAutofill('f4')}
           />
         </div>
 
@@ -511,6 +548,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               }}
               placeholder={t('client.selectCountry')}
               style={{ ...inp, width: '100%' }}
+              {...noAutofill('f5')}
             />
             {countryOpen && (
               <div
@@ -560,6 +598,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               }}
               placeholder={t('client.vatPlaceholder')}
               style={{ ...inp, flex: 1 }}
+              {...noAutofill('f6')}
             />
             {viesLoading && <div style={{ width: 28, display: 'flex', justifyContent: 'center' }}><LoadingDots /></div>}
             {!viesLoading && viesResult && (
@@ -638,18 +677,21 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
                   onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} 
                   placeholder={t('client.address')} 
                   style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '8px 10px' }} 
+                  {...noAutofill('f7')}
                 />
                 <input 
                   value={client.city} 
                   onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} 
                   placeholder={t('client.city')} 
                   style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '8px 10px' }} 
+                  {...noAutofill('f8')}
                 />
                 <input 
                   value={client.zip} 
                   onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} 
                   placeholder={t('client.zip')} 
                   style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '8px 10px' }} 
+                  {...noAutofill('f9')}
                 />
               </div>
             )}
@@ -697,9 +739,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             </div>
             {!lookupIncorrect && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} />
-                <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} />
-                <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} />
+                <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f10')} />
+                <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f11')} />
+                <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f12')} />
               </div>
             )}
             {lookupIncorrect && (
@@ -721,10 +763,56 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           </div>
         )}
 
+        {/* The API kept the stored contact details — let the user decide */}
+        {contactConflict && (
+          <div style={{
+            marginBottom: 14, padding: '12px 14px', borderRadius: 10,
+            background: '#fffbeb', border: '1px solid #fcd34d',
+            fontSize: 12, color: '#78350f', lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('client.contactConflictTitle')}</div>
+            <div style={{ marginBottom: 8 }}>{t('client.contactConflictIntro')}</div>
+            {contactConflict.map((conflict) => (
+              <div key={conflict.field} style={{ marginBottom: 6 }}>
+                <div style={{ fontWeight: 600 }}>{t(`client.${conflict.field === 'name' ? 'contactName' : conflict.field}`)}</div>
+                <div>{t('client.contactConflictSaved')}: {conflict.stored}</div>
+                <div>{t('client.contactConflictEntered')}: {conflict.incoming}</div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button
+                onClick={handleKeepStoredContact}
+                disabled={starting}
+                style={{
+                  flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none',
+                  background: colors.inkPlum, color: '#fff',
+                  fontSize: 12, fontWeight: 700, cursor: starting ? 'default' : 'pointer',
+                  fontFamily: 'inherit', minHeight: mobile ? 44 : 'auto',
+                }}
+              >
+                {t('client.contactConflictKeep')}
+              </button>
+              <button
+                onClick={handleReplaceStoredContact}
+                disabled={starting}
+                style={{
+                  flex: 1, padding: '10px 12px', borderRadius: 8,
+                  border: `1px solid ${colors.lineGray}`, background: '#fff',
+                  color: colors.inkPlum,
+                  fontSize: 12, fontWeight: 700, cursor: starting ? 'default' : 'pointer',
+                  fontFamily: 'inherit', minHeight: mobile ? 44 : 'auto',
+                }}
+              >
+                {t('client.contactConflictReplace')}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Start Quoting Button */}
         <button
           onClick={handleStart}
-          disabled={!canStart}
+          disabled={!canStart || starting || !!contactConflict}
           style={{
             width: '100%', padding: 14, borderRadius: 10, border: 'none',
             background: canStart ? colors.luxeGold : colors.lineGray,

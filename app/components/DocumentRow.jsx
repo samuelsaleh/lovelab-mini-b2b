@@ -3,6 +3,7 @@
 import { colors, fonts } from '@/lib/styles'
 import { fmt } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
+import { resolveDocumentAttribution } from '@/lib/documentAttribution'
 
 export default function DocumentRow({
   doc,
@@ -26,6 +27,10 @@ export default function DocumentRow({
   const isDraft = doc.status === 'draft'
   // An Offre is a draft parked in the admin-only Offre folder.
   const isOffre = isDraft && doc.draft_kind === 'offre'
+  const attribution = resolveDocumentAttribution(doc)
+  // The assistant badge already spells out the creator, so only add the
+  // "by ..." line when it says something the badge doesn't.
+  const showAttribution = Boolean(attribution.label) && (!doc.creator_is_assistant || attribution.viaCreator)
 
   return (
     <div style={{
@@ -121,6 +126,15 @@ export default function DocumentRow({
               )}
               {doc.total_amount && (
                 <span style={{ fontWeight: 600, color: colors.inkPlum }}>{fmt(doc.total_amount)}</span>
+              )}
+              {showAttribution && (
+                <span
+                  data-testid="document-attribution"
+                  title={attribution.viaCreator
+                    ? `Sold by ${attribution.agentName}, entered by ${attribution.creatorName}`
+                    : `Created by ${attribution.label}`}
+                  style={{ color: '#666', fontWeight: 600 }}
+                >by {attribution.label}</span>
               )}
               <span>{new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               {doc.events?.name && (

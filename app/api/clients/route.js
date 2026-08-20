@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { normalizeJewelerGroup } from '@/lib/jewelerGroup';
+import { mergeClientContact } from '@/lib/clientContactMerge';
 
 const CLIENT_SHIPPING_FIELDS = new Set([
   'shipping_same_as_billing',
@@ -109,6 +110,7 @@ export async function POST(request) {
       source,
       source_comment,
       source_imported_at,
+      confirm_contact_overwrite,
     } = body;
 
     const extrasPayload = {};
@@ -166,17 +168,32 @@ export async function POST(request) {
       // sourcePayload above. We deliberately do NOT scope this by created_by:
       // agents routinely onboard a client the office first entered and need to
       // keep its address / VAT / contact up to date.
+      //
+      // Contact columns are the exception: a browser autofill or a half-filled
+      // order header must not silently replace the real contact for everyone,
+      // so they go through mergeClientContact and only change on an explicit
+      // confirmation from the caller.
+      const { data: existingClient } = await adminSupabase
+          .from('clients')
+          .select('name, email, phone')
+          .eq('id', id)
+          .maybeSingle();
+
+      const { fields: contactFields, warnings: contactWarnings } = mergeClientContact(
+          existingClient,
+          { name, email, phone },
+          { confirmOverwrite: confirm_contact_overwrite === true },
+      );
+
       const updatePayload = {
-          name: name?.trim() || null,
           company: company.trim(),
           country: country?.trim() || null,
           address: address?.trim() || null,
           city: city?.trim() || null,
           zip: zip?.trim() || null,
-          email: email?.trim() || null,
-          phone: phone?.trim() || null,
           vat: vat?.trim() || null,
           vat_valid: vat_valid ?? null,
+          ...contactFields,
           ...extrasPayload,
           ...sourcePayload,
           updated_at: new Date().toISOString(),
@@ -209,7 +226,11 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Client not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ client });
+      return NextResponse.json(
+        contactWarnings.length
+          ? { client, contact_warnings: contactWarnings }
+          : { client },
+      );
     } else {
       // Create new client
       const insertPayload = {
