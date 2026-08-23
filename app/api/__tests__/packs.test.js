@@ -18,6 +18,12 @@
  *   - DELETE refuses seed packs with a 422 for non-admins.
  *   - DELETE lets admins remove seed packs (Phase 33).
  *   - DELETE returns 404 for an unknown pack id.
+ *   - GET decorates every pack with fair_ids (shared fair folders) and hidden
+ *     (this caller's personal hide flag), and still returns the packs when
+ *     either lookup blows up — an un-migrated Phase 34 must not empty the
+ *     Builder strip.
+ *   - POST / PUT forward event_ids to the fair-folder assignment, for everyone
+ *     (filing is shared, unlike agent_ids which is admin-only).
  *
  * The Supabase client is mocked with a chainable query builder so we don't
  * touch the network. RLS itself is not exercised in JS — the migration's
@@ -69,6 +75,51 @@ function defaultAdminFrom(table) {
     return chain
   }
   return makeChain()
+}
+
+// The user-context `packs` list query: select + a chain of .order() calls,
+// awaited directly (no .single()). Used by the Phase 34 GET tests that need a
+// fixed pack list while the admin client returns different per-table results.
+function packsListChain(packs) {
+  const chain = {
+    select() { return chain },
+    eq() { return chain },
+    order() { return chain },
+    then(resolve) { return Promise.resolve({ data: packs, error: null }).then(resolve) },
+  }
+  return chain
+}
+
+// An admin client whose result depends on the table being queried, so one test
+// can make pack_fairs succeed while pack_hidden fails. `seen` (optional)
+// collects each query for assertions about how it was scoped.
+function adminFromWith(resultsByTable, seen = []) {
+  return (table) => {
+    if (table === 'profiles') {
+      const chain = {
+        select() { return chain },
+        eq() { return chain },
+        single() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
+        maybeSingle() { return Promise.resolve({ data: { role: mockProfileRole }, error: null }) },
+      }
+      return chain
+    }
+    const record = { table, eqs: [], ins: [] }
+    seen.push(record)
+    const result = resultsByTable[table] || { data: [], error: null }
+    const chain = {
+      select() { return chain },
+      insert(values) { record.inserts = values; return chain },
+      delete() { record.deleted = true; return chain },
+      eq(col, val) { record.eqs.push({ col, val }); return chain },
+      in(col, vals) { record.ins.push({ col, vals }); return chain },
+      order() { return chain },
+      single() { return Promise.resolve(result) },
+      maybeSingle() { return Promise.resolve(result) },
+      then(resolve, reject) { return Promise.resolve(result).then(resolve, reject) },
+    }
+    return chain
+  }
 }
 
 const mockSupabase = {
@@ -199,6 +250,83 @@ describe('GET /api/packs', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.packs[0].agent_ids).toBeUndefined()
+  })
+
+  // ─── Phase 34: fair folders + personal hiding ───
+
+  it('attaches fair_ids (shared folders) and hidden (this caller only)', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+    mockSupabase.from.mockImplementation(() => packsListChain([
+      { id: 'p-1', scope: 'global' },
+      { id: 'p-2', scope: 'global' },
+      { id: 'p-3', scope: 'global' },
+    ]))
+    mockAdminSupabase.from.mockImplementation(adminFromWith({
+      pack_fairs: { data: [
+        { pack_id: 'p-1', event_id: 'f-1' },
+        { pack_id: 'p-1', event_id: 'f-2' },
+        { pack_id: 'p-2', event_id: 'f-1' },
+      ], error: null },
+      pack_hidden: { data: [{ pack_id: 'p-3' }], error: null },
+    }))
+
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const { packs } = await res.json()
+    const byId = Object.fromEntries(packs.map((p) => [p.id, p]))
+
+    // A pack can sit in several fairs at once.
+    expect(byId['p-1'].fair_ids).toEqual(['f-1', 'f-2'])
+    expect(byId['p-2'].fair_ids).toEqual(['f-1'])
+    // Unfiled packs get an empty array, never undefined.
+    expect(byId['p-3'].fair_ids).toEqual([])
+    // Only the pack this user hid is flagged.
+    expect(byId['p-1'].hidden).toBe(false)
+    expect(byId['p-3'].hidden).toBe(true)
+  })
+
+  it('scopes the hidden lookup to the calling user', async () => {
+    mockUser.data.user = { id: 'u-42' }
+    mockSupabase.from.mockImplementation(() => packsListChain([{ id: 'p-1', scope: 'global' }]))
+    const seen = []
+    mockAdminSupabase.from.mockImplementation(adminFromWith({}, seen))
+
+    await GET(req())
+    const hiddenQuery = seen.find((q) => q.table === 'pack_hidden')
+    expect(hiddenQuery.eqs).toEqual([{ col: 'user_id', val: 'u-42' }])
+  })
+
+  it('still returns the packs when the fair lookup fails (un-migrated Phase 34)', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockSupabase.from.mockImplementation(() => packsListChain([{ id: 'p-1', scope: 'global' }]))
+    mockAdminSupabase.from.mockImplementation(adminFromWith({
+      pack_fairs: { data: null, error: { message: 'relation "pack_fairs" does not exist' } },
+      pack_hidden: { data: [], error: null },
+    }))
+
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const { packs } = await res.json()
+    expect(packs).toHaveLength(1)
+    expect(packs[0].fair_ids).toEqual([])
+    expect(packs[0].hidden).toBe(false)
+  })
+
+  it('still returns the packs when the hidden lookup fails', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockSupabase.from.mockImplementation(() => packsListChain([{ id: 'p-1', scope: 'global' }]))
+    mockAdminSupabase.from.mockImplementation(adminFromWith({
+      pack_fairs: { data: [{ pack_id: 'p-1', event_id: 'f-1' }], error: null },
+      pack_hidden: { data: null, error: { message: 'relation "pack_hidden" does not exist' } },
+    }))
+
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const { packs } = await res.json()
+    // The fair folders that DID load are still reported.
+    expect(packs[0].fair_ids).toEqual(['f-1'])
+    expect(packs[0].hidden).toBe(false)
   })
 })
 
@@ -338,6 +466,90 @@ describe('POST /api/packs', () => {
     } }))
     expect(res.status).toBe(201)
   })
+
+  // ─── Phase 34: fair folders at creation ───
+
+  it('files a brand-new pack into the chosen fairs, for a plain agent too', async () => {
+    mockUser.data.user = { id: 'agent-1' }
+    mockProfileRole = 'agent'
+    mockNextResult = { data: { id: 'p-new', scope: 'private' }, error: null }
+
+    const res = await POST(req({ body: {
+      label: 'Mine',
+      fixed_total: 1000,
+      form_rows: [{ collection: 'CUTY' }],
+      event_ids: ['f-1', 'f-2'],
+    } }))
+    expect(res.status).toBe(201)
+
+    // The fair rows are written, stamped with who filed them.
+    const fairInsert = calls.find(
+      c => c.op === 'insert' && Array.isArray(c.values) && c.values[0]?.event_id,
+    )
+    expect(fairInsert.values).toEqual([
+      { pack_id: 'p-new', event_id: 'f-1', added_by: 'agent-1' },
+      { pack_id: 'p-new', event_id: 'f-2', added_by: 'agent-1' },
+    ])
+    // And the response tells the UI where the new card lives.
+    const body = await res.json()
+    expect(body.pack.fair_ids).toEqual(['f-1', 'f-2'])
+    expect(body.pack.hidden).toBe(false)
+  })
+
+  it('rejects a non-array event_ids with a 400', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    const res = await POST(req({ body: {
+      label: 'X', fixed_total: 1000, form_rows: [{ collection: 'CUTY' }], event_ids: 'f-1',
+    } }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/event_ids/)
+  })
+
+  it('writes no fair rows when event_ids is omitted or empty', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockNextResult = { data: { id: 'p-new', scope: 'private' }, error: null }
+
+    const res = await POST(req({ body: {
+      label: 'X', fixed_total: 1000, form_rows: [{ collection: 'CUTY' }], event_ids: [],
+    } }))
+    expect(res.status).toBe(201)
+    expect(calls.find(
+      c => c.op === 'insert' && Array.isArray(c.values) && c.values[0]?.event_id,
+    )).toBeFalsy()
+    const body = await res.json()
+    expect(body.pack.fair_ids).toEqual([])
+  })
+
+  it('still returns 201 when the fair assignment fails (best-effort)', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockProfileRole = 'agent'
+    // The pack insert succeeds on the user client; the admin client rejects the
+    // pack_fairs write.
+    mockSupabase.from.mockImplementation(() => {
+      const chain = {
+        select() { return chain }, insert() { return chain }, eq() { return chain },
+        order() { return chain },
+        single() { return Promise.resolve({ data: { id: 'p-new', scope: 'private' }, error: null }) },
+      }
+      return chain
+    })
+    const seen = []
+    mockAdminSupabase.from.mockImplementation(adminFromWith({
+      pack_fairs: { data: null, error: { message: 'pack_fairs missing' } },
+    }, seen))
+
+    const res = await POST(req({ body: {
+      label: 'X', fixed_total: 1000, form_rows: [{ collection: 'CUTY' }], event_ids: ['f-1'],
+    } }))
+    expect(res.status).toBe(201)
+    // The failure came from the DB rejecting the write, not from a half-mocked
+    // client: the delete really was attempted.
+    expect(seen.find((q) => q.table === 'pack_fairs')?.deleted).toBe(true)
+    const body = await res.json()
+    // The pack exists, just unfiled — the user can drag it into a fair after.
+    expect(body.pack.fair_ids).toEqual([])
+  })
 })
 
 describe('PUT /api/packs/[id]', () => {
@@ -461,6 +673,71 @@ describe('PUT /api/packs/[id]', () => {
     // A delete on pack_visibility ran, but no new assignment rows were inserted.
     expect(calls.find(c => c.op === 'delete')).toBeTruthy()
     expect(calls.find(c => c.op === 'insert' && Array.isArray(c.values))).toBeFalsy()
+  })
+
+  // ─── Phase 34: fair folders from the pack editor ───
+
+  it('lets a NON-admin change the fair folders (filing is shared, unlike agent_ids)', async () => {
+    mockUser.data.user = { id: 'agent-1' }
+    mockProfileRole = 'agent'
+    mockNextResult = { data: { id: 'p-1', scope: 'global' }, error: null }
+
+    const res = await PUT(
+      req({ body: { event_ids: ['f-1'] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    // Contrast with the agent_ids case above, which 403s for the same caller.
+    expect(res.status).toBe(200)
+    const fairInsert = calls.find(
+      c => c.op === 'insert' && Array.isArray(c.values) && c.values[0]?.event_id,
+    )
+    expect(fairInsert.values).toEqual([
+      { pack_id: 'p-1', event_id: 'f-1', added_by: 'agent-1' },
+    ])
+    // No column change, so no Excel regeneration.
+    expect(calls.find(c => c.op === 'update')).toBeFalsy()
+    expect(mockRegen).not.toHaveBeenCalled()
+  })
+
+  it('unfiles the pack from every fair on an empty event_ids', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockNextResult = { data: { id: 'p-1', scope: 'global' }, error: null }
+
+    const res = await PUT(
+      req({ body: { event_ids: [] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.pack.fair_ids).toEqual([])
+    // The replace-set delete ran; nothing was inserted.
+    expect(calls.find(c => c.op === 'delete')).toBeTruthy()
+    expect(calls.find(
+      c => c.op === 'insert' && Array.isArray(c.values) && c.values[0]?.event_id,
+    )).toBeFalsy()
+  })
+
+  it('rejects a non-array event_ids with a 400', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    const res = await PUT(
+      req({ body: { event_ids: 'f-1' } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('renames and re-files in one call', async () => {
+    mockUser.data.user = { id: 'u-1' }
+    mockNextResult = { data: { id: 'p-1', label: 'Renamed', scope: 'private' }, error: null }
+
+    const res = await PUT(
+      req({ body: { label: 'Renamed', event_ids: ['f-9'] } }),
+      { params: Promise.resolve({ id: 'p-1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect(calls.find(c => c.op === 'update').values.label).toBe('Renamed')
+    const body = await res.json()
+    expect(body.pack.fair_ids).toEqual(['f-9'])
   })
 
   it('returns 404 when RLS blocks the update (e.g. a non-admin editing a global/seed pack)', async () => {

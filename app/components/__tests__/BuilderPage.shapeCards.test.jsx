@@ -36,8 +36,9 @@ jest.mock('@/lib/api', () => ({
 // ─── Component under test ────────────────────────────────────────────────────
 
 const BuilderPage = require('../BuilderPage').default
-const { cardsForCollection, cardKey, parseCardKey, SHAPE_CARD_IDS } = require('../BuilderPage')
+const { cardsForCollection, cardsForFamilyEntry, cardKey, parseCardKey, SHAPE_CARD_IDS } = require('../BuilderPage')
 const { COLLECTIONS } = require('@/lib/catalog')
+const { familyById } = require('@/lib/collectionFamilies')
 
 const SSF_NECK = COLLECTIONS.find(c => c.id === 'SSF_NECK')
 const CUTY_NECK = COLLECTIONS.find(c => c.id === 'CUTY_NECK')
@@ -89,6 +90,31 @@ describe('BuilderPage — card key helpers', () => {
     const cards = cardsForCollection(CUTY_NECK)
     expect(cards).toHaveLength(1)
     expect(cards[0]).toMatchObject({ key: 'CUTY_NECK', shape: null })
+  })
+
+  it('cardsForFamilyEntry expands Shine into one card per shape', () => {
+    const ssf = COLLECTIONS.find(c => c.id === 'SSF')
+    const cards = cardsForFamilyEntry({
+      type: 'family',
+      family: familyById('FAM_SHAPY_SHINE'),
+      members: [ssf],
+    })
+    expect(cards.map(c => c.key)).toEqual([
+      'SSF::Heart', 'SSF::Pear', 'SSF::Marquise', 'SSF::Oval', 'SSF::Emerald', 'SSF::Cushion',
+    ])
+  })
+
+  it('cardsForFamilyEntry expands Sparkle Fancy into one card per shape', () => {
+    const sspf = COLLECTIONS.find(c => c.id === 'SSPF')
+    const cards = cardsForFamilyEntry({
+      type: 'family',
+      family: familyById('FAM_SHAPY_SPARKLE'),
+      members: [sspf],
+    })
+    expect(cards.map(c => c.key)).toEqual([
+      'SSPF::Round', 'SSPF::Pear', 'SSPF::Oval', 'SSPF::Heart', 'SSPF::Princess',
+      'SSPF::Cushion', 'SSPF::Marquise', 'SSPF::Emerald', 'SSPF::Long Cushion',
+    ])
   })
 
   it('cardKey / parseCardKey round-trip (mechanism retained)', () => {

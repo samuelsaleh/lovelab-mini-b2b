@@ -19,6 +19,7 @@ jest.mock('@/lib/i18n', () => ({
         'resources.catalogue': 'Catalogue',
         'resources.packs': 'Packs',
         'resources.priceList': 'Price List',
+        'resources.igi': 'IGI',
         'resources.eanCodes': 'EAN Codes',
         'resources.brandDocuments': 'Brand Documents',
         'resources.sendByEmail': 'Send 1 file by email',
@@ -92,6 +93,37 @@ describe('ResourcesCard — EAN Codes folder', () => {
     const checkbox = screen.getByLabelText('Select Final-GS1-Code.xlsx')
     fireEvent.click(checkbox)
 
+    expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
+  })
+})
+
+describe('ResourcesCard — IGI folder', () => {
+  it('renders the IGI folder for admins, next to Catalogue', () => {
+    render(<ResourcesCard isAdmin={true} />)
+    expect(screen.getByText('IGI')).toBeInTheDocument()
+    expect(screen.getByText('Catalogue')).toBeInTheDocument()
+  })
+
+  it('does not render the IGI folder for non-admins', () => {
+    render(<ResourcesCard isAdmin={false} />)
+    expect(screen.queryByText('IGI')).not.toBeInTheDocument()
+  })
+
+  it('lists the IGI Excel with a correct download link when expanded', () => {
+    render(<ResourcesCard isAdmin={true} />)
+    fireEvent.click(screen.getByText('IGI'))
+    const link = screen.getByText('IGI_ORDERS_FILL.xlsx').closest('a')
+    expect(link).not.toBeNull()
+    expect(link.getAttribute('href')).toBe('/IGI%20Excel/IGI_ORDERS_FILL.xlsx')
+    expect(link.getAttribute('download')).toBe('IGI_ORDERS_FILL.xlsx')
+  })
+
+  it('toggles the email button on when the IGI file is selected', () => {
+    render(<ResourcesCard isAdmin={true} />)
+    fireEvent.click(screen.getByText('IGI'))
+    expect(screen.queryByText(/Send .* by email/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select IGI_ORDERS_FILL.xlsx'))
     expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
   })
 })

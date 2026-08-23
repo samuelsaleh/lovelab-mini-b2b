@@ -5,7 +5,13 @@ import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { sendAnalyticsChat } from '@/lib/api'
 
-export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }) {
+export const ANALYTICS_CHAT_CHIPS = [
+  'Every nylon color including zeros',
+  'All countries by revenue',
+  'Silk vs nylon in Germany',
+]
+
+export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext, docs }) {
   const mobile = useIsMobile()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -21,10 +27,9 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
   }, [isOpen])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages, loading])
 
-  // Close on Escape
   useEffect(() => {
     if (!isOpen) return
     const handler = (e) => { if (e.key === 'Escape') onClose() }
@@ -32,25 +37,29 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim()
-    if (!text || loading) return
+  const ask = useCallback(async (text) => {
+    const trimmed = String(text || '').trim()
+    if (!trimmed || loading) return
 
-    const userMsg = { role: 'user', content: text }
+    const userMsg = { role: 'user', content: trimmed }
     const next = [...messages, userMsg]
     setMessages(next)
     setInput('')
     setLoading(true)
 
     try {
-      const result = await sendAnalyticsChat(next, analyticsContext)
+      const result = await sendAnalyticsChat(next, analyticsContext, { docs })
       setMessages(prev => [...prev, { role: 'assistant', content: result.message }])
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, analyticsContext])
+  }, [loading, messages, analyticsContext, docs])
+
+  const handleSend = useCallback(() => {
+    ask(input)
+  }, [ask, input])
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -63,7 +72,6 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
 
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{
@@ -75,7 +83,6 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
         }}
       />
 
-      {/* Panel */}
       <div
         ref={panelRef}
         style={{
@@ -88,7 +95,6 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
           transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {/* Header */}
         <div style={{
           padding: '16px 20px', borderBottom: '1px solid #e8e8e8',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -110,22 +116,45 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
           >×</button>
         </div>
 
-        {/* Messages */}
         <div style={{
           flex: 1, overflowY: 'auto', padding: '16px 16px 8px',
           display: 'flex', flexDirection: 'column', gap: 12,
         }}>
           {messages.length === 0 && !loading && (
             <div style={{
-              textAlign: 'center', padding: '40px 20px', color: '#999',
+              textAlign: 'center', padding: '28px 16px 8px', color: '#999',
               fontSize: 13, fontFamily: fonts.body, lineHeight: 1.6,
             }}>
               <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>AI</div>
               <div style={{ fontWeight: 600, color: '#666', marginBottom: 8 }}>
                 Ask me anything about your analytics
               </div>
-              <div>
-                Try: "How many vitrines at IHR?" or "Which product sold the most?" or "Top 3 clients by revenue"
+              <div style={{ marginBottom: 16 }}>
+                I can query every colour and every country, not just the top few.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {ANALYTICS_CHAT_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    data-testid={`analytics-chip-${chip}`}
+                    onClick={() => ask(chip)}
+                    style={{
+                      border: '1px solid #e3e3e3',
+                      background: '#faf8fc',
+                      color: colors.inkPlum,
+                      borderRadius: 10,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      fontFamily: fonts.body,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {chip}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -170,7 +199,6 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext }
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
         <div style={{
           padding: 12, borderTop: '1px solid #e8e8e8',
           display: 'flex', gap: 8, flexShrink: 0, background: '#fafafa',

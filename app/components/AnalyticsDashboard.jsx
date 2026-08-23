@@ -4,9 +4,15 @@ import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt } from '@/lib/utils'
-import { COLLECTIONS } from '@/lib/catalog'
 import { normalizeCountry } from '@/lib/countries'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
+import { resolveVitrineQty } from '@/lib/vitrines'
+import { isKnownCollection, matchCollectionLabel } from '@/lib/collectionMatch'
+import {
+  buildColorBreakdown,
+  buildCountryBreakdown,
+  formatColorBreakdownForPrompt,
+} from '@/lib/analyticsBreakdowns'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
@@ -29,46 +35,8 @@ const CHART_COLORS = [
 // normalizeCountry imported from @/lib/countries — handles aliases, typos, non-English names
 const normalizeCountryValue = normalizeCountry
 
-// ─── Vitrine helpers (shared with DocumentsPanel) ──────────────────────────
-const VITRINE_REGEX = /(\d+)\s*vitrines?|vitrines?\s*[x×]?\s*(\d+)/i
-
-// Real LoveLab orders are 1–10 vitrines. Anything above this is almost
-// certainly a data-entry mistake (typo in vitrineQty, or a price/SKU number
-// that happens to sit next to the word "vitrine" in the remarks). We clamp
-// the parsed value to 1 so a single bad order can't skew the entire summary.
-const MAX_VITRINE_QTY = 20
-
-function clampVitrineQty(n, source) {
-  if (n == null) return null
-  if (n <= 0) return null
-  if (n > MAX_VITRINE_QTY) {
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn(`[Analytics] Capping implausible vitrine quantity ${n} → 1 (source: ${source})`)
-    }
-    return 1
-  }
-  return n
-}
-
-function parseVitrineFromRemarks(remarks) {
-  if (!remarks) return null
-  const m = remarks.match(VITRINE_REGEX)
-  if (!m) return remarks.toLowerCase().includes('vitrine') ? 1 : null
-  return parseInt(m[1] || m[2], 10)
-}
-
-function resolveVitrineQty(doc) {
-  const fs = doc?.metadata?.formState
-  if (!fs) return null
-  const { hasVitrine, vitrineQty, remarks } = fs
-  const toggleQty = hasVitrine ? (vitrineQty || 1) : null
-  const remarksQty = parseVitrineFromRemarks(remarks)
-  const company = doc?.client_company || doc?.client_name || 'unknown'
-  if (toggleQty !== null && remarksQty !== null) return clampVitrineQty(toggleQty, `toggle/${company}`)
-  if (toggleQty !== null) return clampVitrineQty(toggleQty, `toggle/${company}`)
-  if (remarksQty !== null) return clampVitrineQty(remarksQty, `remarks/${company}`)
-  return null
-}
+// Vitrine parsing + catalogue matching live in lib/ so scripts/audit tooling
+// can reuse the exact same rules the dashboard renders.
 
 // ─── Timeline bucketing (pure, exported for tests) ─────────────────────────
 // Groups documents into 'day' | 'week' (Monday-start) | 'month' buckets with
@@ -299,24 +267,26 @@ function Section({ title, children, style: s, actions = null }) {
 }
 
 // ─── Ranked table ──────────────────────────────────────────────────────────
-function RankedTable({ columns, rows, maxRows = 10, onRowClick, isRowActive }) {
+function RankedTable({ columns, rows, maxRows = 10, maxHeight, onRowClick, isRowActive, tableTestId, rowTestId }) {
   const thS = { padding: '8px 12px', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'left', background: '#faf8fc', borderBottom: `1px solid ${colors.lineGray}` }
   const tdS = { padding: '10px 12px', fontSize: 13, color: colors.charcoal, borderBottom: `1px solid ${colors.lineGray}` }
+  const visible = maxRows == null ? rows : rows.slice(0, maxRows)
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div data-testid={tableTestId} style={{ overflowX: 'auto', ...(maxHeight ? { maxHeight, overflowY: 'auto' } : {}) }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={{ ...thS, width: 36, textAlign: 'center' }}>#</th>
+            <th style={{ ...thS, width: 36, textAlign: 'center', position: maxHeight ? 'sticky' : undefined, top: 0 }}>#</th>
             {columns.map((col, i) => (
-              <th key={i} style={{ ...thS, textAlign: col.align || 'left' }}>{col.label}</th>
+              <th key={i} style={{ ...thS, textAlign: col.align || 'left', position: maxHeight ? 'sticky' : undefined, top: 0 }}>{col.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.slice(0, maxRows).map((row, i) => (
+          {visible.map((row, i) => (
             <tr
               key={i}
+              data-testid={rowTestId ? rowTestId(row, i) : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               style={onRowClick ? { cursor: 'pointer', background: isRowActive?.(row) ? '#faf8fc' : 'transparent' } : undefined}
             >
@@ -345,6 +315,47 @@ function MiniStat({ label, items, maxItems = 5 }) {
         </div>
       ))}
       {items.length === 0 && <div style={{ fontSize: 12, color: '#ccc' }}>—</div>}
+    </div>
+  )
+}
+
+function ColorPaletteColumn({ title, items }) {
+  return (
+    <div data-testid={`color-palette-${title.toLowerCase()}`} style={{ flex: 1, minWidth: 220 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, marginBottom: 10, letterSpacing: '0.04em' }}>
+        {title} <span style={{ fontWeight: 500, color: colors.lovelabMuted }}>({items.length})</span>
+      </div>
+      <div style={{ maxHeight: 360, overflowY: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
+        {items.map((item) => {
+          const unsold = item.qty === 0
+          return (
+            <div
+              key={item.name}
+              data-testid={`color-row-${title.toLowerCase()}-${item.name}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 10px', fontSize: 12,
+                borderBottom: `1px solid ${colors.lineGray}`,
+                opacity: unsold ? 0.45 : 1,
+                background: unsold ? '#fafafa' : '#fff',
+              }}
+            >
+              <span style={{
+                width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+                background: item.hex || '#ddd',
+                border: '1px solid rgba(0,0,0,0.12)',
+              }} />
+              <span style={{ flex: 1, color: colors.charcoal }}>{item.name}</span>
+              <span style={{ fontWeight: 600, color: unsold ? '#999' : colors.inkPlum, minWidth: 36, textAlign: 'right' }}>
+                {item.qty}
+              </span>
+              <span style={{ color: unsold ? '#bbb' : '#666', minWidth: 64, textAlign: 'right' }}>
+                {unsold ? '—' : fmt(item.revenue)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -558,17 +569,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   }, [channelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
 
   // ─── Client countries ─────────────────────────────────────────────────
-  const countryData = useMemo(() => {
-    const map = new Map()
-    docs.forEach(d => {
-      const country = normalizeCountryValue(d.metadata?.formState?.country)
-      if (!map.has(country)) map.set(country, { name: country, count: 0, revenue: 0 })
-      const entry = map.get(country)
-      entry.count++
-      entry.revenue += d.total_amount || 0
-    })
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [docs])
+  const countryData = useMemo(() => buildCountryBreakdown(docs), [docs])
+
+  const colorBreakdown = useMemo(() => buildColorBreakdown(docs), [docs])
 
   const countryDetails = useMemo(() => {
     if (!selectedCountry) return []
@@ -593,24 +596,11 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   // ─── Top products (by quantity) ───────────────────────────────────────
   const productData = useMemo(() => {
-    const normalize = (name) => {
-      if (!name) return null
-      const upper = name.trim().toUpperCase()
-      // Match against collection id or label (case-insensitive)
-      for (const c of COLLECTIONS) {
-        if (c.label.toUpperCase() === upper || c.id.toUpperCase() === upper) return c.label
-      }
-      // Partial match (e.g. "MULTI THREE 0.30ct" contains "MULTI THREE")
-      for (const c of COLLECTIONS) {
-        if (upper.includes(c.label.toUpperCase()) || upper.includes(c.id.toUpperCase())) return c.label
-      }
-      return null
-    }
     const map = new Map()
     docs.forEach(d => {
       const rows = d.metadata?.formState?.rows || []
       rows.forEach(r => {
-        const label = normalize(r.collection)
+        const label = matchCollectionLabel(r.collection)
         if (!label) return
         if (!map.has(label)) map.set(label, { name: label, qty: 0, revenue: 0 })
         const entry = map.get(label)
@@ -641,14 +631,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   // ─── Quick stats: carats, shapes, packaging, cord colors ──────────────
   const quickStats = useMemo(() => {
-    const validLabels = new Set(COLLECTIONS.map(c => c.label))
-    const validIds = new Set(COLLECTIONS.map(c => c.id))
-    const isValidRow = (r) => {
-      if (!r.collection) return false
-      const upper = r.collection.trim().toUpperCase()
-      return validLabels.has(r.collection.trim()) || validIds.has(upper) ||
-        COLLECTIONS.some(c => c.label.toUpperCase() === upper)
-    }
+    const isValidRow = (r) => isKnownCollection(r.collection)
 
     const caratMap = new Map()
     const shapeMap = new Map()
@@ -746,15 +729,15 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     if (quickStats.sizes.length > 0) {
       lines.push('SIZES: ' + quickStats.sizes.map(s => `${s.name}: ${s.value}`).join(', '))
     }
-    if (quickStats.cordColors.length > 0) {
-      lines.push('CORD COLORS: ' + quickStats.cordColors.map(s => `${s.name}: ${s.value}`).join(', '))
+    if (colorBreakdown.nylon.length + colorBreakdown.silk.length > 0) {
+      lines.push(formatColorBreakdownForPrompt(colorBreakdown))
     }
     if (quickStats.packaging.length > 0) {
       lines.push('PACKAGING: ' + quickStats.packaging.map(s => `${s.name}: ${s.value}`).join(', '))
     }
 
     return lines.join('\n')
-  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, quickStats, selectedEventId, events, channelScope])
+  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, colorBreakdown, quickStats, selectedEventId, events, channelScope])
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -968,7 +951,10 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                       { label: 'Revenue', key: 'revenue', align: 'right', bold: true, render: (r) => fmt(r.revenue) },
                     ]}
                     rows={countryData}
-                    maxRows={7}
+                    maxRows={null}
+                    maxHeight={280}
+                    tableTestId="countries-table"
+                    rowTestId={(row) => `country-row-${row.name}`}
                     onRowClick={(row) => setSelectedCountry((prev) => (prev === row.name ? '' : row.name))}
                     isRowActive={(row) => selectedCountry === row.name}
                   />
@@ -985,7 +971,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                           Clear
                         </button>
                       </div>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <table data-testid="country-companies-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr>
                             <th style={{ ...thStyleMini, textAlign: 'left' }}>Company</th>
@@ -994,8 +980,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                           </tr>
                         </thead>
                         <tbody>
-                          {countryDetails.slice(0, 10).map((row, idx) => (
-                            <tr key={`${row.company}-${idx}`}>
+                          {countryDetails.map((row, idx) => (
+                            <tr key={`${row.company}-${idx}`} data-testid={`company-row-${row.company}`}>
                               <td style={tdStyleMini}>{row.company}</td>
                               <td style={{ ...tdStyleMini, textAlign: 'center' }}>{row.orders}</td>
                               <td style={{ ...tdStyleMini, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(row.revenue)}</td>
@@ -1149,13 +1135,26 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           )}
         </div>
 
-        {/* ─── Row 4: Quick Stats Grid ─── */}
+        {/* ─── Row 4: Colors sold — full Nylon + Silk palettes ─── */}
+        <Section title="Colors sold" style={{ marginBottom: gridGap }}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
+            Every Nylon and Silk thread colour. Unsold colours stay at 0 so missing range is visible.
+          </div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <ColorPaletteColumn title="Nylon" items={colorBreakdown.nylon} />
+            <ColorPaletteColumn title="Silk" items={colorBreakdown.silk} />
+            {colorBreakdown.other.length > 0 && (
+              <ColorPaletteColumn title="Other" items={colorBreakdown.other} />
+            )}
+          </div>
+        </Section>
+
+        {/* ─── Row 5: Quick Stats Grid ─── */}
         <Section title="Quick Stats" style={{ marginBottom: gridGap }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <MiniStat label="Carat Breakdown" items={quickStats.carats} />
             <MiniStat label="Top Shapes" items={quickStats.shapes} />
             <MiniStat label="Sizes" items={quickStats.sizes} />
-            <MiniStat label="Cord Colors" items={quickStats.cordColors} maxItems={8} />
             <MiniStat label="Packaging" items={quickStats.packaging} />
           </div>
         </Section>
@@ -1171,6 +1170,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
         isOpen={showChat}
         onClose={() => setShowChat(false)}
         analyticsContext={analyticsContext}
+        docs={docs}
       />
     </div>
   )

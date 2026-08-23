@@ -23,6 +23,10 @@ const EAN_FILES = [
   { name: 'Final-GS1-Code.xlsx', path: '/Ean Codes/Final-GS1-Code.xlsx' },
 ]
 
+const IGI_FILES = [
+  { name: 'IGI_ORDERS_FILL.xlsx', path: '/IGI Excel/IGI_ORDERS_FILL.xlsx' },
+]
+
 const BRAND_DOCUMENT_FILES = [
   {
     name: 'LoveLab Brand Presentation — French.pdf',
@@ -167,7 +171,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
 
   // Flatten all folders into a single lookup so we can resolve selected paths
   // back to {name, path} regardless of which folder they came from.
-  const allFiles = [...CATALOGUE_FILES, ...packsFiles, ...PRICE_LIST_FILES, ...EAN_FILES, ...BRAND_DOCUMENT_FILES]
+  const allFiles = [...CATALOGUE_FILES, ...IGI_FILES, ...packsFiles, ...PRICE_LIST_FILES, ...EAN_FILES, ...BRAND_DOCUMENT_FILES]
   const selectedFiles = allFiles.filter(f => selected.has(f.path))
   const count = selectedFiles.length
   const sendLabel = count === 1
@@ -177,6 +181,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
   // Build a human-readable "where these came from" string for the modal subtitle.
   const folderLabels = []
   if (selectedFiles.some(f => CATALOGUE_FILES.includes(f))) folderLabels.push(t('resources.catalogue'))
+  if (selectedFiles.some(f => IGI_FILES.includes(f)))       folderLabels.push(t('resources.igi'))
   if (selectedFiles.some(f => packsFiles.includes(f)))      folderLabels.push(t('resources.packs'))
   if (selectedFiles.some(f => PRICE_LIST_FILES.includes(f))) folderLabels.push(t('resources.priceList'))
   if (selectedFiles.some(f => EAN_FILES.includes(f)))       folderLabels.push(t('resources.eanCodes'))
@@ -264,6 +269,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   {t('resources.documents')}
                 </div>
                 <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />

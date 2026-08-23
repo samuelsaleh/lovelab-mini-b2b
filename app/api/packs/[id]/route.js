@@ -14,6 +14,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { regeneratePackTemplate, deletePackTemplate } from '@/lib/packTemplates'
 import { syncPackVisibility } from '@/lib/packVisibility'
+import { syncPackFairs } from '@/lib/packFairs'
 
 const MIN_PACK_TOTAL = 970
 
@@ -105,7 +106,17 @@ export async function PUT(request, { params }) {
       agentIds = body.agent_ids
     }
 
-    if (Object.keys(updates).length === 0 && agentIds === undefined) {
+    // event_ids drives the shared fair-folder assignment. Open to everyone —
+    // filing a pack is organising, not a permission grant.
+    let eventIds
+    if (body.event_ids !== undefined) {
+      if (!Array.isArray(body.event_ids)) {
+        return badRequest('event_ids must be an array')
+      }
+      eventIds = body.event_ids
+    }
+
+    if (Object.keys(updates).length === 0 && agentIds === undefined && eventIds === undefined) {
       return badRequest('No updates provided')
     }
 
@@ -134,8 +145,8 @@ export async function PUT(request, { params }) {
       if (!data) return badRequest('Pack not found or not editable', 404)
       pack = data
     } else {
-      // agent_ids-only change: confirm the pack exists and is visible/editable
-      // to the caller (RLS) before touching the assignment set.
+      // agent_ids / event_ids-only change: confirm the pack exists and is
+      // visible to the caller (RLS) before touching the assignment sets.
       const { data, error } = await supabase
         .from('packs')
         .select('*')
@@ -161,6 +172,16 @@ export async function PUT(request, { params }) {
       }
     } catch (e) {
       console.warn('[packs PUT] visibility sync failed:', e?.message)
+    }
+
+    // Replace the shared fair-folder set when the editor sent one.
+    if (eventIds !== undefined) {
+      try {
+        await syncPackFairs(adminSupabase, id, eventIds, user.id)
+        pack = { ...pack, fair_ids: [...new Set(eventIds.filter(Boolean))] }
+      } catch (e) {
+        console.warn('[packs PUT] fair assignment failed:', e?.message)
+      }
     }
 
     // Regenerate the pack's Excel order template so the Packs folder reflects

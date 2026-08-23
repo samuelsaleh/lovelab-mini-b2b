@@ -6,7 +6,7 @@ import { colors, fonts } from '@/lib/styles'
 import { noAutofill } from '@/lib/noAutofill'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, closureOptionsFor } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -136,15 +136,14 @@ function rowCollectionId(row) {
 
 const findCollection = sharedFindCollection
 
-function getHousingOptions(housingKey, setting) {
+function getHousingOptions(housingKey, setting, bezelOnly = false) {
   if (!housingKey) return []
 
   // These types store values with a "Bezel X" / "Prong X" prefix — match that format exactly
   if (housingKey === 'shapyShine') {
-    return [
-      ...HOUSING.shapyShineBezel.map(h => `Bezel ${h}`),
-      ...HOUSING.shapyShineProng.map(h => `Prong ${h}`),
-    ]
+    const bezel = HOUSING.shapyShineBezel.map(h => `Bezel ${h}`)
+    if (bezelOnly) return bezel
+    return [...bezel, ...HOUSING.shapyShineProng.map(h => `Prong ${h}`)]
   }
   if (housingKey === 'matchy') {
     return [
@@ -205,8 +204,10 @@ function prefillRows(quote) {
       bpColor: color,
       // Bracelet thread closure: builder stores it on the line as
       // 'braided' | 'nonBraided' | null. Persist as the exact same string
-      // so the OrderForm select can pre-pick it on prefill.
-      closure: ln.closureType || '',
+      // so the OrderForm select can pre-pick it on prefill. Collections whose
+      // closure is forced (Shapy Shine = braided) ignore the stored value so a
+      // line saved before the rule can't come back as non-braided.
+      closure: getForcedClosure(colDef) || ln.closureType || '',
       size: ln.size || '',
       material: buildMaterial(cordType, thickness),
       colorCord: normalizeCordColorName(colDef, cordType, ln.colorName || ''),
@@ -1231,6 +1232,19 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         next[rowIdx].size = ''
         next[rowIdx].material = ''
         next[rowIdx].colorCord = ''
+        // Collections whose closure isn't a choice (Shapy Shine = braided) get
+        // it stamped straight away so the cell is never left blank.
+        next[rowIdx].closure = getForcedClosure(newCol) || ''
+      }
+      // Shapy Shine sells only five shapes at 0.10 ct, and only in a bezel —
+      // moving a row to that size drops a shape / setting it no longer sells.
+      if (key === 'collection' || key === 'carat') {
+        const rowCol = findCollection(next[rowIdx].collection)
+        if (isBezelOnly(rowCol, next[rowIdx].carat)) {
+          next[rowIdx].setting = 'Bezel'
+          const shapes = getShapesForCarat(rowCol, next[rowIdx].carat)
+          if (next[rowIdx].shape && !shapes.includes(next[rowIdx].shape)) next[rowIdx].shape = ''
+        }
       }
       // Switching thread (braided nylon ↔ silk) switches colour palette, and the
       // two spell shared colours differently — re-snap the picked colour so it
@@ -1254,7 +1268,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         if (col) {
           const caratIdx = col.carats.findIndex(c => c === row.carat)
           if (caratIdx !== -1) {
-            const certKey = row.cert === 'In-house' ? 'inhouse' : row.cert === 'IGI' ? 'igi' : getDefaultCert(col)
+            if (Array.isArray(col.certificateByCarat)) {
+              const nextCert = getAvailableCerts(col, caratIdx, pricelistYear)[0]
+              if (nextCert) next[rowIdx].cert = CERT_LABELS[nextCert] || next[rowIdx].cert
+            }
+            const certKey = next[rowIdx].cert === 'In-house' ? 'inhouse' : next[rowIdx].cert === 'IGI' ? 'igi' : getDefaultCert(col, caratIdx, pricelistYear)
             const price = getPrice(col, caratIdx, certKey, pricelistYear)
             next[rowIdx].unitPrice = String(price)
             const qty = Number(row.quantity) || 0
@@ -2624,16 +2642,26 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                           const isColorCordCol = col.key === 'colorCord'
                           const needsLookup = isCaratCol || isShapeCol || isSettingCol || isBpColorCol || isClosureCol || isSizeCol || isMaterialCol || isColorCordCol
                           const rowCol = needsLookup ? findCollection(row.collection) : null
-                          const shapeOptions = isShapeCol && rowCol?.shapes ? rowCol.shapes.map(s => ({ value: s, label: s })) : null
-                          const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng', 'multiThree'].includes(rowCol.housing)
+                          // Shapy Shine restricts its shapes and forces a bezel at
+                          // 0.10 ct, so both lists depend on the row's carat.
+                          const rowBezelOnly = isBezelOnly(rowCol, row.carat)
+                          const shapeOptions = isShapeCol && rowCol?.shapes
+                            ? getShapesForCarat(rowCol, row.carat).map(s => ({ value: s, label: s }))
+                            : null
+                          const sparkleNoColor = rowCol?.housing === 'sparkleProng' || rowCol?.housing === 'sparkleProngBezel'
+                          const hasSetting = rowCol?.housing && ['shapyShine', 'matchy', 'sparkleProng', 'sparkleProngBezel', 'multiThree'].includes(rowCol.housing)
                           const settingOptions = isSettingCol && hasSetting
                             ? (rowCol.housing === 'sparkleProng'
                                 ? [{ value: 'Prong', label: 'Prongs' }]
+                                : rowCol.housing === 'sparkleProngBezel'
+                                  ? [{ value: 'Prong', label: 'Prong' }, { value: 'Bezel', label: 'Bezel' }]
                                 : rowCol.housing === 'multiThree'
                                   ? [{ value: 'F', label: 'F' }, { value: 'LO', label: 'LO' }]
-                                  : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prongs' }])
+                                  : rowBezelOnly
+                                    ? [{ value: 'Bezel', label: 'Bezel' }]
+                                    : [{ value: 'Bezel', label: 'Bezel' }, { value: 'Prong', label: 'Prongs' }])
                             : null
-                          const housingOpts = isBpColorCol && rowCol?.housing && rowCol.housing !== 'sparkleProng' ? getHousingOptions(rowCol.housing, row.setting).map(h => {
+                          const housingOpts = isBpColorCol && rowCol?.housing && !sparkleNoColor ? getHousingOptions(rowCol.housing, row.setting, rowBezelOnly).map(h => {
                             const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
                             return { value: stripped, label: stripped }
                           }).filter((v, i, a) => a.findIndex(x => x.value === v.value) === i) : null
@@ -2661,18 +2689,21 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             : null
                           // Closure dropdown opts — only built for collections that opt-in (CUTY, CUBIX).
                           // Labels are localised via the same i18n keys used by the builder.
+                          // A collection with a forced closure (Shapy Shine =
+                          // braided) exposes that single value, so the cell reads
+                          // as a locked label rather than an open choice.
                           const closureOptions = isClosureCol && rowCol?.hasClosure
-                            ? [
-                                { value: 'braided',    label: t('order.columns.closureBraided') },
-                                { value: 'nonBraided', label: t('order.columns.closureNonBraided') },
-                              ]
+                            ? closureOptionsFor(rowCol).map(v => ({
+                                value: v,
+                                label: v === 'braided' ? t('order.columns.closureBraided') : t('order.columns.closureNonBraided'),
+                              }))
                             : null
 
                           const na = rowCol && row.collection
                           const isNA = na && (
                             (isShapeCol && !rowCol.shapes) ||
                             (isSettingCol && !hasSetting) ||
-                            (isBpColorCol && rowCol.housing === 'sparkleProng') ||
+                            (isBpColorCol && sparkleNoColor) ||
                             // Closure column: hide for collections that don't opt-in via hasClosure.
                             (isClosureCol && !rowCol.hasClosure)
                           )

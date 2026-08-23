@@ -190,4 +190,58 @@ describe('BuilderPage — AI ADD action plumbs closureType + certType into the l
     const cfg = sspfLine.colorConfigs[sspfLine.colorConfigs.length - 1]
     expect(cfg.closureType).toBeNull()
   })
+
+  // Shapy Shine is braided-only (Alberto, Aug 2026). The advisor prompt says so,
+  // but a hallucinated "nonBraided" must not reach the line either.
+  test('ADD on SHAPY SHINE FANCY is forced to braided even when the AI says nonBraided', async () => {
+    let captured = null
+    const harness = renderWithI18n(
+      <StatefulHarness
+        initialLines={[makeCutyLine()]}
+        onLines={(l) => { captured = l }}
+      />
+    )
+
+    await runAddAction(harness, {
+      type: 'add',
+      collection: 'SHAPY SHINE FANCY',
+      color: 'Black',
+      carat: '0.30',
+      shape: 'Pear',
+      housing: 'Prong Yellow',
+      size: 'M',
+      closureType: 'nonBraided',
+      qty: 1,
+    })
+
+    const ssfLine = captured.find(l => l.collectionId === 'SSF')
+    expect(ssfLine).toBeTruthy()
+    const cfg = ssfLine.colorConfigs[ssfLine.colorConfigs.length - 1]
+    expect(cfg.closureType).toBe('braided')
+  })
+
+  test('ADD on SHAPY SHINE FANCY gets braided even when the AI omits the closure', async () => {
+    let captured = null
+    const harness = renderWithI18n(
+      <StatefulHarness
+        initialLines={[makeCutyLine()]}
+        onLines={(l) => { captured = l }}
+      />
+    )
+
+    await runAddAction(harness, {
+      type: 'add',
+      collection: 'SHAPY SHINE FANCY',
+      color: 'Black',
+      carat: '0.30',
+      shape: 'Pear',
+      housing: 'Bezel Yellow',
+      size: 'M',
+      qty: 1,
+    })
+
+    const ssfLine = captured.find(l => l.collectionId === 'SSF')
+    const cfg = ssfLine.colorConfigs[ssfLine.colorConfigs.length - 1]
+    expect(cfg.closureType).toBe('braided')
+  })
 })

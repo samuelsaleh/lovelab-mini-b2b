@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useState, useRef, useMemo, useEffect } from 'react'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, cordPaletteFor, getDefaultCert, getDefaultCordType, getDefaultThickness, getPrice, getVisibleCollections, getVisiblePricelists, getCollectionsByType, getProductType, normalizeCordColorName, parseMaterialLabel, DEFAULT_PRICELIST, PRICELIST_LABELS, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, CERT_LABELS, HOUSING, calculateQuote, cordPaletteFor, getAvailableCarats, getDefaultCert, getDefaultCordType, getDefaultThickness, getPrice, getVisibleCollections, getVisiblePricelists, getCollectionsByType, getProductType, normalizeCordColorName, parseMaterialLabel, DEFAULT_PRICELIST, PRICELIST_LABELS, resolvePricelist, resolveClosure } from '@/lib/catalog'
+import { buildGridEntries } from '@/lib/collectionFamilies'
 import { fmt } from '@/lib/utils'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -46,6 +47,41 @@ export function cardsForCollection(col) {
     return col.shapes.map(shape => ({ key: cardKey(col.id, shape), col, shape }))
   }
   return [{ key: col.id, col, shape: null }]
+}
+
+// Cards you see AFTER opening a range. Most families just list their member
+// collections. `openAsShapes` families (Shapy Shine) list that collection's
+// shapes instead — same folder gesture as Multi, different contents.
+export function cardsForFamilyEntry(entry) {
+  if (!entry || entry.type !== 'family') return []
+  if (entry.family.openAsShapes) {
+    return entry.members.flatMap((col) => {
+      const shapes = col.shapes || []
+      if (shapes.length === 0) return [{ key: col.id, col, shape: null }]
+      return shapes.map((shape) => ({ key: cardKey(col.id, shape), col, shape }))
+    })
+  }
+  return entry.members.flatMap(cardsForCollection)
+}
+
+// Cheapest and dearest piece across a set of collections, on one price list.
+//
+// Reads the sizes each collection actually SELLS on that list rather than
+// walking col.carats end to end: Multi Moonlight lists 0.70 and 1.10 but prices
+// them null before October, and getPrice answers 0 there — so the old
+// first-to-last card range rendered "€75 – €0". Returns null when nothing in
+// the set is priced, which the caller renders as no range at all.
+export function priceRangeFor(cols, pricelistYear) {
+  const prices = []
+  for (const col of cols || []) {
+    for (const { idx } of getAvailableCarats(col, pricelistYear)) {
+      const cert = getDefaultCert(col, idx, pricelistYear)
+      const price = getPrice(col, idx, cert, pricelistYear)
+      if (price > 0) prices.push(price)
+    }
+  }
+  if (prices.length === 0) return null
+  return { min: Math.min(...prices), max: Math.max(...prices) }
 }
 
 // ─── Exported helpers (used by App.jsx) ───
@@ -228,7 +264,7 @@ const PACK6_ROWS = [
 // array order changed so the fallback matches the renamed DB seeds and lists
 // chronologically (Pack 1..4, then Pack 6). See
 // database-migrations/supabase-phase25-rename-packs.sql.
-const PACKS = [
+export const PACKS = [
   {
     id: 'pack-3',
     label: 'Pack 1',
@@ -305,10 +341,81 @@ function computePackTotal(pack, pricelistYear) {
     if (!col) return sum
     const colorCount = (CORD_COLORS[col.cord] || []).length
     const minQty = col.minC || 1
-    const cert = getDefaultCert(col)
-    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, cert, pricelistYear), 0)
+    const lineTotal = line.caratIndices.reduce((s, ci) => s + getPrice(col, ci, getDefaultCert(col, ci, pricelistYear), pricelistYear), 0)
     return sum + lineTotal * colorCount * minQty
   }, 0)
+}
+
+// Sentinel folder id for "packs not filed under any fair yet". Never a real
+// event id, so it can share the activeFairId state with genuine fairs.
+const UNSORTED_FAIR_ID = '__unsorted__'
+
+// ─── Small inline icons for the pack strip ───
+// Drawn rather than taken from a unicode glyph: the previous ◌ / ◉ circles gave
+// no hint of what they did, which is exactly what made personal hiding
+// confusing. An eye and a struck-through eye read at a glance.
+
+function FolderIcon({ size = 26, muted = false, onDark = false }) {
+  const fill = onDark ? 'rgba(255,255,255,0.3)' : muted ? '#f1eef3' : '#ead9f2'
+  const stroke = onDark ? 'rgba(255,255,255,0.8)' : muted ? '#d8d0db' : '#c9a9d8'
+  return (
+    <svg width={size} height={size * 0.8} viewBox="0 0 30 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path
+        d="M2.5 4.5A2.5 2.5 0 0 1 5 2h5.6a2 2 0 0 1 1.6.8l1.3 1.7H25a2.5 2.5 0 0 1 2.5 2.5v12A2.5 2.5 0 0 1 25 21.5H5A2.5 2.5 0 0 1 2.5 19V4.5Z"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth="1.2"
+      />
+    </svg>
+  )
+}
+
+// Shared style for the little action icons on a pack card. Fixed 20px squares
+// so the strip lines up whatever combination of actions a pack allows.
+function packIconBtn(borderColor, color) {
+  return {
+    width: 20, height: 20, borderRadius: 5, padding: 0,
+    border: `1px solid ${borderColor}`, background: '#fff', color,
+    fontSize: 11, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  }
+}
+
+// "Sarah Goutard" → "SG". Keeps the owner visible on a 148px card where the
+// full name would never fit.
+function initialsOf(name) {
+  if (!name) return '?'
+  const parts = String(name).trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  return parts.slice(0, 2).map(p => p[0].toUpperCase()).join('')
+}
+
+function PinIcon({ filled = false }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style={{ display: 'block' }}>
+      <path
+        d="M9.8 1.6 14.4 6.2l-1.7.5a3 3 0 0 0-1.5.9l-1.6 1.8.6 2.4-1 1L3.2 7.8l1-1 2.4.6L8.4 5.8a3 3 0 0 0 .9-1.5l.5-2.7Z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M5.6 10.4 2.2 13.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function EyeIcon({ hidden = false }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style={{ display: 'block' }}>
+      <path
+        d="M1 8s2.6-4.2 7-4.2S15 8 15 8s-2.6 4.2-7 4.2S1 8 1 8Z"
+        fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      {hidden && <path d="M2 14 14 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />}
+    </svg>
+  )
 }
 
 // Adapt a DB pack row (snake_case, from /api/packs) into the shape the
@@ -326,6 +433,12 @@ function computePackTotal(pack, pricelistYear) {
 //     and drag-reorder the strip. Edit of a foreign private pack stays blocked.
 //   - `_ownerName` lets the card show whose pack it is.
 //   - `_isSeed` / global → editable only by admins (matches the RLS policy).
+//   - `_fairIds` (Phase 34) → which fair folders the pack is filed under. Shared
+//     across the whole team, so anyone can drag a pack in or out.
+//   - `_hidden` (Phase 34) → the CALLER hid this pack from their own strip. It
+//     is a personal preference; other users are unaffected.
+//   - `_pinned` (Phase 34) → the CALLER pinned it. Also personal: pinned packs
+//     sort first and stay visible inside every folder.
 function dbPackToDisplay(p) {
   const isOwner = p.is_owner === undefined ? (p.scope === 'private') : !!p.is_owner
   return {
@@ -333,6 +446,9 @@ function dbPackToDisplay(p) {
     _dbId: p.id,
     _scope: p.scope || 'global',
     _agentIds: Array.isArray(p.agent_ids) ? p.agent_ids : [],
+    _fairIds: Array.isArray(p.fair_ids) ? p.fair_ids : [],
+    _hidden: !!p.hidden,
+    _pinned: !!p.pinned,
     _isSeed: !!p.is_seed,
     _isOwner: isOwner,
     _ownerName: p.owner_name || null,
@@ -431,6 +547,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     }
     return 'bracelet'
   })
+  // Which collection family the grid is currently inside (null = the root
+  // grid). Purely a view concern — selection lives in selectedCollections and
+  // is unaffected by opening or leaving a family.
+  const [openFamilyId, setOpenFamilyId] = useState(null)
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
@@ -485,6 +605,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // the response. We render these directly so edits persist; the hardcoded
   // PACKS constant is only a fallback when the DB has no seed rows yet.
   const [dbPacks, setDbPacks] = useState([])
+  // Fair folders (Phase 34). Trade fairs double as folders for packs: pick a
+  // fair and the strip narrows to the packs filed under it, so at Frankfurt you
+  // don't wade through the Paris selection. Membership is shared — everyone
+  // sees the same folder contents and anyone can drag a pack in or out.
+  const [fairs, setFairs] = useState([])
+  // null = "All packs"; UNSORTED_FAIR_ID = packs in no fair yet.
+  const [activeFairId, setActiveFairId] = useState(null)
+  // Packs each user hid for themselves stay out of the strip until they ask.
+  const [showHiddenPacks, setShowHiddenPacks] = useState(false)
   const [showPackBuilder, setShowPackBuilder] = useState(false)
   // The pack currently being edited (its contents are loaded into the builder).
   // null when creating a brand-new pack or not editing.
@@ -516,20 +645,44 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     [isAdmin, profile, activePricelist],
   )
 
-  // Load every visible pack once on mount. RLS already scopes the response to
-  // global/seed packs + this user's own private packs.
+  // Load every visible pack. Re-runs when the signed-in profile arrives: a
+  // fetch on first paint can 401 before the session cookie is ready, and the
+  // old "fire once and forget" left the hardcoded 5-pack fallback on screen
+  // forever — which is exactly "why can't I see the packs".
+  const [packsLoadError, setPacksLoadError] = useState(false)
+  const [fairsLoadError, setFairsLoadError] = useState(false)
+  const [packsReloadTick, setPacksReloadTick] = useState(0)
   useEffect(() => {
     if (typeof fetch !== 'function') return
     let cancelled = false
     fetch('/api/packs')
-      .then(r => (r.ok ? r.json() : null))
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('packs ' + r.status))))
       .then(data => {
-        if (cancelled || !data?.packs) return
+        if (cancelled) return
+        if (!Array.isArray(data?.packs)) throw new Error('packs missing')
         setDbPacks(data.packs.map(dbPackToDisplay))
+        setPacksLoadError(false)
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setPacksLoadError(true) })
     return () => { cancelled = true }
-  }, [])
+  }, [profile?.id, packsReloadTick])
+
+  // Load the fair folders. Same retry rule as packs — a 401-on-first-paint
+  // used to leave the folder row looking empty (All packs + Unsorted only).
+  useEffect(() => {
+    if (typeof fetch !== 'function') return
+    let cancelled = false
+    fetch('/api/pack-fairs')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('fairs ' + r.status))))
+      .then(data => {
+        if (cancelled) return
+        if (!Array.isArray(data?.fairs)) throw new Error('fairs missing')
+        setFairs(data.fairs)
+        setFairsLoadError(false)
+      })
+      .catch(() => { if (!cancelled) setFairsLoadError(true) })
+    return () => { cancelled = true }
+  }, [profile?.id, packsReloadTick])
 
   // Prefer the DB rows (seeds first, then private) so standard packs are
   // editable. Fall back to the hardcoded read-only PACKS only when the DB has
@@ -539,6 +692,96 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     const hasSeed = dbPacks.some(p => p._isSeed)
     return hasSeed ? dbPacks : [...PACKS, ...dbPacks]
   }, [dbPacks])
+
+  // Folder counts come from the packs the caller can actually see, not from the
+  // server's pack_count, so an agent never sees a chip promising packs that RLS
+  // hides from them.
+  const fairPackCounts = useMemo(() => {
+    const counts = {}
+    for (const p of allPacks) {
+      for (const fid of p._fairIds || []) {
+        counts[fid] = (counts[fid] || 0) + 1
+      }
+    }
+    return counts
+  }, [allPacks])
+
+  const unsortedPackCount = useMemo(
+    () => allPacks.filter(p => (p._fairIds || []).length === 0).length,
+    [allPacks],
+  )
+
+  // How many packs this user has hidden, within the current folder — drives the
+  // "Show hidden (n)" toggle so they can always get a pack back.
+  const packsInActiveFair = useMemo(() => {
+    // Pinned packs ignore the folder filter on purpose: the point of pinning
+    // Pack 1 is that it's there whichever fair you're looking at, rather than
+    // buried in whichever folder it happens to be filed under.
+    const inFolder = (p) => {
+      if (activeFairId === null) return true
+      if (p._pinned) return true
+      if (activeFairId === UNSORTED_FAIR_ID) return (p._fairIds || []).length === 0
+      return (p._fairIds || []).includes(activeFairId)
+    }
+    // Stable sort: pinned first, everything else keeps the strip order.
+    return allPacks
+      .filter(inFolder)
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => (Number(!!b.p._pinned) - Number(!!a.p._pinned)) || (a.i - b.i))
+      .map(({ p }) => p)
+  }, [allPacks, activeFairId])
+
+  const hiddenPackCount = useMemo(
+    () => packsInActiveFair.filter(p => p._hidden).length,
+    [packsInActiveFair],
+  )
+
+  // Every folder destination, in row order. "All packs" clears the filter, so it
+  // replaces what used to be a separate breadcrumb.
+  const folderTiles = useMemo(() => ([
+    { id: null, name: 'All packs', count: allPacks.length, droppable: false, pinned: true },
+    ...fairs.map(f => ({
+      id: f.id,
+      name: f.name,
+      count: fairPackCounts[f.id] || 0,
+      // Fair folders hold documents as well as packs. Deleting one would unfile
+      // every order in it, so the delete affordance is offered only when both
+      // are zero and the caller is allowed to delete it anyway.
+      docCount: typeof f.doc_count === 'number' ? f.doc_count : null,
+      canDelete: f.can_delete !== false,
+      droppable: true,
+    })),
+    { id: UNSORTED_FAIR_ID, name: 'Unsorted', count: unsortedPackCount, droppable: false },
+  ]), [allPacks.length, fairs, fairPackCounts, unsortedPackCount])
+
+  // Empty folders are noise: there are a dozen fairs and most hold no packs.
+  // They appear on request, and automatically while a card is in flight (see
+  // foldersExpanded below, once dragPackId exists), since filing into an empty
+  // folder is the entire reason it exists.
+  const [showAllFolders, setShowAllFolders] = useState(false)
+
+  const activeFolderName = useMemo(() => {
+    if (activeFairId === UNSORTED_FAIR_ID) return 'Unsorted'
+    return fairs.find(f => f.id === activeFairId)?.name || 'Folder'
+  }, [activeFairId, fairs])
+
+  // The cards actually rendered: current folder, minus this user's hidden packs
+  // unless they asked to see them.
+  const visiblePacks = useMemo(
+    () => (showHiddenPacks ? packsInActiveFair : packsInActiveFair.filter(p => !p._hidden)),
+    [packsInActiveFair, showHiddenPacks],
+  )
+  // Pinned packs sit in their own row ABOVE the folders, so Pack 1 (or
+  // whatever you pin) stays on screen while you browse a fair. The folder
+  // strip below only shows the rest.
+  const pinnedVisiblePacks = useMemo(
+    () => visiblePacks.filter(p => p._pinned),
+    [visiblePacks],
+  )
+  const folderVisiblePacks = useMemo(
+    () => visiblePacks.filter(p => !p._pinned),
+    [visiblePacks],
+  )
   // The build is saveable as a pack once at least one config has a carat set.
   const hasBuild = useMemo(
     () => lines.some(l => (l.colorConfigs || []).some(c => c.caratIdx != null)),
@@ -566,6 +809,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Admin drag-to-reorder of the pack strip. Optimistic local move, then
   // persist via /api/packs/reorder so every user sees the new order.
   const [dragPackId, setDragPackId] = useState(null)
+  // The folder currently under the dragged card, for the drop highlight.
+  const [dragOverFairId, setDragOverFairId] = useState(null)
+
+  // Declared here rather than with the other folder state because it depends on
+  // dragPackId: a drag reveals every folder, including the empty ones, so you
+  // can always file into one without first expanding the row by hand.
+  const foldersExpanded = showAllFolders || !!dragPackId
+  const visibleFolders = useMemo(() => folderTiles.filter(f => (
+    f.pinned || foldersExpanded || f.count > 0 || f.id === activeFairId
+  )), [folderTiles, foldersExpanded, activeFairId])
+  const emptyFolderCount = folderTiles.length - visibleFolders.length
   const persistPackOrder = useCallback(async (ordered) => {
     const ordered_ids = ordered.map((p) => p._dbId).filter(Boolean)
     if (ordered_ids.length === 0) return
@@ -577,15 +831,19 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       })
     } catch { /* non-fatal — local order still looks right until next refresh */ }
   }, [])
+  // Anyone can pick up a card, because dropping it on a fair chip files it into
+  // that folder (Phase 34) and that is open to the whole team. Dropping it on
+  // another card reorders the strip, which stays admin-only — enforced in
+  // handlePackDragOver/handlePackDrop below.
   const handlePackDragStart = useCallback((e, pack) => {
-    if (!isAdmin || !pack?._dbId) {
+    if (!pack?._dbId) {
       e.preventDefault()
       return
     }
     setDragPackId(pack.id)
-    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.effectAllowed = 'copyMove'
     try { e.dataTransfer.setData('text/plain', pack.id) } catch { /* IE */ }
-  }, [isAdmin])
+  }, [])
   const handlePackDragOver = useCallback((e, pack) => {
     if (!isAdmin || !dragPackId || !pack?._dbId || pack.id === dragPackId) return
     e.preventDefault()
@@ -609,7 +867,222 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     })
     setDragPackId(null)
   }, [isAdmin, dragPackId, persistPackOrder])
-  const handlePackDragEnd = useCallback(() => { setDragPackId(null) }, [])
+  const handlePackDragEnd = useCallback(() => { setDragPackId(null); setDragOverFairId(null) }, [])
+
+  // Why a filing or hiding change bounced back. Both actions update optimistically
+  // and roll back on failure, which on its own looks like the pack undoing itself
+  // for no reason — so the reason is always stated.
+  const [packSyncError, setPackSyncError] = useState('')
+
+  // Reads the server's reason for a failed write. A 503 carrying
+  // PACK_FOLDERS_NOT_INSTALLED means the Phase 34 migration hasn't been applied,
+  // which needs a DB migration rather than a retry, so it gets its own message.
+  const describeWriteFailure = useCallback(async (res) => {
+    const body = await res?.json?.().catch(() => null)
+    if (body?.code === 'PACK_FOLDERS_NOT_INSTALLED') {
+      return 'Folders and hiding aren’t set up in the database yet, so this can’t be saved. Apply the pack-folders migration in Supabase, then reload.'
+    }
+    return body?.error || 'Couldn’t save that change, so it has been undone. Check your connection and try again.'
+  }, [])
+
+  // ─── Fair folders: file / unfile a pack ───────────────────────────────────
+  // Shared across the team and open to everyone: filing is organising, not a
+  // permission grant. Optimistic local update, then persist the full new set.
+  const setPackFairs = useCallback(async (pack, nextFairIds) => {
+    if (!pack?._dbId) return
+    const unique = [...new Set(nextFairIds.filter(Boolean))]
+    const previous = pack._fairIds || []
+    setPackSyncError('')
+    setDbPacks(prev => prev.map(p => (
+      p._dbId === pack._dbId ? { ...p, _fairIds: unique } : p
+    )))
+    try {
+      const res = await fetch(`/api/packs/${pack._dbId}/fairs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_ids: unique }),
+      })
+      if (!res.ok) {
+        setPackSyncError(await describeWriteFailure(res))
+        throw new Error('request failed')
+      }
+    } catch {
+      // Roll back so the card doesn't lie about where it lives.
+      setDbPacks(prev => prev.map(p => (
+        p._dbId === pack._dbId ? { ...p, _fairIds: previous } : p
+      )))
+      setPackSyncError(prev => prev || 'Couldn’t save that change, so it has been undone. Check your connection and try again.')
+    }
+  }, [describeWriteFailure])
+
+  const addPackToFair = useCallback((pack, fairId) => {
+    if (!pack?._dbId || !fairId || fairId === UNSORTED_FAIR_ID) return
+    if ((pack._fairIds || []).includes(fairId)) return
+    setPackFairs(pack, [...(pack._fairIds || []), fairId])
+  }, [setPackFairs])
+
+  const removePackFromFair = useCallback((pack, fairId) => {
+    if (!pack?._dbId || !fairId) return
+    setPackFairs(pack, (pack._fairIds || []).filter(id => id !== fairId))
+  }, [setPackFairs])
+
+  // Drop a pack card onto a fair chip to file it there, the way you drop a file
+  // on a folder in Drive. Distinct from dropping on another *card*, which
+  // reorders the strip and stays admin-only.
+  const handleFairDragOver = useCallback((e, fairId) => {
+    if (!dragPackId || fairId === UNSORTED_FAIR_ID) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDragOverFairId(fairId)
+  }, [dragPackId])
+  const handleFairDragLeave = useCallback(() => { setDragOverFairId(null) }, [])
+  const handleFairDrop = useCallback((e, fairId) => {
+    e.preventDefault()
+    setDragOverFairId(null)
+    if (!dragPackId || !fairId || fairId === UNSORTED_FAIR_ID) return
+    const pack = dbPacks.find(p => p.id === dragPackId)
+    setDragPackId(null)
+    if (pack) addPackToFair(pack, fairId)
+  }, [dragPackId, dbPacks, addPackToFair])
+
+  // ─── Create a folder ──────────────────────────────────────────────────────
+  // Open to everyone, matching filing: folders are shared, so an agent creating
+  // "Ambiente 2027" creates it for the whole team. Only the name is asked for —
+  // dates and location are added later in the admin portal if the fair needs
+  // them for reporting.
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [folderSaving, setFolderSaving] = useState(false)
+  const [folderError, setFolderError] = useState('')
+
+  const cancelNewFolder = useCallback(() => {
+    setCreatingFolder(false)
+    setNewFolderName('')
+    setFolderError('')
+  }, [])
+
+  const submitNewFolder = useCallback(async () => {
+    const name = newFolderName.trim()
+    if (!name || folderSaving) return
+    // The events endpoint only de-duplicates agent folders, so guard fair names
+    // here — two identical folder tiles would be indistinguishable.
+    if (fairs.some(f => (f.name || '').trim().toLowerCase() === name.toLowerCase())) {
+      setFolderError('A folder with that name already exists.')
+      return
+    }
+    setFolderSaving(true)
+    setFolderError('')
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // type: 'fair' is what makes it show up as a pack folder.
+        body: JSON.stringify({ name, type: 'fair' }),
+      })
+      const data = res.ok ? await res.json() : null
+      if (!res.ok || !data?.event?.id) throw new Error('request failed')
+      // doc_count: 0 is required — a missing count is treated as "unknown" and
+      // the delete button is withheld, which is how a just-created folder
+      // silently couldn't be removed.
+      setFairs(prev => [...prev, { ...data.event, pack_count: 0, doc_count: 0, can_delete: true }])
+      // A brand-new folder is empty, and empty folders are normally collapsed —
+      // so expand the row, otherwise the thing you just created vanishes.
+      setShowAllFolders(true)
+      setCreatingFolder(false)
+      setNewFolderName('')
+    } catch {
+      setFolderError('Could not create the folder. Try again.')
+    }
+    setFolderSaving(false)
+  }, [newFolderName, folderSaving, fairs])
+
+  // ─── Personal hide ────────────────────────────────────────────────────────
+  // Per-user only: takes the card out of YOUR strip and nobody else's. This is
+  // how the Synalia packs stay available to their agents while staying out of
+  // our way.
+  const togglePackHidden = useCallback(async (pack) => {
+    if (!pack?._dbId) return
+    const next = !pack._hidden
+    setPackSyncError('')
+    setDbPacks(prev => prev.map(p => (
+      p._dbId === pack._dbId ? { ...p, _hidden: next } : p
+    )))
+    try {
+      const res = await fetch(`/api/packs/${pack._dbId}/hidden`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden: next }),
+      })
+      if (!res.ok) {
+        setPackSyncError(await describeWriteFailure(res))
+        throw new Error('request failed')
+      }
+    } catch {
+      setDbPacks(prev => prev.map(p => (
+        p._dbId === pack._dbId ? { ...p, _hidden: !next } : p
+      )))
+      setPackSyncError(prev => prev || 'Couldn’t save that change, so it has been undone. Check your connection and try again.')
+    }
+  }, [describeWriteFailure])
+
+  // ─── Delete a folder ──────────────────────────────────────────────────────
+  // Only ever offered for a folder that holds nothing at all — no packs and no
+  // documents. These folders are also document folders, and deleting the event
+  // would unfile every order stored in it, so anything with contents has to be
+  // emptied first (or removed from the Documents panel, where the document
+  // consequences are visible).
+  const deleteFolder = useCallback(async (folder) => {
+    if (!folder?.id || folder.id === UNSORTED_FAIR_ID) return
+    if (folder.count > 0 || folder.docCount !== 0) return
+    if (typeof window !== 'undefined'
+      && !window.confirm(`Delete the folder "${folder.name}"? It is empty, and this affects the whole team.`)) {
+      return
+    }
+    setPackSyncError('')
+    const previous = fairs
+    setFairs(prev => prev.filter(f => f.id !== folder.id))
+    if (activeFairId === folder.id) setActiveFairId(null)
+    try {
+      const res = await fetch(`/api/events/${folder.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setPackSyncError(res.status === 403
+          ? 'Only an admin, or whoever created the folder, can delete it.'
+          : await describeWriteFailure(res))
+        throw new Error('request failed')
+      }
+    } catch {
+      setFairs(previous)
+      setPackSyncError(prev => prev || 'Couldn’t delete that folder, so it has been put back.')
+    }
+  }, [fairs, activeFairId, describeWriteFailure])
+
+  // ─── Personal pin ─────────────────────────────────────────────────────────
+  // The mirror of hiding, and equally private: a pinned pack sorts to the front
+  // and stays visible inside every folder.
+  const togglePackPinned = useCallback(async (pack) => {
+    if (!pack?._dbId) return
+    const next = !pack._pinned
+    setPackSyncError('')
+    setDbPacks(prev => prev.map(p => (
+      p._dbId === pack._dbId ? { ...p, _pinned: next } : p
+    )))
+    try {
+      const res = await fetch(`/api/packs/${pack._dbId}/pinned`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: next }),
+      })
+      if (!res.ok) {
+        setPackSyncError(await describeWriteFailure(res))
+        throw new Error('request failed')
+      }
+    } catch {
+      setDbPacks(prev => prev.map(p => (
+        p._dbId === pack._dbId ? { ...p, _pinned: !next } : p
+      )))
+      setPackSyncError(prev => prev || 'Couldn’t save that change, so it has been undone. Check your connection and try again.')
+    }
+  }, [describeWriteFailure])
 
   // Pending pricelist switch — set to a year string when the agent clicks the
   // other toggle button while there are non-empty lines. Confirms via modal,
@@ -838,9 +1311,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         
         // certType + closureType matter for CUTY/CUBIX — without them the
         // row will fail validation when the agent tries to save the order.
-        const closureType = col.hasClosure
-          ? (action.closureType === 'braided' || action.closureType === 'nonBraided' ? action.closureType : null)
-          : null
+        // resolveClosure pins collections whose closure isn't a choice
+        // (Shapy Shine = braided) whatever the advisor proposed.
+        const closureType = resolveClosure(
+          col,
+          action.closureType === 'braided' || action.closureType === 'nonBraided' ? action.closureType : null,
+        )
         const certType = action.certType === 'igi' || action.certType === 'inhouse' ? action.certType : null
         const cordType = getDefaultCordType(col)
         newConfigsToAdd.push({
@@ -953,7 +1429,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 modified.certType = action.changes.certType
               }
               if (col.hasClosure && (action.changes.closureType === 'braided' || action.changes.closureType === 'nonBraided')) {
-                modified.closureType = action.changes.closureType
+                modified.closureType = resolveClosure(col, action.changes.closureType)
               }
               if (action.changes.qty) modified.qty = parseInt(action.changes.qty) || modified.qty
 
@@ -1108,9 +1584,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           // from the stored row so a pack round-trips faithfully. form_rows store
           // closure as 'braided'|'nonBraided' and cert as its label ('IGI' /
           // 'In-house') — map the label back to the certType key.
-          const closureType = col.hasClosure
-            ? (row.closure === 'braided' || row.closure === 'nonBraided' ? row.closure : null)
-            : null
+          const closureType = resolveClosure(
+            col,
+            row.closure === 'braided' || row.closure === 'nonBraided' ? row.closure : null,
+          )
           let certType = null
           if (row.cert) {
             const match = Object.entries(CERT_LABELS).find(
@@ -1186,13 +1663,220 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // mode. The build stays in the builder so the user can keep working.
   const handlePackUpdated = useCallback((pack) => {
     if (pack?.id) {
-      setDbPacks(prev => prev.map(p => (p._dbId === pack.id ? dbPackToDisplay(pack) : p)))
+      setDbPacks(prev => prev.map(p => {
+        if (p._dbId !== pack.id) return p
+        const next = dbPackToDisplay(pack)
+        // PUT only echoes fair_ids when the editor changed them, and never
+        // echoes `hidden` (a personal flag the route doesn't touch). Keep the
+        // values we already hold so a rename can't un-file or un-hide a pack.
+        return {
+          ...next,
+          _fairIds: pack.fair_ids === undefined ? p._fairIds : next._fairIds,
+          _hidden: pack.hidden === undefined ? p._hidden : next._hidden,
+          _pinned: pack.pinned === undefined ? p._pinned : next._pinned,
+        }
+      }))
     }
     setEditingPack(null)
     setShowPackBuilder(false)
   }, [])
 
   const channelBanner = CHANNEL_BANNER[orderChannel]
+
+
+  const renderPackCard = (pack) => {
+    // Mirror the RLS UPDATE policy exactly: the owner can edit
+    // their own pack (any scope); admins can edit non-private
+    // (global/restricted) packs. An admin viewing another
+    // user's private pack can see + apply it but NOT edit it.
+    const editable = !!pack._dbId && (pack._isOwner || (isAdmin && pack._scope !== 'private'))
+    // Agents: own private only. Admins: every pack type.
+    const deletable = !!pack._dbId && (pack._custom || isAdmin)
+    // Everyone can drag (to file into a fair); only admins get
+    // the reorder handle and the card-to-card drop.
+    const draggable = !!pack._dbId
+    const reorderable = isAdmin && !!pack._dbId
+    // Inside a fair folder, offer to take the pack back out.
+    const inActiveFair = activeFairId !== null
+      && activeFairId !== UNSORTED_FAIR_ID
+      && (pack._fairIds || []).includes(activeFairId)
+    // Packs an admin sees but doesn't own — surface whose it is.
+    const foreignOwner = !pack._isOwner && pack._ownerName
+    const isDragging = dragPackId === pack.id
+    return (
+    <div
+      key={pack.id}
+      draggable={draggable}
+      onDragStart={(e) => handlePackDragStart(e, pack)}
+      onDragOver={(e) => handlePackDragOver(e, pack)}
+      onDrop={(e) => handlePackDrop(e, pack)}
+      onDragEnd={handlePackDragEnd}
+      data-testid={reorderable ? `pack-card-draggable-${pack.id}` : `pack-card-${pack.id}`}
+      title={reorderable
+        ? 'Drag onto a fair to file it, or onto another card to reorder'
+        : draggable ? 'Drag onto a fair to file it there' : undefined}
+      style={{
+      width: mobile ? 150 : 172, flex: '0 0 auto', minHeight: 128,
+      border: isDragging ? `1.5px solid ${colors.inkPlum}` : '1px solid #e4dded', borderRadius: 10,
+      // Accent on a pinned card: inside a folder it may be the
+      // one card that isn't filed there, and the stripe is what
+      // says "this is here because you pinned it".
+      borderLeft: pack._pinned ? `3px solid ${colors.inkPlum}` : undefined,
+      padding: '10px 10px 8px', background: isDragging ? '#f5eef7' : '#fff',
+      boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
+      display: 'flex', flexDirection: 'column', gap: 5,
+      opacity: isDragging ? 0.7 : pack._hidden ? 0.5 : 1,
+      cursor: draggable ? 'grab' : 'default',
+      userSelect: draggable ? 'none' : undefined,
+    }}>
+      {/* Two lines for the name, always exactly two whether it
+          needs them or not: that reserved height is what keeps
+          every card the same size while still fitting names like
+          "LOVELAB FULL SET" that a single line would cut off. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+        {reorderable && (
+          <span
+            aria-hidden="true"
+            style={{ color: '#ccc', fontSize: 11, lineHeight: 1.35, cursor: 'grab', flexShrink: 0 }}
+          >⠿</span>
+        )}
+        <div
+          title={pack.label}
+          style={{
+            fontWeight: 700, fontSize: 12, lineHeight: 1.35, color: colors.inkPlum,
+            flex: 1, minWidth: 0, height: '2.7em',
+            display: '-webkit-box', WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            wordBreak: 'break-word',
+          }}
+        >
+          {pack.label}
+        </div>
+        {(pack._custom || foreignOwner) && (
+          <span
+            title={pack._custom ? 'Your own pack' : `Created by ${pack._ownerName}`}
+            style={{
+              flexShrink: 0, marginTop: 1,
+              fontSize: 8, fontWeight: 700, textTransform: 'uppercase',
+              letterSpacing: 0.3,
+              color: pack._custom ? '#9a7fa8' : '#6b7280',
+              background: pack._custom ? '#f5eef7' : '#f1f1f4',
+              borderRadius: 4, padding: '1px 4px',
+            }}
+          >
+            {pack._custom ? 'You' : initialsOf(pack._ownerName)}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#9a7fa8' }}>
+        {pack.fixedTotal != null ? '' : '~'}€{computePackTotal(pack, activePricelist).toLocaleString('fr-FR')}
+      </div>
+      {(() => {
+        const added = addedPackIds.includes(pack.id)
+        return (
+          <button
+            onClick={() => {
+              // Additive: combine multiple packs into one order.
+              applyPack(pack, { merge: true })
+              setAddedPackIds(prev => prev.includes(pack.id) ? prev : [...prev, pack.id])
+            }}
+            title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
+            style={{
+              marginTop: 'auto',
+              width: '100%', padding: mobile ? '10px 0' : '6px 0',
+              minHeight: mobile ? 40 : 'auto',
+              borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
+              background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 11,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              transition: 'opacity .1s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+          >
+            {added ? '✓ Added' : '+ Add pack'}
+          </button>
+        )
+      })()}
+      {/* Icon strip. Order is fixed so the same action is always
+          in the same place, even when some icons don't apply. */}
+      <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end', minHeight: 20 }}>
+        {editable && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); startEditPack(pack) }}
+            title={t('pack.edit')}
+            aria-label={`${t('pack.edit')} — ${pack.label}`}
+            style={packIconBtn('#e4dded', colors.inkPlum)}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          >✎</button>
+        )}
+        {/* Personal pin — keeps the pack at the front of the
+            strip and visible in every folder. Yours only. */}
+        {!!pack._dbId && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); togglePackPinned(pack) }}
+            title={pack._pinned
+              ? 'Pinned for you — shown first in every folder. Click to unpin.'
+              : 'Pin to the front of the strip, visible in every folder. Only affects you.'}
+            aria-label={`${pack._pinned ? 'Unpin' : 'Pin'} — ${pack.label}`}
+            data-testid={`pack-pin-toggle-${pack.id}`}
+            style={packIconBtn(
+              pack._pinned ? colors.inkPlum : '#e4dded',
+              pack._pinned ? colors.inkPlum : '#9a7fa8',
+            )}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          ><PinIcon filled={pack._pinned} /></button>
+        )}
+        {/* Personal hide — yours only, nobody else's strip
+            changes. Reversible via "Show hidden". */}
+        {!!pack._dbId && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); togglePackHidden(pack) }}
+            title={pack._hidden
+              ? 'Hidden for you only — click to show it again'
+              : 'Hide from your own list. Nobody else is affected.'}
+            aria-label={`${pack._hidden ? 'Unhide' : 'Hide'} — ${pack.label}`}
+            data-testid={`pack-hide-toggle-${pack.id}`}
+            style={packIconBtn('#e4dded', '#9a7fa8')}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          ><EyeIcon hidden={pack._hidden} /></button>
+        )}
+        {/* Take the pack back out of the folder you're viewing.
+            Deliberately separate from the red delete — this only
+            unfiles, the pack itself survives. */}
+        {inActiveFair && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); removePackFromFair(pack, activeFairId) }}
+            title={`Take out of "${activeFolderName}" — affects the whole team`}
+            aria-label={`Remove from this fair — ${pack.label}`}
+            data-testid={`pack-unfile-${pack.id}`}
+            style={packIconBtn('#e4dded', '#9a7fa8')}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          >↩</button>
+        )}
+        {deletable && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); deletePack(pack) }}
+            title={t('pack.delete')}
+            aria-label={`${t('pack.delete')} — ${pack.label}`}
+            style={packIconBtn('#f0d7d7', '#dc2626')}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#fdeaea' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+          >×</button>
+        )}
+      </div>
+    </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -1391,9 +2075,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: colors.inkPlum }}>Packs</div>
                   <div style={{ fontSize: 10, color: '#aaa' }}>
-                    {isAdmin
-                      ? 'Quick-start packs — drag cards to reorder, × to delete'
-                      : 'Quick-start with a standard collection'}
+                    Folders are shared · pin a pack to keep it above the folders · hiding only affects you
                   </div>
                 </div>
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: '#999', fontWeight: 600 }}>
@@ -1403,6 +2085,298 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
               {showPacks && (
                 <div style={{ position: 'relative' }}>
+                {pinnedVisiblePacks.length > 0 && (
+                  <div
+                    data-testid="pack-pinned-row"
+                    style={{
+                      display: 'flex', flexWrap: mobile ? 'wrap' : 'nowrap', gap: 10,
+                      overflowX: mobile ? 'visible' : 'auto', padding: '12px 2px 2px',
+                      scrollbarWidth: 'thin',
+                    }}
+                  >
+                    {pinnedVisiblePacks.map(renderPackCard)}
+                  </div>
+                )}
+
+                {/* Folder row. Its own row above the packs, not mixed into the
+                    strip: with a dozen fairs, inline tiles pushed the first pack
+                    card off-screen. Always visible, so navigating and filing are
+                    both one gesture from anywhere and no breadcrumb is needed —
+                    the open folder is simply the highlighted one. */}
+                <div
+                  data-testid="pack-folder-bar"
+                  style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+                    padding: '10px 2px 6px',
+                  }}
+                >
+                  {visibleFolders.map(folder => {
+                    const active = activeFairId === folder.id
+                    const over = folder.droppable && dragOverFairId === folder.id
+                    // Empty of packs AND of documents: the only case where
+                    // removing the folder can't cost anyone their filing.
+                    const deletable = folder.droppable
+                      && folder.canDelete
+                      && folder.count === 0
+                      && folder.docCount === 0
+                      && !dragPackId
+                    return (
+                      <span key={folder.id ?? 'all'} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveFairId(folder.id); setShowHiddenPacks(false) }}
+                        onDragOver={folder.droppable ? (e) => handleFairDragOver(e, folder.id) : undefined}
+                        onDragLeave={folder.droppable ? handleFairDragLeave : undefined}
+                        onDrop={folder.droppable ? (e) => handleFairDrop(e, folder.id) : undefined}
+                        data-testid={`pack-folder-tile-${folder.id ?? 'all'}`}
+                        title={folder.droppable
+                          ? `${folder.name} — open it, or drop a pack here to file it (shared with the team)`
+                          : folder.name}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          maxWidth: mobile ? 160 : 200,
+                          padding: mobile ? '8px 10px' : '5px 9px',
+                          minHeight: mobile ? 38 : 'auto',
+                          borderRadius: deletable ? '8px 0 0 8px' : 8,
+                          fontFamily: 'inherit', fontSize: 11,
+                          fontWeight: active ? 700 : 600, cursor: 'pointer',
+                          border: `1.5px ${over ? 'dashed' : 'solid'} ${over || active ? colors.inkPlum : '#e4dded'}`,
+                          borderRight: deletable ? 'none' : undefined,
+                          background: over ? '#f0e4f5' : active ? colors.inkPlum : '#fff',
+                          color: over ? colors.inkPlum : active ? '#fff' : colors.inkPlum,
+                        }}
+                      >
+                        {folder.droppable && (
+                          <FolderIcon size={14} onDark={active && !over} muted={false} />
+                        )}
+                        <span style={{
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {folder.name}
+                        </span>
+                        <span style={{ opacity: 0.6, fontWeight: 600 }}>{folder.count}</span>
+                      </button>
+                      {deletable && (
+                        <button
+                          type="button"
+                          onClick={() => deleteFolder(folder)}
+                          data-testid={`pack-folder-delete-${folder.id}`}
+                          title={`Delete "${folder.name}" — it holds no packs and no documents`}
+                          aria-label={`Delete folder ${folder.name}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: mobile ? 30 : 22, minHeight: mobile ? 38 : 24,
+                            padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 13, lineHeight: 1, color: '#9a7fa8',
+                            border: `1.5px solid ${active ? colors.inkPlum : '#e4dded'}`,
+                            borderLeft: '1px solid #efeaf2',
+                            borderRadius: '0 8px 8px 0',
+                            background: active ? colors.inkPlum : '#fff',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = '#c0392b' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = '#9a7fa8' }}
+                        >×</button>
+                      )}
+                      </span>
+                    )
+                  })}
+
+                  {/* Empty folders, on request. Auto-revealed during a drag, so
+                      this only ever needs clicking to browse. */}
+                  {emptyFolderCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFolders(true)}
+                      data-testid="pack-folder-show-all"
+                      title="Folders with no packs in them"
+                      style={{
+                        padding: mobile ? '8px 10px' : '5px 9px',
+                        minHeight: mobile ? 38 : 'auto',
+                        borderRadius: 8, border: '1px dashed #d8d0db', background: '#fafafa',
+                        color: '#8a8a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      +{emptyFolderCount} empty
+                    </button>
+                  )}
+                  {showAllFolders && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFolders(false)}
+                      data-testid="pack-folder-show-fewer"
+                      style={{
+                        padding: mobile ? '8px 10px' : '5px 9px',
+                        minHeight: mobile ? 38 : 'auto',
+                        borderRadius: 8, border: '1px dashed #d8d0db', background: '#fafafa',
+                        color: '#8a8a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      Hide empty
+                    </button>
+                  )}
+
+                  {creatingFolder ? (
+                    <span
+                      data-testid="pack-folder-new-form"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <input
+                        autoFocus
+                        value={newFolderName}
+                        onChange={(e) => { setNewFolderName(e.target.value); setFolderError('') }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); submitNewFolder() }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelNewFolder() }
+                        }}
+                        placeholder="Folder name"
+                        aria-label="New folder name"
+                        data-testid="pack-folder-new-input"
+                        style={{
+                          width: 130, padding: mobile ? '7px 8px' : '5px 7px', borderRadius: 7,
+                          border: `1.5px solid ${folderError ? '#dc2626' : colors.inkPlum}`,
+                          fontSize: 11, fontFamily: 'inherit', color: colors.inkPlum, outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={submitNewFolder}
+                        disabled={!newFolderName.trim() || folderSaving}
+                        data-testid="pack-folder-new-save"
+                        style={{
+                          padding: mobile ? '8px 10px' : '5px 9px', borderRadius: 7,
+                          border: `1.5px solid ${colors.inkPlum}`,
+                          background: newFolderName.trim() && !folderSaving ? colors.inkPlum : '#d8d0db',
+                          color: '#fff', fontSize: 11, fontWeight: 700,
+                          cursor: newFolderName.trim() && !folderSaving ? 'pointer' : 'not-allowed',
+                          fontFamily: 'inherit', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {folderSaving ? 'Creating…' : 'Create'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelNewFolder}
+                        data-testid="pack-folder-new-cancel"
+                        aria-label="Cancel new folder"
+                        style={{
+                          padding: mobile ? '8px 9px' : '5px 8px', borderRadius: 7,
+                          border: '1px solid #e4dded', background: '#fff',
+                          color: '#9a7fa8', fontSize: 11, fontWeight: 700,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >✕</button>
+                      {folderError && (
+                        <span data-testid="pack-folder-new-error" style={{ fontSize: 10, color: '#dc2626' }}>
+                          {folderError}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setCreatingFolder(true)}
+                      data-testid="pack-folder-new"
+                      title="Create a new fair folder — shared with the whole team"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: mobile ? '8px 10px' : '5px 9px',
+                        minHeight: mobile ? 38 : 'auto',
+                        borderRadius: 8, border: '1px dashed #d8d0db', background: '#fff',
+                        color: '#9a7fa8', fontSize: 11, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.inkPlum }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d8d0db' }}
+                    >
+                      + New folder
+                    </button>
+                  )}
+
+                  {hiddenPackCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHiddenPacks(v => !v)}
+                      data-testid="pack-show-hidden-toggle"
+                      title="Packs you hid for yourself. Nobody else is affected."
+                      style={{
+                        marginLeft: 'auto',
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: mobile ? '8px 10px' : '5px 9px',
+                        minHeight: mobile ? 38 : 'auto',
+                        borderRadius: 999, border: '1px dashed #d8d0db', background: '#fafafa',
+                        color: '#8a8a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <EyeIcon hidden={!showHiddenPacks} />
+                      {showHiddenPacks
+                        ? `Hide hidden (${hiddenPackCount})`
+                        : `Show hidden (${hiddenPackCount})`}
+                    </button>
+                  )}
+                </div>
+
+                {(packsLoadError || fairsLoadError) && (
+                  <div
+                    data-testid="pack-load-error"
+                    role="status"
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                      padding: '8px 10px', marginBottom: 4, borderRadius: 8,
+                      background: '#fdf8ee', border: '1px solid #ead8b0',
+                      fontSize: 11, color: '#8a6d1d', lineHeight: 1.45,
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>
+                      {packsLoadError
+                        ? 'Couldn’t load your packs, so you’re seeing the 5 starter ones. The others are still saved — retry.'
+                        : 'Couldn’t load the folders. Packs still work; filing them into a fair will have to wait.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setPacksLoadError(false); setFairsLoadError(false); setPacksReloadTick(n => n + 1) }}
+                      data-testid="pack-load-retry"
+                      style={{
+                        flexShrink: 0, padding: '4px 8px', borderRadius: 6,
+                        border: '1px solid #ead8b0', background: '#fff',
+                        color: '#8a6d1d', fontSize: 11, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* Why the last change bounced back. Without this an optimistic
+                    rollback looks like the app undoing itself at random. */}
+                {packSyncError && (
+                  <div
+                    data-testid="pack-sync-error"
+                    role="status"
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                      padding: '8px 10px', marginBottom: 4, borderRadius: 8,
+                      background: '#fdf3f3', border: '1px solid #f0d7d7',
+                      fontSize: 11, color: '#b03535', lineHeight: 1.45,
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>{packSyncError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPackSyncError('')}
+                      aria-label="Dismiss"
+                      style={{
+                        flexShrink: 0, width: 18, height: 18, borderRadius: 4, padding: 0,
+                        border: 'none', background: 'transparent', color: '#b03535',
+                        fontSize: 13, lineHeight: 1, cursor: 'pointer',
+                      }}
+                    >×</button>
+                  </div>
+                )}
+
                 {/* Prev arrow — for mouse users who can't swipe the row.
                     Hidden on compact (touch) where packs wrap instead. */}
                 {!mobile && packArrows.left && (
@@ -1448,165 +2422,38 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     disabled={!hasBuild}
                     title={hasBuild ? 'Save your current build as a reusable pack' : 'Configure at least one item first'}
                     style={{
-                      minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 160px' : '0 0 auto',
+                      width: mobile ? 150 : 172, flex: '0 0 auto', minHeight: 128,
                       border: `1.5px dashed ${hasBuild ? colors.inkPlum : '#d8d0db'}`,
-                      borderRadius: 10, padding: '12px 14px',
+                      borderRadius: 10, padding: '12px 10px',
                       background: hasBuild ? '#fdf7fa' : '#fafafa',
                       cursor: hasBuild ? 'pointer' : 'not-allowed',
                       display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      justifyContent: 'center', gap: 6, fontFamily: 'inherit',
+                      justifyContent: 'center', gap: 4, fontFamily: 'inherit',
                       color: hasBuild ? colors.inkPlum : '#bbb', textAlign: 'center',
                     }}
                   >
-                    <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>Save current build</span>
+                    <span style={{ fontSize: 20, lineHeight: 1 }}>+</span>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>Save current build</span>
                     <span style={{ fontSize: 10, color: hasBuild ? '#9a7fa8' : '#ccc' }}>
                       {hasBuild ? 'as your own pack' : 'add items first'}
                     </span>
                   </button>
-                  {allPacks.map(pack => {
-                    // Mirror the RLS UPDATE policy exactly: the owner can edit
-                    // their own pack (any scope); admins can edit non-private
-                    // (global/restricted) packs. An admin viewing another
-                    // user's private pack can see + apply it but NOT edit it.
-                    const editable = !!pack._dbId && (pack._isOwner || (isAdmin && pack._scope !== 'private'))
-                    // Agents: own private only. Admins: every pack type.
-                    const deletable = !!pack._dbId && (pack._custom || isAdmin)
-                    const draggable = isAdmin && !!pack._dbId
-                    // Packs an admin sees but doesn't own — surface whose it is.
-                    const foreignOwner = !pack._isOwner && pack._ownerName
-                    const isDragging = dragPackId === pack.id
-                    return (
+                  {folderVisiblePacks.map(renderPackCard)}
+                  {folderVisiblePacks.length === 0 && (
                     <div
-                      key={pack.id}
-                      draggable={draggable}
-                      onDragStart={(e) => handlePackDragStart(e, pack)}
-                      onDragOver={(e) => handlePackDragOver(e, pack)}
-                      onDrop={(e) => handlePackDrop(e, pack)}
-                      onDragEnd={handlePackDragEnd}
-                      data-testid={draggable ? `pack-card-draggable-${pack.id}` : `pack-card-${pack.id}`}
-                      title={draggable ? 'Drag to reorder packs' : undefined}
+                      data-testid="pack-folder-empty"
                       style={{
-                      minWidth: mobile ? 140 : 180, maxWidth: mobile ? 'none' : 220, flex: mobile ? '1 1 240px' : '0 0 auto',
-                      border: isDragging ? `1.5px solid ${colors.inkPlum}` : '1px solid #e4dded', borderRadius: 10,
-                      padding: '12px 14px', background: isDragging ? '#f5eef7' : '#fff',
-                      boxShadow: '0 2px 8px rgba(93,58,94,0.07)',
-                      display: 'flex', flexDirection: 'column',
-                      opacity: isDragging ? 0.7 : 1,
-                      cursor: draggable ? 'grab' : 'default',
-                      userSelect: draggable ? 'none' : undefined,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                        {draggable && (
-                          <span
-                            aria-hidden="true"
-                            style={{ color: '#bbb', fontSize: 12, lineHeight: 1, cursor: 'grab', flexShrink: 0 }}
-                          >⠿</span>
-                        )}
-                        <div style={{ fontWeight: 700, fontSize: 13, color: colors.inkPlum }}>
-                          {pack.label}
-                        </div>
-                        {pack._custom && (
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                            letterSpacing: 0.3, color: '#9a7fa8', background: '#f5eef7',
-                            borderRadius: 5, padding: '1px 5px',
-                          }}>
-                            Your pack
-                          </span>
-                        )}
-                        {foreignOwner && (
-                          <span
-                            title={`Created by ${pack._ownerName}`}
-                            style={{
-                              fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                              letterSpacing: 0.3, color: '#6b7280', background: '#f1f1f4',
-                              borderRadius: 5, padding: '1px 5px',
-                              maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {pack._ownerName}
-                          </span>
-                        )}
-                        {deletable && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); deletePack(pack) }}
-                            title={t('pack.delete')}
-                            aria-label={`${t('pack.delete')} — ${pack.label}`}
-                            style={{
-                              marginLeft: 'auto', width: 22, height: 22, borderRadius: 6,
-                              border: '1px solid #f0d7d7', background: '#fff', color: '#dc2626',
-                              fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0,
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#fdeaea' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
-                          >×</button>
-                        )}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        {pack.description.map((line, i) => (
-                          <div key={i} style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>· {line}</div>
-                        ))}
-                      </div>
-                      {pack.budget && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#9a7fa8' }}>
-                            {pack.budget}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#bbb', marginTop: 2 }}>
-                            Total order: {pack.fixedTotal != null ? '' : '~'}€{computePackTotal(pack, activePricelist).toLocaleString('fr-FR')}
-                          </div>
-                        </div>
-                      )}
-                      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-                        {(() => {
-                          const added = addedPackIds.includes(pack.id)
-                          return (
-                        <button
-                          onClick={() => {
-                            // Additive: combine multiple packs into one order.
-                            applyPack(pack, { merge: true })
-                            setAddedPackIds(prev => prev.includes(pack.id) ? prev : [...prev, pack.id])
-                          }}
-                          title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
-                          style={{
-                            flex: 1, padding: mobile ? '11px 0' : '7px 0', minHeight: mobile ? 44 : 'auto',
-                            borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
-                            background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 12,
-                            fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                            transition: 'opacity .1s',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
-                          onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
-                        >
-                          {added ? '✓ Added — add again' : '+ Add pack'}
-                        </button>
-                          )
-                        })()}
-                        {editable && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); startEditPack(pack) }}
-                            title={t('pack.edit')}
-                            aria-label={`${t('pack.edit')} — ${pack.label}`}
-                            style={{
-                              padding: mobile ? '10px 14px' : '7px 12px', minHeight: mobile ? 44 : 'auto', borderRadius: 8,
-                              border: `1.5px solid ${colors.inkPlum}`,
-                              background: '#fff', color: colors.inkPlum, fontSize: 12,
-                              fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                              whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#f5eef7' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
-                          >
-                            ✎ {t('pack.editShort')}
-                          </button>
-                        )}
-                      </div>
+                        flex: '1 1 auto', alignSelf: 'center', padding: '18px 14px',
+                        fontSize: 11, color: '#aaa', textAlign: 'center',
+                      }}
+                    >
+                      {activeFairId === null
+                        ? 'No packs yet.'
+                        : hiddenPackCount > 0
+                          ? 'Every pack in this folder is hidden for you — use "Show hidden" to bring one back.'
+                          : 'This folder is empty. Open "All packs" and drag a pack onto this folder to file it here.'}
                     </div>
-                    )
-                  })}
+                  )}
                 </div>
                 </div>
               )}
@@ -1640,7 +2487,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       return (
                         <button
                           key={type}
-                          onClick={() => setProductTypeTab(type)}
+                          // Leaving the tab leaves the family too: a bracelet
+                          // family has no cards on the necklace grid.
+                          onClick={() => { setProductTypeTab(type); setOpenFamilyId(null) }}
                           style={{
                             padding: '8px 18px', border: 'none', cursor: 'pointer',
                             fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
@@ -1658,63 +2507,72 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
 
                 {/* Collection Grid — on phones force two columns so the
                     grid isn't a single long scroll of oversized cards. */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: phone
-                    ? 'repeat(2, 1fr)'
-                    : `repeat(auto-fill, minmax(${tablet ? '150px' : '185px'}, 1fr))`,
-                  gap: phone ? 8 : 10,
-                  marginBottom: 24,
-                }}>
-                  {(() => {
-                    // Preview (admin-only) collections are hidden from the grid
-                    // for non-admins. The active Bracelet/Necklace tab filters
-                    // further; selection state stays global across tabs.
-                    const visible = getCollectionsByType(getVisibleCollections(profile), productTypeTab)
-                    // Expand shape-card collections (e.g. SSF_NECK) into one card
-                    // per shape, then order selected cards first.
-                    const allCards = visible.flatMap(cardsForCollection)
-                    return [
-                      ...selectedCollections.map(key => allCards.find(c => c.key === key)).filter(Boolean),
-                      ...allCards.filter(c => !selectedCollections.includes(c.key)),
-                    ]
-                  })().map(card => {
+                {(() => {
+                  // Preview (admin-only) collections are hidden from the grid
+                  // for non-admins. The active Bracelet/Necklace tab filters
+                  // further; selection state stays global across tabs.
+                  const visible = getCollectionsByType(getVisibleCollections(profile), productTypeTab)
+                  // Ranges (Multi, Shine, Sparkle, Moonlight, Sienna, Iconics)
+                  // collapse into a single card you open; everything else
+                  // keeps its own card.
+                  const entries = buildGridEntries(visible)
+                  const openEntry = openFamilyId
+                    ? entries.find(e => e.type === 'family' && e.key === openFamilyId) || null
+                    : null
+
+                  const gridStyle = {
+                    display: 'grid',
+                    gridTemplateColumns: phone
+                      ? 'repeat(2, 1fr)'
+                      : `repeat(auto-fill, minmax(${tablet ? '150px' : '185px'}, 1fr))`,
+                    gap: phone ? 8 : 10,
+                    marginBottom: 24,
+                  }
+                  const cardBaseStyle = (selected) => ({
+                    position: 'relative',
+                    padding: phone ? '10px 10px 10px' : '14px 14px 12px',
+                    borderRadius: 12,
+                    border: selected ? `2px solid ${colors.inkPlum}` : '1px solid #ede8f0',
+                    background: selected ? '#fdf7fa' : '#fdfdfd',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    textAlign: 'left',
+                    transition: 'all .15s',
+                    boxShadow: selected ? `0 2px 12px ${colors.inkPlum}12` : '0 1px 3px rgba(0,0,0,0.03)',
+                  })
+                  const cardHoverIn = (selected) => (e) => {
+                    if (selected) return
+                    e.currentTarget.style.borderColor = colors.inkPlum + '55'
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(93,58,94,0.08)'
+                  }
+                  const cardHoverOut = (selected) => (e) => {
+                    if (selected) return
+                    e.currentTarget.style.borderColor = '#ede8f0'
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)'
+                  }
+                  const priceLabel = (cols) => {
+                    const range = priceRangeFor(cols, activePricelist)
+                    if (!range) return null
+                    return range.min === range.max
+                      ? `€${range.min}`
+                      : `€${range.min} – €${range.max}`
+                  }
+
+                  const renderCollectionCard = (card) => {
                     const col = card.col
                     const isSelected = selectedCollections.includes(card.key)
-                    const defaultCert = getDefaultCert(col)
-                    const priceMin = `€${getPrice(col, 0, defaultCert, activePricelist)}`
-                    const priceMax = col.carats.length > 1 ? ` – €${getPrice(col, col.carats.length - 1, defaultCert, activePricelist)}` : ''
+                    const price = priceLabel([col])
                     const cordType = CORD_TYPE_LABELS[col.cord] || col.cord
                     const cardLabel = card.shape ? `${col.label} — ${card.shape}` : col.label
 
                     return (
                       <button
                         key={card.key}
+                        data-testid={`collection-card-${card.key}`}
                         onClick={() => toggleCollection(card.key)}
-                        style={{
-                          position: 'relative',
-                          padding: phone ? '10px 10px 10px' : '14px 14px 12px',
-                          borderRadius: 12,
-                          border: isSelected ? `2px solid ${colors.inkPlum}` : '1px solid #ede8f0',
-                          background: isSelected ? '#fdf7fa' : '#fdfdfd',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          textAlign: 'left',
-                          transition: 'all .15s',
-                          boxShadow: isSelected ? `0 2px 12px ${colors.inkPlum}12` : '0 1px 3px rgba(0,0,0,0.03)',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.borderColor = colors.inkPlum + '55'
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(93,58,94,0.08)'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.borderColor = '#ede8f0'
-                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)'
-                          }
-                        }}
+                        style={cardBaseStyle(isSelected)}
+                        onMouseEnter={cardHoverIn(isSelected)}
+                        onMouseLeave={cardHoverOut(isSelected)}
                       >
                         {/* Selection indicator */}
                         <div style={{
@@ -1761,14 +2619,16 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         </div>
 
                         {/* Price range — prominent */}
-                        <div style={{
-                          fontSize: 13, fontWeight: 600,
-                          color: isSelected ? colors.inkPlum : '#444',
-                          marginBottom: 8,
-                        }}>
-                          {priceMin}{priceMax}
-                          <span style={{ fontWeight: 400, fontSize: 11, color: '#aaa' }}> /pc</span>
-                        </div>
+                        {price && (
+                          <div style={{
+                            fontSize: 13, fontWeight: 600,
+                            color: isSelected ? colors.inkPlum : '#444',
+                            marginBottom: 8,
+                          }}>
+                            {price}
+                            <span style={{ fontWeight: 400, fontSize: 11, color: '#aaa' }}> /pc</span>
+                          </div>
+                        )}
 
                         {/* Cord type pill */}
                         <div style={{
@@ -1782,8 +2642,152 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         </div>
                       </button>
                     )
-                  })}
-                </div>
+                  }
+
+                  // A range card. Opening it swaps the grid for its products —
+                  // it never selects anything itself, so the tick box is
+                  // replaced by a count of what you already picked inside.
+                  const renderFamilyCard = (entry) => {
+                    const { family, members } = entry
+                    const innerCards = cardsForFamilyEntry(entry)
+                    const memberKeys = innerCards.map(c => c.key)
+                    const pickedCount = memberKeys.filter(k => selectedCollections.includes(k)).length
+                    const hasPicked = pickedCount > 0
+                    const price = priceLabel(members)
+                    const cordTypes = [...new Set(members.map(m => CORD_TYPE_LABELS[m.cord] || m.cord))]
+                    const thumbUrl = findPackshot(members[0].id, { color: 'Bordeaux' })
+                      || findPackshot(members[0].id)
+
+                    return (
+                      <button
+                        key={family.id}
+                        data-testid={`collection-family-${family.id}`}
+                        onClick={() => setOpenFamilyId(family.id)}
+                        aria-label={`${family.label} — ${t('builder.familyProducts').replace('{count}', innerCards.length)}`}
+                        style={cardBaseStyle(hasPicked)}
+                        onMouseEnter={cardHoverIn(hasPicked)}
+                        onMouseLeave={cardHoverOut(hasPicked)}
+                      >
+                        <div style={{
+                          position: 'absolute', top: 10, right: 10,
+                          minWidth: 20, height: 20, borderRadius: 6, padding: '0 5px',
+                          border: hasPicked ? `2px solid ${colors.inkPlum}` : 'none',
+                          background: hasPicked ? colors.inkPlum : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: hasPicked ? '#fff' : '#b9aec4',
+                          fontSize: hasPicked ? 11 : 15, fontWeight: 700, lineHeight: 1,
+                        }}>
+                          {hasPicked ? pickedCount : '›'}
+                        </div>
+
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt={family.label}
+                            loading="lazy"
+                            style={{
+                              width: '100%', height: phone ? 90 : 120,
+                              objectFit: 'contain',
+                              marginBottom: 8,
+                              borderRadius: 6,
+                              background: '#faf8fc',
+                            }}
+                          />
+                        )}
+
+                        <div style={{
+                          fontSize: 14, fontWeight: 700,
+                          color: hasPicked ? colors.inkPlum : '#2a2a2a',
+                          marginBottom: 6, paddingRight: 28, lineHeight: 1.3,
+                        }}>
+                          {family.label}
+                        </div>
+
+                        {price && (
+                          <div style={{
+                            fontSize: 13, fontWeight: 600,
+                            color: hasPicked ? colors.inkPlum : '#444',
+                            marginBottom: 8,
+                          }}>
+                            {price}
+                            <span style={{ fontWeight: 400, fontSize: 11, color: '#aaa' }}> /pc</span>
+                          </div>
+                        )}
+
+                        <div style={{
+                          display: 'inline-block',
+                          fontSize: 10, fontWeight: 500,
+                          color: hasPicked ? colors.inkPlum : '#888',
+                          background: hasPicked ? `${colors.inkPlum}12` : '#f0ecf5',
+                          borderRadius: 20, padding: '2px 8px',
+                        }}>
+                          {t('builder.familyProducts').replace('{count}', innerCards.length)}
+                          {cordTypes.length === 1 ? ` · ${cordTypes[0]}` : ''}
+                        </div>
+                      </button>
+                    )
+                  }
+
+                  if (openEntry) {
+                    return (
+                      <>
+                        <div
+                          data-testid="collection-family-crumb"
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}
+                        >
+                          <button
+                            type="button"
+                            data-testid="collection-family-back"
+                            onClick={() => setOpenFamilyId(null)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '6px 12px', borderRadius: 8,
+                              border: `1px solid ${colors.inkPlum}33`, background: '#fff',
+                              color: colors.inkPlum, fontFamily: 'inherit',
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            }}
+                          >
+                            ‹ {t('builder.familyBack')}
+                          </button>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum }}>
+                            {openEntry.family.label}
+                          </span>
+                          <span style={{ fontSize: 12, color: '#999' }}>
+                            {t('builder.familyProducts').replace('{count}', cardsForFamilyEntry(openEntry).length)}
+                          </span>
+                        </div>
+                        <div style={gridStyle}>
+                          {cardsForFamilyEntry(openEntry).map(renderCollectionCard)}
+                        </div>
+                      </>
+                    )
+                  }
+
+                  // Root grid. Entries holding a selection float to the front,
+                  // most recently picked first, which is how the flat grid has
+                  // always behaved.
+                  const rank = (entry) => {
+                    const keys = entry.type === 'family'
+                      ? cardsForFamilyEntry(entry).map(c => c.key)
+                      : cardsForCollection(entry.col).map(c => c.key)
+                    const hits = keys
+                      .map(k => selectedCollections.indexOf(k))
+                      .filter(i => i !== -1)
+                    return hits.length > 0 ? Math.min(...hits) : Infinity
+                  }
+                  const ordered = entries
+                    .map((entry, i) => ({ entry, i, rank: rank(entry) }))
+                    .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))
+                    .map(x => x.entry)
+
+                  return (
+                    <div style={gridStyle}>
+                      {ordered.flatMap(entry => entry.type === 'family'
+                        ? [renderFamilyCard(entry)]
+                        : cardsForCollection(entry.col).map(renderCollectionCard))}
+                    </div>
+                  )
+                })()}
 
                 {/* Bottom action — desktop only; compact uses the fixed bar above */}
                 {!mobile && (
@@ -2486,6 +3490,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         pricelistYear={activePricelist}
         isAdmin={isAdmin}
         editingPack={editingPack}
+        fairs={fairs}
         onSaved={(pack) => { if (pack) setDbPacks(prev => [...prev, dbPackToDisplay(pack)]) }}
         onUpdated={handlePackUpdated}
       />

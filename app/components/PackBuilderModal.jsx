@@ -14,6 +14,10 @@
  *     localised "Pack minimum is €970" message.
  *   - Agents cannot publish global packs. The scope toggle is hidden for
  *     non-admins; the scope is forced to 'private' on submit.
+ *   - Fair folders (Phase 34) are open to everyone: filing a pack under a fair
+ *     is organising, not a permission grant, so the checkbox list shows for
+ *     agents too. This is the non-drag way to do what dragging a card onto a
+ *     fair chip in the Builder does.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -31,6 +35,7 @@ export default function PackBuilderModal({
   onUpdated = () => {},
   pricelistYear,
   editingPack = null,
+  fairs = [],
 }) {
   const { t } = useI18n()
   const [label, setLabel] = useState('')
@@ -42,6 +47,10 @@ export default function PackBuilderModal({
   // currently selected agent ids who may see this pack.
   const [agents, setAgents] = useState([])
   const [selectedAgentIds, setSelectedAgentIds] = useState([])
+  // Fair folders this pack is filed under. Shared across the team, so the
+  // picker is shown to agents as well as admins. The list itself comes from the
+  // parent (BuilderPage already loads it) — no second fetch from here.
+  const [selectedFairIds, setSelectedFairIds] = useState([])
   const nameRef = useRef(null)
   // Tracks whether the user has hand-edited the description. While false we
   // keep the description in sync with the auto-generated summary so a pack is
@@ -63,11 +72,13 @@ export default function PackBuilderModal({
         const validScopes = ['global', 'private', 'restricted']
         setScope(validScopes.includes(editingPack._scope) ? editingPack._scope : 'private')
         setSelectedAgentIds(Array.isArray(editingPack._agentIds) ? editingPack._agentIds : [])
+        setSelectedFairIds(Array.isArray(editingPack._fairIds) ? editingPack._fairIds : [])
       } else {
         setLabel('')
         setDescriptionText('')
         setScope(isAdmin ? 'global' : 'private')
         setSelectedAgentIds([])
+        setSelectedFairIds([])
       }
       setSaving(false)
       setError('')
@@ -95,9 +106,17 @@ export default function PackBuilderModal({
     return () => { cancelled = true }
   }, [open, isAdmin, scope, agents.length])
 
+  const fairList = Array.isArray(fairs) ? fairs : []
+
   function toggleAgent(agentId) {
     setSelectedAgentIds((prev) =>
       prev.includes(agentId) ? prev.filter((x) => x !== agentId) : [...prev, agentId],
+    )
+  }
+
+  function toggleFair(fairId) {
+    setSelectedFairIds((prev) =>
+      prev.includes(fairId) ? prev.filter((x) => x !== fairId) : [...prev, fairId],
     )
   }
 
@@ -157,6 +176,13 @@ export default function PackBuilderModal({
       // Only admins can publish restricted packs; carry the assigned agents.
       if (isAdmin && scope === 'restricted') {
         payload.agent_ids = selectedAgentIds
+      }
+
+      // Fair folders — always sent as the complete new set (an empty array
+      // unfiles the pack), but only when there are fairs to choose from, so a
+      // pack can never be silently unfiled by a fetch that failed.
+      if (fairList.length > 0) {
+        payload.event_ids = selectedFairIds
       }
 
       // Edit mode → PUT the existing row; create mode → POST a new one.
@@ -329,6 +355,38 @@ export default function PackBuilderModal({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {fairList.length > 0 && (
+          <div data-testid="pack-fair-list" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#666', marginBottom: 6, textTransform: 'uppercase' }}>
+              Fairs
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+              Pick the fairs this pack belongs to. It can be in several at once.
+            </div>
+            <div
+              style={{
+                maxHeight: 160, overflowY: 'auto', border: '1px solid #eee',
+                borderRadius: 8, padding: '6px 10px', display: 'flex',
+                flexDirection: 'column', gap: 4,
+              }}
+            >
+              {fairList.map((f) => (
+                <label
+                  key={f.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedFairIds.includes(f.id)}
+                    onChange={() => toggleFair(f.id)}
+                  />
+                  {f.name}
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

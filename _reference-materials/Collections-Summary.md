@@ -101,15 +101,26 @@
 | **2nd Biggest Carat** | 0.30 ct |
 | **Cord** | Shine |
 | **Sizes** | XS, S, M, L, XL |
-| **Shapes** | Heart, Pear, Marquise, Oval, Emerald, Cushion, Long Cushion |
+| **Closure** | Braided only |
+| **Shapes** | Heart, Pear, Marquise, Oval, Emerald, Cushion |
+
+Long Cushion was discontinued in August 2026, together with the Pink housing
+and the non-braided closure. Applies to the necklace too.
+
+### Shapes by Carat
+
+| Carat | Shapes |
+|---|---|
+| **0.10 ct** | Heart, Pear, Marquise, Oval, Emerald |
+| **0.30 / 0.50 ct** | Heart, Pear, Marquise, Oval, Emerald, Cushion |
 
 ### Housing Options
 
 | Carat | Bezel | Prong |
 |---|---|---|
-| **0.10 ct** | Yellow, White, Pink | — not available |
-| **0.30 ct** | Yellow, White, Pink | Yellow, White, Pink |
-| **0.50 ct** | Yellow, White, Pink | Yellow, White, Pink |
+| **0.10 ct** | Yellow, White | — not available (any shape) |
+| **0.30 ct** | Yellow, White | Yellow, White |
+| **0.50 ct** | Yellow, White | Yellow, White |
 
 **Colors (21):** Dark Pink, Light Pink, Lilac, Purple, Red, Bordeaux, Turq Blue, Royal Blue, Navy Blue, Light Blue, Ivory, Black, Brown, Green, Yellow, Orange, Gold, Grey, Fluo Pink, Fluo Yellow, White
 

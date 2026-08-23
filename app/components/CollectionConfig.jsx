@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel, isBezelOnly, getShapesForCarat, getShapesForCaratIdx, getForcedClosure, resolveClosure } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -173,6 +173,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.presetShape, line.colorConfigs])
 
+  // Forced-closure collections (Shapy Shine = braided): the picker is hidden, so
+  // stamp the value onto every row — including rows restored from an order saved
+  // while non-braided was still on offer.
+  useEffect(() => {
+    const forced = getForcedClosure(col)
+    if (!forced) return
+    const configs = line.colorConfigs || []
+    if (configs.length === 0 || configs.every(c => c.closureType === forced)) return
+    set({ colorConfigs: configs.map(c => (c.closureType === forced ? c : { ...c, closureType: forced })) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [col.id, line.colorConfigs])
+
   // Color counts
   const colorCounts = {}
   line.colorConfigs.forEach(c => {
@@ -189,7 +201,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (hasCordOptions && !cfg.cordType) return false
     if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
     // Bracelet thread closure required for hasClosure collections (CUTY, CUBIX).
-    if (col.hasClosure && !cfg.closureType) return false
+    // Collections with a forced closure (Shapy Shine = braided) never ask, so
+    // the requirement is already satisfied.
+    if (col.hasClosure && !cfg.closureType && !getForcedClosure(col)) return false
     return true
   }
 
@@ -228,6 +242,29 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     }
   }, [hasCordOptions, col.cord, col.id])
 
+  // Shapy Shine only sells five of its shapes at 0.10 ct, and only in a bezel.
+  // Drop a shape or setting the row's own carat doesn't sell, instead of leaving
+  // an off-list value that the select would render as blank.
+  const normalizeToCarat = (cfg) => {
+    let next = cfg
+    const carat = next.caratIdx != null ? col.carats[next.caratIdx] : null
+    if (next.shape && next.shape !== presetShape && col.shapes?.length) {
+      if (!getShapesForCarat(col, carat).includes(next.shape)) next = { ...next, shape: null }
+    }
+    if (isBezelOnly(col, carat)) {
+      const bezelValues = HOUSING.shapyShineBezel.map(h => `Bezel ${h}`)
+      const housing = bezelValues.includes(next.housing) ? next.housing : null
+      if (next.housingType !== 'bezel' || housing !== next.housing) {
+        next = { ...next, housingType: 'bezel', housing }
+      }
+    }
+    return next
+  }
+
+  const applyCaratRules = (cfg, updates) => (
+    'caratIdx' in updates ? normalizeToCarat(cfg) : cfg
+  )
+
   // Add or remove a color (toggle: clicking a selected color removes the last instance)
   const addColor = (colorName) => {
     const existing = line.colorConfigs.filter(c => c.colorName === colorName)
@@ -260,6 +297,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (presetShape) {
       newCfg = { ...newCfg, shape: presetShape }
     }
+    // Forced-closure collections (Shapy Shine = braided) never show a picker.
+    const forced = getForcedClosure(col)
+    if (forced) {
+      newCfg = { ...newCfg, closureType: forced }
+    }
     set({ colorConfigs: [...line.colorConfigs, newCfg] })
   }
 
@@ -281,7 +323,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
           const opts = sizeOptionsForClosure(col, merged.closureType)
           if (merged.size && !opts.includes(merged.size)) merged.size = null
         }
-        return merged
+        return applyCaratRules(merged, updates)
       }),
     })
   }
@@ -355,6 +397,16 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       const opts = sizeOptionsForClosure(col, next.closureType)
       if (next.size && !opts.includes(next.size)) next.size = null
     }
+    if ('caratIdx' in updates) {
+      const carat = next.caratIdx != null ? col.carats[next.caratIdx] : null
+      if (next.shape && col.shapes?.length && !getShapesForCarat(col, carat).includes(next.shape)) {
+        next.shape = null
+      }
+      if (isBezelOnly(col, carat)) {
+        next.housingType = 'bezel'
+        if (!HOUSING.shapyShineBezel.map(h => `Bezel ${h}`).includes(next.housing)) next.housing = null
+      }
+    }
     set({ sharedSettings: next })
     if (line.colorConfigs.length > 0) {
       set({
@@ -364,7 +416,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             const opts = sizeOptionsForClosure(col, merged.closureType)
             if (merged.size && !opts.includes(merged.size)) merged.size = null
           }
-          return merged
+          return applyCaratRules(merged, updates)
         }),
       })
     }
@@ -418,25 +470,28 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         const updated = configs.map((cfg, idx) => {
           if (idx <= sourceIdx || idx > targetIdx) return cfg
           if (hasSelection && !selectedIds.has(cfg.id)) return cfg
+          // Filling down can drop a carat, shape or setting onto a row that
+          // doesn't sell that combination (Shapy Shine at 0.10 ct), so every
+          // filled row is re-checked against its own carat afterwards.
           switch (column) {
-            case 'carat': return { ...cfg, caratIdx: source.caratIdx }
+            case 'carat': return normalizeToCarat({ ...cfg, caratIdx: source.caratIdx })
             // Carry prerequisite fields so the filled value is immediately visible
-            case 'housing': return {
+            case 'housing': return normalizeToCarat({
               ...cfg,
               caratIdx: cfg.caratIdx ?? source.caratIdx,
               housing: source.housing,
               housingType: source.housingType,
               multiAttached: source.multiAttached,
-            }
-            case 'shape': return {
+            })
+            case 'shape': return normalizeToCarat({
               ...cfg,
               caratIdx: cfg.caratIdx ?? source.caratIdx,
               housing: cfg.housing ?? source.housing,
               housingType: cfg.housingType ?? source.housingType,
               multiAttached: cfg.multiAttached ?? source.multiAttached,
               shape: source.shape,
-            }
-            case 'size': return {
+            })
+            case 'size': return normalizeToCarat({
               ...cfg,
               caratIdx: cfg.caratIdx ?? source.caratIdx,
               housing: cfg.housing ?? source.housing,
@@ -444,7 +499,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
               multiAttached: cfg.multiAttached ?? source.multiAttached,
               shape: cfg.shape ?? source.shape,
               size: source.size,
-            }
+            })
             case 'thickness': return { ...cfg, cordType: source.cordType, thickness: source.thickness }
             case 'qty': return { ...cfg, qty: source.qty }
             default: return cfg
@@ -506,13 +561,13 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
       const nextCaratIdx = duplicateSettings.carat.keepSame ? cfg.caratIdx : duplicateSettings.carat.value
       const certOptions = getAvailableCerts(col, nextCaratIdx, yr)
       const preferredCert = duplicateSettings.cert.keepSame
-        ? (cfg.certType || getDefaultCert(col))
+        ? (cfg.certType || getDefaultCert(col, nextCaratIdx, yr))
         : duplicateSettings.cert.value
       const nextCert = preferredCert && certOptions.includes(preferredCert)
         ? preferredCert
-        : (certOptions[0] || getDefaultCert(col))
+        : (certOptions[0] || getDefaultCert(col, nextCaratIdx, yr))
       const qtyVal = duplicateSettings.qty.keepSame ? cfg.qty : duplicateSettings.qty.value
-      return {
+      const duplicated = {
         ...cfg,
         id: createConfigId(),
         caratIdx: nextCaratIdx,
@@ -522,12 +577,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         size: duplicateSettings.size.keepSame ? cfg.size : duplicateSettings.size.value,
         shape: duplicateSettings.shape.keepSame ? cfg.shape : duplicateSettings.shape.value,
         // Closure: gated by hasClosure so duplicating M3/HOLY/etc. never
-        // accidentally writes a closureType where the column doesn't exist.
-        closureType: col.hasClosure
-          ? (duplicateSettings.closure.keepSame ? cfg.closureType : duplicateSettings.closure.value)
-          : null,
+        // accidentally writes a closureType where the column doesn't exist,
+        // and pinned to the forced value on Shapy Shine.
+        closureType: resolveClosure(
+          col,
+          duplicateSettings.closure.keepSame ? cfg.closureType : duplicateSettings.closure.value,
+        ),
         qty: Math.max(1, typeof qtyVal === 'number' && !Number.isNaN(qtyVal) ? qtyVal : 1),
       }
+      // Duplicating into another carat can land on a size that doesn't sell the
+      // copied shape / setting (Shapy Shine 0.10) — drop those rather than
+      // creating rows the order form can't render.
+      return applyCaratRules(duplicated, { caratIdx: nextCaratIdx })
     })
     set({ colorConfigs: [...line.colorConfigs, ...newConfigs] })
     setShowDuplicatePanel(false)
@@ -561,17 +622,25 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
   const thicknessOpts = getThicknessOptions(col)
   // Bracelet thread closure column: shown for collections that opt-in via
   // hasClosure (currently CUTY, CUBIX). Lets the user pick "Braided" vs
-  // "Non-braided" closure per row.
-  const hasClosure = !!col.hasClosure
+  // "Non-braided" closure per row. Collections with a forced closure (Shapy
+  // Shine = braided) still carry the value but never render a picker.
+  const forcedClosure = getForcedClosure(col)
+  const hasClosure = !!col.hasClosure && !forcedClosure
+  // Duplicate panel: when it targets one specific carat, its shape / setting
+  // pickers must follow that carat's rules. "Keep same" leaves every row on its
+  // own carat, so no restriction can be applied there.
+  const duplicateCaratIdx = duplicateSettings.carat.keepSame ? null : duplicateSettings.carat.value
+  const duplicateShapeOptions = getShapesForCaratIdx(col, duplicateCaratIdx)
+  const duplicateBezelOnly = duplicateCaratIdx != null && isBezelOnly(col, col.carats[duplicateCaratIdx])
   const getCertForCarat = useCallback((currentCert, caratIdx) => {
     const available = getAvailableCerts(col, caratIdx, yr)
     if (currentCert && available.includes(currentCert)) return currentCert
-    return available[0] || getDefaultCert(col)
-  }, [col])
+    return available[0] || getDefaultCert(col, caratIdx, yr)
+  }, [col, yr])
 
   const renderHousingSelector = (cfg, patchFn) => {
-    const selectedCarat = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] : null
-    const shapyShineBezelOnly = col.housing === 'shapyShine' && selectedCarat === '0.10'
+    const selectedCarat = cfg.caratIdx != null ? col.carats[cfg.caratIdx] : null
+    const shapyShineBezelOnly = isBezelOnly(col, selectedCarat)
     // Touch-friendly select sizing on compact screens (44px min height)
     const hSel = mobile ? { ...selectStyle, ...mobileSelectOverride } : selectStyle
 
@@ -720,6 +789,18 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
         </div>
       )
     }
+    if (col.housing === 'sparkleProngBezel') {
+      return (
+        <select
+          value={cfg.housing || ''}
+          onChange={(e) => patchFn({ housing: e.target.value || null })}
+          style={hSel}
+        >
+          <option value="">{t('collection.housingPlaceholder')}</option>
+          {HOUSING.sparkleProngBezel.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+      )
+    }
     return null
   }
 
@@ -784,7 +865,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
             {t(`productType.${getProductType(col)}`)}
           </span>
           <span style={{ fontSize: 12, color: '#999' }}>
-            {fmt(getPrice(col, caratOptions[0]?.idx ?? 0, getDefaultCert(col), yr))}-{fmt(getPrice(col, caratOptions[caratOptions.length - 1]?.idx ?? col.carats.length - 1, getDefaultCert(col), yr))}
+            {fmt(getPrice(col, caratOptions[0]?.idx ?? 0, getDefaultCert(col, caratOptions[0]?.idx ?? 0, yr), yr))}-{fmt(getPrice(col, caratOptions[caratOptions.length - 1]?.idx ?? col.carats.length - 1, getDefaultCert(col, caratOptions[caratOptions.length - 1]?.idx ?? col.carats.length - 1, yr), yr))}
           </span>
           {line.colorConfigs.length > 0 && (
             <span style={{
@@ -1111,7 +1192,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           >
                             <option value="">{t('collection.caratPlaceholder')}</option>
                             {caratOptions.map(({ carat, idx }) => (
-                              <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, getDefaultCert(col), yr)}</option>
+                              <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, getDefaultCert(col, idx, yr), yr)}</option>
                             ))}
                           </select>
                         )}
@@ -1166,7 +1247,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             >
                               <option value="">{t('collection.typePlaceholder')}</option>
                               <option value="bezel">{t('collection.bezel')}</option>
-                              <option value="prong">{t('collection.prong')}</option>
+                              {!duplicateBezelOnly && <option value="prong">{t('collection.prong')}</option>}
                             </select>
                             {duplicateSettings.housingType.value && col.housing === 'shapyShine' && (
                               <select
@@ -1238,7 +1319,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                           >
                             <option value="">{t('collection.shapePlaceholder')}</option>
-                            {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                            {duplicateShapeOptions.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         )}
                         {!duplicateSettings[field].keepSame && field === 'closure' && (
@@ -1317,7 +1398,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 >
                   <option value="">{t('collection.caratPlaceholder')}</option>
                   {caratOptions.map(({ carat, idx }) => (
-                    <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, sharedSettings.certType || getDefaultCert(col), yr)}</option>
+                    <option key={carat} value={idx}>{carat} ct - €{getPrice(col, idx, sharedSettings.certType || getDefaultCert(col, idx, yr), yr)}</option>
                   ))}
                 </select>
 
@@ -1329,7 +1410,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     {['igi', 'inhouse'].map(ct => {
                       const avail = getAvailableCerts(col, sharedSettings.caratIdx, yr)
                       const isAvail = avail.includes(ct)
-                      const isActive = (sharedSettings.certType || getDefaultCert(col)) === ct
+                      const isActive = (sharedSettings.certType || getDefaultCert(col, sharedSettings.caratIdx, yr)) === ct
                       return (
                         <button
                           key={ct}
@@ -1364,7 +1445,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     style={{ ...selectStyle, ...(mobile ? mobileSelectOverride : {}) }}
                   >
                     <option value="">{t('collection.shapePlaceholder')}</option>
-                    {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                    {getShapesForCaratIdx(col, sharedSettings.caratIdx).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 )}
 
@@ -1528,7 +1609,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                                 {['igi', 'inhouse'].map(ct => {
                                   const avail = getAvailableCerts(col, cfg.caratIdx, yr)
                                   const isAvail = avail.includes(ct)
-                                  const isActive = (cfg.certType || getDefaultCert(col)) === ct
+                                  const isActive = (cfg.certType || getDefaultCert(col, cfg.caratIdx, yr)) === ct
                                   return (
                                     <button
                                       key={ct}
@@ -1550,7 +1631,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               </div>
                             ) : (
                               <span style={{ fontSize: 10, fontWeight: 600, color: '#888', padding: '3px 8px', background: '#f5f5f5', borderRadius: 6 }}>
-                                {CERT_LABELS[col.certificate]}
+                                {CERT_LABELS[cfg.certType || getDefaultCert(col, cfg.caratIdx, yr)]}
                               </span>
                             )}
                           </td>
@@ -1590,7 +1671,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               : cfg.caratIdx !== null && (!hasHousing || isImplicitHousing || !!cfg.housing) ? (
                                 <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                                   <option value="">{t('collection.selectPlaceholder')}</option>
-                                  {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                                  {getShapesForCaratIdx(col, cfg.caratIdx).map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               ) : <span style={{ color: '#ccc', fontSize: 11 }}>{t('collection.selectPlaceholder')}</span>}
                             {canFillShape && <div className="fill-handle-dot" onMouseDown={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} onTouchStart={(e) => startDragFill(e, cfgIdx, 'shape', line.colorConfigs, selectedConfigs)} />}
@@ -1861,7 +1942,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                               {['igi', 'inhouse'].map(ct => {
                                 const avail = getAvailableCerts(col, cfg.caratIdx, yr)
                                 const isAvail = avail.includes(ct)
-                                const isActive = (cfg.certType || getDefaultCert(col)) === ct
+                                const isActive = (cfg.certType || getDefaultCert(col, cfg.caratIdx, yr)) === ct
                                 return (
                                   <button
                                     key={ct}
@@ -1883,7 +1964,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                             </div>
                           ) : (
                             <span style={{ fontSize: 11, fontWeight: 600, color: '#888', padding: '4px 10px', background: '#f5f5f5', borderRadius: 8 }}>
-                              {CERT_LABELS[col.certificate]}
+                              {CERT_LABELS[cfg.certType || getDefaultCert(col, cfg.caratIdx, yr)]}
                             </span>
                           )}
                         </div>
@@ -1911,7 +1992,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                           <span style={{ fontSize: 11, fontWeight: 600, color: '#999', width: 60, textTransform: 'uppercase' }}>{t('quote.shape')}</span>
                           <select value={cfg.shape || ''} onChange={(e) => updateConfig(cfg.id, { shape: e.target.value || null })} style={{ ...selectStyle, ...mobileSelectOverride, flex: 1, background: recentlyFilled.has(`${cfg.id}-shape`) ? '#c8e6c9' : undefined, transition: 'background 0.3s' }}>
                             <option value="">{t('collection.selectPlaceholder')}</option>
-                            {col.shapes.map(s => <option key={s} value={s}>{s}</option>)}
+                            {getShapesForCaratIdx(col, cfg.caratIdx).map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
                         </div>
                       )}

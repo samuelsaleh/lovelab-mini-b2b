@@ -3,7 +3,9 @@
  *
  * GET  → returns every pack the caller can see (RLS does the filtering:
  *        global packs for everyone, private packs only for the owner; admins
- *        cannot see other users' private packs).
+ *        also see other users' private packs since Phase 27). Each pack also
+ *        carries fair_ids (which fair folders it is filed under — shared) plus
+ *        hidden and pinned (both personal to *this* caller).
  *
  * POST → creates a pack. We mirror the database CHECK constraint server-side
  *        (€970 minimum) so the user gets a friendly error instead of a raw
@@ -16,6 +18,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { regeneratePackTemplate } from '@/lib/packTemplates'
 import { syncPackVisibility, fetchAgentIdsForPacks } from '@/lib/packVisibility'
+import { syncPackFairs, fetchFairIdsForPacks, fetchHiddenPackIds, fetchPinnedPackIds } from '@/lib/packFairs'
 
 const MIN_PACK_TOTAL = 970
 
@@ -87,7 +90,38 @@ export async function GET(request) {
     // to decide whether to show the "Your pack" badge + edit/delete controls,
     // because admins can now SEE other users' private packs (Phase 27) but must
     // not be able to mutate them.
-    let packs = (data || []).map((p) => ({ ...p, is_owner: p.created_by === user.id }))
+    let packs = (data || []).map((p) => ({
+      ...p,
+      is_owner: p.created_by === user.id,
+      fair_ids: [],
+      hidden: false,
+      pinned: false,
+    }))
+
+    // Fair folders (shared) + this caller's personal hide list. Best-effort so
+    // an un-migrated Phase 34 can never break the pack strip.
+    if (packs.length > 0) {
+      try {
+        const fairMap = await fetchFairIdsForPacks(adminSupabase, packs.map((p) => p.id))
+        packs = packs.map((p) => ({ ...p, fair_ids: fairMap[p.id] || [] }))
+      } catch (e) {
+        console.warn('[packs GET] failed to load pack_fairs:', e?.message)
+      }
+
+      try {
+        const hiddenIds = await fetchHiddenPackIds(adminSupabase, user.id)
+        packs = packs.map((p) => ({ ...p, hidden: hiddenIds.has(p.id) }))
+      } catch (e) {
+        console.warn('[packs GET] failed to load pack_hidden:', e?.message)
+      }
+
+      try {
+        const pinnedIds = await fetchPinnedPackIds(adminSupabase, user.id)
+        packs = packs.map((p) => ({ ...p, pinned: pinnedIds.has(p.id) }))
+      } catch (e) {
+        console.warn('[packs GET] failed to load pack_pinned:', e?.message)
+      }
+    }
 
     // Only admins need the per-pack agent assignments (to pre-check the editor
     // checkboxes) and the owner labels (so they can tell whose pack they're
@@ -147,6 +181,7 @@ export async function POST(request) {
       form_rows,
       scope: requestedScope,
       agent_ids: requestedAgentIds,
+      event_ids: requestedEventIds,
     } = body
 
     if (!label || typeof label !== 'string' || !label.trim()) {
@@ -170,6 +205,10 @@ export async function POST(request) {
     }
     if (scope === 'restricted' && requestedAgentIds !== undefined && !Array.isArray(requestedAgentIds)) {
       return badRequest('agent_ids must be an array')
+    }
+    // Fair folders are shared and open to everyone, so no role check here.
+    if (requestedEventIds !== undefined && !Array.isArray(requestedEventIds)) {
+      return badRequest('event_ids must be an array')
     }
 
     // Append at the end of the admin-ordered strip. Best-effort: if the
@@ -225,6 +264,18 @@ export async function POST(request) {
       }
     }
 
+    // File the new pack into the chosen fair folders (best-effort — a failure
+    // here must not fail pack creation; the card just starts out unsorted).
+    let fairIds = []
+    if (Array.isArray(requestedEventIds) && requestedEventIds.length > 0) {
+      try {
+        await syncPackFairs(adminSupabase, pack.id, requestedEventIds, user.id)
+        fairIds = [...new Set(requestedEventIds.filter(Boolean))]
+      } catch (e) {
+        console.warn('[packs POST] fair assignment failed:', e?.message)
+      }
+    }
+
     // Generate the pack's Excel order template (best-effort — a failure here
     // must not fail pack creation; the download route self-heals if missing).
     try {
@@ -233,7 +284,10 @@ export async function POST(request) {
       console.warn('[packs POST] template generation failed:', e?.message)
     }
 
-    return NextResponse.json({ pack }, { status: 201 })
+    return NextResponse.json(
+      { pack: { ...pack, fair_ids: fairIds, hidden: false, pinned: false } },
+      { status: 201 },
+    )
   } catch (err) {
     console.error('[packs POST] Exception:', err)
     return badRequest('Internal server error', 500)

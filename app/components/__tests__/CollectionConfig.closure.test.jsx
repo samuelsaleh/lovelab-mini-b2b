@@ -4,8 +4,9 @@
  * Guarantees:
  *   - The Closure column header renders ONLY for collections with hasClosure
  *     (the nylon bracelets: CUTY, CUBIX, MULTI THREE/FOUR/FIVE, MATCHY FANCY,
- *     SHAPY SHINE FANCY, HOLY) and is hidden for silk bracelets (SSPF) and
- *     necklaces.
+ *     HOLY) and is hidden for silk bracelets (SSPF) and necklaces. Shapy Shine
+ *     opts in but forces braided, so it renders no picker — see
+ *     CollectionConfig.shapyShine.test.jsx.
  *   - The Closure dropdown lets the user pick Braided / Non-braided and emits
  *     onChange with the new colorConfigs array.
  *   - The completion mirror in CollectionConfig requires closureType for

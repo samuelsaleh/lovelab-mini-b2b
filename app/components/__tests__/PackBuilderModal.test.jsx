@@ -10,6 +10,9 @@
  *     and calls onSaved with the server-returned pack.
  *   - On a 422 minimum-price response, the modal surfaces the localised
  *     message instead of the raw server error.
+ *   - The Fairs checkbox list (Phase 34) shows for agents as well as admins,
+ *     pre-checks the pack's current folders, and sends event_ids as the complete
+ *     new set. Unlike scope/agent_ids, filing is shared and open to everyone.
  */
 
 import React from 'react'
@@ -164,6 +167,115 @@ describe('PackBuilderModal — restricted visibility', () => {
     const payload = JSON.parse(saveCall[1].body)
     expect(payload.scope).toBe('restricted')
     expect(payload.agent_ids).toEqual(['a-2'])
+  })
+})
+
+describe('PackBuilderModal — fair folders', () => {
+  const FAIRS = [
+    { id: 'f-1', name: 'Ambiente Frankfurt' },
+    { id: 'f-2', name: 'Les Journées d’Achats Paris' },
+  ]
+
+  function mockSaveFetch() {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: jest.fn().mockResolvedValue({ pack: { id: 'p-new' } }),
+    })
+  }
+
+  it('renders no Fairs section when there are no fairs to choose from', () => {
+    renderModal({ lines: [CUTYLine(25, 1)] })
+    expect(screen.queryByTestId('pack-fair-list')).not.toBeInTheDocument()
+  })
+
+  it('shows the Fairs checkboxes to a plain agent — filing is shared', () => {
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: false, fairs: FAIRS })
+
+    expect(screen.getByTestId('pack-fair-list')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ambiente Frankfurt')).toBeInTheDocument()
+    expect(screen.getByLabelText('Les Journées d’Achats Paris')).toBeInTheDocument()
+    // Contrast: the visibility scope stays admin-only.
+    expect(screen.queryByText('Only specific agents')).not.toBeInTheDocument()
+  })
+
+  it('starts with nothing checked for a brand-new pack', () => {
+    renderModal({ lines: [CUTYLine(25, 1)], fairs: FAIRS })
+    expect(screen.getByLabelText('Ambiente Frankfurt')).not.toBeChecked()
+    expect(screen.getByLabelText('Les Journées d’Achats Paris')).not.toBeChecked()
+  })
+
+  it('pre-checks the folders the pack is already filed under', () => {
+    const editingPack = {
+      _dbId: 'p-55', _scope: 'global', _fairIds: ['f-2'],
+      label: 'Filed pack', description: ['CUTY'],
+    }
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: true, fairs: FAIRS, editingPack })
+
+    expect(screen.getByLabelText('Les Journées d’Achats Paris')).toBeChecked()
+    expect(screen.getByLabelText('Ambiente Frankfurt')).not.toBeChecked()
+  })
+
+  it('sends the ticked fairs as event_ids when creating a pack', async () => {
+    mockSaveFetch()
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: false, fairs: FAIRS })
+
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'Filed pack' } })
+    fireEvent.click(screen.getByLabelText('Ambiente Frankfurt'))
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => {
+      expect(global.fetch.mock.calls.find((c) => c[0] === '/api/packs')).toBeTruthy()
+    })
+    const payload = JSON.parse(global.fetch.mock.calls.find((c) => c[0] === '/api/packs')[1].body)
+    expect(payload.event_ids).toEqual(['f-1'])
+  })
+
+  it('files one pack into several fairs at once', async () => {
+    mockSaveFetch()
+    renderModal({ lines: [CUTYLine(25, 1)], fairs: FAIRS })
+
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'Both' } })
+    fireEvent.click(screen.getByLabelText('Ambiente Frankfurt'))
+    fireEvent.click(screen.getByLabelText('Les Journées d’Achats Paris'))
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => {
+      expect(global.fetch.mock.calls.find((c) => c[0] === '/api/packs')).toBeTruthy()
+    })
+    const payload = JSON.parse(global.fetch.mock.calls.find((c) => c[0] === '/api/packs')[1].body)
+    expect(payload.event_ids).toEqual(['f-1', 'f-2'])
+  })
+
+  it('unticking a folder sends the shrunken set, which unfiles the pack', async () => {
+    mockSaveFetch()
+    const editingPack = {
+      _dbId: 'p-55', _scope: 'global', _fairIds: ['f-1', 'f-2'],
+      label: 'Filed pack', description: ['CUTY'],
+    }
+    renderModal({ lines: [CUTYLine(25, 1)], isAdmin: true, fairs: FAIRS, editingPack })
+
+    fireEvent.click(screen.getByLabelText('Ambiente Frankfurt'))
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => {
+      expect(global.fetch.mock.calls.find((c) => String(c[0]).includes('/api/packs/p-55'))).toBeTruthy()
+    })
+    const call = global.fetch.mock.calls.find((c) => String(c[0]).includes('/api/packs/p-55'))
+    expect(call[1].method).toBe('PUT')
+    expect(JSON.parse(call[1].body).event_ids).toEqual(['f-2'])
+  })
+
+  it('omits event_ids entirely when no fairs exist, so nothing gets unfiled', async () => {
+    mockSaveFetch()
+    renderModal({ lines: [CUTYLine(25, 1)] })
+
+    fireEvent.change(screen.getByPlaceholderText(/pack name/i), { target: { value: 'No fairs' } })
+    fireEvent.click(screen.getByRole('button', { name: /save pack/i }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled())
+    const payload = JSON.parse(global.fetch.mock.calls[0][1].body)
+    expect(payload).not.toHaveProperty('event_ids')
   })
 })
 
