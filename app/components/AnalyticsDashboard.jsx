@@ -11,8 +11,11 @@ import { isKnownCollection, matchCollectionLabel } from '@/lib/collectionMatch'
 import {
   buildColorBreakdown,
   buildCountryBreakdown,
+  buildClientBreakdown,
   formatColorBreakdownForPrompt,
+  sortColorBreakdown,
 } from '@/lib/analyticsBreakdowns'
+import { clientNameFromDoc } from '@/lib/analyticsAliases'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
 import {
@@ -224,6 +227,7 @@ function PillToggle({ options, value, onChange }) {
         <button
           key={opt.id}
           type="button"
+          data-testid={`pill-${opt.id}`}
           onClick={() => onChange(opt.id)}
           style={{
             padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700,
@@ -319,7 +323,7 @@ function MiniStat({ label, items, maxItems = 5 }) {
   )
 }
 
-function ColorPaletteColumn({ title, items }) {
+function ColorPaletteColumn({ title, items, showDate = false }) {
   return (
     <div data-testid={`color-palette-${title.toLowerCase()}`} style={{ flex: 1, minWidth: 220 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, marginBottom: 10, letterSpacing: '0.04em' }}>
@@ -328,6 +332,7 @@ function ColorPaletteColumn({ title, items }) {
       <div style={{ maxHeight: 360, overflowY: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
         {items.map((item) => {
           const unsold = item.qty === 0
+          const soldDay = item.lastSoldAt ? String(item.lastSoldAt).slice(0, 10) : ''
           return (
             <div
               key={item.name}
@@ -352,6 +357,11 @@ function ColorPaletteColumn({ title, items }) {
               <span style={{ color: unsold ? '#bbb' : '#666', minWidth: 64, textAlign: 'right' }}>
                 {unsold ? '—' : fmt(item.revenue)}
               </span>
+              {showDate && (
+                <span style={{ color: unsold ? '#ccc' : '#888', minWidth: 72, textAlign: 'right', fontSize: 11 }}>
+                  {soldDay || '—'}
+                </span>
+              )}
             </div>
           )
         })}
@@ -387,6 +397,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const [channelScope, setChannelScope] = useState('all')
   // Sales Timeline grouping: 'day' | 'week' | 'month'.
   const [timelineGroup, setTimelineGroup] = useState('day')
+  const [colorSort, setColorSort] = useState('qty')
 
   const isB2C = channelScope === 'b2c'
 
@@ -527,7 +538,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     // Unique customers — the headline that matters for B2C (website buyers
     // are individuals, so "vitrines" is meaningless there).
     const customerKeys = new Set(
-      docs.map(d => (d.client_company || d.client_name || '').trim().replace(/\s+/g, ' ').toLowerCase()).filter(Boolean)
+      docs.map(d => clientNameFromDoc(d).key).filter((k) => k && k !== 'unknown')
     )
     return { totalRevenue, orderCount, quoteCount, avgOrder, totalVitrines, totalDocs: docs.length, uniqueCustomers: customerKeys.size }
   }, [docs])
@@ -572,6 +583,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const countryData = useMemo(() => buildCountryBreakdown(docs), [docs])
 
   const colorBreakdown = useMemo(() => buildColorBreakdown(docs), [docs])
+  const sortedColors = useMemo(() => sortColorBreakdown(colorBreakdown, colorSort), [colorBreakdown, colorSort])
 
   const countryDetails = useMemo(() => {
     if (!selectedCountry) return []
@@ -579,13 +591,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     docs.forEach((d) => {
       const country = normalizeCountryValue(d.metadata?.formState?.country)
       if (country !== selectedCountry) return
-      const key = (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' ').toLowerCase()
+      const { key, name } = clientNameFromDoc(d)
       if (!map.has(key)) {
-        map.set(key, {
-          company: (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' '),
-          orders: 0,
-          revenue: 0,
-        })
+        map.set(key, { company: name, orders: 0, revenue: 0 })
       }
       const entry = map.get(key)
       entry.orders += 1
@@ -612,19 +620,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     return Array.from(map.values()).sort((a, b) => b.qty - a.qty)
   }, [docs])
 
-  // ─── Top clients (by revenue) ─────────────────────────────────────────
-  const clientData = useMemo(() => {
-    const map = new Map()
-    docs.forEach(d => {
-      const raw = (d.client_company || d.client_name || 'Unknown').trim().replace(/\s+/g, ' ')
-      const key = raw.toLowerCase()
-      if (!map.has(key)) map.set(key, { name: raw, revenue: 0, orders: 0 })
-      const entry = map.get(key)
-      entry.revenue += d.total_amount || 0
-      entry.orders++
-    })
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [docs])
+  // ─── Top clients (by revenue) — Stage / DE / FR's Friends already merged
+  const clientData = useMemo(() => buildClientBreakdown(docs), [docs])
 
   // ─── Sales timeline (grouped by day / week / month) ───────────────────
   const timelineData = useMemo(() => bucketTimeline(docs, timelineGroup), [docs, timelineGroup])
@@ -1136,15 +1133,30 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
         </div>
 
         {/* ─── Row 4: Colors sold — full Nylon + Silk palettes ─── */}
-        <Section title="Colors sold" style={{ marginBottom: gridGap }}>
+        <Section
+          title="Colors sold"
+          style={{ marginBottom: gridGap }}
+          actions={(
+            <PillToggle
+              options={[
+                { id: 'chrono', label: 'Date' },
+                { id: 'revenue', label: 'Revenue' },
+                { id: 'name', label: 'Colour' },
+                { id: 'qty', label: 'Pieces' },
+              ]}
+              value={colorSort}
+              onChange={setColorSort}
+            />
+          )}
+        >
           <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
             Every Nylon and Silk thread colour. Unsold colours stay at 0 so missing range is visible.
           </div>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-            <ColorPaletteColumn title="Nylon" items={colorBreakdown.nylon} />
-            <ColorPaletteColumn title="Silk" items={colorBreakdown.silk} />
-            {colorBreakdown.other.length > 0 && (
-              <ColorPaletteColumn title="Other" items={colorBreakdown.other} />
+            <ColorPaletteColumn title="Nylon" items={sortedColors.nylon} showDate={colorSort === 'chrono'} />
+            <ColorPaletteColumn title="Silk" items={sortedColors.silk} showDate={colorSort === 'chrono'} />
+            {sortedColors.other.length > 0 && (
+              <ColorPaletteColumn title="Other" items={sortedColors.other} showDate={colorSort === 'chrono'} />
             )}
           </div>
         </Section>

@@ -36,4 +36,34 @@ describe('AnalyticsChatPanel', () => {
     )
     expect(await screen.findByText('Germany leads with €1,000.')).toBeInTheDocument()
   })
+
+  it('renders a structured Claude answer as headings and bullets', async () => {
+    mockSend.mockResolvedValueOnce({
+      message: [
+        '## Answer',
+        'Germany leads with **€1,000**.',
+        '',
+        '## Numbers',
+        '- Orders: 4',
+        '- Revenue: €1,000',
+      ].join('\n'),
+    })
+
+    render(
+      <AnalyticsChatPanel
+        isOpen
+        onClose={() => {}}
+        analyticsContext="KPIs: stub"
+        docs={[{ id: 'd1' }]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'All countries by revenue' }))
+
+    expect(await screen.findByTestId('analytics-structured-answer')).toBeInTheDocument()
+    expect(screen.getByText('Answer')).toBeInTheDocument()
+    expect(screen.getByText('Germany leads with')).toBeInTheDocument()
+    expect(screen.getAllByText('€1,000').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Orders: 4')).toBeInTheDocument()
+  })
 })

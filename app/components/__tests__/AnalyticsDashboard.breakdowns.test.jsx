@@ -61,7 +61,10 @@ const DOCS = [
     company: `${country} House`,
     total: 1000 - i * 10,
     rows: i === 0
-      ? [{ collection: 'CUTY', colorCord: 'Black', quantity: '2', total: '68' }]
+      ? [
+          { collection: 'CUTY', colorCord: 'Black', quantity: '2', total: '68' },
+          { collection: 'CUTY', colorCord: 'Red', quantity: '5', total: '400' },
+        ]
       : [],
   })),
   // Extra German companies so drill-down is more than 10
@@ -96,6 +99,25 @@ describe('AnalyticsDashboard — colors + countries', () => {
       expect(nylon).toHaveTextContent(color.n)
     }
     expect(CORD_COLORS.nylon.length).toBeGreaterThan(8)
+  }, 12000)
+
+  it('reorders Colors sold by pieces, revenue, and colour name', async () => {
+    render(<AnalyticsDashboard />)
+    await waitFor(() => expect(screen.getByText('Colors sold')).toBeInTheDocument(), { timeout: 8000 })
+
+    const names = () => [...screen.getByTestId('color-palette-nylon').querySelectorAll('[data-testid^="color-row-nylon-"]')]
+      .map((el) => el.getAttribute('data-testid').replace('color-row-nylon-', ''))
+
+    expect(names()[0]).toBe('Red')
+
+    fireEvent.click(screen.getByTestId('pill-name'))
+    expect(names()[0]).toBe('Black')
+
+    fireEvent.click(screen.getByTestId('pill-revenue'))
+    expect(names()[0]).toBe('Red')
+
+    fireEvent.click(screen.getByTestId('pill-qty'))
+    expect(names()[0]).toBe('Red')
   }, 12000)
 
   it('renders every sold country, not a top-7 cut', async () => {

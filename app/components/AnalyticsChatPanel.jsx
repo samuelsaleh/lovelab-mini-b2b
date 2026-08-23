@@ -4,6 +4,50 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { sendAnalyticsChat } from '@/lib/api'
+import { parseAnalyticsMarkdown } from '@/lib/analyticsMarkdown'
+
+function InlineParts({ parts }) {
+  return (parts || []).map((part, i) => (
+    part.type === 'bold'
+      ? <strong key={i}>{part.text}</strong>
+      : <span key={i}>{part.text}</span>
+  ))
+}
+
+function StructuredAnswer({ text }) {
+  const blocks = parseAnalyticsMarkdown(text)
+  if (blocks.length === 0) return text
+  return (
+    <div data-testid="analytics-structured-answer" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {blocks.map((block, i) => {
+        if (block.type === 'heading') {
+          return (
+            <div key={i} style={{ fontWeight: 700, fontSize: 13, marginTop: i === 0 ? 0 : 4 }}>
+              <InlineParts parts={block.parts} />
+            </div>
+          )
+        }
+        if (block.type === 'list') {
+          const Tag = block.list === 'ol' ? 'ol' : 'ul'
+          return (
+            <Tag key={i} style={{ margin: 0, paddingLeft: 18 }}>
+              {block.items.map((item, j) => (
+                <li key={j} style={{ marginBottom: 3 }}>
+                  <InlineParts parts={item} />
+                </li>
+              ))}
+            </Tag>
+          )
+        }
+        return (
+          <div key={i}>
+            <InlineParts parts={block.parts} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export const ANALYTICS_CHAT_CHIPS = [
   'Every nylon color including zeros',
@@ -174,9 +218,12 @@ export default function AnalyticsChatPanel({ isOpen, onClose, analyticsContext, 
                 background: msg.role === 'user' ? colors.inkPlum : '#f4f0f5',
                 color: msg.role === 'user' ? '#fff' : '#333',
                 fontSize: 13, fontFamily: fonts.body, lineHeight: 1.55,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                whiteSpace: msg.role === 'assistant' ? 'normal' : 'pre-wrap',
+                wordBreak: 'break-word',
               }}>
-                {msg.content}
+                {msg.role === 'assistant'
+                  ? <StructuredAnswer text={msg.content} />
+                  : msg.content}
               </div>
             </div>
           ))}
