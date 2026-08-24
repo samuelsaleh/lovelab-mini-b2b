@@ -7,9 +7,10 @@ import AgentFormModal from '../../components/AgentFormModal';
 import AddBonusModal from '../../components/AddBonusModal';
 import SalesTeamTabs from '../../components/SalesTeamTabs';
 import { resolveEffectiveRate } from '@/lib/effectiveRate';
+import { isHideRevenue } from '@/lib/utils';
 
 const fmt = (n) => {
-  if (n == null) return '—';
+  if (isHideRevenue() || n == null) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 };
 

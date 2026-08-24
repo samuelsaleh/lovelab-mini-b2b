@@ -14,9 +14,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors } from '@/lib/styles'
 import SalesTeamTabs from '@/app/components/SalesTeamTabs'
+import { isHideRevenue } from '@/lib/utils'
 
 const fmt = (n) => {
-  if (n == null) return '—'
+  if (isHideRevenue() || n == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 

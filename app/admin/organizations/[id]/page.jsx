@@ -28,14 +28,17 @@ import TeamInviteForm from '@/app/components/TeamInviteForm'
 import RevenueByFairChart from '@/app/components/RevenueByFairChart'
 import { colors } from '@/lib/styles'
 import { resolveEffectiveRate } from '@/lib/effectiveRate'
+import { isHideRevenue } from '@/lib/utils'
 
-const formatMoney = (value) =>
-  new Intl.NumberFormat('en-US', {
+const formatMoney = (value) => {
+  if (isHideRevenue()) return '—'
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'EUR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(toNumber(value))
+}
 
 const toNumber = (value) => {
   const number = Number(value)

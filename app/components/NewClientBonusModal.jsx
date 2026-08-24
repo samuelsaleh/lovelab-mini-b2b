@@ -22,7 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors, fonts } from '@/lib/styles';
-import { fmt } from '@/lib/utils';
+import { fmtRevenue as fmt } from '@/lib/utils';
 import { resolveBonusMode } from '@/lib/newClientBonus';
 
 const DEFAULT_AMOUNT = 200;

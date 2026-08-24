@@ -22,6 +22,7 @@
 import { useState } from 'react';
 import { colors, fonts } from '@/lib/styles';
 import { parseAmount } from '@/lib/parseAmount';
+import { fmtRevenue } from '@/lib/utils';
 
 export default function AddQuickOrderModal({ agent, onClose, onSuccess }) {
   const [clientLabel, setClientLabel] = useState('');
@@ -222,9 +223,9 @@ export default function AddQuickOrderModal({ agent, onClose, onSuccess }) {
             >
               Agent will be paid{' '}
               <strong>
-                €{computedCommission.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {fmtRevenue(computedCommission)}
               </strong>
-              {amountMode === 'order_total' ? ` (${rate}% of €${numericAmount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''}
+              {amountMode === 'order_total' ? ` (${rate}% of ${fmtRevenue(numericAmount)})` : ''}
             </div>
           )}
 

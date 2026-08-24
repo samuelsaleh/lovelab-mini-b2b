@@ -25,9 +25,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { colors } from '@/lib/styles'
+import { isHideRevenue } from '@/lib/utils'
 
-const fmt = (n) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n) || 0)
+const fmt = (n) => {
+  if (isHideRevenue()) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n) || 0)
+}
 
 export default function OrgSettlementCard({ organizationId }) {
   const [ledger, setLedger] = useState(null)
@@ -95,6 +98,7 @@ export default function OrgSettlementCard({ organizationId }) {
   }, [reports, payments])
 
   const handleSendReport = async () => {
+    if (isHideRevenue()) return
     setSending(true)
     setSendResult(null)
     try {
@@ -317,7 +321,7 @@ export default function OrgSettlementCard({ organizationId }) {
         <button
           data-testid="org-send-report"
           onClick={handleSendReport}
-          disabled={sending}
+          disabled={sending || isHideRevenue()}
           style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: sending ? '#aaa' : colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700, cursor: sending ? 'wait' : 'pointer', fontFamily: 'inherit' }}
         >
           {sending ? 'Generating…' : 'Send org report'}

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { colors, fonts } from '@/lib/styles';
-import { fmt } from '@/lib/utils';
+import { fmtRevenue as fmt } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments';
 

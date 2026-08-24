@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useResponsive } from '@/lib/useIsMobile'
-import { fmt } from '@/lib/utils'
+import { fmtRevenue as fmt, fmtStat, isHideRevenue } from '@/lib/utils'
 import { normalizeCountry } from '@/lib/countries'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 import { resolveVitrineQty } from '@/lib/vitrines'
@@ -122,6 +122,17 @@ export function buildAgentFairMatrix(docs, { agentNameById = {}, fairNameById = 
 }
 
 // ─── Custom Recharts tooltip ───────────────────────────────────────────────
+function hideSeries(rows, keys) {
+  if (!isHideRevenue()) return rows
+  return (rows || []).map((row) => {
+    const next = { ...row }
+    keys.forEach((k) => {
+      if (typeof next[k] === 'number') next[k] = 0
+    })
+    return next
+  })
+}
+
 function ChartTooltip({ active, payload, label, formatter }) {
   if (!active || !payload?.length) return null
   return (
@@ -129,7 +140,7 @@ function ChartTooltip({ active, payload, label, formatter }) {
       <div style={{ fontWeight: 600, color: colors.inkPlum, marginBottom: 4 }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color || colors.charcoal }}>
-          {p.name}: {formatter ? formatter(p.value) : p.value}
+          {p.name}: {isHideRevenue() ? '—' : (formatter ? formatter(p.value) : p.value)}
         </div>
       ))}
     </div>
@@ -163,7 +174,7 @@ function SalesTimelineChart({ data }) {
         />
         <YAxis
           yAxisId="rev"
-          tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`}
+          tickFormatter={(v) => (isHideRevenue() ? '—' : `€${(v / 1000).toFixed(0)}k`)}
           fontSize={12}
           tick={{ fill: '#bbb' }}
           axisLine={false}
@@ -178,6 +189,7 @@ function SalesTimelineChart({ data }) {
           tickLine={false}
           allowDecimals={false}
           width={28}
+          tickFormatter={(v) => (isHideRevenue() ? '—' : v)}
         />
         <Legend
           verticalAlign="top"
@@ -196,7 +208,7 @@ function SalesTimelineChart({ data }) {
                 boxShadow: '0 4px 16px rgba(0,0,0,0.10)', fontSize: 13,
               }}>
                 <div style={{ fontWeight: 700, color: colors.inkPlum, marginBottom: 6 }}>{label}</div>
-                {cnt && <div style={{ color: '#8a6a2c' }}>Orders: <strong>{cnt.value}</strong></div>}
+                {cnt && <div style={{ color: '#8a6a2c' }}>Orders: <strong>{fmtStat(cnt.value)}</strong></div>}
                 {rev && <div style={{ color: colors.inkPlum, marginTop: 2 }}>Revenue: <strong>{fmt(rev.value)}</strong></div>}
               </div>
             )
@@ -294,10 +306,14 @@ function RankedTable({ columns, rows, maxRows = 10, maxHeight, onRowClick, isRow
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               style={onRowClick ? { cursor: 'pointer', background: isRowActive?.(row) ? '#faf8fc' : 'transparent' } : undefined}
             >
-              <td style={{ ...tdS, textAlign: 'center', fontWeight: 700, color: i < 3 ? colors.inkPlum : '#999', fontSize: 12 }}>{i + 1}</td>
-              {columns.map((col, j) => (
-                <td key={j} style={{ ...tdS, textAlign: col.align || 'left', fontWeight: col.bold ? 600 : 400, color: col.color || colors.charcoal }}>{col.render ? col.render(row) : row[col.key]}</td>
-              ))}
+              <td style={{ ...tdS, textAlign: 'center', fontWeight: 700, color: i < 3 ? colors.inkPlum : '#999', fontSize: 12 }}>{fmtStat(i + 1)}</td>
+              {columns.map((col, j) => {
+                const raw = col.render ? col.render(row) : row[col.key]
+                const value = !col.render && typeof raw === 'number' ? fmtStat(raw) : raw
+                return (
+                <td key={j} style={{ ...tdS, textAlign: col.align || 'left', fontWeight: col.bold ? 600 : 400, color: col.color || colors.charcoal }}>{value}</td>
+                )
+              })}
             </tr>
           ))}
         </tbody>
@@ -315,7 +331,7 @@ function MiniStat({ label, items, maxItems = 5 }) {
       {items.slice(0, maxItems).map((item, i) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', fontSize: 12 }}>
           <span style={{ color: colors.charcoal }}>{item.name}</span>
-          <span style={{ fontWeight: 600, color: colors.inkPlum }}>{item.value}</span>
+          <span style={{ fontWeight: 600, color: colors.inkPlum }}>{fmtStat(item.value)}</span>
         </div>
       ))}
       {items.length === 0 && <div style={{ fontSize: 12, color: '#ccc' }}>—</div>}
@@ -327,11 +343,12 @@ function ColorPaletteColumn({ title, items, showDate = false }) {
   return (
     <div data-testid={`color-palette-${title.toLowerCase()}`} style={{ flex: 1, minWidth: 220 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, marginBottom: 10, letterSpacing: '0.04em' }}>
-        {title} <span style={{ fontWeight: 500, color: colors.lovelabMuted }}>({items.length})</span>
+        {title} <span style={{ fontWeight: 500, color: colors.lovelabMuted }}>({fmtStat(items.length)})</span>
       </div>
       <div style={{ maxHeight: 360, overflowY: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
         {items.map((item) => {
-          const unsold = item.qty === 0
+          const hide = isHideRevenue()
+          const unsold = !hide && item.qty === 0
           const soldDay = item.lastSoldAt ? String(item.lastSoldAt).slice(0, 10) : ''
           return (
             <div
@@ -352,14 +369,14 @@ function ColorPaletteColumn({ title, items, showDate = false }) {
               }} />
               <span style={{ flex: 1, color: colors.charcoal }}>{item.name}</span>
               <span style={{ fontWeight: 600, color: unsold ? '#999' : colors.inkPlum, minWidth: 36, textAlign: 'right' }}>
-                {item.qty}
+                {fmtStat(item.qty)}
               </span>
               <span style={{ color: unsold ? '#bbb' : '#666', minWidth: 64, textAlign: 'right' }}>
-                {unsold ? '—' : fmt(item.revenue)}
+                {unsold || hide ? '—' : fmt(item.revenue)}
               </span>
               {showDate && (
                 <span style={{ color: unsold ? '#ccc' : '#888', minWidth: 72, textAlign: 'right', fontSize: 11 }}>
-                  {soldDay || '—'}
+                  {hide ? '—' : (soldDay || '—')}
                 </span>
               )}
             </div>
@@ -499,7 +516,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   )
 
   const handleExport = async () => {
-    if (exporting || docs.length === 0) return
+    if (isHideRevenue() || exporting || docs.length === 0) return
     setExporting(true)
     setExportError(null)
     try {
@@ -838,6 +855,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             </span>
           )}
           </div>
+          {!isHideRevenue() && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={handleExport}
@@ -867,6 +885,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               }}
             ><span style={{ fontSize: 14 }}>AI</span> Ask AI</button>
           </div>
+          )}
         </div>
         {exportError && (
           <div role="alert" style={{ maxWidth: 1400, margin: '8px auto 0', fontSize: 12, color: '#dc2626' }}>
@@ -880,13 +899,13 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
         {/* ─── KPI Cards ─── */}
         <div style={{ display: 'flex', gap: gridGap, flexWrap: 'wrap', marginBottom: gridGap }}>
-          <KpiCard label={isB2C ? 'B2C Revenue' : 'Total Revenue'} value={fmt(kpis.totalRevenue)} sub={`${kpis.totalDocs} documents`} />
-          <KpiCard label="Orders" value={kpis.orderCount} sub={`${kpis.quoteCount} quotes`} accent={colors.luxeGold} />
+          <KpiCard label={isB2C ? 'B2C Revenue' : 'Total Revenue'} value={fmt(kpis.totalRevenue)} sub={isHideRevenue() ? '—' : `${kpis.totalDocs} documents`} />
+          <KpiCard label="Orders" value={fmtStat(kpis.orderCount)} sub={isHideRevenue() ? '—' : `${kpis.quoteCount} quotes`} accent={colors.luxeGold} />
           <KpiCard label="Avg. Order Value" value={fmt(kpis.avgOrder)} />
           {isB2C ? (
-            <KpiCard label="Customers" value={kpis.uniqueCustomers} sub="unique buyers" accent={colors.gradientDeep} />
+            <KpiCard label="Customers" value={fmtStat(kpis.uniqueCustomers)} sub="unique buyers" accent={colors.gradientDeep} />
           ) : (
-            <KpiCard label="Vitrines" value={kpis.totalVitrines} sub={`${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
+            <KpiCard label="Vitrines" value={fmtStat(kpis.totalVitrines)} sub={isHideRevenue() ? '—' : `${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
           )}
         </div>
 
@@ -900,8 +919,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               {revenuePerFair.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={revenuePerFair} layout="vertical" margin={{ left: 10, right: 20 }}>
-                      <XAxis type="number" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
+                    <BarChart data={hideSeries(revenuePerFair, ['revenue', 'orders'])} layout="vertical" margin={{ left: 10, right: 20 }}>
+                      <XAxis type="number" tickFormatter={(v) => (isHideRevenue() ? '—' : `€${(v / 1000).toFixed(0)}k`)} fontSize={11} />
                       <YAxis type="category" dataKey="name" width={100} fontSize={11} tick={{ fill: colors.charcoal }} />
                       <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                       <Bar dataKey="revenue" radius={[0, 6, 6, 0]} maxBarSize={28}>
@@ -923,7 +942,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           ) : (
             <Section title={isB2C ? 'B2C Sales Timeline' : 'Sales Timeline'} actions={timelineToggle}>
               {timelineData.length > 0
-                ? <SalesTimelineChart data={timelineData} />
+                ? <SalesTimelineChart data={hideSeries(timelineData, ['revenue', 'orders'])} />
                 : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No data</div>}
             </Section>
           )}
@@ -934,7 +953,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexDirection: mobile ? 'column' : 'row' }}>
                 <ResponsiveContainer width={mobile ? '100%' : '45%'} height={220}>
                   <PieChart>
-                    <Pie data={countryData} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={2} label={false}>
+                    <Pie data={hideSeries(countryData, ['revenue', 'count'])} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={2} label={false}>
                       {countryData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                     </Pie>
                     <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
@@ -980,7 +999,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                           {countryDetails.map((row, idx) => (
                             <tr key={`${row.company}-${idx}`} data-testid={`company-row-${row.company}`}>
                               <td style={tdStyleMini}>{row.company}</td>
-                              <td style={{ ...tdStyleMini, textAlign: 'center' }}>{row.orders}</td>
+                              <td style={{ ...tdStyleMini, textAlign: 'center' }}>{fmtStat(row.orders)}</td>
                               <td style={{ ...tdStyleMini, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmt(row.revenue)}</td>
                             </tr>
                           ))}
@@ -1000,8 +1019,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             {revenuePerAgentData.length > 0 && (
               <Section title="Revenue per Agent">
                 <ResponsiveContainer width="100%" height={Math.min(revenuePerAgentData.length * 34 + 40, 300)}>
-                  <BarChart data={revenuePerAgentData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <XAxis type="number" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} fontSize={11} />
+                  <BarChart data={hideSeries(revenuePerAgentData, ['revenue', 'orders'])} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <XAxis type="number" tickFormatter={(v) => (isHideRevenue() ? '—' : `€${(v / 1000).toFixed(0)}k`)} fontSize={11} />
                     <YAxis type="category" dataKey="name" width={120} fontSize={11} tick={{ fill: colors.charcoal }} />
                     <Tooltip content={<ChartTooltip formatter={(v) => fmt(v)} />} />
                     <Bar dataKey="revenue" radius={[0, 6, 6, 0]} maxBarSize={26}>
@@ -1042,8 +1061,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                             const c = agentFairMatrix.cells.get(`${a.id}|${f.id}`)
                             return (
                               <td key={f.id} style={{ ...tdStyleMini, textAlign: 'center' }}
-                                title={c ? `${c.orders} order${c.orders === 1 ? '' : 's'} · ${fmt(c.revenue)}` : ''}>
-                                {c ? c.orders : <span style={{ color: '#ddd' }}>—</span>}
+                                title={c ? `${fmtStat(c.orders)} order${c.orders === 1 ? '' : 's'} · ${fmt(c.revenue)}` : ''}>
+                                {c ? fmtStat(c.orders) : <span style={{ color: '#ddd' }}>—</span>}
                               </td>
                             )
                           })}
@@ -1068,8 +1087,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
             {productData.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={Math.min(productData.length * 36 + 40, 320)}>
-                  <BarChart data={productData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <XAxis type="number" fontSize={11} />
+                  <BarChart data={hideSeries(productData, ['qty', 'revenue'])} layout="vertical" margin={{ left: 10, right: 20 }}>
+                    <XAxis type="number" fontSize={11} tickFormatter={(v) => (isHideRevenue() ? '—' : v)} />
                     <YAxis type="category" dataKey="name" width={140} fontSize={11} tick={{ fill: colors.charcoal }} />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="qty" name="Quantity" radius={[0, 6, 6, 0]} maxBarSize={24}>
@@ -1111,14 +1130,14 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           {!selectedEventId && !isB2C && (
             <Section title="Sales Timeline" actions={timelineToggle}>
               {timelineData.length > 0
-                ? <SalesTimelineChart data={timelineData} />
+                ? <SalesTimelineChart data={hideSeries(timelineData, ['revenue', 'orders'])} />
                 : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No timeline data</div>}
             </Section>
           )}
 
           {/* Vitrine Summary */}
           {vitrineData.rows.length > 0 && (
-            <Section title={`Vitrine Summary (${vitrineData.totalQty} total)`}>
+            <Section title={isHideRevenue() ? 'Vitrine Summary' : `Vitrine Summary (${vitrineData.totalQty} total)`}>
               <RankedTable
                 columns={[
                   { label: 'Company', key: 'company' },
@@ -1173,17 +1192,19 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
         {/* ─── Footer ─── */}
         <div style={{ textAlign: 'center', padding: '20px 0 40px', fontSize: 11, color: '#bbb' }}>
-          LoveLab Analytics — {documents.length} documents across {events.length} events
+          LoveLab Analytics — {isHideRevenue() ? '—' : `${documents.length} documents across ${events.length} events`}
         </div>
       </div>
 
       {/* ─── AI Chat Panel ─── */}
+      {!isHideRevenue() && (
       <AnalyticsChatPanel
         isOpen={showChat}
         onClose={() => setShowChat(false)}
         analyticsContext={analyticsContext}
         docs={docs}
       />
+      )}
     </div>
   )
 }

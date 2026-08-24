@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { colors } from '@/lib/styles'
-import { fmt } from '@/lib/utils'
+import { fmtRevenue as fmt, isHideRevenue } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 
 export default function DocumentsAnalytics({ filteredDocs, currentEventName, mobile }) {
@@ -49,7 +49,7 @@ export default function DocumentsAnalytics({ filteredDocs, currentEventName, mob
             {fmt(currentTotal)}
           </div>
           <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-            {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
+            {isHideRevenue() ? '—' : `${filteredDocs.length} document${filteredDocs.length !== 1 ? 's' : ''}`}
           </div>
         </div>
       </div>
@@ -75,7 +75,7 @@ export default function DocumentsAnalytics({ filteredDocs, currentEventName, mob
                 <span style={{ color: '#555' }}>{date}</span>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <span style={{ color: '#999', fontSize: 11 }}>
-                    {data.count} order{data.count !== 1 ? 's' : ''}
+                    {isHideRevenue() ? '—' : `${data.count} order${data.count !== 1 ? 's' : ''}`}
                   </span>
                   <span style={{ fontWeight: 600, color: colors.inkPlum }}>{fmt(data.total)}</span>
                 </div>
@@ -83,7 +83,7 @@ export default function DocumentsAnalytics({ filteredDocs, currentEventName, mob
             ))}
             {salesByDate.length > 5 && (
               <div style={{ fontSize: 10, color: '#999', textAlign: 'center', paddingTop: 4 }}>
-                +{salesByDate.length - 5} more days
+                {isHideRevenue() ? '—' : `+${salesByDate.length - 5} more days`}
               </div>
             )}
           </div>

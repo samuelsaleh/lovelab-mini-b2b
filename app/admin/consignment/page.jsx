@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { colors, fonts } from '@/lib/styles'
-import { fmt } from '@/lib/utils'
+import { fmtRevenue as fmt } from '@/lib/utils'
 
 import EditConsignmentDetailsModal from '@/app/components/EditConsignmentDetailsModal'
 import ReconcileConsignmentModal from '@/app/components/ReconcileConsignmentModal'

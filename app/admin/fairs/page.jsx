@@ -4,9 +4,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
+import { isHideRevenue } from '@/lib/utils'
 
 const fmt = (n) => {
-  if (n == null || n === 0) return '—'
+  if (isHideRevenue() || n == null || n === 0) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 

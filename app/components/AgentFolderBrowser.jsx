@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { scopeOrganizationFolderDocuments } from '@/lib/organizations/folder-document-scope'
+import { fmtRevenue } from '@/lib/utils'
 
 const fmt = (bytes) => {
   if (!bytes) return ''
@@ -519,7 +520,7 @@ function VirtualOrderGroup({ docs, channel, label }) {
         const docLabel = [
           doc.document_type?.toUpperCase(),
           doc.client_company || doc.client_name,
-          doc.total_amount ? `€${Number(doc.total_amount).toLocaleString('de-DE', { minimumFractionDigits: 2 })}` : null,
+          doc.total_amount ? fmtRevenue(doc.total_amount) : null,
         ].filter(Boolean).join(' — ')
         return (
           <tr key={`doc-${doc.id}`} style={{ borderBottom: `1px solid ${colors.lineGray}`, background: '#fff' }}>

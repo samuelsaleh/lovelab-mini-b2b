@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { hidesRevenue } from '@/lib/visitorAccess';
+import { setHideRevenue } from '@/lib/utils';
 
 // Auth-related routes where the force-set-password gate must NOT fire.
 // Includes /set-password itself (would loop) and the public entry points
@@ -50,10 +52,12 @@ export function AuthProvider({ children }) {
         setUser(json.user);
         setOrgMembership(json.organization_membership || null);
         if (json.profile) {
+          setHideRevenue(hidesRevenue(json.profile) || hidesRevenue(json.user?.email));
           setProfile(json.profile);
           setProfileMissing(false);
           setProfileError(null);
         } else {
+          setHideRevenue(false);
           setProfile(null);
           setProfileMissing(true);
           setProfileError('missing_profile');
@@ -80,6 +84,7 @@ export function AuthProvider({ children }) {
         setOrgMembership(null);
         setProfileMissing(false);
         setProfileError(null);
+        setHideRevenue(false);
       }
       setLoading(false);
     };
@@ -97,6 +102,7 @@ export function AuthProvider({ children }) {
           setOrgMembership(null);
           setProfileMissing(false);
           setProfileError(null);
+          setHideRevenue(false);
         }
         setLoading(false);
       }
@@ -135,6 +141,7 @@ export function AuthProvider({ children }) {
   }, [profile, pathname, loading, router]);
 
   const signOut = async () => {
+    setHideRevenue(false);
     setUser(null);
     setProfile(null);
     setOrgMembership(null);

@@ -14,7 +14,7 @@ jest.mock('@/lib/styles', () => ({
   colors: { inkPlum: '#5D3A5E', lineGray: '#eaeaea', luxeGold: '#c9a84c' },
   fonts: { body: 'inherit' },
 }))
-jest.mock('@/lib/utils', () => ({ fmt: (value) => `€${value}` }))
+jest.mock('@/lib/utils', () => ({ fmt: (value) => `€${value}`, fmtRevenue: (value) => `€${value}` }))
 
 const baseDoc = {
   id: 'doc-1',

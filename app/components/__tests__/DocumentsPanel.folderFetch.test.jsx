@@ -25,7 +25,7 @@ jest.mock('@/lib/useIsMobile', () => ({
   useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 jest.mock('@/lib/i18n', () => ({ useI18n: () => ({ t: (k) => k }) }))
-jest.mock('@/lib/utils', () => ({ fmt: (n) => `€${n}` }))
+jest.mock('@/lib/utils', () => ({ fmt: (n) => `€${n}`, fmtRevenue: (n) => `€${n}` }))
 
 // safeFetch is a thin wrapper over fetch — route everything through global.fetch
 // so the test can drive responses by URL without pulling in prompt/catalog deps.

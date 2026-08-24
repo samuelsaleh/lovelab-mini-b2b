@@ -7,9 +7,10 @@ import { useResponsive } from '@/lib/useIsMobile'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ResourcesCard from '../components/ResourcesCard'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
+import { isHideRevenue } from '@/lib/utils'
 
 const fmt = (n) => {
-  if (n == null) return '—'
+  if (isHideRevenue() || n == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
@@ -227,7 +228,7 @@ export default function AdminDashboard() {
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={revenueByEvent} layout="vertical" barCategoryGap="20%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#999' }} axisLine={false} tickLine={false} tickFormatter={v => `€${v >= 1000 ? Math.round(v / 1000) + 'k' : v}`} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#999' }} axisLine={false} tickLine={false} tickFormatter={v => (isHideRevenue() ? '—' : `€${v >= 1000 ? Math.round(v / 1000) + 'k' : v}`)} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#666' }} axisLine={false} tickLine={false} width={140} />
                 <Tooltip formatter={(v) => fmt(v)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                 <Bar dataKey="total" name="Revenue" fill={colors.inkPlum} radius={[0, 4, 4, 0]} />

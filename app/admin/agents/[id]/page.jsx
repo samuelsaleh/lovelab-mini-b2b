@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import { useResponsive } from '@/lib/useIsMobile';
-import { fmt } from '@/lib/utils';
+import { fmtRevenue as fmt, isHideRevenue } from '@/lib/utils';
 import { parseAmount } from '@/lib/parseAmount';
 import {
   applyCustomerPaidLocally,
@@ -34,6 +34,7 @@ import {
 // The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
 // comma/cents on every commission and payment amount.
 const fmt2 = (n) => {
+  if (isHideRevenue()) return '—';
   const num = Number(n);
   if (Number.isNaN(num)) return '0,00 €';
   return new Intl.NumberFormat('fr-BE', {

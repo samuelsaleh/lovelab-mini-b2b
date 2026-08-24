@@ -37,6 +37,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { isHideRevenue } from '@/lib/utils';
 
 const PLUM = '#5D3A5E';
 const GOLD = '#C5A059';
@@ -44,6 +45,7 @@ const MUTED = '#999';
 const LINE = '#e3e3e3';
 
 function fmtEuro(n) {
+  if (isHideRevenue()) return '—';
   const v = Number(n) || 0;
   return new Intl.NumberFormat('fr-BE', {
     style: 'currency',
@@ -155,7 +157,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
   };
 
   const handleGenerate = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId || isHideRevenue()) return;
     setBusy(true);
     setLastResult(null);
     try {
@@ -172,7 +174,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
   }, [agentId, loadReports, runGenerate]);
 
   const handleReplaceLast = useCallback(async () => {
-    if (!agentId || !replaceableReport) return;
+    if (!agentId || !replaceableReport || isHideRevenue()) return;
     const label = replaceableReport.period_label || replaceableReport.period_key;
     if (!window.confirm(
       `Replace “${label}”? Its commissions go back to Ready, then a new report is sent with every order currently Ready (including any you forgot). Drive copy of the old file is kept.`,
@@ -223,7 +225,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
           type="button"
           data-testid="send-report-now"
           onClick={handleGenerate}
-          disabled={busy}
+          disabled={busy || isHideRevenue()}
           style={{
             padding: '8px 16px',
             borderRadius: 8,
@@ -245,7 +247,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
           type="button"
           data-testid="replace-last-report"
           onClick={handleReplaceLast}
-          disabled={busy || !replaceableReport}
+          disabled={busy || !replaceableReport || isHideRevenue()}
           title={replaceableReport
             ? 'Delete the latest report (commissions return to Ready) and send a new combined one'
             : 'No replaceable report — either none exist, or the latest already has a payment recorded'}
@@ -383,7 +385,7 @@ function ReportRow({ r, agentName, onDeleted }) {
         </td>
         <td style={{ ...td, textAlign: 'right' }}>
           <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-            {r.drive_view_link && (
+            {!isHideRevenue() && r.drive_view_link && (
               <a
                 href={r.drive_view_link}
                 target="_blank"
@@ -394,7 +396,7 @@ function ReportRow({ r, agentName, onDeleted }) {
                 Drive
               </a>
             )}
-            {r.storage_path && (
+            {!isHideRevenue() && r.storage_path && (
               <a
                 href={`/api/commission-reports/${r.id}/download`}
                 download={`${agentName || 'agent'} - ${r.period_key || r.period_label}.xlsx`}

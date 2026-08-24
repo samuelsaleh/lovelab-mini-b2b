@@ -20,7 +20,7 @@ jest.mock('@/lib/useIsMobile', () => ({
   useResponsive: () => ({ isMobile: false, isTablet: false, isDesktop: true, isCompact: false }),
 }))
 jest.mock('@/lib/i18n', () => ({ useI18n: () => ({ t: (k) => k }) }))
-jest.mock('@/lib/utils', () => ({ fmt: (n) => `€${n}` }))
+jest.mock('@/lib/utils', () => ({ fmt: (n) => `€${n}`, fmtRevenue: (n) => `€${n}` }))
 jest.mock('@/lib/api', () => ({ safeFetch: (url, opts) => global.fetch(url, opts) }))
 
 jest.mock('../AuthProvider', () => ({

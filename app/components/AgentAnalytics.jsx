@@ -9,9 +9,10 @@ import { useResponsive } from '@/lib/useIsMobile'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import ContractChatPanel from './ContractChatPanel'
 import AgentFolderBrowser from './AgentFolderBrowser'
+import { isHideRevenue } from '@/lib/utils'
 
 const fmt = (n) => {
-  if (n == null) return '—'
+  if (isHideRevenue() || n == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
@@ -351,7 +352,7 @@ export default function AgentAnalytics({ defaultTab = null }) {
                     <BarChart data={monthlyData} barCategoryGap="25%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                       <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#888' }} axisLine={false} tickLine={false} dy={10} />
-                      <YAxis tick={{ fontSize: 12, fill: '#888' }} axisLine={false} tickLine={false} tickFormatter={v => `€${v}`} dx={-10} />
+                      <YAxis tick={{ fontSize: 12, fill: '#888' }} axisLine={false} tickLine={false} tickFormatter={v => (isHideRevenue() ? '—' : `€${v}`)} dx={-10} />
                       <Tooltip formatter={(v) => fmt(v)} contentStyle={{ fontSize: 13, borderRadius: 12, border: 'none', boxShadow: '0 8px 30px rgba(0,0,0,0.1)' }} cursor={{ fill: '#f9f9f9' }} />
                       <Bar dataKey="orders" name="Orders" fill={colors.inkPlum} radius={[4, 4, 0, 0]} />
                       <Bar dataKey="bonuses" name="Bonuses" fill={colors.luxeGold} radius={[4, 4, 0, 0]} />

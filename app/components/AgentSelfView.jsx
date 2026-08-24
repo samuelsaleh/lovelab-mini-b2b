@@ -36,7 +36,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/styles';
 import { useResponsive } from '@/lib/useIsMobile';
-import { fmt } from '@/lib/utils';
+import { fmtRevenue as fmt } from '@/lib/utils';
 import { useAuth } from './AuthProvider';
 import { useOrgData } from '@/app/hooks/useOrgData';
 import AgentFolderBrowser from './AgentFolderBrowser';

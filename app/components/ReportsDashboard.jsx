@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { colors, fonts } from '@/lib/styles'
-import { fmt } from '@/lib/utils'
+import { fmtRevenue as fmt, isHideRevenue } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { normalizeCountry } from '@/lib/countries'
@@ -300,6 +300,7 @@ export default function ReportsDashboard() {
   }
 
   const exportXLSX = async () => {
+    if (isHideRevenue()) return
     const ExcelJSModule = await import('exceljs')
     const ExcelJS = ExcelJSModule.default || ExcelJSModule
 
@@ -691,6 +692,7 @@ export default function ReportsDashboard() {
             </div>
 
             {/* Export Excel */}
+            {!isHideRevenue() && (
             <button
               onClick={exportXLSX}
               style={{
@@ -709,6 +711,7 @@ export default function ReportsDashboard() {
               </svg>
               Export Excel
             </button>
+            )}
           </div>
         </div>
 

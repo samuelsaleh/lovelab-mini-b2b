@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, fonts } from '@/lib/styles'
-import { fmt } from '@/lib/utils'
+import { fmtRevenue as fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
 import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'

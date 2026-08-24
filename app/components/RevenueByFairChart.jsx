@@ -12,9 +12,10 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { colors } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
+import { isHideRevenue } from '@/lib/utils'
 
 const fmt = (n) => {
-  if (n == null) return '—'
+  if (isHideRevenue() || n == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
@@ -37,7 +38,7 @@ export default function RevenueByFairChart({ data = [] }) {
         <ResponsiveContainer width="100%" height={Math.max(120, rows.length * 42)}>
           <BarChart data={rows} layout="vertical" barCategoryGap="24%">
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 11, fill: '#999' }} axisLine={false} tickLine={false} tickFormatter={(v) => `€${v >= 1000 ? Math.round(v / 1000) + 'k' : v}`} />
+            <XAxis type="number" tick={{ fontSize: 11, fill: '#999' }} axisLine={false} tickLine={false} tickFormatter={(v) => (isHideRevenue() ? '—' : `€${v >= 1000 ? Math.round(v / 1000) + 'k' : v}`)} />
             <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#666' }} axisLine={false} tickLine={false} width={120} />
             <Tooltip formatter={(v) => fmt(v)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             <Bar dataKey="revenue" name={t('team.col.revenue')} fill={colors.luxeGold} radius={[0, 4, 4, 0]} />
