@@ -33,6 +33,23 @@ const COUNTRIES = [
   'Netherlands', 'Belgium', 'Switzerland', 'Portugal',
 ]
 
+// 12 collections — enough to prove the old maxRows=10 table cut is gone.
+// Qty steps keep CUTY first and Sienna Five last (the #12 that used to vanish).
+const PRODUCT_LINES = [
+  { collection: 'CUTY', quantity: '100', total: '3400' },
+  { collection: 'CUBIX', quantity: '90', total: '2700' },
+  { collection: 'SHAPY SHINE FANCY', quantity: '80', total: '4400' },
+  { collection: 'MULTI THREE', quantity: '70', total: '4550' },
+  { collection: 'MULTI FOUR', quantity: '60', total: '5100' },
+  { collection: 'CUTY NECKLACE', quantity: '50', total: '2500' },
+  { collection: 'MATCHY FANCY', quantity: '40', total: '8000' },
+  { collection: 'MULTI FIVE', quantity: '30', total: '2850' },
+  { collection: 'Flower Heart', quantity: '20', total: '4000' },
+  { collection: 'Flower Marquise', quantity: '15', total: '3000' },
+  { collection: 'Za-Ha', quantity: '10', total: '2000' },
+  { collection: 'Sienna Five', quantity: '5', total: '1000' },
+]
+
 function orderDoc({ id, country, company, total = 100, rows = [] }) {
   return {
     id,
@@ -64,6 +81,7 @@ const DOCS = [
       ? [
           { collection: 'CUTY', colorCord: 'Black', quantity: '2', total: '68' },
           { collection: 'CUTY', colorCord: 'Red', quantity: '5', total: '400' },
+          ...PRODUCT_LINES,
         ]
       : [],
   })),
@@ -142,5 +160,21 @@ describe('AnalyticsDashboard — colors + countries', () => {
     // 1 "Germany House" + 11 Berlin shops
     expect(companies.length).toBe(12)
     expect(screen.getByTestId('company-row-Berlin Shop 11')).toBeInTheDocument()
+  }, 12000)
+})
+
+describe('AnalyticsDashboard — top products', () => {
+  it('lists every collection, with CUTY first and the #12 name still present', async () => {
+    render(<AnalyticsDashboard />)
+    await waitFor(() => expect(screen.getByTestId('products-table')).toBeInTheDocument(), { timeout: 8000 })
+
+    const rows = screen.getAllByTestId(/^product-row-/)
+    expect(rows.length).toBeGreaterThanOrEqual(12)
+    expect(rows[0]).toHaveAttribute('data-testid', 'product-row-CUTY')
+    PRODUCT_LINES.forEach((line) => {
+      expect(screen.getByTestId(`product-row-${line.collection}`)).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('product-row-Sienna Five')).toBeInTheDocument()
+    expect(screen.getByTestId('products-chart')).toBeInTheDocument()
   }, 12000)
 })

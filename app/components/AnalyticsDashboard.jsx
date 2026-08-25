@@ -13,6 +13,7 @@ import {
   buildCountryBreakdown,
   buildClientBreakdown,
   formatColorBreakdownForPrompt,
+  productChartHeight,
   sortColorBreakdown,
 } from '@/lib/analyticsBreakdowns'
 import { clientNameFromDoc } from '@/lib/analyticsAliases'
@@ -1086,16 +1087,18 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           <Section title="Top Products (by quantity)">
             {productData.length > 0 ? (
               <>
-                <ResponsiveContainer width="100%" height={Math.min(productData.length * 36 + 40, 320)}>
-                  <BarChart data={hideSeries(productData, ['qty', 'revenue'])} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <XAxis type="number" fontSize={11} tickFormatter={(v) => (isHideRevenue() ? '—' : v)} />
-                    <YAxis type="category" dataKey="name" width={140} fontSize={11} tick={{ fill: colors.charcoal }} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="qty" name="Quantity" radius={[0, 6, 6, 0]} maxBarSize={24}>
-                      {productData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <div data-testid="products-chart" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                  <ResponsiveContainer width="100%" height={productChartHeight(productData.length)}>
+                    <BarChart data={hideSeries(productData, ['qty', 'revenue'])} layout="vertical" margin={{ top: 8, left: 10, right: 20, bottom: 8 }}>
+                      <XAxis type="number" fontSize={11} tickFormatter={(v) => (isHideRevenue() ? '—' : v)} />
+                      <YAxis type="category" dataKey="name" width={160} interval={0} fontSize={11} tick={{ fill: colors.charcoal }} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="qty" name="Quantity" radius={[0, 6, 6, 0]} maxBarSize={24}>
+                        {productData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
                 <RankedTable
                   columns={[
                     { label: 'Collection', key: 'name' },
@@ -1103,6 +1106,10 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
                     { label: 'Revenue', key: 'revenue', align: 'right', render: (r) => fmt(r.revenue) },
                   ]}
                   rows={productData}
+                  maxRows={null}
+                  maxHeight={280}
+                  tableTestId="products-table"
+                  rowTestId={(row) => `product-row-${row.name}`}
                 />
               </>
             ) : <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No product data</div>}
