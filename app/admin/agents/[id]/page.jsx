@@ -17,6 +17,7 @@ import { resolveEffectiveRate } from '@/lib/effectiveRate';
 import { commissionDisplayDate } from '@/lib/commissionDate';
 import ContractChatPanel from '@/app/components/ContractChatPanel';
 import AgentFolderBrowser from '@/app/components/AgentFolderBrowser';
+import AgentOrdersTab from '@/app/components/AgentOrdersTab';
 import KpiCard from '@/app/components/KpiCard';
 import AddBonusModal from '@/app/components/AddBonusModal';
 import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
@@ -33,6 +34,23 @@ import {
 // Money formatter that ALWAYS shows the cents (e.g. "1 469,55 €", "1 469,00 €").
 // The shared `fmt` hides ".00" on whole numbers; here mom wants to see the
 // comma/cents on every commission and payment amount.
+async function fetchAllDocumentPages(urlBase) {
+  const docs = [];
+  let totalCount = null;
+  const joiner = urlBase.includes('?') ? '&' : '?';
+  for (let page = 1; page <= 100; page++) {
+    const res = await fetch(`${urlBase}${joiner}per_page=200&page=${page}`);
+    if (!res.ok) break;
+    const data = await res.json().catch(() => ({}));
+    const batch = Array.isArray(data.documents) ? data.documents : [];
+    docs.push(...batch);
+    totalCount = data.total_count ?? totalCount;
+    const done = totalCount != null ? docs.length >= totalCount : batch.length < 200;
+    if (done) break;
+  }
+  return docs;
+}
+
 const fmt2 = (n) => {
   if (isHideRevenue()) return '—';
   const num = Number(n);
@@ -152,24 +170,21 @@ export default function AdminAgentDetailsPage() {
       let fetchedOrgDocs = [];
       let fetchedConsignmentOrders = [];
       try {
-        const [orgDocsRes, consRes, teamDocsRes] = await Promise.all([
-          fetch(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}&per_page=200`),
-          fetch(`/api/documents?order_channel=consignment&per_page=200`),
+        const [agentDocs, consDocs, teamDocs] = await Promise.all([
+          fetchAllDocumentPages(`/api/documents?created_by_agent=${encodeURIComponent(agentId)}`),
+          fetchAllDocumentPages('/api/documents?order_channel=consignment'),
           found.organization_id
-            ? fetch(`/api/documents?organization_id=${encodeURIComponent(found.organization_id)}&per_page=200`)
-            : Promise.resolve(null),
+            ? fetchAllDocumentPages(`/api/documents?organization_id=${encodeURIComponent(found.organization_id)}`)
+            : Promise.resolve([]),
         ]);
-        const orgDocsJson = await orgDocsRes.json().catch(() => ({}));
-        const consJson2 = await consRes.json().catch(() => ({}));
-        const teamDocsJson = teamDocsRes ? await teamDocsRes.json().catch(() => ({})) : {};
-        fetchedOrgDocs = [...new Map((orgDocsJson.documents || []).map((doc) => [doc.id, doc])).values()];
+        fetchedOrgDocs = [...new Map(agentDocs.map((doc) => [doc.id, doc])).values()];
         // Filter consignment orders assigned to this specific agent
-        fetchedConsignmentOrders = (consJson2.documents || []).filter(
+        fetchedConsignmentOrders = consDocs.filter(
           d => d.consignment_agent_id === agentId
         );
         setOrgDocuments(fetchedOrgDocs);
         setOrganizationFolderDocuments(
-          [...new Map((teamDocsJson.documents || fetchedOrgDocs).map((doc) => [doc.id, doc])).values()]
+          [...new Map((teamDocs.length ? teamDocs : fetchedOrgDocs).map((doc) => [doc.id, doc])).values()]
         );
         setAgentConsignmentOrders(fetchedConsignmentOrders);
       } catch {
@@ -885,6 +900,7 @@ export default function AdminAgentDetailsPage() {
   // screen, instead of bouncing between two tabs to do one workflow.
   const TABS = [
     { id: 'financials', label: 'Financials' },
+    { id: 'orders', label: orderDocsList.length > 0 ? `Orders (${orderDocsList.length})` : 'Orders' },
     ...(showSynaliaTab
       ? [{ id: 'synalia', label: synaliaOrderCount > 0 ? `Synalia (${synaliaOrderCount})` : 'Synalia' }]
       : []),
@@ -1137,6 +1153,10 @@ export default function AdminAgentDetailsPage() {
               the last two columns (Customer paid?, Status). Stacking
               keeps both tables breathable on mobile and desktop.
             */}
+            {activeTab === 'orders' && (
+              <AgentOrdersTab documents={orgDocuments} />
+            )}
+
             {activeTab === 'financials' && (
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
                 {agent && (

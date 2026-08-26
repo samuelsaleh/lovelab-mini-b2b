@@ -35,7 +35,7 @@ jest.mock('../AuthProvider', () => ({
 jest.mock('../DocumentsAnalytics', () => () => null)
 jest.mock('../ConfirmDialog', () => () => null)
 jest.mock('../DocumentRow', () => ({ doc }) => (
-  <div data-testid="doc-row">{doc.client_company || doc.client_name}</div>
+  <div data-testid="doc-row">{doc.client_company || doc.client_name || doc.metadata?.formState?.companyName}</div>
 ))
 
 // Sidebar stub that exposes team and member selection the same way the real one
@@ -180,6 +180,37 @@ describe('DocumentsPanel — search by the person', () => {
     fireEvent.change(search(), { target: { value: 'caprice' } })
 
     expect(visibleClients()).toEqual(['CAPRICE'])
+  })
+
+  it('finds a company that only lives on the saved form', async () => {
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      const formOnly = {
+        id: 'form-1',
+        client_company: '',
+        client_name: '',
+        status: 'sent',
+        document_type: 'order',
+        total_amount: 900,
+        created_at: '2026-08-01T10:00:00.000Z',
+        created_by: 'wassila',
+        metadata: { formState: { companyName: 'SAS Caprice' } },
+      }
+      let body = {}
+      if (u.startsWith('/api/events')) body = { events: [] }
+      else if (u.startsWith('/api/org-folders')) body = { orgFolders: [SARAH_TEAM] }
+      else if (u.startsWith('/api/documents')) {
+        const page = new URL(u, 'http://localhost').searchParams.get('page')
+        body = page === '1' ? { documents: [formOnly], total_count: 1 } : { documents: [], total_count: 1 }
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    })
+
+    render(<DocumentsPanel />)
+    await waitFor(() => expect(search()).toBeInTheDocument())
+
+    fireEvent.change(search(), { target: { value: 'caprice' } })
+    expect(await screen.findByText('SAS Caprice')).toBeInTheDocument()
   })
 
   it('still reports no match for a name nobody has', async () => {

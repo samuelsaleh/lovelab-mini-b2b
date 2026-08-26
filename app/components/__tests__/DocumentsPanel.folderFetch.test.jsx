@@ -222,6 +222,76 @@ describe('DocumentsPanel — complete list and folder loading', () => {
     expect(calledUrls.some((u) => u.includes('summary=true'))).toBe(false)
   })
 
+  it('searches every folder when a company is typed inside one folder', async () => {
+    render(<DocumentsPanel />)
+    await screen.findByText('FARANDOLE_Order.pdf')
+
+    fireEvent.click(screen.getByText('select-evt-tari'))
+    expect(await screen.findByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Recent.pdf')).not.toBeInTheDocument()
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search by client name or company...'),
+      { target: { value: 'acme' } },
+    )
+
+    expect(await screen.findByText('Recent.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('FARANDOLE_Order.pdf')).not.toBeInTheDocument()
+    expect(screen.getByTestId('searching-all-documents')).toHaveTextContent('Searching all documents')
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search by client name or company...'),
+      { target: { value: '' } },
+    )
+
+    expect(await screen.findByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('Recent.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('searching-all-documents')).not.toBeInTheDocument()
+  })
+
+  it('loads a folder past the first 200 rows', async () => {
+    const pageOne = Array.from({ length: 200 }, (_, i) => ({
+      id: `folder-${i}`,
+      event_id: 'evt-tari',
+      status: 'sent',
+      file_name: `Folder-${i}.pdf`,
+      total_amount: 1,
+    }))
+    const lateDoc = {
+      id: 'folder-200',
+      event_id: 'evt-tari',
+      status: 'sent',
+      file_name: 'Folder-late.pdf',
+      total_amount: 2,
+    }
+
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      const parsed = new URL(u, 'http://localhost')
+      let body = {}
+      if (u.startsWith('/api/events')) body = { events: [EVENT] }
+      else if (u.startsWith('/api/org-folders')) body = { orgFolders: [] }
+      else if (u.includes('event_id=evt-tari')) {
+        const page = parsed.searchParams.get('page')
+        body = page === '2'
+          ? { documents: [lateDoc], total_count: 201 }
+          : { documents: pageOne, total_count: 201 }
+      } else if (u.startsWith('/api/documents')) {
+        body = { documents: FIRST_PAGE_DOCS, total_count: 1 }
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    })
+
+    render(<DocumentsPanel />)
+    await screen.findByText('Recent.pdf')
+    fireEvent.click(screen.getByText('select-evt-tari'))
+
+    expect(await screen.findByText('Folder-late.pdf')).toBeInTheDocument()
+    const calledUrls = global.fetch.mock.calls.map((c) => String(c[0]))
+    expect(calledUrls).toContain('/api/documents?event_id=evt-tari&per_page=200&page=1')
+    expect(calledUrls).toContain('/api/documents?event_id=evt-tari&per_page=200&page=2')
+  })
+
   it('returns to the global documents list when All Documents is reselected', async () => {
     render(<DocumentsPanel />)
     await screen.findByText('Recent.pdf')

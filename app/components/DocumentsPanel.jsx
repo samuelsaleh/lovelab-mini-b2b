@@ -7,7 +7,7 @@ import { useResponsive } from '@/lib/useIsMobile'
 import { useI18n } from '@/lib/i18n'
 import { fmtRevenue as fmt } from '@/lib/utils'
 import { safeFetch } from '@/lib/api'
-import { documentAttributionSearchText } from '@/lib/documentAttribution'
+import { documentMatchesSearch } from '@/lib/documentSearch'
 import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './AuthProvider'
 import DocumentsSidebar from './DocumentsSidebar'
@@ -243,27 +243,37 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   }
 
   // ── Folder fetch ──────────────────────────────────────────────────────────
-  // Fetch a single event/agent folder's documents from the server so the panel
-  // shows the complete folder regardless of where its files fall in the global
-  // created_at ordering. Drafts are filtered out client-side (filteredDocs)
-  // exactly as for the All Documents view.
+  // Same page loop as All Documents. A single per_page=200 call used to hide
+  // every order past the first page of a fat fair.
   const fetchFolderDocs = async (eventId, orgId) => {
-    let url = null
+    let base = null
     if (orgId) {
-      url = `/api/documents?organization_id=${encodeURIComponent(orgId)}&per_page=200`
+      base = `/api/documents?organization_id=${encodeURIComponent(orgId)}`
     } else if (eventId && eventId !== 'none') {
-      url = `/api/documents?event_id=${encodeURIComponent(eventId)}&per_page=200`
+      base = `/api/documents?event_id=${encodeURIComponent(eventId)}`
     }
-    if (!url) return
+    if (!base) return
     setFolderLoading(true)
     try {
-      const res = await safeFetch(url)
-      if (res.ok) {
+      const perPage = 200
+      const collected = []
+      let totalCount = null
+      for (let page = 1; page <= 100; page++) {
+        const res = await safeFetch(`${base}&per_page=${perPage}&page=${page}`)
+        if (!res.ok) {
+          setErrorMsg('Failed to load folder documents')
+          return
+        }
         const data = await res.json().catch(() => ({}))
-        if (data.documents) setFolderDocs(data.documents)
-      } else {
-        setErrorMsg('Failed to load folder documents')
+        const batch = Array.isArray(data.documents) ? data.documents : []
+        collected.push(...batch)
+        totalCount = data.total_count ?? totalCount
+        const done = totalCount != null
+          ? collected.length >= totalCount
+          : batch.length < perPage
+        if (done) break
       }
+      setFolderDocs(collected)
     } catch {
       setErrorMsg('Failed to load folder documents')
     }
@@ -636,19 +646,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     return new Set(org.members.map(m => m.user_id))
   }, [selectedOrgId, orgFolders])
 
-  // Search covers the client, the file name, and the people behind the order
-  // (selling agent, whoever typed it, consignment recipient) so "wassila"
-  // finds her orders without having to remember which client she sold to.
-  const matchesSearch = (doc) => {
-    if (!search) return true
-    const needle = search.toLowerCase()
-    return (
-      doc.client_name?.toLowerCase().includes(needle) ||
-      doc.client_company?.toLowerCase().includes(needle) ||
-      doc.file_name?.toLowerCase().includes(needle) ||
-      documentAttributionSearchText(doc).includes(needle)
-    )
-  }
+  const matchesSearch = (doc) => documentMatchesSearch(doc, search)
 
   // A specific event or agent folder is selected — drives whether we read from
   // the server-fetched `folderDocs` (complete folder) or the paginated
@@ -657,13 +655,18 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     !showInternal && !showConsignment && !showDrafts && !showOffres &&
     (Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
 
+  // Typing in search always looks at every loaded order, not just the open
+  // folder. Clear the box and you are back in that folder only.
+  const searchingAllDocs = Boolean(search.trim()) && !showInternal && !showConsignment && !showDrafts && !showOffres
+
   const filteredDocs = useMemo(() => {
     if (showInternal || showConsignment || showDrafts || showOffres) return []
-    const sourceDocs = isFolderView ? folderDocs : documents
+    const sourceDocs = searchingAllDocs || !isFolderView ? documents : folderDocs
     return sourceDocs.filter(doc => {
       // Drafts (parked orders) never appear in All Documents or event folders —
       // they live only in the dedicated Draft folder until promoted to sent.
       if (doc.status === 'draft') return false
+      if (searchingAllDocs) return matchesSearch(doc)
       if (selectedOrgId) {
         const byMember = selectedOrgMemberIds?.has(doc.created_by)
         const byEvent = doc.events?.organization_id === selectedOrgId
@@ -681,7 +684,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return matchesSearch(doc)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documents, folderDocs, isFolderView, selectedOrgId, selectedOrgMemberIds, selectedOrgMemberId, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
+  }, [documents, folderDocs, isFolderView, searchingAllDocs, selectedOrgId, selectedOrgMemberIds, selectedOrgMemberId, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
 
   // The global list is complete, so the rows and analytics always use the same
   // filtered dataset. This prevents a result from appearing only in analytics.
@@ -780,7 +783,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   // ── Display list ──────────────────────────────────────────────────────────
   const displayDocs = showOffres ? offreDocs : showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
-  const displayLoading = showOffres || showDrafts ? parkedLoading : showInternal ? internalLoading : showConsignment ? consignmentLoading : isFolderView ? folderLoading : loading
+  const displayLoading = showOffres || showDrafts ? parkedLoading : showInternal ? internalLoading : showConsignment ? consignmentLoading : (isFolderView && !searchingAllDocs) ? folderLoading : loading
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -865,6 +868,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
               {displayDocs.length} {displayDocs.length === 1 ? 'document' : 'documents'}
               {search && ' matching your search'}
+              {searchingAllDocs && isFolderView && (
+                <div data-testid="searching-all-documents">Searching all documents</div>
+              )}
             </div>
           )}
         </div>
