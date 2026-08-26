@@ -18,6 +18,7 @@ describe('SalesTeamTabs', () => {
     expect(screen.getByRole('tab', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Assistants' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Agent Teams' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Out Memos' })).not.toBeInTheDocument()
     expect(screen.getByText('One agent = one clear profile')).toBeInTheDocument()
     expect(screen.getByText(/Independent salespeople.*earn commission/i)).toBeInTheDocument()
   })
