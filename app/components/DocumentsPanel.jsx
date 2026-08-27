@@ -916,8 +916,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
           >Analytics</button>
         </div>
 
-        {/* Analytics widget — hidden in internal/consignment view */}
-        {!displayLoading && !showInternal && !showConsignment && (
+        {/* Folder totals only — All Documents is not a useful revenue view. */}
+        {!displayLoading && isFolderView && !searchingAllDocs && (
           <DocumentsAnalytics
             filteredDocs={analyticsDocs}
             currentEventName={currentEventName}

@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
+import {
+  ALL_OUT_MEMO_TYPES,
+  fmtAmount,
+  memoTypesToFetch,
+  mergeMemoLists,
+  staysInCurrentFilter,
+} from '@/lib/outMemos'
 
 const MEMO_TYPE_FILTERS = [
   { id: 'Agent', label: 'Agent' },
@@ -9,7 +16,7 @@ const MEMO_TYPE_FILTERS = [
   { id: 'Internal', label: 'Internal' },
 ]
 
-const DROP_TYPES = ['Agent', 'Party', 'Internal']
+const DROP_TYPES = [...ALL_OUT_MEMO_TYPES]
 
 const VIEW_MODES = [
   { id: 'flat', label: 'List View' },
@@ -17,14 +24,6 @@ const VIEW_MODES = [
 ]
 
 const DRAG_MIME = 'application/x-lovelab-party'
-
-const fmtAmount = (n) => {
-  if (n == null || Number.isNaN(Number(n))) return '—'
-  return new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(n))
-}
 
 const segmentStyle = (selected, dropActive = false) => ({
   flex: '1 0 auto',
@@ -203,6 +202,7 @@ export default function AdminOutMemosPage() {
   const [dropTarget, setDropTarget] = useState(null)
   const [savingType, setSavingType] = useState(false)
   const dragDepth = useRef({})
+  const skipClickAfterDrop = useRef(false)
 
   const fetchMemos = useCallback(async () => {
     setLoading(true)
@@ -211,11 +211,15 @@ export default function AdminOutMemosPage() {
     setSelectedNo(null)
     setDetail(null)
     try {
-      const qs = new URLSearchParams({ memo_type: memoType })
-      const res = await fetch(`/api/admin/out-memos?${qs.toString()}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Failed to load out memos')
-      setMemos(data.memos || [])
+      // Party is everyone — pull Agent + Party + Internal and merge.
+      const lists = await Promise.all(memoTypesToFetch(memoType).map(async (type) => {
+        const qs = new URLSearchParams({ memo_type: type })
+        const res = await fetch(`/api/admin/out-memos?${qs.toString()}`)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data?.error || 'Failed to load out memos')
+        return (data.memos || []).map((m) => ({ ...m, memo_type: m.memo_type || type }))
+      }))
+      setMemos(mergeMemoLists(lists))
     } catch (err) {
       setError(err.message || 'Failed to load out memos')
       setMemos([])
@@ -258,7 +262,8 @@ export default function AdminOutMemosPage() {
     setDetailError('')
     setDetailLoading(true)
     try {
-      const qs = new URLSearchParams({ memo_type: memoType })
+      const row = memos.find((m) => m.memo_no === memoNo)
+      const qs = new URLSearchParams({ memo_type: row?.memo_type || memoType })
       const res = await fetch(`/api/admin/out-memos/${encodeURIComponent(memoNo)}?${qs}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Failed to load memo detail')
@@ -299,9 +304,9 @@ export default function AdminOutMemosPage() {
 
       setStatus(`Updated “${party}” → ${nextType}`)
 
-      // Remove that party's cards from the current filter (no full reload).
-      // If dropped onto the same type they're already in, just update the label.
-      if (memoType !== nextType) {
+      // Agent / Internal are filtered lists — drop the party when it leaves.
+      // Party is everyone, so the card stays and only the type label changes.
+      if (!staysInCurrentFilter(memoType, nextType)) {
         setMemos((prev) => {
           if (selectedNo) {
             const selected = prev.find((m) => m.memo_no === selectedNo)
@@ -350,7 +355,7 @@ export default function AdminOutMemosPage() {
             Out Memos
           </h1>
           <p style={{ margin: '5px 0 0', color: colors.lovelabMuted, fontSize: 13 }}>
-            Drag a party onto Agent / Party / Internal to update memo type in ERP
+            Party lists everyone. Drag a company onto Agent or Internal to classify it.
           </p>
         </section>
 
@@ -379,7 +384,13 @@ export default function AdminOutMemosPage() {
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  onClick={() => setMemoType(tab.id)}
+                  onClick={() => {
+                    if (skipClickAfterDrop.current) {
+                      skipClickAfterDrop.current = false
+                      return
+                    }
+                    setMemoType(tab.id)
+                  }}
                   onDragEnter={(e) => {
                     if (!isDrop) return
                     e.preventDefault()
@@ -400,6 +411,7 @@ export default function AdminOutMemosPage() {
                   }}
                   onDrop={(e) => {
                     if (!isDrop) return
+                    skipClickAfterDrop.current = true
                     onDropType(tab.id, e)
                   }}
                   style={segmentStyle(selected, dropActive)}
@@ -443,7 +455,7 @@ export default function AdminOutMemosPage() {
         </div>
 
         {!loading && memos.length > 0 && (
-          <p style={{ margin: '0 0 14px', color: '#249150', fontSize: 16, fontWeight: 700 }}>
+          <p data-testid="out-memos-total" style={{ margin: '0 0 14px', color: '#249150', fontSize: 16, fontWeight: 700 }}>
             Total Amount : {fmtAmount(totalAmount)}
             <span style={{ marginLeft: 12, color: colors.lovelabMuted, fontSize: 13, fontWeight: 600 }}>
               ({memos.length} memo{memos.length === 1 ? '' : 's'})
@@ -537,7 +549,7 @@ export default function AdminOutMemosPage() {
                       <span style={{ color: colors.lovelabMuted, fontWeight: 600, fontSize: 13 }}>
                         Memos : {group.memos.length}
                       </span>
-                      <span style={{ color: '#249150', fontWeight: 700, fontSize: 13 }}>
+                      <span data-testid="out-memos-group-amount" style={{ color: '#249150', fontWeight: 700, fontSize: 13 }}>
                         Amount : {fmtAmount(group.amount)}
                       </span>
                       {group.memo_type && (

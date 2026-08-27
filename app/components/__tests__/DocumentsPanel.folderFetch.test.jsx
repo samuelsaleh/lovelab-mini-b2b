@@ -208,18 +208,25 @@ describe('DocumentsPanel — complete list and folder loading', () => {
     ).toBeInTheDocument()
   })
 
-  it('All Documents analytics uses the same complete dataset as the list', async () => {
+  it('hides the company-wide total on All Documents', async () => {
     render(<DocumentsPanel />)
 
     expect(await screen.findByText('Recent.pdf')).toBeInTheDocument()
+    expect(screen.queryByTestId('analytics')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('analytics-total')).not.toBeInTheDocument()
+  })
+
+  it('shows folder analytics for a selected event, using the folder dataset', async () => {
+    render(<DocumentsPanel />)
+    await screen.findByText('Recent.pdf')
+
+    fireEvent.click(screen.getByText('select-evt-tari'))
+    expect(await screen.findByText('FARANDOLE_Order.pdf')).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(screen.getByTestId('analytics-count')).toHaveTextContent('2')
+      expect(screen.getByTestId('analytics-count')).toHaveTextContent('1')
     })
-    expect(screen.getByTestId('analytics-total')).toHaveTextContent('1941')
-
-    const calledUrls = global.fetch.mock.calls.map((c) => String(c[0]))
-    expect(calledUrls.some((u) => u.includes('summary=true'))).toBe(false)
+    expect(screen.getByTestId('analytics-total')).toHaveTextContent('1841')
   })
 
   it('searches every folder when a company is typed inside one folder', async () => {
@@ -238,6 +245,7 @@ describe('DocumentsPanel — complete list and folder loading', () => {
     expect(await screen.findByText('Recent.pdf')).toBeInTheDocument()
     expect(screen.queryByText('FARANDOLE_Order.pdf')).not.toBeInTheDocument()
     expect(screen.getByTestId('searching-all-documents')).toHaveTextContent('Searching all documents')
+    expect(screen.queryByTestId('analytics')).not.toBeInTheDocument()
 
     fireEvent.change(
       screen.getByPlaceholderText('Search by client name or company...'),

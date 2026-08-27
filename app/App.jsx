@@ -18,7 +18,6 @@ import TopNav from './components/TopNav'
 import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
-import InternalOrdersPanel from './components/InternalOrdersPanel'
 import PackshotGallery from './components/PackshotGallery'
 import { findPackshot } from '@/lib/packshot-lookup'
 import {
@@ -1183,10 +1182,6 @@ export default function App() {
 
         {activeTab === 'documents' && (
           <DocumentsPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} refreshKey={docsRefreshKey} />
-        )}
-
-        {activeTab === 'internal_orders' && (
-          <InternalOrdersPanel onReEdit={handleReEdit} onDuplicate={handleDuplicate} />
         )}
 
         {activeTab === 'photos' && (

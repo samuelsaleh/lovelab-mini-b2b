@@ -751,17 +751,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       canDelete: f.can_delete !== false,
       droppable: true,
     })),
-    { id: UNSORTED_FAIR_ID, name: 'Unsorted', count: unsortedPackCount, droppable: false },
+    { id: UNSORTED_FAIR_ID, name: 'Not in a folder', count: unsortedPackCount, droppable: false },
   ]), [allPacks.length, fairs, fairPackCounts, unsortedPackCount])
 
-  // Empty folders are noise: there are a dozen fairs and most hold no packs.
-  // They appear on request, and automatically while a card is in flight (see
-  // foldersExpanded below, once dragPackId exists), since filing into an empty
-  // folder is the entire reason it exists.
-  const [showAllFolders, setShowAllFolders] = useState(false)
+  // Empty folders used to hide behind "+N empty", which made a fresh install
+  // look like nothing had been set up. Show every name by default; you can
+  // still collapse the empty ones once you've filed a few packs.
+  const [showAllFolders, setShowAllFolders] = useState(true)
+  const nothingFiled = allPacks.length > 0 && unsortedPackCount === allPacks.length
 
   const activeFolderName = useMemo(() => {
-    if (activeFairId === UNSORTED_FAIR_ID) return 'Unsorted'
+    if (activeFairId === UNSORTED_FAIR_ID) return 'Not in a folder'
     return fairs.find(f => f.id === activeFairId)?.name || 'Folder'
   }, [activeFairId, fairs])
 
@@ -2110,9 +2110,21 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     padding: '10px 2px 6px',
                   }}
                 >
+                  <div
+                    data-testid="pack-folder-hint"
+                    style={{
+                      flex: '1 0 100%', fontSize: 12, lineHeight: 1.45,
+                      color: colors.inkPlum, fontWeight: 600, padding: '0 2px 2px',
+                    }}
+                  >
+                    {nothingFiled
+                      ? 'None of these packs are in a fair yet. Drag a pack onto a folder below to file it for the team.'
+                      : 'Click a folder to see only those packs. Drag a pack onto a folder to file it for everyone.'}
+                  </div>
                   {visibleFolders.map(folder => {
                     const active = activeFairId === folder.id
                     const over = folder.droppable && dragOverFairId === folder.id
+                    const emptyFair = folder.droppable && folder.count === 0
                     // Empty of packs AND of documents: the only case where
                     // removing the folder can't cost anyone their filing.
                     const deletable = folder.droppable
@@ -2130,8 +2142,12 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         onDrop={folder.droppable ? (e) => handleFairDrop(e, folder.id) : undefined}
                         data-testid={`pack-folder-tile-${folder.id ?? 'all'}`}
                         title={folder.droppable
-                          ? `${folder.name} — open it, or drop a pack here to file it (shared with the team)`
-                          : folder.name}
+                          ? (emptyFair
+                            ? `${folder.name} — empty. Drop a pack here to file it (shared with the team).`
+                            : `${folder.name} — open it, or drop a pack here to file it (shared with the team)`)
+                          : folder.id === UNSORTED_FAIR_ID
+                            ? 'Packs that are not in any fair folder yet'
+                            : folder.name}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                           maxWidth: mobile ? 160 : 200,
@@ -2140,9 +2156,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                           borderRadius: deletable ? '8px 0 0 8px' : 8,
                           fontFamily: 'inherit', fontSize: 11,
                           fontWeight: active ? 700 : 600, cursor: 'pointer',
-                          border: `1.5px ${over ? 'dashed' : 'solid'} ${over || active ? colors.inkPlum : '#e4dded'}`,
+                          opacity: emptyFair && !active && !over ? 0.62 : 1,
+                          border: `1.5px ${over || emptyFair ? 'dashed' : 'solid'} ${over || active ? colors.inkPlum : emptyFair ? '#d0c6d6' : '#e4dded'}`,
                           borderRight: deletable ? 'none' : undefined,
-                          background: over ? '#f0e4f5' : active ? colors.inkPlum : '#fff',
+                          background: over ? '#f0e4f5' : active ? colors.inkPlum : emptyFair ? '#faf8fb' : '#fff',
                           color: over ? colors.inkPlum : active ? '#fff' : colors.inkPlum,
                         }}
                       >
@@ -2197,7 +2214,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         fontFamily: 'inherit',
                       }}
                     >
-                      +{emptyFolderCount} empty
+                      Show {emptyFolderCount} empty folder{emptyFolderCount === 1 ? '' : 's'}
                     </button>
                   )}
                   {showAllFolders && (
@@ -2213,7 +2230,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         fontFamily: 'inherit',
                       }}
                     >
-                      Hide empty
+                      Hide empty folders
                     </button>
                   )}
 
@@ -2312,8 +2329,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     >
                       <EyeIcon hidden={!showHiddenPacks} />
                       {showHiddenPacks
-                        ? `Hide hidden (${hiddenPackCount})`
-                        : `Show hidden (${hiddenPackCount})`}
+                        ? `Hide packs I hid (${hiddenPackCount})`
+                        : `Show packs I hid (${hiddenPackCount})`}
                     </button>
                   )}
                 </div>
@@ -2450,7 +2467,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       {activeFairId === null
                         ? 'No packs yet.'
                         : hiddenPackCount > 0
-                          ? 'Every pack in this folder is hidden for you — use "Show hidden" to bring one back.'
+                          ? 'Every pack in this folder is hidden for you — use "Show packs I hid" to bring one back.'
                           : 'This folder is empty. Open "All packs" and drag a pack onto this folder to file it here.'}
                     </div>
                   )}

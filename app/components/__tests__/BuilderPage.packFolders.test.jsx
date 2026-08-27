@@ -175,7 +175,13 @@ function folderCount(id) {
   return tile(id).lastElementChild.textContent.trim()
 }
 
-// Empty folders are collapsed behind "+N empty" until asked for.
+// Empty folders are shown by default. Collapse them when a test needs the
+// old "+N empty" path (drag-to-reveal, hide-empty).
+function hideEmptyFolders() {
+  const toggle = screen.queryByTestId('pack-folder-show-fewer')
+  if (toggle) fireEvent.click(toggle)
+}
+
 function revealEmptyFolders() {
   const toggle = screen.queryByTestId('pack-folder-show-all')
   if (toggle) fireEvent.click(toggle)
@@ -213,7 +219,7 @@ function bodyOf(call) {
 // ─── Folder row ──────────────────────────────────────────────────────────────
 
 describe('BuilderPage — folder row', () => {
-  it('renders All packs plus every non-empty folder, each with a count', async () => {
+  it('renders All packs plus every folder, each with a count', async () => {
     installFetch()
     renderBuilder()
     await openPacks()
@@ -225,25 +231,39 @@ describe('BuilderPage — folder row', () => {
     expect(folderCount('all')).toBe('3')
     expect(tile('f-1')).toHaveTextContent('Ambiente Frankfurt')
     expect(folderCount('f-1')).toBe('1')
+    expect(tile('f-2')).toHaveTextContent('Les Journ')
+    expect(folderCount('f-2')).toBe('0')
+    expect(tile('__unsorted__')).toHaveTextContent('Not in a folder')
     expect(folderCount('__unsorted__')).toBe('2')
+    expect(screen.getByTestId('pack-folder-hint')).toHaveTextContent(/click a folder/i)
   })
 
-  it('collapses folders with no packs behind a "+N empty" toggle', async () => {
+  it('explains how folders work, and that nothing is filed yet when counts match', async () => {
+    installFetch({ packs: [PACK_TWO, PACK_SYN], fairs: DEFAULT_FAIRS })
+    renderBuilder()
+    await openPacks()
+    await screen.findByText('Pack Two')
+
+    expect(screen.getByTestId('pack-folder-hint')).toHaveTextContent(/none of these packs are in a fair yet/i)
+  })
+
+  it('can hide empty folders, then show them again', async () => {
     installFetch()
     renderBuilder()
     await openPacks()
     await screen.findByText('Pack One')
 
-    // Paris holds nothing, so it stays out of the way by default — with a dozen
-    // fairs, mostly-empty folders were the bulk of the row.
+    // Paris is empty but visible by default — hiding it was what made the bar
+    // look like the new fairs had not been created.
+    expect(tile('f-2')).toBeInTheDocument()
+    expect(screen.getByTestId('pack-folder-show-fewer')).toHaveTextContent(/hide empty folders/i)
+
+    hideEmptyFolders()
     expect(screen.queryByTestId('pack-folder-tile-f-2')).not.toBeInTheDocument()
-    expect(screen.getByTestId('pack-folder-show-all')).toHaveTextContent('+1 empty')
+    expect(screen.getByTestId('pack-folder-show-all')).toHaveTextContent(/show 1 empty folder/i)
 
     revealEmptyFolders()
     expect(tile('f-2')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('pack-folder-show-fewer'))
-    expect(screen.queryByTestId('pack-folder-tile-f-2')).not.toBeInTheDocument()
   })
 
   it('reveals every folder automatically while a pack is being dragged', async () => {
@@ -252,6 +272,7 @@ describe('BuilderPage — folder row', () => {
     await openPacks()
     await screen.findByText('Pack Two')
 
+    hideEmptyFolders()
     expect(screen.queryByTestId('pack-folder-tile-f-2')).not.toBeInTheDocument()
 
     // Filing into an empty folder is the whole reason it exists, so starting a
@@ -295,7 +316,7 @@ describe('BuilderPage — folder row', () => {
 
     expect(tile('all')).toBeInTheDocument()
     expect(screen.queryByTestId('pack-folder-tile-f-1')).not.toBeInTheDocument()
-    // Unsorted is still offered, so unfiled packs remain groupable.
+    // Not-in-a-folder is still offered, so unfiled packs remain groupable.
     expect(tile('__unsorted__')).toBeInTheDocument()
   })
 
@@ -664,7 +685,7 @@ describe('BuilderPage — folder filtering', () => {
     expect(screen.queryByText('Pack Two')).not.toBeInTheDocument()
   })
 
-  it('Unsorted shows only the packs in no fair', async () => {
+  it('Not in a folder shows only the packs in no fair', async () => {
     installFetch()
     renderBuilder()
     await openPacks()
@@ -730,8 +751,7 @@ describe('BuilderPage — filing a pack into a fair by dragging', () => {
     await openPacks()
     await screen.findByText('Pack Two')
 
-    // Paris is collapsed at rest; dragging exposes it so it can be filled.
-    expect(screen.queryByTestId('pack-folder-tile-f-2')).not.toBeInTheDocument()
+    expect(tile('f-2')).toBeInTheDocument()
     dragPackOntoFair('p-2', 'f-2')
 
     await waitFor(() => expect(writeCalls('/p-2/fairs')).toHaveLength(1))
@@ -868,7 +888,7 @@ describe('BuilderPage — hiding a pack for yourself only', () => {
     // This is the Synalia case: the pack still exists and still counts, it just
     // isn't in our way.
     expect(screen.queryByText('PACK 6-RB-SYN')).not.toBeInTheDocument()
-    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show hidden (1)')
+    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show packs I hid (1)')
   })
 
   it('"Show hidden" reveals the pack, and the toggle flips back', async () => {
@@ -879,7 +899,7 @@ describe('BuilderPage — hiding a pack for yourself only', () => {
 
     fireEvent.click(screen.getByTestId('pack-show-hidden-toggle'))
     expect(screen.getByText('PACK 6-RB-SYN')).toBeInTheDocument()
-    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Hide hidden (1)')
+    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Hide packs I hid (1)')
 
     fireEvent.click(screen.getByTestId('pack-show-hidden-toggle'))
     expect(screen.queryByText('PACK 6-RB-SYN')).not.toBeInTheDocument()
@@ -899,7 +919,7 @@ describe('BuilderPage — hiding a pack for yourself only', () => {
     expect(bodyOf(call)).toEqual({ hidden: true })
 
     expect(screen.queryByText('Pack Two')).not.toBeInTheDocument()
-    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show hidden (2)')
+    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show packs I hid (2)')
   })
 
   it('unhiding restores the pack and persists hidden: false', async () => {
@@ -954,7 +974,7 @@ describe('BuilderPage — hiding a pack for yourself only', () => {
 
     backToRoot()
     openFolder('__unsorted__')
-    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show hidden (1)')
+    expect(screen.getByTestId('pack-show-hidden-toggle')).toHaveTextContent('Show packs I hid (1)')
   })
 })
 

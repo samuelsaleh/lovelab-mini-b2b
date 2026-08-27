@@ -103,13 +103,10 @@ describe('DocumentsPanel — Offre folder', () => {
     expect(screen.queryByText('ParkedDraft.pdf')).not.toBeInTheDocument()
   })
 
-  it('excludes an Offre from the revenue analytics', async () => {
+  it('does not show a company-wide revenue total on All Documents', async () => {
     render(<DocumentsPanel />)
     await screen.findByText('SentOrder.pdf')
-    // Only the sent order counts — the €7777 Offre and the €100 draft do not.
-    await waitFor(() => {
-      expect(screen.getByTestId('analytics-total')).toHaveTextContent('500')
-    })
+    expect(screen.queryByTestId('analytics-total')).not.toBeInTheDocument()
   })
 
   it('shows only Offres in the Offre folder', async () => {
