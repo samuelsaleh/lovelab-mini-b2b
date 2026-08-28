@@ -18,12 +18,12 @@ export async function getUserContext(supabase) {
   const adminSupabase = createAdminClient();
   let { data: profile, error: profileErr } = await adminSupabase
     .from('profiles')
-    .select('id, role, is_agent, is_assistant, full_name, email')
+    .select('id, role, is_agent, is_assistant, is_igi, full_name, email')
     .eq('id', user.id)
     .single();
 
-  // Fallback for a DB where the commercial-assistants migration has not been
-  // applied yet — an unknown column must never break every API route.
+  // Fallback for a DB where the commercial-assistants or IGI migration has not
+  // been applied yet — an unknown column must never break every API route.
   if (profileErr) {
     ({ data: profile } = await adminSupabase
       .from('profiles')
@@ -37,6 +37,8 @@ export async function getUserContext(supabase) {
     profile: profile || null,
     isAdmin: profile?.role === 'admin',
     isAssistant: profile?.role !== 'admin' && Boolean(profile?.is_assistant),
+    // IGI Antwerp. Never an admin and never an agent — a supplier with one job.
+    isIgi: Boolean(profile?.is_igi),
   };
 }
 

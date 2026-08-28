@@ -239,6 +239,13 @@ const ICONS = {
   'certificates-stock':    <AnalyticsIcon />,
   'certificates-models':   <ContractIcon />,
   'certificates-matching': <ClientsIcon />,
+
+  // IGI portal
+  'igi-todo':     <OrderFormIcon />,
+  'igi-stock':    <CertificateIcon />,
+  'igi-batch':    <InternalOrdersIcon />,
+  'igi-history':  <FairsIcon />,
+  'igi-invoices': <ReportsIcon />,
 }
 
 // ─── Sidebar component ───────────────────────────────────────────────────────

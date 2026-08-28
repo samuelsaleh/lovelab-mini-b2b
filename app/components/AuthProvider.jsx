@@ -140,6 +140,21 @@ export function AuthProvider({ children }) {
     router.replace(`/set-password${next}`);
   }, [profile, pathname, loading, router]);
 
+  // IGI land on their own five screens, never on the LoveLab app.
+  //
+  // Signing in otherwise drops them on the quote builder, which is LoveLab's
+  // catalogue and prices — an outside company has no business there. The
+  // request interceptor already refuses them everywhere but /igi, so without
+  // this they would simply be bounced; sending them straight home is both the
+  // kinder and the clearer behaviour.
+  useEffect(() => {
+    if (loading || !profile || !pathname) return;
+    if (!profile.is_igi) return;
+    if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) return;
+    if (pathname === '/igi' || pathname.startsWith('/igi/')) return;
+    router.replace('/igi');
+  }, [profile, pathname, loading, router]);
+
   const signOut = async () => {
     setHideRevenue(false);
     setUser(null);
