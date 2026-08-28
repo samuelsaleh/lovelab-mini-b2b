@@ -1,0 +1,2656 @@
+{
+  "_comment": "Opening balances for the LoveLab x IGI certificate module, taken from IGI's file as of 2026-08-27. Regenerate only from a newer source file — do not hand-edit.",
+  "as_of": "2026-08-27",
+  "fee_eur": 1.2,
+  "models": [
+    {
+      "serial": "LGAJ6529",
+      "serial_full": "LGAJ65292505",
+      "name": "Cuty-Cubix / Moonlight Long",
+      "igi_name": "Cuty - Cubix",
+      "stones": "1",
+      "carat": 0.05,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 12250,
+      "sort_order": 2
+    },
+    {
+      "serial": "LGAJ6530",
+      "serial_full": "LGAJ65302505",
+      "name": "Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long",
+      "igi_name": "Cuty - Cubix",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 12250,
+      "sort_order": 3
+    },
+    {
+      "serial": "LGAJ6531",
+      "serial_full": "LGAJ65312505",
+      "name": "Cuty-Cubix / Sienna 1 / Moonlight Original",
+      "igi_name": "Cuty - Cubix",
+      "stones": "1",
+      "carat": 0.2,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 4
+    },
+    {
+      "serial": "LGAJ6532",
+      "serial_full": "LGAJ65322505",
+      "name": "Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long",
+      "igi_name": "Cuty - Cubix",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 5
+    },
+    {
+      "serial": "LGAJ6533",
+      "serial_full": "LGAJ65332505",
+      "name": "Multi Three",
+      "igi_name": "Multi Three",
+      "stones": "3",
+      "carat": 0.15,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 3550,
+      "sort_order": 6
+    },
+    {
+      "serial": "LGAJ6534",
+      "serial_full": "LGAJ65342505",
+      "name": "Multi Three",
+      "igi_name": "Multi Three",
+      "stones": "3",
+      "carat": 0.3,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 7
+    },
+    {
+      "serial": "LGAJ6535",
+      "serial_full": "LGAJ65352505",
+      "name": "Multi Three",
+      "igi_name": "Multi Three",
+      "stones": "3",
+      "carat": 0.6,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 100,
+      "sort_order": 8
+    },
+    {
+      "serial": "LGAJ6536",
+      "serial_full": "LGAJ65362505",
+      "name": "Multi Three",
+      "igi_name": "Multi Three",
+      "stones": "3",
+      "carat": 0.9,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 100,
+      "sort_order": 9
+    },
+    {
+      "serial": "LGAJ6537",
+      "serial_full": "LGAJ65372505",
+      "name": "Multi Four / Sienna 4",
+      "igi_name": "Multi Four",
+      "stones": "4",
+      "carat": 0.2,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 10
+    },
+    {
+      "serial": "LGAJ6538",
+      "serial_full": "LGAJ65382505",
+      "name": "Multi Four / Sienna 4",
+      "igi_name": "Multi Four",
+      "stones": "4",
+      "carat": 0.4,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 11
+    },
+    {
+      "serial": "LGAJ6539",
+      "serial_full": "LGAJ65392505",
+      "name": "Multi Five / Sienna 5",
+      "igi_name": "Multi Five",
+      "stones": "5",
+      "carat": 0.25,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 12
+    },
+    {
+      "serial": "LGAJ6540",
+      "serial_full": "LGAJ65402505",
+      "name": "Multi Five / Sienna 5",
+      "igi_name": "Multi Five",
+      "stones": "5",
+      "carat": 0.5,
+      "shape": "Round",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 13
+    },
+    {
+      "serial": "LGAJ6541",
+      "serial_full": "LGAJ65412505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Cushion",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 14
+    },
+    {
+      "serial": "LGAJ6542",
+      "serial_full": "LGAJ65422505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Cushion",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 15
+    },
+    {
+      "serial": "LGAJ6543",
+      "serial_full": "LGAJ65432505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Long Cushion",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 16
+    },
+    {
+      "serial": "LGAJ6544",
+      "serial_full": "LGAJ65442505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Long Cushion",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 17
+    },
+    {
+      "serial": "LGAJ6545",
+      "serial_full": "LGAJ65452505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Emerald",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 18
+    },
+    {
+      "serial": "LGAJ6546",
+      "serial_full": "LGAJ65462505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Emerald",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 19
+    },
+    {
+      "serial": "LGAJ6547",
+      "serial_full": "LGAJ65472505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Emerald",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 20
+    },
+    {
+      "serial": "LGAJ6548",
+      "serial_full": "LGAJ65482505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 0.6,
+      "shape": "Emerald",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 21
+    },
+    {
+      "serial": "LGAJ6549",
+      "serial_full": "LGAJ65492505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 1,
+      "shape": "Emerald",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 22
+    },
+    {
+      "serial": "LGAJ6550",
+      "serial_full": "LGAJ65502505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Heart",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 23
+    },
+    {
+      "serial": "LGAJ6551",
+      "serial_full": "LGAJ65512505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Heart",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 24
+    },
+    {
+      "serial": "LGAJ6552",
+      "serial_full": "LGAJ65522505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Heart",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 25
+    },
+    {
+      "serial": "LGAJ6553",
+      "serial_full": "LGAJ65532505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 0.6,
+      "shape": "Heart",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 26
+    },
+    {
+      "serial": "LGAJ6554",
+      "serial_full": "LGAJ65542505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 1,
+      "shape": "Heart",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 27
+    },
+    {
+      "serial": "LGAJ6555",
+      "serial_full": "LGAJ65552505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Marquise",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 28
+    },
+    {
+      "serial": "LGAJ6556",
+      "serial_full": "LGAJ65562505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Marquise",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 29
+    },
+    {
+      "serial": "LGAJ6557",
+      "serial_full": "LGAJ65572505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Marquise",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 30
+    },
+    {
+      "serial": "LGAJ6558",
+      "serial_full": "LGAJ65582505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Oval",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 31
+    },
+    {
+      "serial": "LGAJ6559",
+      "serial_full": "LGAJ65592505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Oval",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 32
+    },
+    {
+      "serial": "LGAJ6560",
+      "serial_full": "LGAJ65602505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Oval",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 33
+    },
+    {
+      "serial": "LGAJ6561",
+      "serial_full": "LGAJ65612505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Pear",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 2000,
+      "sort_order": 34
+    },
+    {
+      "serial": "LGAJ6562",
+      "serial_full": "LGAJ65622505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Pear",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 35
+    },
+    {
+      "serial": "LGAJ6563",
+      "serial_full": "LGAJ65632505",
+      "name": "Shapy Shine",
+      "igi_name": "Shapy Shine",
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Pear",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 36
+    },
+    {
+      "serial": "LGAJ6564",
+      "serial_full": "LGAJ65642505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 0.6,
+      "shape": "Pear",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 37
+    },
+    {
+      "serial": "LGAJ6565",
+      "serial_full": "LGAJ65652505",
+      "name": "Matchy Fancy",
+      "igi_name": "Matchy Fancy",
+      "stones": "2",
+      "carat": 1,
+      "shape": "Pear",
+      "spec": null,
+      "state": "in_use",
+      "qty_ordered": 250,
+      "sort_order": 38
+    },
+    {
+      "serial": "LGAJ6566",
+      "serial_full": "LGAJ65662607",
+      "name": "Multi Moonlight",
+      "igi_name": "HALO",
+      "stones": "3",
+      "carat": 0.2,
+      "shape": "Round",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 39
+    },
+    {
+      "serial": "LGAJ6567",
+      "serial_full": "LGAJ65672607",
+      "name": "Multi Moonlight",
+      "igi_name": "HALO",
+      "stones": "3",
+      "carat": 0.4,
+      "shape": "Round",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 40
+    },
+    {
+      "serial": "LGAJ6568",
+      "serial_full": "LGAJ65682607",
+      "name": "ZAHA",
+      "igi_name": "ZAHA",
+      "stones": "1",
+      "carat": 0.3,
+      "shape": "Marquise",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 41
+    },
+    {
+      "serial": "LGAJ6569",
+      "serial_full": "LGAJ65692607",
+      "name": "FLOWER MARQ",
+      "igi_name": "LUMA",
+      "stones": "4",
+      "carat": 0.4,
+      "shape": "Marquise",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 42
+    },
+    {
+      "serial": "LGAJ6570",
+      "serial_full": "LGAJ65702607",
+      "name": "FLOWER HEART",
+      "igi_name": "LUVA",
+      "stones": "4",
+      "carat": 0.4,
+      "shape": "Heart",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 43
+    },
+    {
+      "serial": "LGAJ6571",
+      "serial_full": "LGAJ65712607",
+      "name": "LINEA",
+      "igi_name": "LINEA",
+      "stones": "3",
+      "carat": 0.3,
+      "shape": "Princess",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 44
+    },
+    {
+      "serial": "LGAJ6572",
+      "serial_full": "LGAJ65722607",
+      "name": "LINEA",
+      "igi_name": "LINEA",
+      "stones": "5",
+      "carat": 0.5,
+      "shape": "Princess",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 45
+    },
+    {
+      "serial": "LGAJ6573",
+      "serial_full": "LGAJ65732607",
+      "name": "SIENNA",
+      "igi_name": "SIENNA",
+      "stones": "2",
+      "carat": 0.2,
+      "shape": "Pear",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 46
+    },
+    {
+      "serial": "LGAJ6574",
+      "serial_full": "LGAJ65742607",
+      "name": "RIVIERA",
+      "igi_name": "RIVIERA",
+      "stones": "8",
+      "carat": 0.8,
+      "shape": "Round",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 47
+    },
+    {
+      "serial": "LGAJ6575",
+      "serial_full": "LGAJ65752607",
+      "name": "RIVIERA",
+      "igi_name": "RIVIERA",
+      "stones": "8",
+      "carat": 0.4,
+      "shape": "Round",
+      "spec": "D/E",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 48
+    },
+    {
+      "serial": "LGAJ6576",
+      "serial_full": "LGAJ65762607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.05,
+      "shape": "Round",
+      "spec": "Fancy Vivid Yellow",
+      "state": "in_use",
+      "qty_ordered": 833,
+      "sort_order": 49
+    },
+    {
+      "serial": "LGAJ6577",
+      "serial_full": "LGAJ65772607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.05,
+      "shape": "Round",
+      "spec": "Fancy Vivid Blue",
+      "state": "in_use",
+      "qty_ordered": 833,
+      "sort_order": 50
+    },
+    {
+      "serial": "LGAJ6578",
+      "serial_full": "LGAJ65782607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.05,
+      "shape": "Round",
+      "spec": "Fancy Vivid Pink",
+      "state": "in_use",
+      "qty_ordered": 833,
+      "sort_order": 51
+    },
+    {
+      "serial": "LGAJ6579",
+      "serial_full": "LGAJ65792607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.15,
+      "shape": "Round",
+      "spec": "Fancy Vivid Yellow",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 52
+    },
+    {
+      "serial": "LGAJ6580",
+      "serial_full": "LGAJ65802607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.15,
+      "shape": "Round",
+      "spec": "Fancy Vivid Blue",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 53
+    },
+    {
+      "serial": "LGAJ6581",
+      "serial_full": "LGAJ65812607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.15,
+      "shape": "Round",
+      "spec": "Fancy Vivid Pink",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 54
+    },
+    {
+      "serial": "LGAJ6582",
+      "serial_full": "LGAJ65822607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Round",
+      "spec": "Fancy Vivid Yellow",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 55
+    },
+    {
+      "serial": "LGAJ6583",
+      "serial_full": "LGAJ65832607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Round",
+      "spec": "Fancy Vivid Blue",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 56
+    },
+    {
+      "serial": "LGAJ6584",
+      "serial_full": "LGAJ65842607",
+      "name": "CUTY FANCY COLOR",
+      "igi_name": "CUTY FANCY COLOR",
+      "stones": "1",
+      "carat": 0.1,
+      "shape": "Round",
+      "spec": "Fancy Vivid Pink",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 57
+    },
+    {
+      "serial": "LGAJ6585",
+      "serial_full": "LGAJ65852607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.3,
+      "shape": "Round",
+      "spec": "Fancy Vivid Yellow",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 58
+    },
+    {
+      "serial": "LGAJ6586",
+      "serial_full": "LGAJ65862607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.3,
+      "shape": "Round",
+      "spec": "Fancy Vivid Blue",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 59
+    },
+    {
+      "serial": "LGAJ6587",
+      "serial_full": "LGAJ65872607",
+      "name": "THREE FANCY COLOR",
+      "igi_name": "THREE FANCY COLOR",
+      "stones": "3",
+      "carat": 0.3,
+      "shape": "Round",
+      "spec": "Fancy Vivid Pink",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 60
+    },
+    {
+      "serial": "LGAJ6588",
+      "serial_full": "LGAJ65882607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "4",
+      "carat": 0.8,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 61
+    },
+    {
+      "serial": "LGAJ6589",
+      "serial_full": "LGAJ65892607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "4",
+      "carat": 1.2,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 62
+    },
+    {
+      "serial": "LGAJ6590",
+      "serial_full": "LGAJ65902607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "5",
+      "carat": 1,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 63
+    },
+    {
+      "serial": "LGAJ6591",
+      "serial_full": "LGAJ65912607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "5",
+      "carat": 1.5,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 64
+    },
+    {
+      "serial": "LGAJ6592",
+      "serial_full": "LGAJ65922607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "6",
+      "carat": 0.3,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 65
+    },
+    {
+      "serial": "LGAJ6593",
+      "serial_full": "LGAJ65932607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "6",
+      "carat": 0.6,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 66
+    },
+    {
+      "serial": "LGAJ6594",
+      "serial_full": "LGAJ65942607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "6",
+      "carat": 1.2,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 67
+    },
+    {
+      "serial": "LGAJ6595",
+      "serial_full": "LGAJ65952607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "12",
+      "carat": 0.6,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 68
+    },
+    {
+      "serial": "LGAJ6596",
+      "serial_full": "LGAJ65962607",
+      "name": "—",
+      "igi_name": "—",
+      "stones": "12",
+      "carat": 1.2,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 69
+    },
+    {
+      "serial": "LGAJ6597",
+      "serial_full": "LGAJ65972607",
+      "name": "A",
+      "igi_name": "A",
+      "stones": "6+1",
+      "carat": 1.5,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 70
+    },
+    {
+      "serial": "LGAJ6598",
+      "serial_full": "LGAJ65982607",
+      "name": "B",
+      "igi_name": "B",
+      "stones": "6+1",
+      "carat": 0.8,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 71
+    },
+    {
+      "serial": "LGAJ6599",
+      "serial_full": "LGAJ65992607",
+      "name": "C",
+      "igi_name": "C",
+      "stones": "6+1",
+      "carat": 0.65,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 72
+    },
+    {
+      "serial": "LGAJ6600",
+      "serial_full": "LGAJ66002607",
+      "name": "D",
+      "igi_name": "D",
+      "stones": "3+2",
+      "carat": 1.3,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 73
+    },
+    {
+      "serial": "LGAJ6601",
+      "serial_full": "LGAJ66012607",
+      "name": "E",
+      "igi_name": "E",
+      "stones": "3+2",
+      "carat": 0.8,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 74
+    },
+    {
+      "serial": "LGAJ6602",
+      "serial_full": "LGAJ66022607",
+      "name": "F",
+      "igi_name": "F",
+      "stones": "3+2",
+      "carat": 0.4,
+      "shape": "Rd",
+      "spec": null,
+      "state": "reserved",
+      "qty_ordered": null,
+      "sort_order": 75
+    },
+    {
+      "serial": "LGAJ6603",
+      "serial_full": "LGAJ66032607",
+      "name": "LONG MULTI ML",
+      "igi_name": "LONG MULTI ML",
+      "stones": "5",
+      "carat": 0.3,
+      "shape": "Rd",
+      "spec": "4 X 0,05 1 X 0,10",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 76
+    },
+    {
+      "serial": "LGAJ6604",
+      "serial_full": "LGAJ66042607",
+      "name": "LONG MULTI ML",
+      "igi_name": "LONG MULTI ML",
+      "stones": "7",
+      "carat": 0.4,
+      "shape": "Rd",
+      "spec": "6 X 0,05 1 X 0,10",
+      "state": "in_use",
+      "qty_ordered": 500,
+      "sort_order": 77
+    },
+    {
+      "serial": null,
+      "serial_full": null,
+      "name": "Full Moonlight",
+      "igi_name": null,
+      "stones": "1",
+      "carat": 0.5,
+      "shape": "Round",
+      "spec": "new certificate needed",
+      "state": "awaiting_serial",
+      "qty_ordered": null,
+      "sort_order": 1000
+    },
+    {
+      "serial": null,
+      "serial_full": null,
+      "name": "Full Moonlight",
+      "igi_name": null,
+      "stones": "1",
+      "carat": 0.7,
+      "shape": "Round",
+      "spec": "new certificate needed",
+      "state": "awaiting_serial",
+      "qty_ordered": null,
+      "sort_order": 1001
+    },
+    {
+      "serial": null,
+      "serial_full": null,
+      "name": "Full Moonlight",
+      "igi_name": null,
+      "stones": "1",
+      "carat": 1,
+      "shape": "Round",
+      "spec": "new certificate needed",
+      "state": "awaiting_serial",
+      "qty_ordered": null,
+      "sort_order": 1002
+    }
+  ],
+  "descriptions": [
+    {
+      "description": "BUTTER PAPER- LL NOTES FRENCH",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "BUTTER PAPER-LL NOTES ENGLISH",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "BUTTER PAPER-LL NOTES ITALIAN",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "CATALOGUE FR NEW",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "CATALOGUE GERM",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "CATALOGUES",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "CATALOGUES ENG",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "DHL BOXES NR 2",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "DHL BOXES NR 4",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "DHL BOXES NR 5",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "DHL ENVELOPPES",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "ENVELOP PINK IGI",
+      "serial": null,
+      "kind": "packaging"
+    },
+    {
+      "description": "ENVELOPE BLACK IGI",
+      "serial": null,
+      "kind": "packaging"
+    },
+    {
+      "description": "ENVELOPPE BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "ENVELOPPE PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "IGI 0.05 CERTIFICATE",
+      "serial": "LGAJ6529",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI 0.05*3 CERTIFICATE",
+      "serial": "LGAJ6533",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI 0.10 CERTIFICATE",
+      "serial": "LGAJ6530",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI 0.10*3 CERTIFICATE",
+      "serial": "LGAJ6534",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI 0.20*3 CERTIFICATE",
+      "serial": "LGAJ6535",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI 0.30*3 CERTIFICATE",
+      "serial": "LGAJ6536",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI CUTY 0.20",
+      "serial": "LGAJ6531",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI CUTY 0.30",
+      "serial": "LGAJ6532",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI EMERALD 0.10",
+      "serial": "LGAJ6545",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI EMERALD 0.50",
+      "serial": "LGAJ6547",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI HEART 0.10",
+      "serial": "LGAJ6550",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI HEART 0.50",
+      "serial": "LGAJ6552",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MARQUISE 0.10",
+      "serial": "LGAJ6555",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MARQUISE 0.30",
+      "serial": "LGAJ6556",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MATCHY FANCY HEART 0.60",
+      "serial": "LGAJ6553",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MULTI FOUR 0.20",
+      "serial": "LGAJ6537",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MULTI FOUR 0.40",
+      "serial": "LGAJ6538",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MULTIFIVE 0.50",
+      "serial": "LGAJ6540",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI MULTIFIVE0.25",
+      "serial": "LGAJ6539",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI OVAL 0.10",
+      "serial": "LGAJ6558",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI OVAL 0.50",
+      "serial": "LGAJ6560",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI PEAR 0.10",
+      "serial": "LGAJ6561",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI PEAR 0.30",
+      "serial": "LGAJ6562",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI PEAR 0.50",
+      "serial": "LGAJ6563",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI SHAPYSHINE 0.30 OVAL",
+      "serial": "LGAJ6559",
+      "kind": "certificate"
+    },
+    {
+      "description": "IGI SHAPYSHINE EMERALD 0.30",
+      "serial": "LGAJ6546",
+      "kind": "certificate"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  4X 0.05 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,05 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,10 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,20 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,30 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 4 X 0.10 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 5 X 0.05 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 5 X 0.10 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE EMERALD 0,10",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE EMPTY GREY",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE HEART 0,10",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE MARQUISE 0,10",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE OVAL 0,10",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE PEAR 0,10",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,15 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,30 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,60 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,90 WHITE",
+      "serial": null,
+      "kind": "in_house"
+    },
+    {
+      "description": "INVOICE ENVELOPPES BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "INVOICE ENVELOPPES WHITE",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "J &J PINK IGI",
+      "serial": null,
+      "kind": "packaging"
+    },
+    {
+      "description": "JOE & JUICE BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "JOE & JUICE PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "LOVE LAB FOLDER ENGLISH",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "LOVE LAB PINK FOLDER FRANCE",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "LOVE LAB PINK FOLDER GERMAN",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "LOVELAB VITRINE",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "MAGNETIC BOX  5 ROWS PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "MAGNETIC BOX 2 ROWS PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "MAGNETIC BOX SMALL BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "MAGNETIC BOX SMALL PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "MOTHERS DAY CARDS",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "NEW PINK ENVELOPPES",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "NEW VITRINE HERMES",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW  PINK BIG",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW BLACK BIG",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW BLACK SMALL",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW GREY SMALL",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW PINK SMALL",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW WHITE BIG",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PILLOW WHITE SMALL",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PRESENTATION BLACK BOOK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "PRESENTATION BOXES LOVELAB",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "SHOEBOX 2 ROWS BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "SHOEBOX 2 ROWS PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "SHOEBOX 3 ROWS BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "SHOEBOX 3 ROWS PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "SHOEBOX 5 ROWS PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "Shopping bag BIG BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "Shopping Bag BIG PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "Shopping Bag SMALL BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "Shopping Bag SMALL PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "STICKERS LOVELAB",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARD BIG BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARD BIG BLACK ENGLISH 90X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARD BIG PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARD BIG PINK ENGLISH 90X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARD FRENCH PINK 90 X 85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS BLACK FRENCG 85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS BLACKFRENCH  90X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH BLACK 85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH PINK 85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS FRENCH PINK85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN BLACK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN BLACK 85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN PINK",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN PINK 85X85",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "TOTEBAGS 2026",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "UNIVERSAL SOCKET",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "VALENTINE BUTTER PAPER",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "VALENTINE JOE JUICE",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "VALENTINE TY CARDS",
+      "serial": null,
+      "kind": "ignore"
+    },
+    {
+      "description": "VALETINE INHOUSE CERT 0,10",
+      "serial": null,
+      "kind": "in_house"
+    }
+  ],
+  "visits": [
+    {
+      "visit_no": 1,
+      "visit_date": "2026-05-05",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 26
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 13
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6550",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6551",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "visit_no": 2,
+      "visit_date": "2026-05-07",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 75
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 65
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 12
+        },
+        {
+          "serial": "LGAJ6534",
+          "qty": 12
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 7
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 8
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6550",
+          "qty": 11
+        },
+        {
+          "serial": "LGAJ6562",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "visit_no": 3,
+      "visit_date": "2026-05-08",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 500
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 500
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 50
+        },
+        {
+          "serial": "LGAJ6534",
+          "qty": 50
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 25
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 20
+        },
+        {
+          "serial": "LGAJ6550",
+          "qty": 100
+        }
+      ]
+    },
+    {
+      "visit_no": 4,
+      "visit_date": "2026-05-13",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 144
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 150
+        },
+        {
+          "serial": "LGAJ6531",
+          "qty": 75
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 50
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 8
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 11
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 39
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 5
+        }
+      ]
+    },
+    {
+      "visit_no": 5,
+      "visit_date": "2026-05-28",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 113
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 112
+        },
+        {
+          "serial": "LGAJ6531",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 51
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 35
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 25
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 21
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 27
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6551",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 9
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6559",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 14
+        },
+        {
+          "serial": "LGAJ6564",
+          "qty": 4
+        }
+      ]
+    },
+    {
+      "visit_no": 6,
+      "visit_date": "2026-06-02",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6531",
+          "qty": 9
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 8
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 17
+        },
+        {
+          "serial": "LGAJ6534",
+          "qty": 133
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 14
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 35
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 11
+        }
+      ]
+    },
+    {
+      "visit_no": 7,
+      "visit_date": "2026-06-10",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6532",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 19
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 18
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 7
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 7
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6562",
+          "qty": 2
+        }
+      ]
+    },
+    {
+      "visit_no": 8,
+      "visit_date": "2026-06-12",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6534",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 29
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6548",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6550",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6551",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6552",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6553",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6556",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6559",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6560",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6562",
+          "qty": 6
+        }
+      ]
+    },
+    {
+      "visit_no": 9,
+      "visit_date": "2016-06-01",
+      "status": "closed",
+      "date_suspect": true,
+      "unattributed_total": 453,
+      "lines": []
+    },
+    {
+      "visit_no": 10,
+      "visit_date": "2024-06-01",
+      "status": "closed",
+      "date_suspect": true,
+      "unattributed_total": 3,
+      "lines": []
+    },
+    {
+      "visit_no": 11,
+      "visit_date": "2026-07-03",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": 694,
+      "lines": []
+    },
+    {
+      "visit_no": 12,
+      "visit_date": "2026-07-08",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": 222,
+      "lines": []
+    },
+    {
+      "visit_no": 13,
+      "visit_date": "2026-07-10",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": 302,
+      "lines": []
+    },
+    {
+      "visit_no": 14,
+      "visit_date": "2014-07-01",
+      "status": "closed",
+      "date_suspect": true,
+      "unattributed_total": 787,
+      "lines": []
+    },
+    {
+      "visit_no": 15,
+      "visit_date": "2022-07-01",
+      "status": "closed",
+      "date_suspect": true,
+      "unattributed_total": 15,
+      "lines": []
+    },
+    {
+      "visit_no": 16,
+      "visit_date": "2026-07-23",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": 503,
+      "lines": []
+    },
+    {
+      "visit_no": 17,
+      "visit_date": "2026-07-28",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": 266,
+      "lines": []
+    },
+    {
+      "visit_no": 18,
+      "visit_date": "2026-08-24",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 63
+        },
+        {
+          "serial": "LGAJ6530",
+          "qty": 96
+        },
+        {
+          "serial": "LGAJ6531",
+          "qty": 26
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 22
+        }
+      ]
+    },
+    {
+      "visit_no": 19,
+      "visit_date": "2026-08-24",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6547",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6557",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6560",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6563",
+          "qty": 2
+        }
+      ]
+    },
+    {
+      "visit_no": 20,
+      "visit_date": "2026-08-25",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6533",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6534",
+          "qty": 55
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 4
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 11
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 27
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 11
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 40
+        },
+        {
+          "serial": "LGAJ6556",
+          "qty": 33
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 34
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 16
+        }
+      ]
+    },
+    {
+      "visit_no": 21,
+      "visit_date": "2026-08-25",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6531",
+          "qty": 30
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 38
+        },
+        {
+          "serial": "LGAJ6547",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6560",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6563",
+          "qty": 2
+        }
+      ]
+    },
+    {
+      "visit_no": 22,
+      "visit_date": "2026-08-26",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6530",
+          "qty": 294
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 7
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 11
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 13
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 11
+        }
+      ]
+    },
+    {
+      "visit_no": 23,
+      "visit_date": "2026-08-27",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6564",
+          "qty": 1
+        }
+      ]
+    }
+  ],
+  "batches": [
+    {
+      "serial": "LGAJ6529",
+      "qty": 12250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6530",
+      "qty": 12250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6531",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6532",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6533",
+      "qty": 3550,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6534",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6535",
+      "qty": 100,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6536",
+      "qty": 100,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6537",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6538",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6539",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6540",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6541",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6542",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6543",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6544",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6545",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6546",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6547",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6548",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6549",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6550",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6551",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6552",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6553",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6554",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6555",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6556",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6557",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6558",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6559",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6560",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6561",
+      "qty": 2000,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6562",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6563",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6564",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6565",
+      "qty": 250,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6566",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6567",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6568",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6569",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6570",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6571",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6572",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6573",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6574",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6575",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6576",
+      "qty": 833,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6577",
+      "qty": 833,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6578",
+      "qty": 833,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6579",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6580",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6581",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6582",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6583",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6584",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6585",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6586",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6587",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6603",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6604",
+      "qty": 500,
+      "batch_date": "2026-08-27",
+      "reference": "initial order"
+    }
+  ]
+}
