@@ -291,3 +291,20 @@ CREATE POLICY "IGI can read igi_batches" ON public.igi_batches
 DROP POLICY IF EXISTS "IGI can add igi_batches" ON public.igi_batches;
 CREATE POLICY "IGI can add igi_batches" ON public.igi_batches
   FOR INSERT TO authenticated WITH CHECK (public.is_igi());
+
+-- ─── 10. Column grants ──────────────────────────────────────────────────────
+-- Row level security cannot hide a column, only a row. IGI needs to read
+-- igi_models, and shelf_min lives on it — so without this they could read the
+-- level at which LoveLab decides their own shelf is low, which is a hint at how
+-- fast it empties. Column grants are the only mechanism that closes that.
+--
+-- pool_min stays readable: it is IGI's own alert level, on their own stock.
+--
+-- The app itself reads through the service-role client, which bypasses both
+-- policies and grants, so the LoveLab screens are unaffected.
+
+REVOKE SELECT ON public.igi_models FROM authenticated;
+GRANT SELECT (
+  id, serial, serial_full, name, igi_name, stones, carat, shape, spec,
+  state, qty_ordered, pool_min, sort_order, created_at, updated_at
+) ON public.igi_models TO authenticated;

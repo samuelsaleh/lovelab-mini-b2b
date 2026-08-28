@@ -136,6 +136,15 @@ function PhotosIcon() {
   )
 }
 
+function CertificateIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="9" r="6"/>
+      <polyline points="8.5 14.5 7 22 12 19.5 17 22 15.5 14.5"/>
+    </svg>
+  )
+}
+
 function BackIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -220,6 +229,13 @@ const ICONS = {
   'agent-reports':   <ReportsIcon />,
   'agent-documents': <DocumentsIcon />,
   'agent-contracts': <ContractIcon />,
+
+  // Certificates (LoveLab x IGI). An id with no entry here silently falls back
+  // to the home icon, so every leaf added to navItems.js needs a line.
+  'certificates':          <CertificateIcon />,
+  'certificates-group':    <CertificateIcon />,
+  'certificates-stock':    <AnalyticsIcon />,
+  'certificates-matching': <ClientsIcon />,
 }
 
 // ─── Sidebar component ───────────────────────────────────────────────────────
