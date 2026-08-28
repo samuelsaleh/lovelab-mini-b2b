@@ -52,8 +52,10 @@ export default function App() {
   // drawer, stacked layouts, bigger tap targets) treats tablets like phones.
   const { isCompact: mobile } = useResponsive()
   
-  // Active tab: 'home' | 'builder' | 'ai' | 'orderform' | 'documents'
+  // Active tab: 'home' | 'builder' | 'orderform' | 'documents'
+  // The old 'ai' tab now opens Builder with Build with Claude.
   const [activeTab, setActiveTab] = useState('home')
+  const [openBuildWithClaude, setOpenBuildWithClaude] = useState(false)
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false) // mobile drawer
@@ -543,8 +545,19 @@ export default function App() {
       handleBlankOrderForm('b2b')
       return
     }
+    if (tab === 'ai') {
+      setOpenBuildWithClaude(true)
+      setActiveTab('builder')
+      return
+    }
     setActiveTab(tab)
   }, [handleBlankOrderForm])
+
+  useEffect(() => {
+    if (activeTab !== 'ai') return
+    setOpenBuildWithClaude(true)
+    setActiveTab('builder')
+  }, [activeTab])
 
   // ─── Send message to AI ───
   const handleAiSend = useCallback(async (overrideMsg) => {
@@ -691,8 +704,14 @@ export default function App() {
         }
         if (state.curQuote) setCurQuote(state.curQuote)
         if (state.aiMsgs) setAiMsgs(state.aiMsgs)
-        if (state.activeTab) setActiveTab(state.activeTab)
-        else if (state.mode) setActiveTab(state.mode === 'describe' ? 'ai' : 'builder')
+        if (state.activeTab === 'ai' || state.mode === 'describe') {
+          setOpenBuildWithClaude(true)
+          setActiveTab('builder')
+        } else if (state.activeTab) {
+          setActiveTab(state.activeTab)
+        } else if (state.mode) {
+          setActiveTab('builder')
+        }
         if (state.builderBudget) setBuilderBudget(state.builderBudget)
         if (state.aiBudget) setAiBudget(state.aiBudget)
         if (state.aiCollections) setAiCollections(state.aiCollections)
@@ -704,7 +723,12 @@ export default function App() {
     const pendingTab = sessionStorage.getItem('pendingTab');
     if (pendingTab) {
       const validTabs = ['home', 'builder', 'ai', 'orderform', 'documents'];
-      if (validTabs.includes(pendingTab)) setActiveTab(pendingTab);
+      if (pendingTab === 'ai') {
+        setOpenBuildWithClaude(true)
+        setActiveTab('builder')
+      } else if (validTabs.includes(pendingTab)) {
+        setActiveTab(pendingTab)
+      }
       sessionStorage.removeItem('pendingTab');
     }
   }, [])
@@ -939,6 +963,7 @@ export default function App() {
             setPricelistYear={setPricelistYear}
             isAdmin={profile?.role === 'admin'}
             profile={profile}
+            openBuildWithClaude={openBuildWithClaude}
           />
         )}
 

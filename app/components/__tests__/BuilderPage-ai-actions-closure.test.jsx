@@ -76,11 +76,11 @@ async function runAddAction(harness, action) {
 
   const { container } = harness
 
-  // Open the AI chat panel — the toggle has the literal text "AI Advisor"
-  // (the ✨ emoji is on the button, but text matching ignores whitespace).
-  const chatToggle = Array.from(container.querySelectorAll('button')).find(b =>
-    /AI Advisor/i.test(b.textContent || '')
-  )
+  // Open the chat panel — the toggle is "Build with Claude".
+  const chatToggle = container.querySelector('[data-testid="build-with-claude"]')
+    || Array.from(container.querySelectorAll('button')).find(b =>
+      /Build with Claude/i.test(b.textContent || '')
+    )
   expect(chatToggle).toBeTruthy()
   await act(async () => { fireEvent.click(chatToggle) })
 
@@ -101,6 +101,27 @@ async function runAddAction(harness, action) {
   expect(applyBtn).toBeTruthy()
   await act(async () => { fireEvent.click(applyBtn) })
 }
+
+describe('BuilderPage — Build with Claude', () => {
+  it('is on the collection grid so Claude is not a separate sidebar page', () => {
+    renderWithI18n(
+      <BuilderPage
+        lines={[mkLine()]}
+        setLines={jest.fn()}
+        onGenerateQuote={jest.fn()}
+        budget=""
+        setBudget={jest.fn()}
+        budgetRecommendations={null}
+        showRecommendations={false}
+        setShowRecommendations={jest.fn()}
+        onRequestRecommendations={jest.fn()}
+      />,
+    )
+    const toggle = document.querySelector('[data-testid="build-with-claude"]')
+    expect(toggle).toBeTruthy()
+    expect(toggle.textContent).toMatch(/Build with Claude/)
+  })
+})
 
 describe('BuilderPage — AI ADD action plumbs closureType + certType into the line', () => {
   beforeEach(() => sendBuilderChat.mockReset())

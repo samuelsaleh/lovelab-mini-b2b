@@ -516,7 +516,7 @@ const CHANNEL_BANNER = {
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false, profile = null }) {
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false, profile = null, openBuildWithClaude = false }) {
   // Compact = phone OR iPad portrait (< 1024px). The summary becomes a FAB +
   // drawer, toolbars stack, and the pack carousel wraps on compact. `tablet`
   // is kept only to fine-tune the collection grid card size. `phone`
@@ -625,7 +625,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [recentlyDuplicated, setRecentlyDuplicated] = useState(new Set())
 
   // AI Builder Chat state
-  const [showAiChat, setShowAiChat] = useState(false)
+  const [showAiChat, setShowAiChat] = useState(Boolean(openBuildWithClaude))
+  useEffect(() => {
+    if (openBuildWithClaude) setShowAiChat(true)
+  }, [openBuildWithClaude])
   const [aiMessages, setAiMessages] = useState([])
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -2478,13 +2481,35 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
             {step === 'select' ? (
               /* ═══ STEP 1: Collection Selection Grid ═══ */
               <div>
-                <div style={{ marginBottom: 16 }}>
-                  <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
-                    {t('builder.selectCollections')}
-                  </h2>
-                  <p style={{ fontSize: 12, color: '#999', margin: 0 }}>
-                    {t('builder.selectCollectionsHelp')}
-                  </p>
+                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: 17, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', fontFamily: fonts.body }}>
+                      {t('builder.selectCollections')}
+                    </h2>
+                    <p style={{ fontSize: 12, color: '#999', margin: 0 }}>
+                      {t('builder.selectCollectionsHelp')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="build-with-claude"
+                    onClick={() => setShowAiChat(v => !v)}
+                    style={{
+                      padding: mobile ? '11px 14px' : '8px 14px', minHeight: mobile ? 44 : 'auto', fontSize: 12, fontWeight: 700,
+                      borderRadius: 10,
+                      border: showAiChat ? 'none' : `1.5px solid ${colors.inkPlum}`,
+                      background: showAiChat ? colors.inkPlum : '#fff',
+                      color: showAiChat ? '#fff' : colors.inkPlum,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      flexShrink: 0,
+                    }}
+                  >
+                    ✨ {t('builder.aiAdvisor') || 'Build with Claude'}
+                  </button>
                 </div>
 
                 {/* Bracelet / Necklace segmented toggle. Filters the grid only —
@@ -2954,8 +2979,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         </button>
                       )
                     })()}
-                    {/* AI Advisor Button */}
                     <button
+                      type="button"
+                      data-testid="build-with-claude"
                       onClick={() => setShowAiChat(v => !v)}
                       style={{
                         padding: mobile ? '11px 14px' : '8px 14px', minHeight: mobile ? 44 : 'auto', fontSize: 12, fontWeight: 700,
@@ -2971,7 +2997,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         transition: 'all .15s',
                       }}
                     >
-                      ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
+                      ✨ {t('builder.aiAdvisor') || 'Build with Claude'}
                     </button>
                     <button onClick={goToSelect} style={{ ...btnGhost, padding: mobile ? '11px 16px' : '8px 16px', minHeight: mobile ? 44 : 'auto' }}>
                       ← {t('builder.editCollections')}
@@ -3248,11 +3274,8 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
         </div>
       </div>
 
-      {/* ═══ AI Builder Chat Panel ═══ */}
-      {step === 'configure' && (
-        <>
-          {/* AI Chat Panel */}
-          {showAiChat && (
+      {/* ═══ Build with Claude ═══ */}
+      {showAiChat && (
             <div style={{
               position: 'fixed',
               bottom: mobile ? 'calc(env(safe-area-inset-bottom, 0px) + 74px)' : 24,
@@ -3280,15 +3303,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
               }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    ✨ {t('builder.aiAdvisor') || 'AI Advisor'}
+                    ✨ {t('builder.aiAdvisor') || 'Build with Claude'}
                   </div>
                   <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
-                    {t('builder.aiAdvisorDesc') || 'Ask questions or request changes to your order'}
+                    {t('builder.aiAdvisorDesc') || 'Describe what you need, or ask for changes to this order'}
                   </div>
                 </div>
                 <button
                   onClick={() => setShowAiChat(false)}
-                  aria-label="Close AI advisor"
+                  aria-label="Close Build with Claude"
                   style={{
                     width: 44, height: 44, borderRadius: '50%',
                     border: 'none', background: '#f0f0f0', color: '#666',
@@ -3494,8 +3517,6 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                 </button>
               </div>
             </div>
-          )}
-        </>
       )}
 
       </div>
