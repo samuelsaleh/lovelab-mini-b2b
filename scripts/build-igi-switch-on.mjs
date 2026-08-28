@@ -43,7 +43,8 @@ say(
   '--  Paste this whole file into the Supabase SQL editor and run it.',
   '--',
   '--  It does three things:',
-  '--    1. creates the tables the certificate screens read from',
+  '--    1. creates the tables the certificate screens read from, and sets out',
+  '--       exactly what IGI may and may not do once they have a login',
   '--    2. loads the opening balances from IGI\'s file, 27 August 2026',
   '--    3. checks every figure and STOPS if any of them is wrong',
   '--',
@@ -65,6 +66,8 @@ say(
   read('supabase/migrations/20260828120000_igi_certificates.sql').trimEnd(),
   '',
   read('supabase/migrations/20260828140000_igi_visit_authorship.sql').trimEnd(),
+  '',
+  read('supabase/migrations/20260828160000_igi_portal_writes.sql').trimEnd(),
   '',
 );
 

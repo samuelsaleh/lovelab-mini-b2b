@@ -98,9 +98,22 @@ types the arrival there by hand. The endpoint that would do it automatically doe
 not exist yet — Hardik has to build it. Until then the shelf figure comes only
 from the nightly reading, and the app says so rather than pretending otherwise.
 
-**IGI cannot log in.** Their side is the next piece of work. Until then LoveLab
-records both halves of a movement, which is what happens physically anyway since
-Christelle is the one carrying the bracelets.
+**IGI have screens but no accounts yet.** Their five screens are built and the
+rules about what they may and may not do are already in the file you pasted.
+Nobody at IGI can sign in until you add them, so nothing is exposed in the
+meantime. Until you do, LoveLab records both halves of a movement — which is
+what happens physically anyway, since Christelle carries the bracelets.
+
+When you are ready, two lines add them:
+
+```sql
+insert into allowed_emails (email) values ('...@igi.org'), ('...@igi.org');
+update profiles set is_igi = true where email in ('...@igi.org', '...@igi.org');
+```
+
+Two accounts, because IGI is a company rather than a person. They then sign in
+with the normal email link and land on their own screens — and only those: an
+IGI account is refused everywhere else in the app.
 
 **Every IGI-side number is an estimate until the stock count.** Nobody knows the
 true per-model remainder yet. The figures come from Michael's file as of 27
