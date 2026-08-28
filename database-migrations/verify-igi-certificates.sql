@@ -20,6 +20,9 @@
 --   the gap     → a movement with no model detail carries a total and no lines,
 --                 which is how the 3 245 unattributed certificates stay visible
 --                 instead of being absorbed into a model's balance.
+--   authorship  → issued_by and received_by keep who recorded each half of a
+--                 movement, so a quantity LoveLab typed on IGI's behalf can be
+--                 told apart from one IGI typed themselves.
 --   identity    → one serial, one model; one model at most once per movement;
 --                 one snapshot per description per day; one write-back per
 --                 reference, so a retry cannot add the stock twice.
@@ -129,6 +132,29 @@ BEGIN
     INSERT INTO public.igi_receipts (visit_id, reference) VALUES (v_visit, 'VERIFY-V-900001');
     RAISE EXCEPTION 'the same write-back reference was accepted twice';
   EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+
+  -- ── Who recorded each half of a movement ──────────────────────────────────
+  -- Until IGI have logins, LoveLab records both sides. Once they do, a quantity
+  -- typed on IGI's behalf must be distinguishable from one they typed themselves.
+  UPDATE public.igi_visits
+     SET status = 'issued', issued_at = now(), issued_by = v_admin
+   WHERE id = v_visit;
+  UPDATE public.igi_visits
+     SET status = 'closed', closed_at = now(), received_by = v_admin
+   WHERE id = v_visit;
+
+  SELECT count(*) INTO v_count FROM public.igi_visits
+   WHERE id = v_visit AND issued_by = v_admin AND received_by = v_admin;
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'the movement did not keep who recorded each half';
+  END IF;
+
+  -- ── A movement only holds the three states it is allowed ──────────────────
+  BEGIN
+    UPDATE public.igi_visits SET status = 'reopened' WHERE id = v_visit;
+    RAISE EXCEPTION 'a movement was accepted in an unknown state';
+  EXCEPTION WHEN check_violation THEN NULL;
   END;
 
   -- ── IGI's stock is batches less what they issued ──────────────────────────

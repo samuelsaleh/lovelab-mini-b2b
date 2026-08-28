@@ -234,7 +234,10 @@ const ICONS = {
   // to the home icon, so every leaf added to navItems.js needs a line.
   'certificates':          <CertificateIcon />,
   'certificates-group':    <CertificateIcon />,
+  'certificates-request':  <OrderFormIcon />,
+  'certificates-visits':   <FairsIcon />,
   'certificates-stock':    <AnalyticsIcon />,
+  'certificates-models':   <ContractIcon />,
   'certificates-matching': <ClientsIcon />,
 }
 
