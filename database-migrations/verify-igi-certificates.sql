@@ -235,6 +235,60 @@ BEGIN
     RAISE EXCEPTION 'IGI can see reserved serials';
   END IF;
 
+  -- ── What IGI may write ────────────────────────────────────────────────────
+  -- Row level security decides which rows may be updated, never which columns,
+  -- so each of these is a grant rather than a policy. Without them the policies
+  -- that let IGI record what they made would also let them rewrite what LoveLab
+  -- asked for, and set LoveLab's own alert level.
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema = 'public' AND table_name = 'igi_visit_lines'
+       AND column_name = 'qty_requested' AND grantee = 'authenticated'
+       AND privilege_type = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'IGI can rewrite qty_requested — what LoveLab asked for is not protected';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema = 'public' AND table_name = 'igi_visit_lines'
+       AND column_name = 'qty_issued' AND grantee = 'authenticated'
+       AND privilege_type = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'IGI cannot record what they made — the portal will not work';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema = 'public' AND table_name = 'igi_models'
+       AND column_name = 'shelf_min' AND grantee = 'authenticated'
+       AND privilege_type = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'IGI can set LoveLab''s alert level — each rule must have one owner';
+  END IF;
+
+  -- IGI may move a movement on to "ready to receive" and no further.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'igi_visits' AND cmd = 'UPDATE'
+       AND qual LIKE '%requested%' AND with_check LIKE '%issued%'
+  ) THEN
+    RAISE EXCEPTION 'IGI cannot record what they made, or can do more than that';
+  END IF;
+
+  -- ── The escalation that would undo all of the above ───────────────────────
+  -- The profiles UPDATE policy is USING (auth.uid() = id) with no column
+  -- restriction, so while `authenticated` holds UPDATE on profiles any account
+  -- can rewrite its own row — clearing is_igi to escape containment, or setting
+  -- role to admin. Nothing in the app writes profiles through the RLS client.
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_privileges
+     WHERE table_schema = 'public' AND table_name = 'profiles'
+       AND grantee = 'authenticated' AND privilege_type = 'UPDATE'
+  ) THEN
+    RAISE EXCEPTION 'an account can rewrite its own profile — is_igi and role are not safe';
+  END IF;
+
   RAISE NOTICE 'IGI CERTIFICATES: ALL CHECKS PASSED';
 END $$;
 
