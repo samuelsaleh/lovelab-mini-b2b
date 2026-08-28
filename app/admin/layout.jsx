@@ -37,6 +37,7 @@ export default function AdminLayout({ children }) {
     : pathname.startsWith('/admin/internal-orders') ? 'internal-orders'
     : pathname.startsWith('/admin/certificates/requests') ? 'certificates-request'
     : pathname.startsWith('/admin/certificates/visits')   ? 'certificates-visits'
+    : pathname.startsWith('/admin/certificates/invoices') ? 'certificates-invoices'
     : pathname.startsWith('/admin/certificates/stock')    ? 'certificates-stock'
     : pathname.startsWith('/admin/certificates/models')   ? 'certificates-models'
     : pathname.startsWith('/admin/certificates/matching') ? 'certificates-matching'

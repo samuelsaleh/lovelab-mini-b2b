@@ -69,6 +69,8 @@ say(
   '',
   read('supabase/migrations/20260828160000_igi_portal_writes.sql').trimEnd(),
   '',
+  read('supabase/migrations/20260828180000_igi_invoices.sql').trimEnd(),
+  '',
 );
 
 // ── 2. The opening balances ─────────────────────────────────────────────────

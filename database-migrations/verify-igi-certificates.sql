@@ -289,6 +289,15 @@ BEGIN
     RAISE EXCEPTION 'an account can rewrite its own profile — is_igi and role are not safe';
   END IF;
 
+  -- What LoveLab were billed, and whether they agree with it, is not IGI's to
+  -- read. The table has no policy for them at all, so RLS default-denies it.
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'igi_invoices' AND qual LIKE '%is_igi%'
+  ) THEN
+    RAISE EXCEPTION 'IGI can read what LoveLab were billed';
+  END IF;
+
   RAISE NOTICE 'IGI CERTIFICATES: ALL CHECKS PASSED';
 END $$;
 

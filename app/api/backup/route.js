@@ -26,6 +26,7 @@ const TABLES = [
   'igi_descriptions',
   'igi_shelf_snapshots',
   'igi_receipts',
+  'igi_invoices',
 ];
 
 const MAX_ROWS_PER_TABLE = 50_000;

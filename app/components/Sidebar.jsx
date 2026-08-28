@@ -236,6 +236,7 @@ const ICONS = {
   'certificates-group':    <CertificateIcon />,
   'certificates-request':  <OrderFormIcon />,
   'certificates-visits':   <FairsIcon />,
+  'certificates-invoices': <ReportsIcon />,
   'certificates-stock':    <AnalyticsIcon />,
   'certificates-models':   <ContractIcon />,
   'certificates-matching': <ClientsIcon />,
