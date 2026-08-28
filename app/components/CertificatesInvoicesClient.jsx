@@ -96,7 +96,7 @@ export default function CertificatesInvoicesClient() {
         return (
           <section className="card" key={m.month} data-testid="invoice-month">
             <div className="card-head">
-              <h3 style={{ fontFamily: '"IBM Plex Serif", Georgia, serif', fontSize: '1.15rem' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem' }}>
                 {formatMonth(`${m.month}-01`)}
               </h3>
               <span className="sub">counted on: {bases[m.basis]?.label || m.basis}</span>

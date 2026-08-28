@@ -20,7 +20,7 @@ export default function SerialSpec({ model, compact = false }) {
     <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 1 }}>
       <span
         style={{
-          fontFamily: '"IBM Plex Mono", monospace',
+          fontFamily: 'var(--font-num)',
           fontSize: compact ? 11.5 : 12.5,
           fontWeight: 600,
           letterSpacing: '.02em',

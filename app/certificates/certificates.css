@@ -7,8 +7,17 @@
  * and none of it should leak into the rest of LoveLab. Everything below is
  * scoped under `.certapp`, so it cannot.
  *
- * The look is the prototype Sam approved, carried over as-is: IBM Plex for all
- * three roles, a slate sidebar, and a paper-blue ground.
+ * It carries two skins over one shell, and which one you are looking at tells
+ * you whose desk you are at:
+ *
+ *   .certapp           — IGI's blue. The prototype look, IBM Plex on slate.
+ *                        IGI Antwerp are another company; their one screen in
+ *                        this app should not look like LoveLab's.
+ *   .certapp.lovelab   — LoveLab's plum, from their brand book (see
+ *                        public/BRAND PRESENTATION DOCS/) and from lib/styles.js,
+ *                        which the rest of the app already draws with.
+ *
+ * Everything is scoped under `.certapp`, so none of it can leak outward.
  */
 
 .certapp {
@@ -22,9 +31,19 @@
   --side-ink:#B7CBD6; --side-rule:#22323C;
   --shadow:0 1px 2px rgba(20,26,32,.05), 0 14px 34px -24px rgba(20,26,32,.4);
 
+  --font-display:"IBM Plex Serif",Georgia,serif;
+  --font-body:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-label:"IBM Plex Mono",monospace;
+  --font-num:"IBM Plex Mono",monospace;
+  --side-width:212px;
+  --nav-radius:4px;
+  --card-radius:5px;
+  --control-radius:4px;
+  --focus:2px solid var(--accent);
+
   background:var(--ground);
   color:var(--ink);
-  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  font-family:var(--font-body);
   font-size:15px;
   line-height:1.55;
   min-height:100vh;
@@ -35,9 +54,119 @@
 
 .certapp *{box-sizing:border-box}
 
+/* ── LoveLab's own skin ──────────────────────────────────────────────────
+ *
+ * Sourced from two places that turn out to agree: LoveLab's brand book in
+ * public/BRAND PRESENTATION DOCS/ (deep plum #5E2A57, gold #C69A6C, blush
+ * #FDF6F7, Cormorant Garamond over Montserrat), and lib/styles.js, which is
+ * what every other screen in this app already renders. Where lib/styles.js has
+ * a token it wins, because matching the running app is what makes this feel
+ * like part of LoveLab rather than next to it.
+ */
+.certapp.lovelab {
+  --ground:#FDF7FA;      /* colors.lovelabBg — the brand's blush */
+  --surface:#FFFFFF;     /* colors.porcelain */
+  --surface-2:#F7EFF4;   /* brand book #F7E9F1, warmed toward the app */
+  --chrome:#FBF6F9;      /* card heads and table headers */
+  --side:#5D3A5E;        /* colors.inkPlum — the same plum as every other portal */
+  --side-deep:#4A2545;   /* colors.lovelabDark — the signature 2px rule */
+
+  --ink:#2E2530;         /* colors.charcoal, darkened for body copy on blush */
+  --ink-soft:#6B5563;    /* brand book secondary */
+  --ink-faint:#8A6A7D;   /* colors.lovelabMuted */
+
+  --rule:#DCC5D5;        /* colors.lovelabBorder */
+  --rule-soft:#EFE3EA;   /* brand book #EEDCE4, lightened */
+
+  --accent:#5D3A5E;      /* colors.inkPlum — active nav, primary buttons, links */
+  --accent-tint:#F3EAF2;
+  --gold:#c5a059;        /* colors.luxeGold — the active marker, as Sidebar.jsx uses it */
+
+  --signal:#B03A5B; --signal-tint:#FCEDF1;  /* a rose that belongs to this palette */
+  --warn:#9A6B24;   --warn-tint:#FBF3E4;
+  --good:#3E7F63;   --good-tint:#EAF4EF;
+
+  --side-ink:rgba(255,255,255,.88);   /* Sidebar.jsx nav colour, verbatim */
+  --side-rule:rgba(255,255,255,.14);
+  --shadow:0 1px 4px rgba(0,0,0,.03), 0 2px 12px rgba(93,58,94,.10);
+
+  --font-display:"Cormorant Garamond",Georgia,serif;
+  --font-body:"Montserrat",Inter,-apple-system,sans-serif;
+  --font-label:"Montserrat",Inter,sans-serif;
+  --font-num:ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --side-width:220px;    /* Sidebar.jsx */
+  --nav-radius:8px;
+  --card-radius:12px;
+  --control-radius:8px;
+  --focus:2px solid rgba(93,58,94,.3);   /* globals.css */
+}
+
+/* Montserrat is a wider face than IBM Plex Sans; a touch less size and a touch
+   more line keeps the dense tables readable. */
+.certapp.lovelab{font-size:14px;line-height:1.6}
+
+/* Cormorant is a delicate display face — it needs more weight and less
+   negative tracking than Plex Serif to hold at these sizes. */
+.certapp.lovelab h1{font-size:1.9rem;font-weight:700;letter-spacing:0}
+.certapp.lovelab .kpi .n{font-size:2rem;font-weight:700;letter-spacing:0}
+.certapp.lovelab .pstep .pt{font-size:1.2rem;font-weight:700}
+.certapp.lovelab .task-h h2{font-size:1.45rem;font-weight:700;letter-spacing:0}
+
+/* The micro-labels are Montserrat rather than a mono, so they follow the app's
+   own recipe: 11px, 600, uppercase, .05em (lib/styles.js `lbl`, KpiCard). */
+.certapp.lovelab th,
+.certapp.lovelab .chip,
+.certapp.lovelab .nav .grp,
+.certapp.lovelab .banner,
+.certapp.lovelab .pipe-title,
+.certapp.lovelab .pstep .pn,
+.certapp.lovelab .pstep .pw,
+.certapp.lovelab .task-h .when,
+.certapp.lovelab .task-line .have span:first-child,
+.certapp.lovelab .task-line .made label,
+.certapp.lovelab .side-foot .who,
+.certapp.lovelab .logo small{font-weight:600;letter-spacing:.05em}
+.certapp.lovelab th{font-size:10px}
+.certapp.lovelab .chip{font-size:10px;border-radius:6px;padding:2px 8px}
+
+/* The chrome, matched to PortalLayout.jsx and Sidebar.jsx so that moving
+   between /admin and /certificates does not feel like changing product. */
+.certapp.lovelab aside{border-right:2px solid var(--side-deep);padding:14px 8px 40px}
+.certapp.lovelab .banner{border-bottom:2px solid var(--side-deep)}
+.certapp.lovelab .nav a{font-size:13px;font-weight:500;padding:11px 16px;margin:1px 6px;
+  position:relative;min-height:40px}
+.certapp.lovelab .nav a:hover{background:rgba(255,255,255,.10)}
+.certapp.lovelab .nav a[aria-current="page"]{background:rgba(255,255,255,.18);color:#fff;font-weight:700}
+/* The gold marker on the active item — Sidebar.jsx renders it as an element;
+   here it is a pseudo-element doing the same 3x24 at left:-6. */
+.certapp.lovelab .nav a[aria-current="page"]::before{content:"";position:absolute;left:-6px;
+  top:50%;transform:translateY(-50%);width:3px;height:24px;background:var(--gold);
+  border-radius:0 3px 3px 0}
+.certapp.lovelab .nav .grp{color:rgba(255,255,255,.45);padding:16px 16px 6px}
+.certapp.lovelab .side-foot{border-top:1px solid var(--side-rule);padding:18px 16px 0}
+.certapp.lovelab .side-foot .who{color:rgba(255,255,255,.45)}
+.certapp.lovelab .banner a{border-bottom-color:rgba(255,255,255,.3)}
+
+/* logo.png is a square file with the wordmark on a band across the middle.
+   Cropping to that band is steadier than negative margins, which have to be
+   re-guessed every time the size changes. */
+.certapp.lovelab .logo{padding:10px 10px 14px}
+.certapp.lovelab .logo img{display:block;width:100%;height:46px;
+  object-fit:cover;object-position:center 47%}
+.certapp.lovelab .logo small{margin-top:10px;color:rgba(255,255,255,.5)}
+
+/* Buttons follow lib/styles.js `btn`: heavier, rounder, plum-filled. */
+.certapp.lovelab .btn{font-weight:600}
+.certapp.lovelab .btn.primary{font-weight:700}
+
+/* An active table row tint that reads as plum rather than as a selection. */
+.certapp.lovelab tr.clickable:hover td{background:var(--accent-tint)}
+
+
 /* ── the strip along the top ─────────────────────────────────────────── */
 .certapp .banner{background:var(--side);color:var(--side-ink);padding:9px 20px;
-  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  font-family:var(--font-label);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
   display:flex;gap:12px;align-items:center;flex-wrap:wrap;flex-shrink:0}
 .certapp .banner b{color:#fff;font-weight:500}
 .certapp .banner .sp{flex:1}
@@ -45,27 +174,27 @@
 .certapp .banner a:hover{color:#fff}
 
 /* ── shell ───────────────────────────────────────────────────────────── */
-.certapp .app{display:grid;grid-template-columns:212px 1fr;flex:1;min-height:0}
+.certapp .app{display:grid;grid-template-columns:var(--side-width) 1fr;flex:1;min-height:0}
 .certapp aside{background:var(--side);padding:18px 12px 40px;display:flex;flex-direction:column;gap:4px;
   position:sticky;top:0;align-self:start;height:100vh;height:100dvh;overflow-y:auto}
-.certapp .logo{color:#fff;font-family:"IBM Plex Serif",Georgia,serif;font-size:17px;font-weight:600;
+.certapp .logo{color:#fff;font-family:var(--font-display);font-size:17px;font-weight:600;
   padding:6px 10px 16px;letter-spacing:-.01em;text-decoration:none;display:block}
-.certapp .logo small{display:block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:400;
+.certapp .logo small{display:block;font-family:var(--font-label);font-size:9.5px;font-weight:400;
   letter-spacing:.14em;color:var(--side-ink);text-transform:uppercase;margin-top:4px}
 .certapp .nav{display:flex;flex-direction:column;gap:2px}
 .certapp .nav a{all:unset;box-sizing:border-box;cursor:pointer;color:var(--side-ink);font-size:13.5px;
-  padding:8px 11px;border-radius:4px;display:flex;align-items:center;gap:9px;
+  padding:8px 11px;border-radius:var(--nav-radius);display:flex;align-items:center;gap:9px;
   transition:background .12s,color .12s}
 .certapp .nav a:hover{background:rgba(255,255,255,.06);color:#fff}
 .certapp .nav a[aria-current="page"]{background:var(--accent);color:#fff;font-weight:500}
-.certapp .nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.certapp .nav .grp{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.13em;
+.certapp .nav a:focus-visible{outline:var(--focus);outline-offset:1px}
+.certapp .nav .grp{font-family:var(--font-label);font-size:9.5px;letter-spacing:.13em;
   text-transform:uppercase;color:#5B6E7A;padding:16px 11px 6px}
-.certapp .nav .badge{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:10px;
+.certapp .nav .badge{margin-left:auto;font-family:var(--font-label);font-size:10px;
   background:var(--signal);color:#fff;border-radius:9px;padding:1px 6px}
 .certapp .side-foot{margin-top:auto;padding:18px 11px 0;border-top:1px solid var(--side-rule);
   display:flex;flex-direction:column;gap:6px}
-.certapp .side-foot .who{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.08em;
+.certapp .side-foot .who{font-family:var(--font-label);font-size:9.5px;letter-spacing:.08em;
   text-transform:uppercase;color:#5B6E7A;overflow:hidden;text-overflow:ellipsis}
 .certapp .side-foot a{all:unset;box-sizing:border-box;cursor:pointer;color:var(--side-ink);font-size:12.5px;
   padding:6px 0;display:block}
@@ -75,13 +204,13 @@
 
 /* ── page furniture ──────────────────────────────────────────────────── */
 .certapp .page-head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
-.certapp h1{font-family:"IBM Plex Serif",Georgia,serif;font-size:1.65rem;font-weight:600;margin:0;
+.certapp h1{font-family:var(--font-display);font-size:1.65rem;font-weight:600;margin:0;
   letter-spacing:-.02em;line-height:1.15}
-.certapp h2{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;margin:0}
+.certapp h2{font-family:var(--font-display);font-weight:600;margin:0}
 .certapp .page-head .sub{color:var(--ink-soft);font-size:.9rem;padding-bottom:3px}
 .certapp .page-head .right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
-.certapp .card{background:var(--surface);border:1px solid var(--rule);border-radius:5px;
+.certapp .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--card-radius);
   box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px}
 .certapp .card-head{padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;align-items:center;
   gap:12px;flex-wrap:wrap;background:var(--chrome)}
@@ -91,9 +220,9 @@
 .certapp .card-body{padding:18px}
 
 .certapp .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:14px;margin-bottom:20px}
-.certapp .kpi{background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:15px 17px;
+.certapp .kpi{background:var(--surface);border:1px solid var(--rule);border-radius:var(--card-radius);padding:15px 17px;
   display:flex;flex-direction:column;gap:5px;box-shadow:var(--shadow)}
-.certapp .kpi .n{font-family:"IBM Plex Serif",Georgia,serif;font-size:1.75rem;font-weight:600;line-height:1;
+.certapp .kpi .n{font-family:var(--font-display);font-size:1.75rem;font-weight:600;line-height:1;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .certapp .kpi .n.w{color:var(--signal)}
 .certapp .kpi .n.a{color:var(--accent)}
@@ -103,7 +232,7 @@
 /* ── tables ──────────────────────────────────────────────────────────── */
 .certapp .tblwrap{overflow-x:auto}
 .certapp table{border-collapse:collapse;width:100%;font-size:.855rem;min-width:600px}
-.certapp th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.09em;
+.certapp th{text-align:left;font-family:var(--font-label);font-size:9.5px;letter-spacing:.09em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:400;padding:10px 14px;
   border-bottom:1px solid var(--rule);white-space:nowrap;background:var(--chrome);
   position:sticky;top:0;z-index:1}
@@ -111,19 +240,19 @@
 .certapp td:first-child{max-width:340px}
 .certapp tr:last-child td{border-bottom:none}
 .certapp td.num,.certapp th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.certapp td.mono{font-family:"IBM Plex Mono",monospace;font-size:.79rem;color:var(--ink-soft);white-space:nowrap}
+.certapp td.mono{font-family:var(--font-num);font-size:.79rem;color:var(--ink-soft);white-space:nowrap}
 .certapp tr.clickable{cursor:pointer}
 .certapp tr.clickable:hover td{background:var(--accent-tint)}
 .certapp tfoot td{font-weight:600;background:var(--chrome);border-top:1px solid var(--rule)}
-.certapp .spec{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-faint);white-space:nowrap}
-.certapp tr.mrow td{background:var(--surface-2);font-family:"IBM Plex Mono",monospace;font-size:10px;
+.certapp .spec{font-family:var(--font-num);font-size:.72rem;color:var(--ink-faint);white-space:nowrap}
+.certapp tr.mrow td{background:var(--surface-2);font-family:var(--font-label);font-size:10px;
   letter-spacing:.11em;text-transform:uppercase;color:var(--ink-soft);padding:8px 14px;
   border-bottom:1px solid var(--rule)}
 .certapp tr.mrow td span{float:right;text-transform:none;letter-spacing:0;color:var(--ink-faint)}
 .certapp .empty{padding:28px 18px;text-align:center;color:var(--ink-faint);font-size:.87rem}
 
 /* ── chips ───────────────────────────────────────────────────────────── */
-.certapp .chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.07em;
+.certapp .chip{display:inline-block;font-family:var(--font-label);font-size:9.5px;letter-spacing:.07em;
   text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap}
 .certapp .chip.now{background:var(--signal-tint);color:var(--signal)}
 .certapp .chip.watch{background:var(--warn-tint);color:var(--warn)}
@@ -134,55 +263,55 @@
 
 /* ── controls ────────────────────────────────────────────────────────── */
 .certapp .btn{all:unset;box-sizing:border-box;cursor:pointer;font-size:12.5px;font-weight:500;
-  padding:6px 13px;border-radius:4px;border:1px solid var(--rule);color:var(--ink-soft);
+  padding:6px 13px;border-radius:var(--control-radius);border:1px solid var(--rule);color:var(--ink-soft);
   background:var(--surface);text-align:center;display:inline-block}
 .certapp .btn:hover{border-color:var(--accent);color:var(--accent)}
-.certapp .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.certapp .btn:focus-visible{outline:var(--focus);outline-offset:2px}
 .certapp .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;padding:7px 16px}
 .certapp .btn.primary:hover{color:#fff;opacity:.92}
 .certapp .btn.on{background:var(--accent-tint);border-color:var(--accent);color:var(--accent)}
 .certapp button[disabled],.certapp .btn[disabled]{opacity:.45;pointer-events:none}
 
 .certapp input[type=search],.certapp input[type=text],.certapp input[type=number],.certapp input[type=date]{
-  font-family:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--rule);border-radius:4px;
+  font-family:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--rule);border-radius:var(--control-radius);
   background:var(--surface);color:var(--ink);min-width:0;height:31px}
-.certapp input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.certapp input[type=number]{width:78px;text-align:right;font-family:"IBM Plex Mono",monospace;font-weight:600}
+.certapp input:focus-visible{outline:var(--focus);outline-offset:1px}
+.certapp input[type=number]{width:78px;text-align:right;font-family:var(--font-num);font-weight:600}
 .certapp select{font-family:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--rule);
-  border-radius:4px;background:var(--surface);color:var(--ink);max-width:280px;height:31px}
-.certapp select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  border-radius:var(--control-radius);background:var(--surface);color:var(--ink);max-width:280px;height:31px}
+.certapp select:focus-visible{outline:var(--focus);outline-offset:1px}
 
-.certapp .switch{display:flex;gap:0;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.certapp .switch{display:flex;gap:0;border:1px solid var(--rule);border-radius:var(--control-radius);overflow:hidden}
 .certapp .switch button{all:unset;box-sizing:border-box;cursor:pointer;font-size:12px;padding:6px 12px;
   color:var(--ink-soft);background:var(--surface)}
 .certapp .switch button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:500}
-.certapp .switch button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.certapp .switch button:focus-visible{outline:var(--focus);outline-offset:-2px}
 
 /* ── notes and messages ──────────────────────────────────────────────── */
-.certapp .note{background:var(--surface-2);border-radius:5px;padding:14px 17px;font-size:.87rem;
+.certapp .note{background:var(--surface-2);border-radius:var(--card-radius);padding:14px 17px;font-size:.87rem;
   color:var(--ink-soft);margin-bottom:20px}
 .certapp .note.warn{background:var(--signal-tint)}
 .certapp .note.warn strong{color:var(--signal)}
 .certapp .note strong{color:var(--ink);font-weight:600}
-.certapp .toast{background:var(--side);color:#fff;border-radius:5px;padding:11px 16px;font-size:.87rem;
+.certapp .toast{background:var(--side);color:#fff;border-radius:var(--card-radius);padding:11px 16px;font-size:.87rem;
   margin-bottom:16px;box-shadow:var(--shadow);display:flex;gap:9px;align-items:center}
 .certapp .toast::before{content:"\2713";color:#7BC7B2;font-weight:700}
 .certapp .toast .sp{flex:1}
 .certapp .toast.bad::before{content:"\26A0";color:#E58BA4}
 .certapp .loading{padding:60px 0;text-align:center;color:var(--ink-faint);
-  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  font-family:var(--font-label);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 
 /* ── numbers, splits, lifecycle ──────────────────────────────────────── */
 .certapp .split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.certapp .bignum{font-size:1.45rem;font-weight:600;font-family:"IBM Plex Mono",monospace;
+.certapp .bignum{font-size:1.45rem;font-weight:600;font-family:var(--font-num);
   font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .certapp .crow{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
   padding:13px 18px;border-bottom:1px solid var(--rule-soft)}
 .certapp .crow:last-child{border-bottom:none}
 .certapp .crow .k{font-size:.9rem}
-.certapp .crow .k small{display:block;color:var(--ink-faint);font-family:"IBM Plex Mono",monospace;
+.certapp .crow .k small{display:block;color:var(--ink-faint);font-family:var(--font-num);
   font-size:.71rem;margin-top:2px}
-.certapp .crow .v{font-family:"IBM Plex Mono",monospace;font-size:1.15rem;font-weight:600;
+.certapp .crow .v{font-family:var(--font-num);font-size:1.15rem;font-weight:600;
   font-variant-numeric:tabular-nums}
 .certapp .crow .v.box{border:1px solid var(--accent);border-radius:4px;padding:4px 11px;font-size:1rem}
 .certapp .verdict{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:13px 18px;
@@ -198,22 +327,22 @@
 .certapp .life .s{display:flex;flex-direction:column;gap:1px;border:1px solid var(--rule);
   background:var(--surface);border-radius:4px;padding:7px 12px}
 .certapp .life .s b{font-size:.85rem;font-weight:600}
-.certapp .life .s span{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.06em;
+.certapp .life .s span{font-family:var(--font-label);font-size:9.5px;letter-spacing:.06em;
   text-transform:uppercase;color:var(--ink-faint)}
 .certapp .life .s.done{border-color:var(--accent);background:var(--accent-tint)}
 .certapp .life .s.done span{color:var(--accent)}
-.certapp .life .arw{color:var(--ink-faint);font-family:"IBM Plex Mono",monospace}
+.certapp .life .arw{color:var(--ink-faint);font-family:var(--font-num)}
 
 /* ── the pipeline strip ──────────────────────────────────────────────── */
-.certapp .pipe-title{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.13em;
+.certapp .pipe-title{font-family:var(--font-label);font-size:10px;letter-spacing:.13em;
   text-transform:uppercase;color:var(--ink-faint);margin:0 0 10px}
 .certapp .pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:0 0 24px}
 .certapp .pstep{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
   padding:15px 15px 16px;position:relative;box-shadow:var(--shadow);display:flex;flex-direction:column;
   gap:6px;min-width:0}
-.certapp .pstep .pn{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;color:var(--ink-faint)}
-.certapp .pstep .pt{font-family:"IBM Plex Serif",Georgia,serif;font-size:1.08rem;font-weight:600;line-height:1.2}
-.certapp .pstep .pw{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.08em;
+.certapp .pstep .pn{font-family:var(--font-label);font-size:10px;letter-spacing:.12em;color:var(--ink-faint)}
+.certapp .pstep .pt{font-family:var(--font-display);font-size:1.08rem;font-weight:600;line-height:1.2}
+.certapp .pstep .pw{font-family:var(--font-label);font-size:9.5px;letter-spacing:.08em;
   text-transform:uppercase;align-self:flex-start;padding:2px 7px;border-radius:3px;
   background:var(--surface-2);color:var(--ink-soft)}
 .certapp .pstep .pw.igi{background:var(--signal-tint);color:var(--signal)}
@@ -224,7 +353,7 @@
 .certapp .pstep.now{border:2px solid var(--accent);background:var(--accent-tint);padding:14px 14px 15px}
 .certapp .pstep.now .pn{color:var(--accent)}
 .certapp .pstep.now::after{content:"NOW";position:absolute;top:-9px;right:12px;background:var(--accent);
-  color:#fff;font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;padding:2px 7px;
+  color:#fff;font-family:var(--font-label);font-size:9px;letter-spacing:.12em;padding:2px 7px;
   border-radius:3px}
 .certapp .pstep.done::after{content:"\2713";position:absolute;top:-10px;right:12px;background:var(--good);
   color:#fff;font-size:11px;line-height:19px;width:19px;height:19px;text-align:center;border-radius:50%}
@@ -234,24 +363,24 @@
   box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px}
 .certapp .task-h{background:var(--accent-tint);padding:18px 22px;display:flex;align-items:baseline;
   gap:14px;flex-wrap:wrap}
-.certapp .task-h h2{font-family:"IBM Plex Serif",Georgia,serif;font-size:1.3rem;font-weight:600;margin:0;
+.certapp .task-h h2{font-family:var(--font-display);font-size:1.3rem;font-weight:600;margin:0;
   color:var(--ink);letter-spacing:-.01em}
-.certapp .task-h .when{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent);
+.certapp .task-h .when{font-family:var(--font-label);font-size:11px;color:var(--accent);
   letter-spacing:.08em;text-transform:uppercase}
-.certapp .task-h .ask{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-soft)}
+.certapp .task-h .ask{margin-left:auto;font-family:var(--font-label);font-size:11px;color:var(--ink-soft)}
 .certapp .task-line{display:grid;grid-template-columns:1fr 110px 110px 150px;gap:18px;
   align-items:center;padding:15px 22px;border-bottom:1px solid var(--rule-soft)}
 .certapp .task-line.short{background:var(--signal-tint)}
 .certapp .task-line .who b{font-size:1rem;font-weight:600;display:block}
-.certapp .task-line .who span{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-faint)}
+.certapp .task-line .who span{font-family:var(--font-num);font-size:.74rem;color:var(--ink-faint)}
 .certapp .task-line .have{text-align:right;font-variant-numeric:tabular-nums;font-size:.78rem;
   color:var(--ink-faint);display:flex;flex-direction:column;gap:1px}
-.certapp .task-line .have span:first-child{font-family:"IBM Plex Mono",monospace;font-size:.7rem;
+.certapp .task-line .have span:first-child{font-family:var(--font-label);font-size:.7rem;
   letter-spacing:.09em;text-transform:uppercase}
 .certapp .task-line .have b{display:block;font-size:1.15rem;color:var(--ink);font-weight:600}
 .certapp .task-line.short .have b{color:var(--signal)}
 .certapp .task-line .made{text-align:right}
-.certapp .task-line .made label{display:block;font-family:"IBM Plex Mono",monospace;font-size:.7rem;
+.certapp .task-line .made label{display:block;font-family:var(--font-label);font-size:.7rem;
   letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
 .certapp .task-line .made input{width:120px;font-size:1.05rem;padding:9px 12px;font-weight:600}
 .certapp .task-foot{padding:18px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
@@ -259,12 +388,12 @@
 .certapp .task-foot .msg{color:var(--ink-soft);font-size:.9rem}
 
 /* ── how-to list ─────────────────────────────────────────────────────── */
-.certapp .howto{background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:4px 0;
+.certapp .howto{background:var(--surface);border:1px solid var(--rule);border-radius:var(--card-radius);padding:4px 0;
   margin-bottom:20px;box-shadow:var(--shadow)}
 .certapp .howto .h{display:grid;grid-template-columns:1.6rem 1fr;gap:12px;padding:12px 18px;
   border-bottom:1px solid var(--rule-soft);align-items:start}
 .certapp .howto .h:last-child{border-bottom:none}
-.certapp .howto .h i{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:11px;
+.certapp .howto .h i{font-style:normal;font-family:var(--font-label);font-size:11px;
   color:var(--accent);padding-top:2px}
 .certapp .howto .h b{font-weight:600}
 .certapp .howto .h span{display:block;color:var(--ink-soft);font-size:.87rem;margin-top:2px}
@@ -284,6 +413,15 @@
     align-items:center;margin-left:auto}
   .certapp .side-foot .who{display:none}
   .certapp main{padding:18px 14px 60px}
+
+  /* The LoveLab overrides above are more specific than these, so the drawer
+     rules have to be restated for that theme or the sidebar keeps its desktop
+     padding on a phone. */
+  .certapp.lovelab aside{padding:10px 12px;border-right:none;
+    border-bottom:2px solid var(--side-deep)}
+  .certapp.lovelab .nav a{padding:8px 12px;margin:1px 2px;min-height:0}
+  .certapp.lovelab .nav a[aria-current="page"]::before{display:none}
+  .certapp.lovelab .side-foot{border-top:none;padding:0 4px}
 }
 @media(max-width:720px){
   .certapp .task-line{grid-template-columns:1fr;gap:8px}
@@ -294,4 +432,4 @@
 
 /* Inline code — description strings, spellings, serials quoted in prose. */
 .certapp code{background:var(--surface-2);padding:1px 5px;border-radius:3px;
-  font-family:"IBM Plex Mono",monospace;font-size:.78em;color:var(--ink-soft)}
+  font-family:var(--font-num);font-size:.78em;color:var(--ink-soft)}

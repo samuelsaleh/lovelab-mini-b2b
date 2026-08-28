@@ -16,6 +16,7 @@ function renderShell(props = {}) {
     <CertShell
       nav={CERTIFICATE_NAV}
       home="/certificates"
+      theme="lovelab"
       brand="LoveLab"
       title="Certificates"
       banner="every IGI movement, held once"
@@ -35,8 +36,20 @@ describe('the certificate application shell', () => {
     // Everything is scoped under .certapp — that scoping is what stops the
     // palette leaking into the rest of LoveLab.
     expect(container.querySelector('.certapp')).toBeInTheDocument()
-    expect(container.querySelector('aside .logo')).toHaveTextContent('LoveLab')
     expect(screen.getByText('the page')).toBeInTheDocument()
+  })
+
+  it('wears LoveLab’s skin and LoveLab’s actual mark', () => {
+    // The theme class is the only thing separating the two skins, so it is
+    // worth asserting rather than assuming.
+    const { container } = renderShell()
+    expect(container.querySelector('.certapp.lovelab')).toBeInTheDocument()
+
+    const logo = container.querySelector('aside .logo img')
+    expect(logo).toHaveAttribute('src', '/logo.png')
+    expect(logo).toHaveAttribute('alt', 'LoveLab')
+    // Dark artwork on a plum bar has to be inverted or it disappears.
+    expect(logo.style.filter).toBe('brightness(0) invert(1)')
   })
 
   it('shows the group headings, not just a flat list', () => {
@@ -69,15 +82,22 @@ describe('the certificate application shell', () => {
     expect(signOut).toHaveBeenCalled()
   })
 
-  it('gives IGI the same shell with no way out', () => {
+  it('gives IGI the same shell with no way out, and not LoveLab’s colours', () => {
     // IGI are another company. There is nowhere in this app for them to go
-    // back to, so offering a door would be a lie.
+    // back to, so offering a door would be a lie — and the blue skin is how
+    // they can tell at a glance that this screen is theirs, not LoveLab's.
     pathname = '/igi/stock'
-    render(
+    const { container } = render(
       <CertShell nav={IGI_NAV_ITEMS} home="/igi" brand="IGI Antwerp" title="LoveLab certificates" banner="what LoveLab are waiting on" exit={null}>
         <p>their page</p>
       </CertShell>,
     )
+    expect(container.querySelector('.certapp')).toBeInTheDocument()
+    expect(container.querySelector('.certapp.lovelab')).not.toBeInTheDocument()
+    // Their own name, typed — not LoveLab's mark over an outside company's bench.
+    expect(container.querySelector('aside .logo')).toHaveTextContent('IGI Antwerp')
+    expect(container.querySelector('aside .logo img')).toBeNull()
+
     expect(screen.queryByText('← Back to LoveLab')).not.toBeInTheDocument()
     expect(screen.getByTestId('nav-igi-stock')).toHaveAttribute('aria-current', 'page')
     expect(screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/')).toHaveLength(0)

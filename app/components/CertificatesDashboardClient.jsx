@@ -155,7 +155,7 @@ function BigStat({ label, value, note, tone, chip, testId }) {
       </div>
       <div className="card-body">
         <div style={{
-          fontFamily: '"IBM Plex Serif", Georgia, serif', fontSize: '2.4rem', fontWeight: 600,
+          fontFamily: 'var(--font-display)', fontSize: '2.4rem', fontWeight: 600,
           lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums',
         }}>
           {value}

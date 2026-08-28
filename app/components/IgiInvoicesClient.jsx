@@ -49,7 +49,7 @@ export default function IgiInvoicesClient() {
       {months.map((m) => (
         <section className="card" key={m.month} data-testid="invoice-month">
           <div className="card-head">
-            <h3 style={{ fontFamily: '"IBM Plex Serif", Georgia, serif', fontSize: '1.15rem' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem' }}>
               {formatMonth(`${m.month}-01`)}
             </h3>
             <span className="right bignum">{formatEur(m.eur)}</span>
