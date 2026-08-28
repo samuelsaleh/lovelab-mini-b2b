@@ -1,0 +1,472 @@
+{
+  "success": true,
+  "branch_id": 10,
+  "country_stock": "BELGIUM",
+  "count": 116,
+  "data": [
+    {
+      "description": "BUTTER PAPER- LL NOTES FRENCH",
+      "total_pcs": 1902
+    },
+    {
+      "description": "BUTTER PAPER-LL NOTES ENGLISH",
+      "total_pcs": 5087
+    },
+    {
+      "description": "BUTTER PAPER-LL NOTES ITALIAN",
+      "total_pcs": 497
+    },
+    {
+      "description": "CATALOGUE FR NEW",
+      "total_pcs": 3992
+    },
+    {
+      "description": "CATALOGUE GERM",
+      "total_pcs": 49
+    },
+    {
+      "description": "CATALOGUES",
+      "total_pcs": 914
+    },
+    {
+      "description": "CATALOGUES ENG",
+      "total_pcs": 284
+    },
+    {
+      "description": "DHL BOXES NR 2",
+      "total_pcs": 40
+    },
+    {
+      "description": "DHL BOXES NR 4",
+      "total_pcs": 31
+    },
+    {
+      "description": "DHL BOXES NR 5",
+      "total_pcs": 44
+    },
+    {
+      "description": "DHL ENVELOPPES",
+      "total_pcs": 200
+    },
+    {
+      "description": "ENVELOP PINK IGI",
+      "total_pcs": 2893
+    },
+    {
+      "description": "ENVELOPE BLACK IGI",
+      "total_pcs": 1035
+    },
+    {
+      "description": "ENVELOPPE BLACK",
+      "total_pcs": 1091
+    },
+    {
+      "description": "ENVELOPPE PINK",
+      "total_pcs": 542
+    },
+    {
+      "description": "IGI 0.05 CERTIFICATE",
+      "total_pcs": 670
+    },
+    {
+      "description": "IGI 0.05*3 CERTIFICATE",
+      "total_pcs": 52
+    },
+    {
+      "description": "IGI 0.10 CERTIFICATE",
+      "total_pcs": 1006
+    },
+    {
+      "description": "IGI 0.10*3 CERTIFICATE",
+      "total_pcs": 335
+    },
+    {
+      "description": "IGI 0.20*3 CERTIFICATE",
+      "total_pcs": 70
+    },
+    {
+      "description": "IGI 0.30*3 CERTIFICATE",
+      "total_pcs": 16
+    },
+    {
+      "description": "IGI CUTY 0.20",
+      "total_pcs": 145
+    },
+    {
+      "description": "IGI CUTY 0.30",
+      "total_pcs": 134
+    },
+    {
+      "description": "IGI EMERALD 0.10",
+      "total_pcs": 64
+    },
+    {
+      "description": "IGI EMERALD 0.50",
+      "total_pcs": 96
+    },
+    {
+      "description": "IGI HEART 0.10",
+      "total_pcs": 87
+    },
+    {
+      "description": "IGI HEART 0.50",
+      "total_pcs": 2
+    },
+    {
+      "description": "IGI MARQUISE 0.10",
+      "total_pcs": 149
+    },
+    {
+      "description": "IGI MARQUISE 0.30",
+      "total_pcs": 43
+    },
+    {
+      "description": "IGI MATCHY FANCY HEART 0.60",
+      "total_pcs": 3
+    },
+    {
+      "description": "IGI MULTI FOUR 0.20",
+      "total_pcs": 65
+    },
+    {
+      "description": "IGI MULTI FOUR 0.40",
+      "total_pcs": 126
+    },
+    {
+      "description": "IGI MULTIFIVE 0.50",
+      "total_pcs": 46
+    },
+    {
+      "description": "IGI MULTIFIVE0.25",
+      "total_pcs": 77
+    },
+    {
+      "description": "IGI OVAL 0.10",
+      "total_pcs": 138
+    },
+    {
+      "description": "IGI OVAL 0.50",
+      "total_pcs": 5
+    },
+    {
+      "description": "IGI PEAR 0.10",
+      "total_pcs": 85
+    },
+    {
+      "description": "IGI PEAR 0.30",
+      "total_pcs": 37
+    },
+    {
+      "description": "IGI PEAR 0.50",
+      "total_pcs": 4
+    },
+    {
+      "description": "IGI SHAPYSHINE 0.30 OVAL",
+      "total_pcs": 31
+    },
+    {
+      "description": "IGI SHAPYSHINE EMERALD 0.30",
+      "total_pcs": 18
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  4X 0.05 WHITE",
+      "total_pcs": 209
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,05 WHITE",
+      "total_pcs": 841
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,10 WHITE",
+      "total_pcs": 2001
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,20 WHITE",
+      "total_pcs": 484
+    },
+    {
+      "description": "INHOUSE CERTIFICATE  CUTY 0,30 WHITE",
+      "total_pcs": 1238
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 4 X 0.10 WHITE",
+      "total_pcs": 472
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 5 X 0.05 WHITE",
+      "total_pcs": 230
+    },
+    {
+      "description": "INHOUSE CERTIFICATE 5 X 0.10 WHITE",
+      "total_pcs": 243
+    },
+    {
+      "description": "INHOUSE CERTIFICATE EMERALD 0,10",
+      "total_pcs": 360
+    },
+    {
+      "description": "INHOUSE CERTIFICATE EMPTY GREY",
+      "total_pcs": 91
+    },
+    {
+      "description": "INHOUSE CERTIFICATE HEART 0,10",
+      "total_pcs": 255
+    },
+    {
+      "description": "INHOUSE CERTIFICATE MARQUISE 0,10",
+      "total_pcs": 411
+    },
+    {
+      "description": "INHOUSE CERTIFICATE OVAL 0,10",
+      "total_pcs": 413
+    },
+    {
+      "description": "INHOUSE CERTIFICATE PEAR 0,10",
+      "total_pcs": 404
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,15 WHITE",
+      "total_pcs": 1087
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,30 WHITE",
+      "total_pcs": 998
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,60 WHITE",
+      "total_pcs": 753
+    },
+    {
+      "description": "INHOUSE CERTIFICATE TRIPLY 0,90 WHITE",
+      "total_pcs": 1066
+    },
+    {
+      "description": "INVOICE ENVELOPPES BLACK",
+      "total_pcs": 445
+    },
+    {
+      "description": "INVOICE ENVELOPPES WHITE",
+      "total_pcs": 374
+    },
+    {
+      "description": "J &J PINK IGI",
+      "total_pcs": 1585
+    },
+    {
+      "description": "JOE & JUICE BLACK",
+      "total_pcs": 660
+    },
+    {
+      "description": "JOE & JUICE PINK",
+      "total_pcs": 1536
+    },
+    {
+      "description": "LOVE LAB FOLDER ENGLISH",
+      "total_pcs": 1124
+    },
+    {
+      "description": "LOVE LAB PINK FOLDER FRANCE",
+      "total_pcs": 1063
+    },
+    {
+      "description": "LOVE LAB PINK FOLDER GERMAN",
+      "total_pcs": 1125
+    },
+    {
+      "description": "LOVELAB VITRINE",
+      "total_pcs": 15
+    },
+    {
+      "description": "MAGNETIC BOX  5 ROWS PINK",
+      "total_pcs": 2
+    },
+    {
+      "description": "MAGNETIC BOX 2 ROWS PINK",
+      "total_pcs": 4
+    },
+    {
+      "description": "MAGNETIC BOX SMALL BLACK",
+      "total_pcs": 66
+    },
+    {
+      "description": "MAGNETIC BOX SMALL PINK",
+      "total_pcs": 436
+    },
+    {
+      "description": "MOTHERS DAY CARDS",
+      "total_pcs": 1193
+    },
+    {
+      "description": "NEW PINK ENVELOPPES",
+      "total_pcs": 4287
+    },
+    {
+      "description": "NEW VITRINE HERMES",
+      "total_pcs": 3
+    },
+    {
+      "description": "PILLOW  PINK BIG",
+      "total_pcs": 32
+    },
+    {
+      "description": "PILLOW BLACK BIG",
+      "total_pcs": 117
+    },
+    {
+      "description": "PILLOW BLACK SMALL",
+      "total_pcs": 117
+    },
+    {
+      "description": "PILLOW GREY SMALL",
+      "total_pcs": 212
+    },
+    {
+      "description": "PILLOW PINK SMALL",
+      "total_pcs": 35
+    },
+    {
+      "description": "PILLOW WHITE BIG",
+      "total_pcs": 135
+    },
+    {
+      "description": "PILLOW WHITE SMALL",
+      "total_pcs": 138
+    },
+    {
+      "description": "PRESENTATION BLACK BOOK",
+      "total_pcs": 95
+    },
+    {
+      "description": "PRESENTATION BOXES LOVELAB",
+      "total_pcs": 7
+    },
+    {
+      "description": "SHOEBOX 2 ROWS BLACK",
+      "total_pcs": 61
+    },
+    {
+      "description": "SHOEBOX 2 ROWS PINK",
+      "total_pcs": 97
+    },
+    {
+      "description": "SHOEBOX 3 ROWS BLACK",
+      "total_pcs": 56
+    },
+    {
+      "description": "SHOEBOX 3 ROWS PINK",
+      "total_pcs": 43
+    },
+    {
+      "description": "SHOEBOX 5 ROWS PINK",
+      "total_pcs": 16
+    },
+    {
+      "description": "Shopping bag BIG BLACK",
+      "total_pcs": 227
+    },
+    {
+      "description": "Shopping Bag BIG PINK",
+      "total_pcs": 90
+    },
+    {
+      "description": "Shopping Bag SMALL BLACK",
+      "total_pcs": 740
+    },
+    {
+      "description": "Shopping Bag SMALL PINK",
+      "total_pcs": 653
+    },
+    {
+      "description": "STICKERS LOVELAB",
+      "total_pcs": 11354
+    },
+    {
+      "description": "THANK YOU CARD BIG BLACK",
+      "total_pcs": 1195
+    },
+    {
+      "description": "THANK YOU CARD BIG BLACK ENGLISH 90X85",
+      "total_pcs": 3160
+    },
+    {
+      "description": "THANK YOU CARD BIG PINK",
+      "total_pcs": 1195
+    },
+    {
+      "description": "THANK YOU CARD BIG PINK ENGLISH 90X85",
+      "total_pcs": 2122
+    },
+    {
+      "description": "THANK YOU CARD FRENCH PINK 90 X 85",
+      "total_pcs": 67
+    },
+    {
+      "description": "THANK YOU CARDS BLACK FRENCG 85X85",
+      "total_pcs": 364
+    },
+    {
+      "description": "THANK YOU CARDS BLACKFRENCH  90X85",
+      "total_pcs": 1981
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH BLACK",
+      "total_pcs": 2032
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH BLACK 85X85",
+      "total_pcs": 1334
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH PINK",
+      "total_pcs": 2065
+    },
+    {
+      "description": "THANK YOU CARDS ENGLISH PINK 85X85",
+      "total_pcs": 3293
+    },
+    {
+      "description": "THANK YOU CARDS FRENCH PINK85X85",
+      "total_pcs": 2544
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN BLACK",
+      "total_pcs": 1133
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN BLACK 85X85",
+      "total_pcs": 781
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN PINK",
+      "total_pcs": 904
+    },
+    {
+      "description": "THANK YOU CARDS ITALIAN PINK 85X85",
+      "total_pcs": 584
+    },
+    {
+      "description": "TOTEBAGS 2026",
+      "total_pcs": 507
+    },
+    {
+      "description": "UNIVERSAL SOCKET",
+      "total_pcs": 3
+    },
+    {
+      "description": "VALENTINE BUTTER PAPER",
+      "total_pcs": 973
+    },
+    {
+      "description": "VALENTINE JOE JUICE",
+      "total_pcs": 1275
+    },
+    {
+      "description": "VALENTINE TY CARDS",
+      "total_pcs": 993
+    },
+    {
+      "description": "VALETINE INHOUSE CERT 0,10",
+      "total_pcs": 975
+    }
+  ]
+}
