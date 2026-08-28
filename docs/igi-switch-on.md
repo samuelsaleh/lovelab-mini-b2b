@@ -57,7 +57,9 @@ Running the file twice is safe. It corrects rather than duplicates.
 
 ## Then open the app
 
-**Admin → Certificates.** Six screens:
+**Admin → Certificates**, which opens the certificate application at
+`/certificates` — its own space, with its own sidebar and its own look. Seven
+screens:
 
 | | |
 |---|---|
@@ -65,8 +67,11 @@ Running the file twice is safe. It corrects rather than duplicates.
 | **New request** | Choose models and quantities, send to IGI |
 | **Visits** | All 23 movements, and any new one you create |
 | **Stock & alerts** | Every model, both sides, both alert levels |
-| **Models** | The 61 in use, 15 reserved serials, 3 waiting for a serial |
+| **Invoices** | What the movements say, beside what IGI billed |
+| **Models & serials** | The 61 in use, 15 reserved serials, 3 waiting for a serial |
 | **Matching** | Which stock description belongs to which model |
+
+The old addresses under `/admin/certificates` still work — they redirect.
 
 **Six models will already say "Go collect"** — they are below the default alert
 level of 25 on the shelf. That is real, and it is the first thing this was built

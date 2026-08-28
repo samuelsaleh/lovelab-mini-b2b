@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { colors, fonts, card, btn, inp, lbl } from '@/lib/styles'
-import { useResponsive } from '@/lib/useIsMobile'
 import { formatQty, modelSpec } from '@/lib/igi/derive'
 import { brusselsToday } from '@/lib/igi/dates'
+import { PageHead, Card, Loading, Toast, Btn } from './certificates/ui'
 
 /**
  * Recording a production run. Model, date, reference, quantity, save.
@@ -15,7 +14,6 @@ import { brusselsToday } from '@/lib/igi/dates'
  * mistake is corrected by adding a correcting batch, and the trail survives.
  */
 export default function IgiAddBatchClient() {
-  const { isCompact } = useResponsive()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -74,119 +72,88 @@ export default function IgiAddBatchClient() {
 
   const ready = modelId && Number.isInteger(Number(qty)) && Number(qty) > 0 && batchDate
 
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <Loading />
 
   const chosen = models.find((m) => m.id === modelId)
 
   return (
-    <div style={{ padding: isCompact ? 16 : 28, fontFamily: fonts.body, maxWidth: 620 }}>
-      <h1 style={{ fontFamily: fonts.heading, fontSize: isCompact ? 24 : 30, margin: 0, color: colors.text }}>
-        Add a batch
-      </h1>
-      <p style={{ margin: '4px 0 20px', color: colors.textLight, fontSize: 13 }}>
-        Certificates you have produced. They are added to your stock.
-      </p>
+    <div style={{ maxWidth: 620 }}>
+      <PageHead title="Add a batch" sub="Certificates you have produced. They are added to your stock." />
 
-      {error && (
-        <div style={{ ...banner, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={dismiss} data-testid="dismiss-error">Dismiss</button>
-        </div>
-      )}
-      {notice && (
-        <div style={{ ...banner, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }} data-testid="notice">
-          {notice}
-        </div>
-      )}
+      {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
+      {notice && <Toast testId="notice">{notice}</Toast>}
 
-      <div style={{ ...card, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <div style={lbl}>Model</div>
-          <select
-            value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
-            data-testid="model"
-            style={{ ...inp, width: '100%' }}
-          >
-            <option value="">Choose a model…</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.serial} · {modelSpec(m)} · {m.name}
-              </option>
-            ))}
-          </select>
-          {chosen && (
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textLight }}>
-              You currently hold {formatQty(chosen.pool)}.
-            </p>
-          )}
-        </div>
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <label>
+            <div className="spec" style={{ marginBottom: 4 }}>Model</div>
+            <select
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              data-testid="model"
+              style={{ width: '100%', maxWidth: 'none' }}
+            >
+              <option value="">Choose a model…</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.serial} · {modelSpec(m)} · {m.name}
+                </option>
+              ))}
+            </select>
+            {chosen && (
+              <p style={{ margin: '6px 0 0', fontSize: '.83rem', color: 'var(--ink-soft)' }}>
+                You currently hold {formatQty(chosen.pool)}.
+              </p>
+            )}
+          </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr', gap: 14 }}>
-          <div>
-            <div style={lbl}>How many</div>
-            <input
-              type="number"
-              min="1"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              data-testid="qty"
-              style={{ ...inp, width: '100%', textAlign: 'right' }}
-            />
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <label>
+              <div className="spec" style={{ marginBottom: 4 }}>How many</div>
+              <input
+                type="number"
+                min="1"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                data-testid="qty"
+                style={{ width: 120 }}
+              />
+            </label>
+            <label>
+              <div className="spec" style={{ marginBottom: 4 }}>Date made</div>
+              <input
+                type="date"
+                value={batchDate}
+                onChange={(e) => setBatchDate(e.target.value)}
+                data-testid="batch-date"
+              />
+            </label>
           </div>
-          <div>
-            <div style={lbl}>Date made</div>
+
+          <label>
+            <div className="spec" style={{ marginBottom: 4 }}>Your reference (optional)</div>
             <input
-              type="date"
-              value={batchDate}
-              onChange={(e) => setBatchDate(e.target.value)}
-              data-testid="batch-date"
-              style={{ ...inp, width: '100%' }}
+              type="text"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g. ATW/26/SC/02896"
+              data-testid="reference"
+              style={{ width: '100%' }}
             />
+          </label>
+
+          <div>
+            <Btn kind="primary" onClick={save} disabled={!ready || saving} testId="save-batch">
+              {saving ? 'Saving…' : 'Add to my stock'}
+            </Btn>
           </div>
         </div>
+      </Card>
 
-        <div>
-          <div style={lbl}>Your reference <span style={{ textTransform: 'none', fontWeight: 400 }}>(optional)</span></div>
-          <input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            placeholder="e.g. ATW/26/SC/02896"
-            data-testid="reference"
-            style={{ ...inp, width: '100%' }}
-          />
-        </div>
-
-        <button
-          onClick={save}
-          disabled={!ready || saving}
-          data-testid="save-batch"
-          style={{ ...btn.primary, opacity: !ready || saving ? 0.45 : 1, alignSelf: 'flex-start' }}
-        >
-          {saving ? 'Saving…' : 'Add to my stock'}
-        </button>
-      </div>
-
-      <p style={{ marginTop: 14, fontSize: 12, color: colors.textMuted, lineHeight: 1.6 }}>
+      <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.6 }}>
         Batches are never edited or removed, so it stays clear what arrived when. If you get one
         wrong, add another that corrects it.
       </p>
     </div>
   )
-}
-
-const banner = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10,
-  fontSize: 13, marginBottom: 16,
-}
-const dismiss = {
-  background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline',
-  cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
 }

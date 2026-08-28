@@ -113,7 +113,7 @@ describe('asking IGI for certificates', () => {
     fireEvent.click(screen.getByTestId('send-request'))
 
     await waitFor(() => expect(sent).toEqual({ lines: [{ model_id: 'm1', qty: 50 }] }))
-    expect(push).toHaveBeenCalledWith('/admin/certificates/visits/v9')
+    expect(push).toHaveBeenCalledWith('/certificates/visits/v9')
   })
 })
 

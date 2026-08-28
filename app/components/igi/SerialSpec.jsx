@@ -1,6 +1,5 @@
 'use client'
 
-import { colors } from '@/lib/styles'
 import { modelSpec } from '@/lib/igi/derive'
 
 /**
@@ -21,17 +20,17 @@ export default function SerialSpec({ model, compact = false }) {
     <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 1 }}>
       <span
         style={{
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          fontSize: compact ? 11 : 12,
+          fontFamily: '"IBM Plex Mono", monospace',
+          fontSize: compact ? 11.5 : 12.5,
           fontWeight: 600,
-          color: model.serial ? colors.text : colors.textMuted,
-          letterSpacing: '0.02em',
+          letterSpacing: '.02em',
+          color: model.serial ? 'var(--ink)' : 'var(--ink-faint)',
         }}
         data-testid="serial"
       >
         {model.serial || 'no serial yet'}
       </span>
-      <span style={{ fontSize: compact ? 10 : 11, color: colors.textLight }}>
+      <span className="spec" style={{ fontSize: compact ? 10.5 : 11.5 }}>
         {spec || '—'}
       </span>
     </span>

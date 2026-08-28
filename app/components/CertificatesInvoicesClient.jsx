@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { colors, fonts, card, btn, inputSm, lbl } from '@/lib/styles'
-import { useResponsive } from '@/lib/useIsMobile'
 import { formatQty, formatEur } from '@/lib/igi/derive'
 import { formatMonth } from '@/lib/igi/dates'
 import SerialSpec from './igi/SerialSpec'
 import Chip from './igi/Chip'
+import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 /**
  * What we think IGI should have billed, beside what they did.
@@ -16,7 +15,6 @@ import Chip from './igi/Chip'
  * and the movements lived in ours.
  */
 export default function CertificatesInvoicesClient() {
-  const { isCompact } = useResponsive()
   const [months, setMonths] = useState([])
   const [bases, setBases] = useState({})
   const [fee, setFee] = useState(1.2)
@@ -72,249 +70,192 @@ export default function CertificatesInvoicesClient() {
     }
   }
 
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <Loading />
 
   return (
-    <div style={{ padding: isCompact ? 16 : 28, fontFamily: fonts.body, maxWidth: 1080 }}>
-      <h1 style={{ fontFamily: fonts.heading, fontSize: isCompact ? 24 : 30, margin: 0, color: colors.text }}>
-        Invoices
-      </h1>
-      <p style={{ margin: '4px 0 20px', color: colors.textLight, fontSize: 13 }}>
-        What the movements say, at {formatEur(fee)} a certificate, beside what IGI actually billed.
-      </p>
+    <>
+      <PageHead
+        title="Invoices"
+        sub={`What the movements say, at ${formatEur(fee)} a certificate, beside what IGI actually billed`}
+      />
 
-      {error && (
-        <div style={{ ...banner, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={dismiss} data-testid="dismiss-error">Dismiss</button>
-        </div>
-      )}
-      {notice && (
-        <div style={{ ...banner, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }} data-testid="notice">
-          {notice}
-        </div>
-      )}
+      {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
+      {notice && <Toast testId="notice">{notice}</Toast>}
 
       {months.length === 0 && !error && (
-        <div style={{ ...card, padding: 28, textAlign: 'center', color: colors.textMuted, fontSize: 14 }} data-testid="empty">
-          Nothing has been completed yet, so there is nothing to invoice.
-        </div>
+        <Card flush>
+          <Empty>
+            <span data-testid="empty">Nothing has been completed yet, so there is nothing to invoice.</span>
+          </Empty>
+        </Card>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {months.map((m) => {
-          const d = draft[m.month] || {}
-          const c = m.comparison
-          return (
-            <div key={m.month} style={{ ...card, padding: isCompact ? 16 : 22 }} data-testid="invoice-month">
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>{formatMonth(`${m.month}-01`)}</h2>
-                <span style={{ fontSize: 12, color: colors.textMuted }}>
-                  counted on: {bases[m.basis]?.label || m.basis}
+      {months.map((m) => {
+        const d = draft[m.month] || {}
+        const c = m.comparison
+        return (
+          <section className="card" key={m.month} data-testid="invoice-month">
+            <div className="card-head">
+              <h3 style={{ fontFamily: '"IBM Plex Serif", Georgia, serif', fontSize: '1.15rem' }}>
+                {formatMonth(`${m.month}-01`)}
+              </h3>
+              <span className="sub">counted on: {bases[m.basis]?.label || m.basis}</span>
+            </div>
+
+            {/* ── The two numbers, and whether they agree ─────────────── */}
+            <div className="crow" data-testid="ours">
+              <div className="k">
+                What the movements say
+                <small>{formatQty(m.ours.qty)} certificates</small>
+              </div>
+              <span className="v">{formatEur(m.ours.eur)}</span>
+            </div>
+            <div className="crow" data-testid="billed">
+              <div className="k">
+                What IGI billed
+                <small>{m.billed?.reference || 'no invoice recorded yet'}</small>
+              </div>
+              <span className="v">
+                {m.billed?.total_eur == null ? '—' : formatEur(m.billed.total_eur)}
+              </span>
+            </div>
+
+            <div
+              className={c.status === 'agrees' ? 'verdict' : 'verdict off'}
+              data-testid="comparison"
+              style={c.status === 'not_recorded'
+                ? { background: 'var(--surface-2)', color: 'var(--ink-soft)' }
+                : undefined}
+            >
+              <span>
+                {c.status === 'agrees' && 'They agree.'}
+                {c.status === 'they_billed_more' && 'They billed more than the movements.'}
+                {c.status === 'they_billed_less' && 'They billed less than the movements.'}
+                {c.status === 'not_recorded' && 'Enter their invoice to compare.'}
+              </span>
+              <span className="sp" />
+              <span className="bignum">
+                {c.status === 'not_recorded' ? '—' : formatEur(Math.abs(c.difference))}
+              </span>
+            </div>
+
+            {/* The whole point of keeping all three: a gap that has an
+                explanation is a conversation, not a bug report. */}
+            {m.basis_that_would_match && m.basis_that_would_match !== m.basis && (
+              <div className="nextstep" data-testid="explains-gap">
+                <b>That difference has an explanation.</b>
+                <span>
+                  Their figure matches “{bases[m.basis_that_would_match]?.label}” exactly.
+                  {' '}{bases[m.basis_that_would_match]?.note} It is worth agreeing with IGI which
+                  one the invoice is meant to count, then setting it here.
                 </span>
               </div>
+            )}
 
-              {/* ── The two numbers, and whether they agree ─────────────── */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: isCompact ? '1fr' : 'repeat(3, 1fr)',
-                gap: 12, margin: '14px 0',
-              }}>
-                <Total
-                  testId="ours"
-                  label="What the movements say"
-                  value={formatEur(m.ours.eur)}
-                  sub={`${formatQty(m.ours.qty)} certificates`}
-                />
-                <Total
-                  testId="billed"
-                  label="What IGI billed"
-                  value={m.billed?.total_eur == null ? '—' : formatEur(m.billed.total_eur)}
-                  sub={m.billed?.reference || 'no invoice recorded yet'}
-                />
-                <div style={{ ...tile, borderColor: toneBorder(c.status) }} data-testid="comparison">
-                  <span style={tileLabel}>Difference</span>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: toneText(c.status), marginTop: 4 }}>
-                    {c.status === 'not_recorded' ? '—' : formatEur(Math.abs(c.difference))}
-                  </div>
-                  <div style={{ fontSize: 12, color: colors.textLight, marginTop: 2 }}>
-                    {c.status === 'agrees' && 'They agree.'}
-                    {c.status === 'they_billed_more' && 'They billed more than the movements.'}
-                    {c.status === 'they_billed_less' && 'They billed less than the movements.'}
-                    {c.status === 'not_recorded' && 'Enter their invoice to compare.'}
-                  </div>
-                </div>
-              </div>
-
-              {/* The whole point of keeping all three: a gap that has an
-                  explanation is a conversation, not a bug report. */}
-              {m.basis_that_would_match && m.basis_that_would_match !== m.basis && (
-                <div style={{ ...banner, background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#6d28d9', display: 'block' }} data-testid="explains-gap">
-                  <strong>That difference has an explanation.</strong>
-                  <div style={{ marginTop: 4, fontSize: 12 }}>
-                    Their figure matches “{bases[m.basis_that_would_match]?.label}” exactly.
-                    {' '}{bases[m.basis_that_would_match]?.note} It is worth agreeing with IGI which
-                    one the invoice is meant to count, then setting it here.
-                  </div>
-                </div>
-              )}
-
-              <details style={{ marginBottom: 12 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 12, color: colors.textLight }}>
+            <div className="card-body">
+              <details style={{ marginBottom: 14 }}>
+                <summary style={{ cursor: 'pointer', fontSize: '.83rem', color: 'var(--ink-soft)' }}>
                   The same month counted three ways
                 </summary>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+                <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 10 }}>
                   {Object.entries(m.totals_by_basis).map(([k, v]) => (
-                    <div key={k} style={{ fontSize: 12 }} data-testid="basis-figure">
-                      <div style={{ color: colors.textMuted }}>{bases[k]?.label || k}</div>
-                      <div style={{ fontWeight: 700 }}>{formatEur(v.eur)}</div>
-                      <div style={{ color: colors.textLight }}>{formatQty(v.qty)} certificates</div>
+                    <div key={k} data-testid="basis-figure">
+                      <div className="spec">{bases[k]?.label || k}</div>
+                      <div className="bignum">{formatEur(v.eur)}</div>
+                      <div style={{ fontSize: '.8rem', color: 'var(--ink-soft)' }}>
+                        {formatQty(v.qty)} certificates
+                      </div>
                     </div>
                   ))}
                 </div>
               </details>
 
               {/* ── Record their invoice ────────────────────────────────── */}
-              <div style={{ background: colors.bgOff, borderRadius: 10, padding: 14, marginBottom: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '1.2fr 1fr 1.2fr auto', gap: 10, alignItems: 'end' }}>
-                  <div>
-                    <div style={lbl}>Their invoice number</div>
-                    <input
-                      value={d.reference ?? m.billed?.reference ?? ''}
-                      onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, reference: e.target.value } }))}
-                      placeholder="ATW/26/SC/02896"
-                      data-testid="reference"
-                      style={{ ...inputSm, width: '100%' }}
-                    />
-                  </div>
-                  <div>
-                    <div style={lbl}>Their total</div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={d.total ?? (m.billed?.total_eur ?? '')}
-                      onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, total: e.target.value } }))}
-                      data-testid="total"
-                      style={{ ...inputSm, width: '100%', textAlign: 'right' }}
-                    />
-                  </div>
-                  <div>
-                    <div style={lbl}>They bill on</div>
-                    <select
-                      value={d.basis ?? m.basis}
-                      onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, basis: e.target.value } }))}
-                      data-testid="basis"
-                      style={{ ...inputSm, width: '100%' }}
-                    >
-                      {Object.entries(bases).map(([k, v]) => (
-                        <option key={k} value={k}>{v.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={() => save(m.month)}
-                    disabled={savingMonth === m.month}
-                    data-testid="save-invoice"
-                    style={{ ...btn.primary, padding: '8px 18px', fontSize: 13, opacity: savingMonth === m.month ? 0.5 : 1 }}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 4 }}>
+                <label style={{ flex: '1 1 190px' }}>
+                  <div className="spec" style={{ marginBottom: 4 }}>Their invoice number</div>
+                  <input
+                    type="text"
+                    value={d.reference ?? m.billed?.reference ?? ''}
+                    onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, reference: e.target.value } }))}
+                    placeholder="ATW/26/SC/02896"
+                    data-testid="reference"
+                    style={{ width: '100%' }}
+                  />
+                </label>
+                <label>
+                  <div className="spec" style={{ marginBottom: 4 }}>Their total</div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={d.total ?? (m.billed?.total_eur ?? '')}
+                    onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, total: e.target.value } }))}
+                    data-testid="total"
+                    style={{ width: 120 }}
+                  />
+                </label>
+                <label style={{ flex: '1 1 190px' }}>
+                  <div className="spec" style={{ marginBottom: 4 }}>They bill on</div>
+                  <select
+                    value={d.basis ?? m.basis}
+                    onChange={(e) => setDraft((p) => ({ ...p, [m.month]: { ...d, basis: e.target.value } }))}
+                    data-testid="basis"
+                    style={{ width: '100%', maxWidth: 'none' }}
                   >
-                    {savingMonth === m.month ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Model by model ──────────────────────────────────────── */}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-                  <thead>
-                    <tr>
-                      <th style={th}>Model</th>
-                      <th style={th}>Serial · check</th>
-                      <th style={thNum}>Certificates</th>
-                      <th style={thNum}>At {formatEur(fee)}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.ours.rows.map((r) => (
-                      <tr key={r.model_id} data-testid="invoice-row">
-                        <td style={{ ...td, fontSize: 13, fontWeight: 600 }}>{r.name}</td>
-                        <td style={td}><SerialSpec model={r} compact /></td>
-                        <td style={tdNum}>{formatQty(r.qty)}</td>
-                        <td style={tdNum}>{formatEur(r.eur)}</td>
-                      </tr>
+                    {Object.entries(bases).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
                     ))}
-                    {m.ours.unattributed > 0 && (
-                      <tr data-testid="invoice-gap">
-                        <td style={{ ...td, fontSize: 13 }} colSpan={2}>
-                          Issued with no model recorded <Chip tone="gap">unresolved</Chip>
-                        </td>
-                        <td style={tdNum}>{formatQty(m.ours.unattributed)}</td>
-                        <td style={tdNum}>{formatEur(m.ours.unattributed * fee)}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td style={{ ...td, fontWeight: 700 }} colSpan={2}>Total</td>
-                      <td style={{ ...tdNum, fontWeight: 700 }}>{formatQty(m.ours.qty)}</td>
-                      <td style={{ ...tdNum, fontWeight: 700 }}>{formatEur(m.ours.eur)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                  </select>
+                </label>
+                <Btn kind="primary" onClick={() => save(m.month)} disabled={savingMonth === m.month} testId="save-invoice">
+                  {savingMonth === m.month ? 'Saving…' : 'Save'}
+                </Btn>
               </div>
             </div>
-          )
-        })}
-      </div>
-    </div>
+
+            {/* ── Model by model ──────────────────────────────────────── */}
+            <TableWrap>
+              <table style={{ minWidth: 560 }}>
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Serial · check</th>
+                    <th className="num">Certificates</th>
+                    <th className="num">At {formatEur(fee)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.ours.rows.map((r) => (
+                    <tr key={r.model_id} data-testid="invoice-row">
+                      <td style={{ fontWeight: 600 }}>{r.name}</td>
+                      <td><SerialSpec model={r} compact /></td>
+                      <td className="num">{formatQty(r.qty)}</td>
+                      <td className="num">{formatEur(r.eur)}</td>
+                    </tr>
+                  ))}
+                  {m.ours.unattributed > 0 && (
+                    <tr data-testid="invoice-gap">
+                      <td colSpan={2}>
+                        Issued with no model recorded <Chip tone="a">unresolved</Chip>
+                      </td>
+                      <td className="num">{formatQty(m.ours.unattributed)}</td>
+                      <td className="num">{formatEur(m.ours.unattributed * fee)}</td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={2}>Total</td>
+                    <td className="num">{formatQty(m.ours.qty)}</td>
+                    <td className="num">{formatEur(m.ours.eur)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </TableWrap>
+          </section>
+        )
+      })}
+    </>
   )
-}
-
-function Total({ label, value, sub, testId }) {
-  return (
-    <div style={tile} data-testid={testId}>
-      <span style={tileLabel}>{label}</span>
-      <div style={{ fontSize: 22, fontWeight: 700, color: colors.inkPlum, marginTop: 4 }}>{value}</div>
-      <div style={{ fontSize: 12, color: colors.textLight, marginTop: 2 }}>{sub}</div>
-    </div>
-  )
-}
-
-const toneText = (s) => (
-  s === 'agrees' ? '#15803d' : s === 'not_recorded' ? colors.textMuted : '#b45309'
-)
-const toneBorder = (s) => (
-  s === 'agrees' ? '#bbf7d0' : s === 'not_recorded' ? colors.border : '#fde68a'
-)
-
-const tile = {
-  padding: 14, borderRadius: 10, background: '#fff',
-  border: `1px solid ${colors.border}`,
-}
-const tileLabel = {
-  fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em',
-  color: colors.textMuted, fontWeight: 700,
-}
-const th = {
-  textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase',
-  letterSpacing: '0.04em', fontWeight: 700, color: colors.textMuted,
-  borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-}
-const thNum = { ...th, textAlign: 'right' }
-const td = { padding: '10px 12px', borderBottom: `1px solid ${colors.borderLight}`, verticalAlign: 'top' }
-const tdNum = { ...td, textAlign: 'right', fontSize: 13, whiteSpace: 'nowrap' }
-const banner = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10,
-  fontSize: 13, marginBottom: 16,
-}
-const dismiss = {
-  background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline',
-  cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
 }

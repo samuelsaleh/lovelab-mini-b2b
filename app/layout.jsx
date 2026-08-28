@@ -24,6 +24,12 @@ export default function RootLayout({ children }) {
           href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@300;400;500;600&display=swap" 
           rel="stylesheet" 
         />
+        {/* The certificate application (/certificates and /igi) is set in
+            IBM Plex — a separate typeface for a separate space. */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body>
         <I18nProvider>

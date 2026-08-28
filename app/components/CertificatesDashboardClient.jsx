@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { colors, fonts, card, btn } from '@/lib/styles'
-import { useResponsive } from '@/lib/useIsMobile'
 import { formatQty, formatEur, feeFor, SHELF_LABELS, POOL_LABELS } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import SerialSpec from './igi/SerialSpec'
 import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
+import { PageHead, Card, Kpis, Kpi, Loading, Note, Toast, Btn } from './certificates/ui'
 
 /**
  * Where the certificates stand, both sides at once.
@@ -17,7 +16,6 @@ import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
  */
 export default function CertificatesDashboardClient() {
   const router = useRouter()
-  const { isCompact } = useResponsive()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -48,39 +46,23 @@ export default function CertificatesDashboardClient() {
     [data],
   )
 
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <Loading />
 
   const t = data?.totals || {}
 
   return (
-    <div style={{ padding: isCompact ? 16 : 28, fontFamily: fonts.body, maxWidth: 1180 }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontFamily: fonts.heading, fontSize: isCompact ? 24 : 30, margin: 0, color: colors.text }}>
-          Certificates
-        </h1>
-        <p style={{ margin: '4px 0 0', color: colors.textLight, fontSize: 13 }}>
-          One shared stock, held by LoveLab and IGI together.
-          {data?.shelf?.last_read
-            ? ` Our shelf was last read on ${formatDate(data.shelf.last_read)}.`
-            : ' Our shelf has not been read yet.'}
-        </p>
-      </div>
+    <>
+      <PageHead
+        title="Dashboard"
+        sub={data?.shelf?.last_read
+          ? `Our shelf was last read on ${formatDate(data.shelf.last_read)}`
+          : 'Our shelf has not been read yet'}
+      />
 
-      {error && (
-        <div style={{ ...banner, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={dismiss} data-testid="dismiss-error">Dismiss</button>
-        </div>
-      )}
+      {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
 
       {/* ── The two numbers the whole thing exists to answer ─────────────── */}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isCompact ? '1fr' : 'repeat(2, 1fr)', marginBottom: 12 }}>
+      <div className="split" style={{ marginBottom: 20 }}>
         <BigStat
           label="On our shelf"
           value={formatQty(t.on_shelf)}
@@ -99,55 +81,44 @@ export default function CertificatesDashboardClient() {
         />
       </div>
 
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isCompact ? '1fr 1fr' : 'repeat(4, 1fr)', marginBottom: 20 }}>
-        <SmallStat label="Models in use" value={formatQty(t.models_in_use)} testId="stat-models" />
-        <SmallStat label="Ordered in total" value={formatQty(t.ordered)} testId="stat-ordered" />
-        <SmallStat label="Open movements" value={formatQty(t.open_visits)} testId="stat-open" />
-        <SmallStat
-          label="Reserved serials"
-          value={formatQty(t.reserved)}
-          note="Numbered, never ordered"
-          testId="stat-reserved"
-        />
-      </div>
+      <Kpis>
+        <Kpi value={formatQty(t.models_in_use)} label="Models in use" testId="stat-models" />
+        <Kpi value={formatQty(t.ordered)} label="Ordered in total" testId="stat-ordered" />
+        <Kpi value={formatQty(t.open_visits)} label="Open movements" tone={t.open_visits ? 'a' : undefined} testId="stat-open" />
+        <Kpi value={formatQty(t.reserved)} label="Reserved serials — numbered, never ordered" testId="stat-reserved" />
+      </Kpis>
 
       {/* ── The gap. Visible, never absorbed. ────────────────────────────── */}
       {t.unattributed > 0 && (
-        <div style={{ ...card, padding: 16, marginBottom: 20, borderLeft: `3px solid #6d28d9` }} data-testid="gap-card">
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 22, fontWeight: 700, color: '#6d28d9' }}>
-              {formatQty(t.unattributed)}
-            </span>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>certificates issued with no model attached</span>
-            <Chip tone="gap">Unresolved</Chip>
+        <Note warn testId="gap-card">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+            <span className="bignum" style={{ color: 'var(--signal)' }}>{formatQty(t.unattributed)}</span>
+            <strong>certificates issued with no model attached</strong>
+            <Chip tone="a">Unresolved</Chip>
           </div>
-          <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.textLight, lineHeight: 1.55, maxWidth: 720 }}>
-            Between 16 June and 28 July 2026 only daily totals were recorded, not the models.
-            Those certificates are counted in the totals above but belong to no model, so every
-            per-model figure on this page is short by some part of this number. It stays here
-            until the movements are reconstructed, at which point the balances correct themselves.
-          </p>
-        </div>
+          Between 16 June and 28 July 2026 only daily totals were recorded, not the models.
+          Those certificates are counted in the totals above but belong to no model, so every
+          per-model figure on this page is short by some part of this number. It stays here
+          until the movements are reconstructed, at which point the balances correct themselves.
+        </Note>
       )}
 
       {data?.shelf?.unlinked > 0 && (
-        <div style={{ ...banner, background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309' }}>
-          <span>
-            {data.shelf.unlinked} stock description{data.shelf.unlinked > 1 ? 's are' : ' is'} not
-            linked to a model yet, so {data.shelf.unlinked > 1 ? 'those models have' : 'that model has'} no
-            shelf figure.
-          </span>
-          <button
-            onClick={() => router.push('/admin/certificates/matching')}
-            style={{ ...btn.secondary, padding: '6px 14px', fontSize: 12 }}
-            data-testid="go-matching"
-          >
-            Open matching
-          </button>
-        </div>
+        <Note>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 260 }}>
+              {data.shelf.unlinked} stock description{data.shelf.unlinked > 1 ? 's are' : ' is'} not
+              linked to a model yet, so {data.shelf.unlinked > 1 ? 'those models have' : 'that model has'} no
+              shelf figure.
+            </span>
+            <Btn onClick={() => router.push('/certificates/matching')} testId="go-matching">
+              Open matching
+            </Btn>
+          </div>
+        </Note>
       )}
 
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr' }}>
+      <div className="split">
         <ActionList
           title="Go collect"
           subtitle="Below our alert level. IGI already holds them — it is a walk across the road."
@@ -166,111 +137,67 @@ export default function CertificatesDashboardClient() {
         />
       </div>
 
-      <p style={{ marginTop: 20, fontSize: 12, color: colors.textMuted }}>
+      <p style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink-faint)' }}>
         At €1,20 a certificate, the {formatQty(t.ordered)} ordered are worth{' '}
         {formatEur(feeFor(t.ordered || 0))} in certification over their life.
       </p>
-    </div>
+    </>
   )
 }
 
+/** One of the two figures the module exists to answer. */
 function BigStat({ label, value, note, tone, chip, testId }) {
   return (
-    <div style={{ ...card, padding: 18 }} data-testid={testId}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <span style={statLabel}>{label}</span>
-        <Chip tone={tone}>{chip}</Chip>
+    <div className="card" data-testid={testId}>
+      <div className="card-head">
+        <h3>{label}</h3>
+        <span className="right"><Chip tone={tone}>{chip}</Chip></span>
       </div>
-      <div style={{ fontSize: 34, fontWeight: 700, color: colors.inkPlum, marginTop: 6, lineHeight: 1.1 }}>
-        {value}
+      <div className="card-body">
+        <div style={{
+          fontFamily: '"IBM Plex Serif", Georgia, serif', fontSize: '2.4rem', fontWeight: 600,
+          lineHeight: 1, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums',
+        }}>
+          {value}
+        </div>
+        <p style={{ margin: '8px 0 0', fontSize: '.83rem', color: 'var(--ink-soft)' }}>{note}</p>
       </div>
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textLight }}>{note}</p>
     </div>
   )
 }
 
-function SmallStat({ label, value, note, testId }) {
-  return (
-    <div style={{ ...card, padding: 14 }} data-testid={testId}>
-      <span style={statLabel}>{label}</span>
-      <div style={{ fontSize: 22, fontWeight: 700, color: colors.text, marginTop: 4 }}>{value}</div>
-      {note && <p style={{ margin: '2px 0 0', fontSize: 11, color: colors.textMuted }}>{note}</p>}
-    </div>
-  )
-}
-
+/** The models needing something done to them, and what the something is. */
 function ActionList({ title, subtitle, models, emptyText, render, testId }) {
   return (
-    <div style={{ ...card, padding: 16 }} data-testid={testId}>
-      <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: colors.text }}>
-        {title}{' '}
-        <span style={{ color: colors.textMuted, fontWeight: 500 }}>({models.length})</span>
-      </h2>
-      <p style={{ margin: '2px 0 12px', fontSize: 12, color: colors.textLight }}>{subtitle}</p>
-
+    <div className="card" data-testid={testId}>
+      <div className="card-head">
+        <h3>{title}</h3>
+        <span className="sub">{models.length}</span>
+        <span className="right" style={{ fontSize: '.8rem', color: 'var(--ink-faint)' }}>{subtitle}</span>
+      </div>
       {models.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: colors.textMuted }}>{emptyText}</p>
+        <div className="empty">{emptyText}</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {models.map((m) => {
-            const r = render(m)
-            return (
-              <div key={m.id} style={row}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 2 }}>
-                    {m.name}
-                  </div>
-                  <SerialSpec model={m} compact />
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: colors.text }}>{r.value}</div>
-                  <Chip tone={r.tone}>{r.label}</Chip>
-                </div>
-              </div>
-            )
-          })}
+        <div className="tblwrap">
+          <table style={{ minWidth: 0 }}>
+            <tbody>
+              {models.map((m) => {
+                const r = render(m)
+                return (
+                  <tr key={m.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{m.name}</div>
+                      <SerialSpec model={m} compact />
+                    </td>
+                    <td className="num" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{r.value}</td>
+                    <td className="num"><Chip tone={r.tone}>{r.label}</Chip></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   )
-}
-
-const statLabel = {
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: colors.textMuted,
-  fontWeight: 700,
-}
-
-const row = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
-  padding: '8px 10px',
-  borderRadius: 8,
-  background: colors.bgOff,
-}
-
-const banner = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-  flexWrap: 'wrap',
-  padding: '10px 14px',
-  borderRadius: 10,
-  fontSize: 13,
-  marginBottom: 16,
-}
-
-const dismiss = {
-  background: 'none',
-  border: 'none',
-  color: 'inherit',
-  textDecoration: 'underline',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontFamily: 'inherit',
 }

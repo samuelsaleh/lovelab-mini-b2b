@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { colors, fonts, card, btn, inputSm } from '@/lib/styles'
-import { useResponsive } from '@/lib/useIsMobile'
 import { formatQty, SHELF_LABELS, POOL_LABELS } from '@/lib/igi/derive'
 import SerialSpec from './igi/SerialSpec'
 import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
+import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -21,7 +20,6 @@ const FILTERS = [
  * editable here, because each rule has exactly one owner.
  */
 export default function CertificatesStockClient() {
-  const { isCompact } = useResponsive()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -96,142 +94,116 @@ export default function CertificatesStockClient() {
     setBulkValue('')
   }
 
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <Loading />
 
   return (
-    <div style={{ padding: isCompact ? 16 : 28, fontFamily: fonts.body, maxWidth: 1180 }}>
-      <h1 style={{ fontFamily: fonts.heading, fontSize: isCompact ? 24 : 30, margin: 0, color: colors.text }}>
-        Stock &amp; alerts
-      </h1>
-      <p style={{ margin: '4px 0 20px', color: colors.textLight, fontSize: 13 }}>
-        {models.length} models in use. We set the level on our shelf; IGI sets theirs.
-      </p>
-
-      {error && (
-        <div style={{ ...banner, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={dismiss} data-testid="dismiss-error">Dismiss</button>
-        </div>
-      )}
-      {notice && (
-        <div style={{ ...banner, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }} data-testid="notice">
-          {notice}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            data-testid={`filter-${f.id}`}
-            style={{
-              ...btn.secondary,
-              padding: '6px 14px',
-              fontSize: 12,
-              background: filter === f.id ? colors.inkPlum : '#fff',
-              color: filter === f.id ? '#fff' : colors.inkPlum,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
+    <>
+      <PageHead
+        title="Stock & alerts"
+        sub={`${models.length} models in use. We set the level on our shelf; IGI sets theirs.`}
+      >
         <input
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search a name or serial"
           data-testid="search"
-          style={{ ...inputSm, width: 200, marginLeft: 'auto' }}
+          style={{ width: 200 }}
         />
+      </PageHead>
+
+      {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
+      {notice && <Toast testId="notice">{notice}</Toast>}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        {FILTERS.map((f) => (
+          <Btn
+            key={f.id}
+            kind={filter === f.id ? 'on' : undefined}
+            onClick={() => setFilter(f.id)}
+            testId={`filter-${f.id}`}
+          >
+            {f.label}
+          </Btn>
+        ))}
       </div>
 
-      <div style={{ ...card, padding: 12, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: colors.textLight }}>
-          Set our alert level for all {shown.length} shown:
-        </span>
-        <input
-          type="number"
-          min="0"
-          value={bulkValue}
-          onChange={(e) => setBulkValue(e.target.value)}
-          data-testid="bulk-value"
-          style={{ ...inputSm, width: 90 }}
-        />
-        <button
-          onClick={applyToAllShown}
-          disabled={saving || !bulkValue || !shown.length}
-          data-testid="bulk-apply"
-          style={{ ...btn.primary, padding: '6px 16px', fontSize: 12, opacity: saving || !bulkValue ? 0.5 : 1 }}
-        >
-          Apply
-        </button>
+      <div className="card">
+        <div className="nextstep">
+          <b>Set our alert level</b>
+          <span>for all {shown.length} models shown</span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="number"
+              min="0"
+              value={bulkValue}
+              onChange={(e) => setBulkValue(e.target.value)}
+              data-testid="bulk-value"
+            />
+            <Btn
+              kind="primary"
+              onClick={applyToAllShown}
+              disabled={saving || !bulkValue || !shown.length}
+              testId="bulk-apply"
+            >
+              Apply
+            </Btn>
+          </span>
+        </div>
       </div>
 
-      <div style={{ ...card, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
-          <thead>
-            <tr>
-              <th style={th}>Model</th>
-              <th style={th}>Serial · check</th>
-              <th style={thNum}>On our shelf</th>
-              <th style={thNum}>Our level</th>
-              <th style={thNum}>At IGI</th>
-              <th style={thNum}>IGI level</th>
-              <th style={thNum}>Asked now</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((m) => (
-              <tr key={m.id} data-testid="stock-row">
-                <td style={td}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{m.name}</div>
-                  <div style={{ marginTop: 3, display: 'flex', gap: 6 }}>
-                    <Chip tone={SHELF_TONE[m.shelf_status]}>{SHELF_LABELS[m.shelf_status]}</Chip>
-                    {m.pool_status === 'reorder' && (
-                      <Chip tone={POOL_TONE[m.pool_status]}>{POOL_LABELS[m.pool_status]}</Chip>
-                    )}
-                  </div>
-                </td>
-                <td style={td}><SerialSpec model={m} compact /></td>
-                <td style={tdNum}>
-                  {m.shelf == null
-                    ? <span style={{ color: colors.textMuted, fontSize: 12 }}>not mapped</span>
-                    : formatQty(m.shelf)}
-                </td>
-                <td style={tdNum}>
-                  <AlertInput
-                    value={m.shelf_min}
-                    disabled={saving}
-                    onCommit={(v) => v !== m.shelf_min && saveAlert([m.id], v)}
-                  />
-                </td>
-                <td style={tdNum}>{formatQty(m.pool)}</td>
-                <td style={tdNum}>
-                  {m.pool_min == null
-                    ? <span style={{ color: colors.textMuted, fontSize: 12 }}>not set</span>
-                    : formatQty(m.pool_min)}
-                </td>
-                <td style={tdNum}>
-                  {m.asked_now ? formatQty(m.asked_now) : <span style={{ color: colors.textMuted }}>—</span>}
-                </td>
+      <Card flush>
+        <TableWrap>
+          <table style={{ minWidth: 760 }}>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Serial · check</th>
+                <th className="num">On our shelf</th>
+                <th className="num">Our level</th>
+                <th className="num">At IGI</th>
+                <th className="num">IGI level</th>
+                <th className="num">Asked now</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {shown.length === 0 && (
-          <p style={{ padding: 20, margin: 0, color: colors.textMuted, fontSize: 13 }}>
-            No model matches this filter.
-          </p>
-        )}
-      </div>
-    </div>
+            </thead>
+            <tbody>
+              {shown.map((m) => (
+                <tr key={m.id} data-testid="stock-row">
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{m.name}</div>
+                    <div style={{ marginTop: 3, display: 'flex', gap: 6 }}>
+                      <Chip tone={SHELF_TONE[m.shelf_status]}>{SHELF_LABELS[m.shelf_status]}</Chip>
+                      {m.pool_status === 'reorder' && (
+                        <Chip tone={POOL_TONE[m.pool_status]}>{POOL_LABELS[m.pool_status]}</Chip>
+                      )}
+                    </div>
+                  </td>
+                  <td><SerialSpec model={m} compact /></td>
+                  <td className="num">
+                    {m.shelf == null ? <span className="spec">not mapped</span> : formatQty(m.shelf)}
+                  </td>
+                  <td className="num">
+                    <AlertInput
+                      value={m.shelf_min}
+                      disabled={saving}
+                      onCommit={(v) => v !== m.shelf_min && saveAlert([m.id], v)}
+                    />
+                  </td>
+                  <td className="num">{formatQty(m.pool)}</td>
+                  <td className="num">
+                    {m.pool_min == null ? <span className="spec">not set</span> : formatQty(m.pool_min)}
+                  </td>
+                  <td className="num">
+                    {m.asked_now ? formatQty(m.asked_now) : <span className="spec">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+        {shown.length === 0 && <Empty>No model matches this filter.</Empty>}
+      </Card>
+    </>
   )
 }
 
@@ -254,32 +226,7 @@ function AlertInput({ value, disabled, onCommit }) {
         else setDraft(String(value ?? ''))
       }}
       data-testid="shelf-min"
-      style={{ ...inputSm, width: 72, textAlign: 'right' }}
+      style={{ width: 72 }}
     />
   )
-}
-
-const th = {
-  textAlign: 'left',
-  padding: '10px 12px',
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  fontWeight: 700,
-  color: colors.textMuted,
-  borderBottom: `1px solid ${colors.border}`,
-  whiteSpace: 'nowrap',
-}
-const thNum = { ...th, textAlign: 'right' }
-const td = { padding: '10px 12px', borderBottom: `1px solid ${colors.borderLight}`, verticalAlign: 'top' }
-const tdNum = { ...td, textAlign: 'right', fontSize: 13, whiteSpace: 'nowrap' }
-
-const banner = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10,
-  fontSize: 13, marginBottom: 16,
-}
-const dismiss = {
-  background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline',
-  cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
 }

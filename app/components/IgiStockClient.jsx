@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { colors, fonts, card, btn, inputSm } from '@/lib/styles'
-import { useResponsive } from '@/lib/useIsMobile'
 import { formatQty, poolStatus, POOL_LABELS } from '@/lib/igi/derive'
 import SerialSpec from './igi/SerialSpec'
 import Chip, { POOL_TONE } from './igi/Chip'
+import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 /**
  * What IGI hold.
@@ -14,7 +13,6 @@ import Chip, { POOL_TONE } from './igi/Chip'
  * order book. It is deliberately the only LoveLab figure on this page.
  */
 export default function IgiStockClient() {
-  const { isCompact } = useResponsive()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -72,118 +70,107 @@ export default function IgiStockClient() {
 
   const low = models.filter((m) => poolStatus(m, m.pool) === 'reorder')
 
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.lovelabMuted }}>
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <Loading />
 
   return (
-    <div style={{ padding: isCompact ? 16 : 28, fontFamily: fonts.body, maxWidth: 1080 }}>
-      <h1 style={{ fontFamily: fonts.heading, fontSize: isCompact ? 24 : 30, margin: 0, color: colors.text }}>
-        My stock
-      </h1>
-      <p style={{ margin: '4px 0 20px', color: colors.textLight, fontSize: 13 }}>
-        {models.length} models.
-        {low.length > 0
-          ? ` ${low.length} below the level you set — worth producing more.`
-          : ' Nothing below the level you set.'}
-      </p>
-
-      {error && (
-        <div style={{ ...banner, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={dismiss} data-testid="dismiss-error">Dismiss</button>
-        </div>
-      )}
-      {notice && (
-        <div style={{ ...banner, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }} data-testid="notice">
-          {notice}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+    <>
+      <PageHead
+        title="My stock"
+        sub={`${models.length} models. ${low.length > 0
+          ? `${low.length} below the level you set — worth producing more.`
+          : 'Nothing below the level you set.'}`}
+      >
         <input
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search a name or serial"
           data-testid="search"
-          style={{ ...inputSm, width: 240 }}
+          style={{ width: 220 }}
         />
-        <span style={{ fontSize: 12, color: colors.textLight, marginLeft: 'auto' }}>
-          Warn me below, for all {shown.length} shown:
-        </span>
-        <input
-          type="number"
-          min="0"
-          value={bulk}
-          onChange={(e) => setBulk(e.target.value)}
-          data-testid="bulk-value"
-          style={{ ...inputSm, width: 90 }}
-        />
-        <button
-          onClick={() => {
-            const v = Number(bulk)
-            if (Number.isInteger(v) && v >= 0 && shown.length) {
-              setLevel(shown.map((m) => m.id), v)
-              setBulk('')
-            }
-          }}
-          disabled={saving || !bulk || !shown.length}
-          data-testid="bulk-apply"
-          style={{ ...btn.primary, padding: '6px 16px', fontSize: 12, opacity: saving || !bulk ? 0.5 : 1 }}
-        >
-          Apply
-        </button>
+      </PageHead>
+
+      {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
+      {notice && <Toast testId="notice">{notice}</Toast>}
+
+      <div className="card">
+        <div className="nextstep">
+          <b>Warn me below</b>
+          <span>for all {shown.length} models shown</span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="number"
+              min="0"
+              value={bulk}
+              onChange={(e) => setBulk(e.target.value)}
+              data-testid="bulk-value"
+            />
+            <Btn
+              kind="primary"
+              onClick={() => {
+                const v = Number(bulk)
+                if (Number.isInteger(v) && v >= 0 && shown.length) {
+                  setLevel(shown.map((m) => m.id), v)
+                  setBulk('')
+                }
+              }}
+              disabled={saving || !bulk || !shown.length}
+              testId="bulk-apply"
+            >
+              Apply
+            </Btn>
+          </span>
+        </div>
       </div>
 
-      <div style={{ ...card, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={th}>Model</th>
-              <th style={th}>Serial · check</th>
-              <th style={thNum}>You hold</th>
-              <th style={thNum}>Warn me below</th>
-              <th style={thNum}>Asked right now</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((m) => {
-              const status = poolStatus(m, m.pool)
-              return (
-                <tr key={m.id} data-testid="stock-row">
-                  <td style={td}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{m.name}</div>
-                    {status === 'reorder' && (
-                      <div style={{ marginTop: 3 }}>
-                        <Chip tone={POOL_TONE[status]}>{POOL_LABELS[status]}</Chip>
-                      </div>
-                    )}
-                  </td>
-                  <td style={td}><SerialSpec model={m} compact /></td>
-                  <td style={tdNum}>{formatQty(m.pool)}</td>
-                  <td style={tdNum}>
-                    <LevelInput
-                      value={m.pool_min}
-                      disabled={saving}
-                      onCommit={(v) => v !== m.pool_min && setLevel([m.id], v)}
-                    />
-                  </td>
-                  <td style={tdNum}>
-                    {m.asked_now
-                      ? <strong>{formatQty(m.asked_now)}</strong>
-                      : <span style={{ color: colors.textMuted }}>—</span>}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Card flush>
+        <TableWrap>
+          <table style={{ minWidth: 640 }}>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Serial · check</th>
+                <th className="num">You hold</th>
+                <th className="num">Warn me below</th>
+                <th className="num">Asked right now</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((m) => {
+                const status = poolStatus(m, m.pool)
+                return (
+                  <tr key={m.id} data-testid="stock-row">
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{m.name}</div>
+                      {status === 'reorder' && (
+                        <div style={{ marginTop: 3 }}>
+                          <Chip tone={POOL_TONE[status]}>{POOL_LABELS[status]}</Chip>
+                        </div>
+                      )}
+                    </td>
+                    <td><SerialSpec model={m} compact /></td>
+                    <td className="num">{formatQty(m.pool)}</td>
+                    <td className="num">
+                      <LevelInput
+                        value={m.pool_min}
+                        disabled={saving}
+                        onCommit={(v) => v !== m.pool_min && setLevel([m.id], v)}
+                      />
+                    </td>
+                    <td className="num">
+                      {m.asked_now
+                        ? <strong>{formatQty(m.asked_now)}</strong>
+                        : <span className="spec">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+        {shown.length === 0 && <Empty>No model matches that search.</Empty>}
+      </Card>
+    </>
   )
 }
 
@@ -207,25 +194,7 @@ function LevelInput({ value, disabled, onCommit }) {
         else setDraft(value == null ? '' : String(value))
       }}
       data-testid="pool-min"
-      style={{ ...inputSm, width: 78, textAlign: 'right' }}
+      style={{ width: 78 }}
     />
   )
-}
-
-const th = {
-  textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase',
-  letterSpacing: '0.04em', fontWeight: 700, color: colors.textMuted,
-  borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-}
-const thNum = { ...th, textAlign: 'right' }
-const td = { padding: '10px 12px', borderBottom: `1px solid ${colors.borderLight}`, verticalAlign: 'top' }
-const tdNum = { ...td, textAlign: 'right', fontSize: 13, whiteSpace: 'nowrap' }
-const banner = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10,
-  fontSize: 13, marginBottom: 16,
-}
-const dismiss = {
-  background: 'none', border: 'none', color: 'inherit', textDecoration: 'underline',
-  cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
 }

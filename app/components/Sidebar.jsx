@@ -230,16 +230,9 @@ const ICONS = {
   'agent-documents': <DocumentsIcon />,
   'agent-contracts': <ContractIcon />,
 
-  // Certificates (LoveLab x IGI). An id with no entry here silently falls back
-  // to the home icon, so every leaf added to navItems.js needs a line.
-  'certificates':          <CertificateIcon />,
-  'certificates-group':    <CertificateIcon />,
-  'certificates-request':  <OrderFormIcon />,
-  'certificates-visits':   <FairsIcon />,
-  'certificates-invoices': <ReportsIcon />,
-  'certificates-stock':    <AnalyticsIcon />,
-  'certificates-models':   <ContractIcon />,
-  'certificates-matching': <ClientsIcon />,
+  // The door into the certificate application, which has a sidebar of its own
+  // once you are inside it.
+  'certificates': <CertificateIcon />,
 
   // IGI portal
   'igi-todo':     <OrderFormIcon />,

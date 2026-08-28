@@ -31,7 +31,12 @@ const nextConfig = {
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com http://192.168.1.4 http://localhost:*; frame-src https://accounts.google.com https://www.canva.com;" },
+          // fonts.googleapis.com / fonts.gstatic.com are allowed because
+          // app/layout.jsx has always asked for webfonts from them — Playfair,
+          // Inter and Montserrat for the app, IBM Plex for the certificate
+          // module. Without these two the browser refuses every one of them and
+          // the whole app silently falls back to system faces.
+          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com http://192.168.1.4 http://localhost:*; frame-src https://accounts.google.com https://www.canva.com;" },
         ],
       },
     ]
