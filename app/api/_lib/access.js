@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { ensureAgentFolderEvent } from '@/lib/events/ensure-agent-folder';
+import { documentIsOwnOrCredited } from '@/lib/documentAccess';
 
 const PERMISSION_RANK = {
   read: 1,
@@ -97,6 +98,42 @@ export async function requireEventPermission(adminSupabase, eventId, userId, req
     allowed: (PERMISSION_RANK[actual] || 0) >= (PERMISSION_RANK[required] || 1),
     actual,
   };
+}
+
+/**
+ * May this user read or mutate THIS document?
+ *
+ * Admins: always. Assistants: if they have the required event_access on the
+ * document's fair. Agents: only when they created it or it is credited to
+ * them (agent_id). event_access alone is not enough for an agent — that is
+ * what stops an invite to Inova from leaking Alberto's orders.
+ */
+export async function canAccessDocument(adminSupabase, doc, {
+  user,
+  isAdmin = false,
+  isAssistant = false,
+  requiredEventPermission = 'read',
+} = {}) {
+  if (isAdmin) return { allowed: true };
+  if (!user?.id || !doc) return { allowed: false };
+
+  const selfIds = await resolveAgentIds(adminSupabase, user.id);
+  if (documentIsOwnOrCredited(doc, selfIds)) return { allowed: true };
+  if (await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user)) {
+    return { allowed: true };
+  }
+
+  if (isAssistant && doc.event_id) {
+    return requireEventPermission(
+      adminSupabase,
+      doc.event_id,
+      user.id,
+      requiredEventPermission,
+      false,
+    );
+  }
+
+  return { allowed: false };
 }
 
 export async function getAccessibleEventIds(adminSupabase, userId, isAdmin = false) {

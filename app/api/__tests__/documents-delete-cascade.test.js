@@ -89,6 +89,7 @@ jest.mock('@/app/api/_lib/access', () => ({
   getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-user' }, isAdmin: true }),
   isUserOwnerOrSameEmail: jest.fn().mockResolvedValue(true),
   requireEventPermission: jest.fn().mockResolvedValue({ allowed: true }),
+  canAccessDocument: jest.fn().mockResolvedValue({ allowed: true }),
 }));
 
 const recordHealthEventMock = jest.fn().mockResolvedValue({ ok: true });

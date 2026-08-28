@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
+import { canAccessDocument, getUserContext } from '@/app/api/_lib/access';
 
 // UUID v4 format validation
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,7 +14,7 @@ export async function GET(request) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -32,7 +32,7 @@ export async function GET(request) {
 
       const { data, error } = await adminSupabase
         .from('documents')
-        .select('id, file_path, created_by, event_id')
+        .select('id, file_path, created_by, event_id, agent_id')
         .eq('id', docId)
         .single();
 
@@ -58,7 +58,7 @@ export async function GET(request) {
 
       const { data, error } = await adminSupabase
         .from('documents')
-        .select('id, file_path, created_by, event_id')
+        .select('id, file_path, created_by, event_id, agent_id')
         .eq('file_path', filePath)
         .single();
 
@@ -68,11 +68,9 @@ export async function GET(request) {
       doc = data;
     }
 
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'read', isAdmin)
-      : { allowed: false };
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
-    const canRead = isAdmin || isOwner || eventAccess.allowed;
+    const { allowed: canRead } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'read',
+    });
     if (!canRead) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

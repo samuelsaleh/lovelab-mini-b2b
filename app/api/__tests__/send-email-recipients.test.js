@@ -60,6 +60,7 @@ jest.mock('@/app/api/_lib/access', () => ({
   getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-user', email: 'admin@example.com' }, isAdmin: true }),
   requireEventPermission: jest.fn().mockResolvedValue({ allowed: true }),
   isUserOwnerOrSameEmail: jest.fn().mockResolvedValue(true),
+  canAccessDocument: jest.fn().mockResolvedValue({ allowed: true }),
 }))
 
 // fs.readFile is used to attach the catalogue PDF. Stub it so the test

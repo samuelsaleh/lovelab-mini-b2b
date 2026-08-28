@@ -5,6 +5,7 @@ import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds, resolveAgentFolderEventId } from '@/app/api/_lib/access';
+import { buildAgentDocumentOrFilter, buildAssistantDocumentOrFilter } from '@/lib/documentAccess';
 import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
@@ -19,7 +20,7 @@ export async function GET(request) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -105,28 +106,43 @@ export async function GET(request) {
       }
     } else if (!isAdmin) {
       const userIds = await resolveAgentIds(adminSupabase, user.id);
-      const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
 
-      // Team visibility: an org member's default list also includes their
-      // teammates' documents (everyone in an org sees the same data).
-      // scope=mine opts back into the personal-only view (analytics toggle).
-      const memberships = scopeMine ? [] : await getActiveOrgMemberships(adminSupabase, user.id);
-      const teamCreatorIds = new Set(userIds);
-      const teamEventIds = new Set(accessibleEventIds);
-      for (const membership of memberships) {
-        const scope = await getOrgTeamScope(adminSupabase, membership.organization_id);
-        scope.memberIds.forEach((id) => teamCreatorIds.add(id));
-        scope.eventIds.forEach((id) => teamEventIds.add(id));
-      }
-
-      const creatorIds = [...teamCreatorIds];
-      const eventIds = [...teamEventIds];
-      if (eventIds.length > 0) {
-        query = query.or(`created_by.in.(${creatorIds.join(',')}),event_id.in.(${eventIds.join(',')})`);
+      // Assistants keep the old folder-level rule: event_access unlocks every
+      // order in the granted fair (they type everyone else's orders).
+      // Agents must NOT get that — inviting Bastian to Inova would otherwise
+      // leak Alberto's admin-taken orders. Agents see created_by / agent_id
+      // matches only. Team expansion still applies on All Documents.
+      if (isAssistant) {
+        const accessibleEventIds = await getAccessibleEventIds(adminSupabase, user.id, isAdmin);
+        const assistantOr = buildAssistantDocumentOrFilter({
+          selfIds: userIds,
+          accessibleEventIds,
+        });
+        if (assistantOr) {
+          query = query.or(assistantOr);
+        } else {
+          return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
+        }
       } else {
-        query = creatorIds.length === 1
-          ? query.eq('created_by', creatorIds[0])
-          : query.in('created_by', creatorIds);
+        const memberships = scopeMine ? [] : await getActiveOrgMemberships(adminSupabase, user.id);
+        const teamCreatorIds = new Set(userIds);
+        if (!eventId) {
+          for (const membership of memberships) {
+            const scope = await getOrgTeamScope(adminSupabase, membership.organization_id);
+            scope.memberIds.forEach((id) => teamCreatorIds.add(id));
+          }
+        }
+
+        const agentOr = buildAgentDocumentOrFilter({
+          selfIds: userIds,
+          teamCreatorIds: eventId ? userIds : [...teamCreatorIds],
+          includeAgentId: hasAgentCol,
+        });
+        if (agentOr) {
+          query = query.or(agentOr);
+        } else {
+          return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
+        }
       }
     }
 

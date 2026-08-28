@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission, resolveAgentFolderEventId } from '@/app/api/_lib/access';
+import { canAccessDocument, getUserContext, resolveAgentFolderEventId } from '@/app/api/_lib/access';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
 import { orderNotificationEmail } from '@/lib/email-templates';
@@ -21,7 +21,7 @@ export async function GET(request, { params }) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -41,12 +41,10 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Access check: admin can see everything; others can only see their own or event-shared docs
-    const isOwner = doc.created_by === user.id;
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'read', isAdmin).catch(() => ({ allowed: false }))
-      : { allowed: false };
-    if (!isAdmin && !isOwner && !eventAccess.allowed) {
+    const { allowed } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'read',
+    });
+    if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -65,7 +63,7 @@ export async function PUT(request, { params }) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -81,18 +79,16 @@ export async function PUT(request, { params }) {
     // First, get the old document to delete old file
     const { data: oldDoc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by, event_id, status, order_channel')
+      .select('file_path, created_by, event_id, agent_id, status, order_channel')
       .eq('id', id)
       .single();
 
     if (fetchError || !oldDoc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, oldDoc.created_by, user);
-    const eventAccess = oldDoc.event_id
-      ? await requireEventPermission(adminSupabase, oldDoc.event_id, user.id, 'edit', isAdmin)
-      : { allowed: false };
-    const canEdit = isAdmin || isOwner || eventAccess.allowed;
+    const { allowed: canEdit } = await canAccessDocument(adminSupabase, oldDoc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'edit',
+    });
     if (!canEdit) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -291,7 +287,7 @@ export async function DELETE(request, { params }) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -305,18 +301,16 @@ export async function DELETE(request, { params }) {
     // Verify document exists and belongs to user
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, created_by, event_id')
+      .select('id, created_by, event_id, agent_id')
       .eq('id', id)
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
-      : { allowed: false };
-    const canDelete = isAdmin || isOwner || eventAccess.allowed;
+    const { allowed: canDelete } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'edit',
+    });
     if (!canDelete) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -377,7 +371,7 @@ export async function PATCH(request, { params }) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -397,18 +391,13 @@ export async function PATCH(request, { params }) {
 
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, created_by, event_id, metadata, order_channel, status, document_type, client_name, client_company, total_amount, file_name')
+      .select('id, created_by, event_id, agent_id, metadata, order_channel, status, document_type, client_name, client_company, total_amount, file_name')
       .eq('id', id)
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
-      : { allowed: false };
 
     // Must provide at least one updatable field
     const hasName = newName && newName.length <= 255;
@@ -424,7 +413,10 @@ export async function PATCH(request, { params }) {
     if (hasChannel && !isAdmin) {
       return NextResponse.json({ error: 'Only admins can change order channel' }, { status: 403 });
     }
-    if (!isAdmin && !isOwner && !eventAccess.allowed) {
+    const { allowed } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'edit',
+    });
+    if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

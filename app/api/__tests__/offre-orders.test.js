@@ -216,6 +216,7 @@ describe('PUT /api/documents/:id — Offre bucket', () => {
       getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-1' }, isAdmin }),
       isUserOwnerOrSameEmail: jest.fn().mockResolvedValue(true),
       requireEventPermission: jest.fn().mockResolvedValue({ allowed: true }),
+      canAccessDocument: jest.fn().mockResolvedValue({ allowed: true }),
       resolveAgentFolderEventId: jest.fn().mockResolvedValue('evt-agent'),
     }));
     jest.doMock('@/lib/commissionAttribution', () => ({
