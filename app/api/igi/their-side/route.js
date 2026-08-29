@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { loadIgiWorld } from '@/app/api/igi-portal/_lib/load';
-import { toIgiModel, toIgiLine, toIgiVisit } from '@/lib/igi/portalShapes';
-import { visitTotal } from '@/lib/igi/derive';
+import { todoView, stockView, historyView } from '@/lib/igi/portalViews';
 
 /**
  * GET /api/igi/their-side — what IGI see, assembled for LoveLab to look at.
@@ -13,10 +12,12 @@ import { visitTotal } from '@/lib/igi/derive';
  *
  * The honest way to build that is to reuse the portal's own machinery rather
  * than write a second query that looks similar today and drifts by March. This
- * route calls loadIgiWorld — the same loader IGI's five screens use — and puts
- * every row through the same toIgiModel / toIgiLine / toIgiVisit shapers. So
- * this preview cannot show more than IGI can see: to widen it you would have to
- * widen their portal, and lib/__tests__/igi-portal-serialize.test.js would fail.
+ * route calls loadIgiWorld — the same loader IGI's five screens use — and the
+ * same view builders their routes call. So this summary cannot show more than
+ * IGI can see: to widen it you would have to widen their portal.
+ *
+ * For the portal itself rather than this summary of it, see
+ * /api/igi/preview/[screen], which serves IGI's four screens verbatim.
  *
  * It reads with the service-role client, which RLS does not constrain, which is
  * exactly why loadIgiWorld filters the reserved serials itself.
@@ -27,41 +28,13 @@ export async function GET(request) {
 
   try {
     const world = await loadIgiWorld(auth.adminSupabase);
-
-    const linesFor = (visit) => world.lines
-      .filter((l) => l.visit_id === visit.id)
-      .map((l) => toIgiLine(l, world.modelById.get(l.model_id), world.poolFor(l.model_id)));
+    const history = historyView(world);
 
     return NextResponse.json({
-      // Their To do — the whole product from where they stand.
-      todo: world.visits
-        .filter((v) => v.status === 'requested')
-        .map((v) => toIgiVisit(v, linesFor(v))),
-
-      // Their stock, with their own alert levels and their order book.
-      models: world.models.map((m) => toIgiModel(m, {
-        pool: world.poolFor(m.id),
-        askedNow: world.askedFor(m.id),
-      })),
-
-      // Their history: movements and the batches they have recorded producing.
-      visits: world.visits.map((v) => ({
-        id: v.id,
-        visit_no: v.visit_no,
-        visit_date: v.visit_date,
-        status: v.status,
-        date_suspect: v.date_suspect,
-        unattributed_total: v.unattributed_total,
-        total: visitTotal(v, world.lines),
-        line_count: world.lines.filter((l) => l.visit_id === v.id).length,
-      })),
-      batches: world.batches
-        .map((b) => ({
-          ...b,
-          serial: world.modelById.get(b.model_id)?.serial ?? null,
-          name: world.modelById.get(b.model_id)?.name ?? 'Unknown model',
-        }))
-        .sort((a, b) => String(b.batch_date).localeCompare(String(a.batch_date))),
+      todo: todoView(world).visits,      // their To do
+      models: stockView(world).models,   // their stock and order book
+      visits: history.visits,            // their history
+      batches: history.batches,          // the production they have recorded
     });
   } catch (err) {
     return fail('IGI/TheirSide GET', err, 'Failed to load IGI’s side');

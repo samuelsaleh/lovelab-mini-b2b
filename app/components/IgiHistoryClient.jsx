@@ -5,10 +5,12 @@ import { formatQty, visitRef, sameDayLabel } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import { VISIT_LABELS, VISIT_TONES } from '@/lib/igi/visits'
 import Chip from './igi/Chip'
+import { useIgiPortal } from './certificates/IgiPortalContext'
 import { PageHead, Card, Loading, Toast, Switch, TableWrap } from './certificates/ui'
 
 /** What has already happened. Read only. */
 export default function IgiHistoryClient() {
+  const { base, readOnly } = useIgiPortal()
   const [visits, setVisits] = useState([])
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -20,7 +22,7 @@ export default function IgiHistoryClient() {
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/igi-portal/history')
+      const res = await fetch(`${base}/history`)
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Could not load the history')
       setVisits(body.visits || [])

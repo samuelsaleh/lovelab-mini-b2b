@@ -5,10 +5,12 @@ import { formatQty, formatEur } from '@/lib/igi/derive'
 import { formatMonth } from '@/lib/igi/dates'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
+import { useIgiPortal } from './certificates/IgiPortalContext'
 import { PageHead, Card, Loading, Toast, TableWrap, Empty } from './certificates/ui'
 
 /** What IGI have issued, month by month, at the agreed fee. */
 export default function IgiInvoicesClient() {
+  const { base, readOnly } = useIgiPortal()
   const [months, setMonths] = useState([])
   const [fee, setFee] = useState(1.2)
   const [loading, setLoading] = useState(true)
@@ -19,7 +21,7 @@ export default function IgiInvoicesClient() {
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/igi-portal/invoices')
+      const res = await fetch(`${base}/invoices`)
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Could not load the invoices')
       setMonths(body.months || [])

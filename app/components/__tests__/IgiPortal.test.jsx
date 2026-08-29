@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import IgiTodoClient from '../IgiTodoClient'
 import IgiStockClient from '../IgiStockClient'
 import IgiAddBatchClient from '../IgiAddBatchClient'
+import { IgiPortalProvider } from '../certificates/IgiPortalContext'
 
 // Numbers group with a narrow no-break space; Testing Library normalises
 // whitespace, so assertions below use a plain space.
@@ -191,5 +192,71 @@ describe('IGI: add a batch', () => {
     render(<IgiAddBatchClient />)
     await waitFor(() => expect(screen.getByTestId('model')).toBeInTheDocument())
     expect(screen.getByText(/never edited or removed/)).toBeInTheDocument()
+  })
+})
+
+describe('a LoveLab admin previewing IGI’s portal', () => {
+  // Reading their screens is fair — Sam needs to know what he is asking of
+  // another company. Typing on their behalf is not: the record is only worth
+  // something to both sides while each enters its own half.
+  function preview(ui) {
+    return render(
+      <IgiPortalProvider base="/api/igi/preview" readOnly>{ui}</IgiPortalProvider>,
+    )
+  }
+
+  it('reads their screens from the preview route, not their own', async () => {
+    const seen = []
+    global.fetch = jest.fn((url) => {
+      seen.push(String(url))
+      return Promise.resolve({ ok: true, json: async () => ({ visits: VISITS }) })
+    })
+    preview(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getAllByTestId('todo-line')).toHaveLength(2))
+    expect(seen).toEqual(['/api/igi/preview/todo'])
+  })
+
+  it('shows everything and lets none of it be typed', async () => {
+    mockFetch()
+    preview(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getAllByTestId('todo-line')).toHaveLength(2))
+
+    // The figures are all there — that is the point of looking.
+    expect(screen.getByText('900')).toBeInTheDocument()
+    expect(screen.getByText('short by 459')).toBeInTheDocument()
+    // The controls are not.
+    expect(screen.getByTestId('send-to-lovelab')).toBeDisabled()
+    for (const input of screen.getAllByTestId('made-qty')) expect(input).toBeDisabled()
+    expect(screen.getByText(/only igi can record what they made/i)).toBeInTheDocument()
+  })
+
+  it('will not let LoveLab set IGI’s own alert level', async () => {
+    mockFetch()
+    preview(<IgiStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
+    expect(screen.getByTestId('bulk-apply')).toBeDisabled()
+    expect(screen.getByTestId('bulk-value')).toBeDisabled()
+    for (const input of screen.getAllByTestId('pool-min')) expect(input).toBeDisabled()
+  })
+
+  it('will not let LoveLab record production for them', async () => {
+    mockFetch()
+    preview(<IgiAddBatchClient />)
+    await waitFor(() => expect(screen.getByTestId('model')).toBeInTheDocument())
+    expect(screen.getByTestId('model')).toBeDisabled()
+    expect(screen.getByTestId('qty')).toBeDisabled()
+    expect(screen.getByTestId('save-batch')).toBeDisabled()
+  })
+
+  it('leaves IGI’s own visit alone — same components, their route, their buttons', async () => {
+    const seen = []
+    global.fetch = jest.fn((url) => {
+      seen.push(String(url))
+      return Promise.resolve({ ok: true, json: async () => ({ visits: VISITS }) })
+    })
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getAllByTestId('todo-line')).toHaveLength(2))
+    expect(seen).toEqual(['/api/igi-portal/todo'])
+    expect(screen.getByTestId('send-to-lovelab')).not.toBeDisabled()
   })
 })

@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/igi/dates'
 import { VISIT_LABELS, VISIT_TONES } from '@/lib/igi/visits'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip, { POOL_TONE } from './igi/Chip'
+import Link from 'next/link'
 import { PageHead, Card, Loading, Note, Toast, Switch, TableWrap, Empty } from './certificates/ui'
 
 const TABS = [
@@ -70,10 +71,17 @@ export default function CertificatesIgiSideClient() {
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
 
       <Note testId="mirror-note">
-        This is <strong>exactly</strong> what IGI Antwerp see when they sign in — same figures,
-        same wording, built from their own screens rather than a copy of them. They never see
-        our shelf, our alert levels, how fast anything sells, the reserved serials, or the
-        matching table. It is read only here: recording what they produced is theirs to do.
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 320 }}>
+            This is <strong>exactly</strong> what IGI Antwerp see when they sign in — same
+            figures, built from their own screens rather than a copy of them. They never see our
+            shelf, our alert levels, how fast anything sells, the reserved serials, or the
+            matching table. Read only: recording what they produced is theirs to do.
+          </span>
+          <Link href="/igi" className="btn primary" data-testid="open-their-portal">
+            Open their portal →
+          </Link>
+        </div>
       </Note>
 
       {tab === 'todo' && <TheirTodo visits={todo} />}

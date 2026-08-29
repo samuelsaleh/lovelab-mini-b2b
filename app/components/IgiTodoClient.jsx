@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { formatQty, visitRef } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import SerialSpec from './igi/SerialSpec'
+import { useIgiPortal } from './certificates/IgiPortalContext'
 import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates/ui'
 
 /**
@@ -14,6 +15,7 @@ import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates
  * only question they need answered is how many of each to make.
  */
 export default function IgiTodoClient() {
+  const { base, readOnly } = useIgiPortal()
   const [visits, setVisits] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -26,7 +28,7 @@ export default function IgiTodoClient() {
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/igi-portal/todo')
+      const res = await fetch(`${base}/todo`)
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Could not load your list')
       setVisits(body.visits || [])
@@ -131,6 +133,7 @@ export default function IgiTodoClient() {
                     type="number"
                     min="0"
                     placeholder={String(line.qty_requested)}
+                    disabled={readOnly}
                     value={made[visit.id]?.[line.model_id] ?? ''}
                     onChange={(e) => setMade((m) => ({
                       ...m,
@@ -143,10 +146,19 @@ export default function IgiTodoClient() {
             ))}
 
             <div className="task-foot">
-              <Btn kind="primary" onClick={() => send(visit)} disabled={savingId === visit.id} testId="send-to-lovelab">
+              <Btn
+                kind="primary"
+                onClick={() => send(visit)}
+                disabled={readOnly || savingId === visit.id}
+                testId="send-to-lovelab"
+              >
                 {savingId === visit.id ? 'Sending…' : 'Send back to LoveLab'}
               </Btn>
-              <span className="msg">Leave a model empty if you made everything they asked for.</span>
+              <span className="msg">
+                {readOnly
+                  ? 'Only IGI can record what they made. This is their screen, not yours to type on.'
+                  : 'Leave a model empty if you made everything they asked for.'}
+              </span>
             </div>
           </div>
         )
