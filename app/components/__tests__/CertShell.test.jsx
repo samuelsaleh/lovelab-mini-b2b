@@ -16,8 +16,8 @@ function renderShell(props = {}) {
     <CertShell
       nav={CERTIFICATE_NAV}
       home="/certificates"
-      theme="lovelab"
       brand="LoveLab"
+      mark="/logo.png"
       title="Certificates"
       banner="every IGI movement, held once"
       exit={{ href: '/admin', label: '← Back to LoveLab' }}
@@ -39,12 +39,8 @@ describe('the certificate application shell', () => {
     expect(screen.getByText('the page')).toBeInTheDocument()
   })
 
-  it('wears LoveLab’s skin and LoveLab’s actual mark', () => {
-    // The theme class is the only thing separating the two skins, so it is
-    // worth asserting rather than assuming.
+  it('shows LoveLab’s actual mark rather than a typed word', () => {
     const { container } = renderShell()
-    expect(container.querySelector('.certapp.lovelab')).toBeInTheDocument()
-
     const logo = container.querySelector('aside .logo img')
     expect(logo).toHaveAttribute('src', '/logo.png')
     expect(logo).toHaveAttribute('alt', 'LoveLab')
@@ -82,10 +78,10 @@ describe('the certificate application shell', () => {
     expect(signOut).toHaveBeenCalled()
   })
 
-  it('gives IGI the same shell with no way out, and not LoveLab’s colours', () => {
+  it('gives IGI the same shell, under their own name, with no way out', () => {
     // IGI are another company. There is nowhere in this app for them to go
-    // back to, so offering a door would be a lie — and the blue skin is how
-    // they can tell at a glance that this screen is theirs, not LoveLab's.
+    // back to, so offering a door would be a lie — and LoveLab's mark over an
+    // outside company's workbench would be another one.
     pathname = '/igi/stock'
     const { container } = render(
       <CertShell nav={IGI_NAV_ITEMS} home="/igi" brand="IGI Antwerp" title="LoveLab certificates" banner="what LoveLab are waiting on" exit={null}>
@@ -93,8 +89,6 @@ describe('the certificate application shell', () => {
       </CertShell>,
     )
     expect(container.querySelector('.certapp')).toBeInTheDocument()
-    expect(container.querySelector('.certapp.lovelab')).not.toBeInTheDocument()
-    // Their own name, typed — not LoveLab's mark over an outside company's bench.
     expect(container.querySelector('aside .logo')).toHaveTextContent('IGI Antwerp')
     expect(container.querySelector('aside .logo img')).toBeNull()
 

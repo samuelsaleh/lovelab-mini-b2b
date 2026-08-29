@@ -25,32 +25,23 @@ export default function CertificatesLayout({ children }) {
   }, [loading, allowed, router])
 
   if (loading) {
-    return <div className="certapp lovelab"><div className="loading">Loading</div></div>
+    return <div className="certapp"><div className="loading">Loading</div></div>
   }
 
   if (!allowed) return null
 
   return (
-    <>
-      {/* Cormorant Garamond is LoveLab's display face, per their brand book.
-          Montserrat already comes from the root layout. Loading it here rather
-          than globally keeps it off every other screen in the app. */}
-      <link
-        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&display=swap"
-        rel="stylesheet"
-      />
-      <CertShell
-        nav={CERTIFICATE_NAV}
-        home="/certificates"
-        theme="lovelab"
-        brand="LoveLab"
-        title="Certificates"
-        banner="every IGI movement, held once"
-        status="LoveLab Antwerp"
-        exit={{ href: '/admin', label: '← Back to LoveLab' }}
-      >
-        {children}
-      </CertShell>
-    </>
+    <CertShell
+      nav={CERTIFICATE_NAV}
+      home="/certificates"
+      brand="LoveLab"
+      mark="/logo.png"
+      title="Certificates"
+      banner="every IGI movement, held once"
+      status="LoveLab Antwerp"
+      exit={{ href: '/admin', label: '← Back to LoveLab' }}
+    >
+      {children}
+    </CertShell>
   )
 }
