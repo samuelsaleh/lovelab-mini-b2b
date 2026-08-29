@@ -17,7 +17,18 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(...a) }));
 
-const preview = require('../igi/preview/[screen]/route');
+const previewTodo = require('../igi/preview/todo/route');
+const previewStock = require('../igi/preview/stock/route');
+const previewHistory = require('../igi/preview/history/route');
+const previewInvoices = require('../igi/preview/invoices/route');
+const previewBatches = require('../igi/preview/batches/route');
+const previewAlerts = require('../igi/preview/alerts/route');
+const previewProduce = require('../igi/preview/todo/[visitId]/produce/route');
+
+const PREVIEW = {
+  todo: previewTodo, stock: previewStock,
+  history: previewHistory, invoices: previewInvoices,
+};
 const portalTodo = require('../igi-portal/todo/route');
 const portalStock = require('../igi-portal/stock/route');
 const portalHistory = require('../igi-portal/history/route');
@@ -52,6 +63,10 @@ function sb({ profile }) {
         eq: () => chain,
         maybeSingle: async () => ({ data: table === 'profiles' ? profile : rows[0] ?? null, error: null }),
         single: async () => ({ data: table === 'profiles' ? profile : rows[0] ?? null, error: null }),
+        update: () => ({
+          eq: async () => ({ data: null, error: null }),
+          in: () => ({ select: async () => ({ data: [], error: null }) }),
+        }),
         then: (resolve) => resolve({ data: rows, error: null }),
       };
       return chain;
@@ -59,8 +74,11 @@ function sb({ profile }) {
   };
 }
 
-const req = () => new global.Request('http://localhost/api/igi/preview/todo');
-const params = (screen) => ({ params: Promise.resolve({ screen }) });
+const req = (body, method = 'GET') => new global.Request('http://localhost/api/igi/preview', {
+  method,
+  headers: { 'content-type': 'application/json' },
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
 
 beforeEach(() => {
   checkRateLimit.mockReset().mockReturnValue(null);
@@ -73,7 +91,7 @@ const SCREENS = ['todo', 'stock', 'history', 'invoices'];
 
 describe('every IGI screen has a working preview', () => {
   it.each(SCREENS)('%s answers', async (screen) => {
-    const res = await preview.GET(req(), params(screen));
+    const res = await PREVIEW[screen].GET(req());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(expect.any(Object));
   });
@@ -90,32 +108,73 @@ describe('every IGI screen has a working preview', () => {
 
     global.__sb = sb({ profile: { id: 'sam', role: 'admin' } });
     const ours = await Promise.all(
-      SCREENS.map(async (s) => (await preview.GET(req(), params(s))).json()),
+      SCREENS.map(async (s) => (await PREVIEW[s].GET(req())).json()),
     );
 
     expect(ours).toEqual(theirs);
   })
 
   it('hides the reserved serials, which RLS is not there to do for an admin', async () => {
-    const body = await (await preview.GET(req(), params('stock'))).json();
+    const body = await (await previewStock.GET(req())).json();
     expect(body.models.map((m) => m.serial)).toEqual(['LGAJ6530']);
-  });
-
-  it('refuses a screen that does not exist', async () => {
-    const res = await preview.GET(req(), params('shelf'));
-    expect(res.status).toBe(404);
-  });
-
-  it('refuses a screen name that is a prototype property', async () => {
-    // `PORTAL_VIEWS[screen]` would happily hand back Object.prototype members.
-    const res = await preview.GET(req(), params('constructor'));
-    expect(res.status).toBe(404);
   });
 
   it('refuses anyone who is not a LoveLab admin', async () => {
     global.__sb = sb({ profile: { id: 'igi-1', role: 'user', is_igi: true } });
     global.__admin = sb({ profile: { id: 'igi-1', role: 'user', is_igi: true } });
-    const res = await preview.GET(req(), params('stock'));
+    for (const screen of SCREENS) {
+      expect((await PREVIEW[screen].GET(req())).status).toBe(403);
+    }
+  });
+});
+
+describe('and can drive their half, under his own name', () => {
+  // The row records who acted. That is what keeps "each company enters its own
+  // half" true once IGI are live, without leaving their half untestable before.
+  it('records a batch, stamped with the admin who made it', async () => {
+    let inserted = null;
+    global.__admin = { ...sb({ profile: { id: 'sam', role: 'admin' } }), from: (t) => ({
+      insert: (payload) => { inserted = payload; return {
+        select: () => ({ single: async () => ({ data: { id: 'b9', ...payload }, error: null }) }) } },
+      select: () => ({ eq: () => ({ single: async () => ({ data: { id: 'sam', role: 'admin' }, error: null }) }) }),
+    }) };
+    const res = await previewBatches.POST(
+      req({ model_id: 'm1', qty: 500, batch_date: '2026-08-29' }, 'POST'));
+
+    expect(res.status).toBe(201);
+    expect(inserted).toMatchObject({ model_id: 'm1', qty: 500, created_by: 'sam' });
+  });
+
+  it('refuses a batch with no quantity, in the same words IGI would see', async () => {
+    const res = await previewBatches.POST(req({ model_id: 'm1', batch_date: '2026-08-29' }, 'POST'));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/how many did you make/i);
+  });
+
+  it('sets IGI’s alert level', async () => {
+    let patched = null;
+    global.__admin = { ...sb({ profile: { id: 'sam', role: 'admin' } }), from: (t) => ({
+      update: (p) => { patched = p; return { in: () => ({ select: async () => ({ data: [], error: null }) }) } },
+      select: () => ({ eq: () => ({ single: async () => ({ data: { id: 'sam', role: 'admin' }, error: null }) }) }),
+    }) };
+    const res = await previewAlerts.PATCH(req({ model_ids: ['m1'], pool_min: 250 }, 'PATCH'));
+    expect(res.status).toBe(200);
+    expect(patched).toEqual({ pool_min: 250 });
+  });
+
+  it('records production against the admin, and only on a movement waiting on IGI', async () => {
+    const res = await previewProduce.PATCH(
+      req({ made: { m1: 60 } }, 'PATCH'),
+      { params: Promise.resolve({ visitId: 'v1' }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ visit_no: 24, made: expect.any(Number) });
+  });
+
+  it('refuses to write for anyone who is not a LoveLab admin', async () => {
+    global.__sb = sb({ profile: { id: 'igi-1', role: 'user', is_igi: true } });
+    global.__admin = sb({ profile: { id: 'igi-1', role: 'user', is_igi: true } });
+    const res = await previewBatches.POST(
+      req({ model_id: 'm1', qty: 5, batch_date: '2026-08-29' }, 'POST'));
     expect(res.status).toBe(403);
   });
 });

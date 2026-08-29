@@ -15,7 +15,7 @@ import { PageHead, Card, Loading, Toast, Btn } from './certificates/ui'
  * mistake is corrected by adding a correcting batch, and the trail survives.
  */
 export default function IgiAddBatchClient() {
-  const { base, readOnly } = useIgiPortal()
+  const { base, preview } = useIgiPortal()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -47,7 +47,7 @@ export default function IgiAddBatchClient() {
   async function save() {
     setSaving(true)
     try {
-      const res = await fetch('/api/igi-portal/batches', {
+      const res = await fetch(`${base}/batches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -82,8 +82,8 @@ export default function IgiAddBatchClient() {
     <div style={{ maxWidth: 620 }}>
       <PageHead
         title="Add a batch"
-        sub={readOnly
-          ? 'What IGI use to record production. Only they can add one.'
+        sub={preview
+          ? 'What IGI use to record production. Anything you add is recorded against your name.'
           : 'Certificates you have produced. They are added to your stock.'}
       />
 
@@ -97,7 +97,6 @@ export default function IgiAddBatchClient() {
             <select
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
-              disabled={readOnly}
               data-testid="model"
               style={{ width: '100%', maxWidth: 'none' }}
             >
@@ -123,7 +122,6 @@ export default function IgiAddBatchClient() {
                 min="1"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
-                disabled={readOnly}
               data-testid="qty"
                 style={{ width: 120 }}
               />
@@ -134,7 +132,6 @@ export default function IgiAddBatchClient() {
                 type="date"
                 value={batchDate}
                 onChange={(e) => setBatchDate(e.target.value)}
-                disabled={readOnly}
               data-testid="batch-date"
               />
             </label>
@@ -147,14 +144,13 @@ export default function IgiAddBatchClient() {
               value={reference}
               onChange={(e) => setReference(e.target.value)}
               placeholder="e.g. ATW/26/SC/02896"
-              disabled={readOnly}
               data-testid="reference"
               style={{ width: '100%' }}
             />
           </label>
 
           <div>
-            <Btn kind="primary" onClick={save} disabled={readOnly || !ready || saving} testId="save-batch">
+            <Btn kind="primary" onClick={save} disabled={!ready || saving} testId="save-batch">
               {saving ? 'Saving…' : 'Add to my stock'}
             </Btn>
           </div>

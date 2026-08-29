@@ -15,7 +15,7 @@ import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates
  * only question they need answered is how many of each to make.
  */
 export default function IgiTodoClient() {
-  const { base, readOnly } = useIgiPortal()
+  const { base, preview } = useIgiPortal()
   const [visits, setVisits] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -43,7 +43,7 @@ export default function IgiTodoClient() {
   async function send(visit) {
     setSavingId(visit.id)
     try {
-      const res = await fetch(`/api/igi-portal/todo/${visit.id}/produce`, {
+      const res = await fetch(`${base}/todo/${visit.id}/produce`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ made: made[visit.id] || {} }),
@@ -133,7 +133,6 @@ export default function IgiTodoClient() {
                     type="number"
                     min="0"
                     placeholder={String(line.qty_requested)}
-                    disabled={readOnly}
                     value={made[visit.id]?.[line.model_id] ?? ''}
                     onChange={(e) => setMade((m) => ({
                       ...m,
@@ -149,15 +148,14 @@ export default function IgiTodoClient() {
               <Btn
                 kind="primary"
                 onClick={() => send(visit)}
-                disabled={readOnly || savingId === visit.id}
+                disabled={savingId === visit.id}
                 testId="send-to-lovelab"
               >
                 {savingId === visit.id ? 'Sending…' : 'Send back to LoveLab'}
               </Btn>
               <span className="msg">
-                {readOnly
-                  ? 'Only IGI can record what they made. This is their screen, not yours to type on.'
-                  : 'Leave a model empty if you made everything they asked for.'}
+                Leave a model empty if you made everything they asked for.
+                {preview && ' Recorded against your name, not IGI’s.'}
               </span>
             </div>
           </div>

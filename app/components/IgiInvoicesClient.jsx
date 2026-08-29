@@ -10,7 +10,7 @@ import { PageHead, Card, Loading, Toast, TableWrap, Empty } from './certificates
 
 /** What IGI have issued, month by month, at the agreed fee. */
 export default function IgiInvoicesClient() {
-  const { base, readOnly } = useIgiPortal()
+  const { base } = useIgiPortal()
   const [months, setMonths] = useState([])
   const [fee, setFee] = useState(1.2)
   const [loading, setLoading] = useState(true)

@@ -18,11 +18,12 @@ import '../certificates/certificates.css'
  *   /igi; this guard is the second of the two, not the only one.
  *
  *   A LoveLab admin, in preview. Sam needs to see what he is asking of another
- *   company — both before handing over a login and afterwards, when IGI ring up
- *   about something on their screen. Reading it is fair. Typing on their behalf
- *   is not: the record is only worth something to both sides while each side
- *   enters its own half, so every write control is disabled and the preview API
- *   has no write route to call even if one slipped through.
+ *   company — before handing over a login, and afterwards when IGI ring up
+ *   about something on their screen. He can drive it too: their half has to be
+ *   testable before it is handed over, and a portal whose buttons do nothing
+ *   cannot be tested. Every row records who acted, so what he does here says
+ *   his name rather than IGI's, which is the truth and is what anybody wants to
+ *   find later when a figure is queried.
  *
  * Nobody else gets in at all.
  */
@@ -50,10 +51,7 @@ export default function IgiLayout({ children }) {
   const preview = !isIgi
 
   return (
-    <IgiPortalProvider
-      base={preview ? '/api/igi/preview' : '/api/igi-portal'}
-      readOnly={preview}
-    >
+    <IgiPortalProvider base={preview ? '/api/igi/preview' : '/api/igi-portal'} preview={preview}>
       <CertShell
         nav={IGI_NAV_ITEMS}
         home="/igi"
@@ -61,7 +59,7 @@ export default function IgiLayout({ children }) {
         mark="/igi-logo.png"
         title="LoveLab certificates"
         banner={preview
-          ? 'preview — IGI’s screens exactly as they see them, read only'
+          ? 'acting as IGI — their screens, live, recorded against your name'
           : 'what LoveLab are waiting on'}
         status={preview ? 'Viewing as LoveLab' : 'IGI portal'}
         exit={preview ? { href: '/certificates', label: '← Back to certificates' } : null}

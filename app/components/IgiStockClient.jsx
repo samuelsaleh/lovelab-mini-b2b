@@ -14,7 +14,7 @@ import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certifi
  * order book. It is deliberately the only LoveLab figure on this page.
  */
 export default function IgiStockClient() {
-  const { base, readOnly } = useIgiPortal()
+  const { base, preview } = useIgiPortal()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -43,7 +43,7 @@ export default function IgiStockClient() {
   async function setLevel(modelIds, poolMin) {
     setSaving(true)
     try {
-      const res = await fetch('/api/igi-portal/alerts', {
+      const res = await fetch(`${base}/alerts`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_ids: modelIds, pool_min: poolMin }),
@@ -104,7 +104,6 @@ export default function IgiStockClient() {
               type="number"
               min="0"
               value={bulk}
-              disabled={readOnly}
               onChange={(e) => setBulk(e.target.value)}
               data-testid="bulk-value"
             />
@@ -117,7 +116,7 @@ export default function IgiStockClient() {
                   setBulk('')
                 }
               }}
-              disabled={readOnly || saving || !bulk || !shown.length}
+              disabled={saving || !bulk || !shown.length}
               testId="bulk-apply"
             >
               Apply
@@ -158,7 +157,7 @@ export default function IgiStockClient() {
                     <td className="num">
                       <LevelInput
                         value={m.pool_min}
-                        disabled={readOnly || saving}
+                        disabled={saving}
                         onCommit={(v) => v !== m.pool_min && setLevel([m.id], v)}
                       />
                     </td>

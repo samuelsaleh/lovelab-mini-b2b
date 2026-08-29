@@ -10,7 +10,7 @@ import { PageHead, Card, Loading, Toast, Switch, TableWrap } from './certificate
 
 /** What has already happened. Read only. */
 export default function IgiHistoryClient() {
-  const { base, readOnly } = useIgiPortal()
+  const { base } = useIgiPortal()
   const [visits, setVisits] = useState([])
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
