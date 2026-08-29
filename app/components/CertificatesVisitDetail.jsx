@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatQty, visitRef } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
-import { VISIT_LABELS, VISIT_TONES } from '@/lib/igi/visits'
-import SerialSpec from './igi/SerialSpec'
+import { VISIT_LABELS, VISIT_TONES, whyNotDeletable } from '@/lib/igi/visits'
+import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import Pipeline, { stepForStatus } from './igi/Pipeline'
 import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap } from './certificates/ui'
@@ -17,6 +18,7 @@ import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap } from './certific
  * naming every model on every return is the paperwork this replaces.
  */
 export default function CertificatesVisitDetail({ visitId }) {
+  const router = useRouter()
   const [visit, setVisit] = useState(null)
   const [lines, setLines] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,6 +28,8 @@ export default function CertificatesVisitDetail({ visitId }) {
   const [made, setMade] = useState({})
   const [shortReturn, setShortReturn] = useState(false)
   const [back, setBack] = useState({})
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => { load() }, [visitId])
 
@@ -64,6 +68,20 @@ export default function CertificatesVisitDetail({ visitId }) {
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function remove() {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/igi/visits/${visitId}`, { method: 'DELETE' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not delete the movement')
+      router.push('/certificates/visits')
+    } catch (err) {
+      setError(err.message)
+      setDeleting(false)
+      setConfirmingDelete(false)
     }
   }
 
@@ -125,7 +143,8 @@ export default function CertificatesVisitDetail({ visitId }) {
               <thead>
                 <tr>
                   <th>Model</th>
-                  <th>Serial · check</th>
+                  <th>Check</th>
+                <th>Serial</th>
                   <th className="num">Asked</th>
                   <th className="num">IGI hold</th>
                   <th className="num">Made</th>
@@ -148,7 +167,8 @@ export default function CertificatesVisitDetail({ visitId }) {
                         </div>
                       )}
                     </td>
-                    <td><SerialSpec model={l} compact /></td>
+                    <td><Spec model={l} compact /></td>
+                    <td><Serial model={l} compact /></td>
                     <td className="num">{formatQty(l.qty_requested)}</td>
                     <td className="num">{formatQty(l.held)}</td>
                     <td className="num">
@@ -180,7 +200,7 @@ export default function CertificatesVisitDetail({ visitId }) {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={2}>Total</td>
+                  <td colSpan={3}>Total</td>
                   <td className="num">{formatQty(totalAsked)}</td>
                   <td className="num" />
                   <td className="num">{totalMade ? formatQty(totalMade) : '—'}</td>
@@ -246,6 +266,84 @@ export default function CertificatesVisitDetail({ visitId }) {
           from the nightly read alone.
         </p>
       )}
+
+      <DeleteMovement
+        visit={visit}
+        returning={totalMade}
+        confirming={confirmingDelete}
+        deleting={deleting}
+        onAsk={() => setConfirmingDelete(true)}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={remove}
+      />
     </>
+  )
+}
+
+/**
+ * Clearing out a movement that was only ever a test.
+ *
+ * Deliberately at the bottom, behind two clicks, and refused outright on the
+ * movements that came from IGI's file — those are the real history and no
+ * amount of clicking should reach them.
+ *
+ * There is no "and put the stock back" step because there is nothing to put
+ * back: IGI's figure is derived as what they made less what they issued, so
+ * removing the lines corrects it by arithmetic. That is worth saying on the
+ * screen, because "delete" next to a stock number usually means somebody has
+ * to remember to undo something too.
+ */
+function DeleteMovement({ visit, returning, confirming, deleting, onAsk, onCancel, onConfirm }) {
+  const refusal = whyNotDeletable(visit)
+
+  if (refusal) {
+    return (
+      <p style={{ fontSize: '.8rem', color: 'var(--ink-faint)', maxWidth: 720, marginTop: 24 }}
+         data-testid="delete-refused">
+        {refusal}
+      </p>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 28, paddingTop: 18, borderTop: '1px solid var(--rule)' }}>
+      {!confirming ? (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <Btn onClick={onAsk} testId="delete-movement">Delete this movement</Btn>
+          <span style={{ fontSize: '.83rem', color: 'var(--ink-faint)' }}>
+            For clearing out a test. Imported history cannot be deleted.
+          </span>
+        </div>
+      ) : (
+        <div className="card" style={{ borderColor: 'var(--signal)' }} data-testid="delete-confirm">
+          <div className="card-head" style={{ background: 'var(--signal-tint)' }}>
+            <h3 style={{ color: 'var(--signal)' }}>Delete {visitRef(visit)}?</h3>
+          </div>
+          <div className="card-body">
+            <p style={{ margin: '0 0 10px' }}>
+              The movement and its lines go for good. This cannot be undone.
+            </p>
+            <p style={{ margin: 0, fontSize: '.87rem', color: 'var(--ink-soft)' }}>
+              {returning > 0 ? (
+                <>
+                  <strong>{formatQty(returning)} certificates</strong> go back into IGI&rsquo;s stock,
+                  because their figure is worked out from the movements rather than stored.
+                </>
+              ) : (
+                <>Nothing was issued on it, so no stock figure changes.</>
+              )}{' '}
+              Our own shelf is unaffected either way — it comes from the nightly read of
+              LoveLab&rsquo;s software, not from movements.
+            </p>
+          </div>
+          <div className="task-foot">
+            <Btn kind="danger" onClick={onConfirm} disabled={deleting} testId="delete-confirmed">
+              {deleting ? 'Deleting…' : 'Yes, delete it'}
+            </Btn>
+            <Btn onClick={onCancel} disabled={deleting} testId="delete-cancel">Keep it</Btn>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

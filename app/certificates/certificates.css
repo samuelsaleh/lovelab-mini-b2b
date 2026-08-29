@@ -163,6 +163,8 @@
 .certapp .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;padding:7px 16px}
 .certapp .btn.primary:hover{color:#fff;opacity:.92}
 .certapp .btn.on{background:var(--accent-tint);border-color:var(--accent);color:var(--accent)}
+.certapp .btn.danger{background:var(--signal);border-color:var(--signal);color:#fff}
+.certapp .btn.danger:hover{color:#fff;opacity:.92}
 .certapp button[disabled],.certapp .btn[disabled]{opacity:.45;pointer-events:none}
 
 .certapp input[type=search],.certapp input[type=text],.certapp input[type=number],.certapp input[type=date]{

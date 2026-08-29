@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { formatQty, formatEur } from '@/lib/igi/derive'
 import { formatMonth } from '@/lib/igi/dates'
-import SerialSpec from './igi/SerialSpec'
+import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
@@ -220,7 +220,8 @@ export default function CertificatesInvoicesClient() {
                 <thead>
                   <tr>
                     <th>Model</th>
-                    <th>Serial · check</th>
+                    <th>Check</th>
+                <th>Serial</th>
                     <th className="num">Certificates</th>
                     <th className="num">At {formatEur(fee)}</th>
                   </tr>
@@ -229,14 +230,15 @@ export default function CertificatesInvoicesClient() {
                   {m.ours.rows.map((r) => (
                     <tr key={r.model_id} data-testid="invoice-row">
                       <td style={{ fontWeight: 600 }}>{r.name}</td>
-                      <td><SerialSpec model={r} compact /></td>
+                      <td><Spec model={r} compact /></td>
+                    <td><Serial model={r} compact /></td>
                       <td className="num">{formatQty(r.qty)}</td>
                       <td className="num">{formatEur(r.eur)}</td>
                     </tr>
                   ))}
                   {m.ours.unattributed > 0 && (
                     <tr data-testid="invoice-gap">
-                      <td colSpan={2}>
+                      <td colSpan={3}>
                         Issued with no model recorded <Chip tone="a">unresolved</Chip>
                       </td>
                       <td className="num">{formatQty(m.ours.unattributed)}</td>
@@ -246,7 +248,7 @@ export default function CertificatesInvoicesClient() {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={2}>Total</td>
+                    <td colSpan={3}>Total</td>
                     <td className="num">{formatQty(m.ours.qty)}</td>
                     <td className="num">{formatEur(m.ours.eur)}</td>
                   </tr>

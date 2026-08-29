@@ -31,7 +31,11 @@ function req(body, method = 'GET') {
 }
 
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, pool_min: 1000, sort_order: 3 },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', pool_min: 1000, sort_order: 3 },
+  // Reserved and awaiting-serial models exist in the table. RLS hides them from
+  // IGI's own client, and loadIgiWorld filters them out as well so the same
+  // guarantee holds for LoveLab's preview of this side, which reads as admin.
+  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd', spec: null, state: 'reserved', pool_min: null, sort_order: 61 },
 ];
 
 /** A stand-in for the RLS-scoped client. */

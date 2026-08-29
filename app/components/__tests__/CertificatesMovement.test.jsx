@@ -123,16 +123,26 @@ describe('one movement', () => {
     { id: 'l2', model_id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine', stones: '1', carat: 0.5, shape: 'Heart', qty_requested: 500, qty_issued: null, qty_received: null, held: 50, short_by: 450 },
   ]
 
-  function mockVisit(visit, lines = LINES, onPatch) {
+  function mockVisit(visit, lines = LINES, onPatch, onDelete) {
     global.fetch = jest.fn((url, init) => {
       const u = String(url)
       if (init?.method === 'PATCH') {
         onPatch?.(u, JSON.parse(init.body))
         return Promise.resolve({ ok: true, json: async () => ({ visit, received: 62 }) })
       }
+      if (init?.method === 'DELETE') {
+        onDelete?.(u)
+        return Promise.resolve({ ok: true, json: async () => ({ returned_to_igi: 141 }) })
+      }
       return Promise.resolve({ ok: true, json: async () => ({ visit, lines }) })
     })
   }
+
+  const MINE = {
+    id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'requested',
+    unattributed_total: null, created_by: 'u1',
+  }
+  const IMPORTED = { ...MINE, visit_no: 3, created_by: null }
 
   it('shows the shortage against what IGI hold', async () => {
     mockVisit({ id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'requested', unattributed_total: null })
@@ -212,6 +222,78 @@ describe('one movement', () => {
     await waitFor(() => expect(screen.getByText(/This movement is closed/)).toBeInTheDocument())
     expect(screen.queryByTestId('confirm-made')).not.toBeInTheDocument()
     expect(screen.queryByTestId('confirm-return')).not.toBeInTheDocument()
+  })
+})
+
+describe('clearing out a test movement', () => {
+  const LINES = [
+    { id: 'l1', model_id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', qty_requested: 100, qty_issued: 100, qty_received: null, held: 900, short_by: 0 },
+    { id: 'l2', model_id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine', stones: '1', carat: 0.5, shape: 'Heart', qty_requested: 500, qty_issued: 41, qty_received: null, held: 50, short_by: 0 },
+  ]
+  const MINE = { id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'issued', unattributed_total: null, created_by: 'u1' }
+  const IMPORTED = { ...MINE, visit_no: 3, created_by: null }
+
+  function mockVisit(visit, onDelete) {
+    global.fetch = jest.fn((url, init) => {
+      if (init?.method === 'DELETE') {
+        onDelete?.(String(url), init.method)
+        return Promise.resolve({ ok: true, json: async () => ({ returned_to_igi: 141 }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visit, lines: LINES }) })
+    })
+  }
+
+  it('asks twice before deleting anything', async () => {
+    mockVisit(MINE)
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('delete-movement')).toBeInTheDocument())
+    // The first click only opens the question.
+    expect(screen.queryByTestId('delete-confirmed')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('delete-movement'))
+    expect(screen.getByTestId('delete-confirmed')).toBeInTheDocument()
+  })
+
+  it('says how much goes back to IGI before you commit', async () => {
+    // 100 + 41 issued. Saying it out loud is the point: "delete" beside a stock
+    // number usually means somebody also has to remember to undo something.
+    mockVisit(MINE)
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('delete-movement')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('delete-movement'))
+    expect(screen.getByTestId('delete-confirm')).toHaveTextContent('141 certificates')
+    expect(screen.getByTestId('delete-confirm')).toHaveTextContent(/shelf is unaffected/i)
+  })
+
+  it('backs out cleanly', async () => {
+    mockVisit(MINE)
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('delete-movement')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('delete-movement'))
+    fireEvent.click(screen.getByTestId('delete-cancel'))
+    expect(screen.queryByTestId('delete-confirmed')).not.toBeInTheDocument()
+    expect(screen.getByTestId('delete-movement')).toBeInTheDocument()
+  })
+
+  it('deletes and returns to the list', async () => {
+    let called = null
+    mockVisit(MINE, (url, method) => { called = { url, method } })
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('delete-movement')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('delete-movement'))
+    fireEvent.click(screen.getByTestId('delete-confirmed'))
+
+    await waitFor(() => expect(called).toEqual({ url: '/api/igi/visits/v1', method: 'DELETE' }))
+    expect(push).toHaveBeenCalledWith('/certificates/visits')
+  })
+
+  it('offers nothing at all on an imported movement', async () => {
+    // The 23 from IGI's file are the record of what happened between two
+    // companies. There is no button, not a disabled one.
+    mockVisit(IMPORTED)
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('delete-refused')).toBeInTheDocument())
+    expect(screen.queryByTestId('delete-movement')).not.toBeInTheDocument()
+    expect(screen.getByTestId('delete-refused')).toHaveTextContent(/imported history/i)
   })
 })
 

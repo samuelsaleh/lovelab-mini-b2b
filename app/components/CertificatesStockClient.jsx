@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { formatQty, SHELF_LABELS, POOL_LABELS } from '@/lib/igi/derive'
-import SerialSpec from './igi/SerialSpec'
+import { Serial, Spec } from './igi/SerialSpec'
 import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
 import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
@@ -158,7 +158,8 @@ export default function CertificatesStockClient() {
             <thead>
               <tr>
                 <th>Model</th>
-                <th>Serial · check</th>
+                <th>Check</th>
+                <th>Serial</th>
                 <th className="num">On our shelf</th>
                 <th className="num">Our level</th>
                 <th className="num">At IGI</th>
@@ -178,7 +179,8 @@ export default function CertificatesStockClient() {
                       )}
                     </div>
                   </td>
-                  <td><SerialSpec model={m} compact /></td>
+                  <td><Spec model={m} compact /></td>
+                    <td><Serial model={m} compact /></td>
                   <td className="num">
                     {m.shelf == null ? <span className="spec">not mapped</span> : formatQty(m.shelf)}
                   </td>

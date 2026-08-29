@@ -43,6 +43,7 @@ export default function IgiLayout({ children }) {
       nav={IGI_NAV_ITEMS}
       home="/igi"
       brand="IGI Antwerp"
+      mark="/igi-logo.png"
       title="LoveLab certificates"
       banner="what LoveLab are waiting on"
       status="IGI portal"

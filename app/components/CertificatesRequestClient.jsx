@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatQty } from '@/lib/igi/derive'
-import SerialSpec from './igi/SerialSpec'
+import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import Pipeline from './igi/Pipeline'
 import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap, Empty } from './certificates/ui'
@@ -141,7 +141,8 @@ export default function CertificatesRequestClient() {
             <thead>
               <tr>
                 <th>Model</th>
-                <th>Serial · check</th>
+                <th>Check</th>
+                <th>Serial</th>
                 <th className="num">IGI hold</th>
                 <th className="num">On our shelf</th>
                 <th className="num">Ask for</th>
@@ -161,7 +162,8 @@ export default function CertificatesRequestClient() {
                         </div>
                       )}
                     </td>
-                    <td><SerialSpec model={m} compact /></td>
+                    <td><Spec model={m} compact /></td>
+                    <td><Serial model={m} compact /></td>
                     <td className="num">{formatQty(m.pool)}</td>
                     <td className="num">
                       {m.shelf == null

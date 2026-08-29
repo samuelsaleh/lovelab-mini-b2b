@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { formatQty, modelSpec } from '@/lib/igi/derive'
-import SerialSpec from './igi/SerialSpec'
+import SerialSpec, { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import { PageHead, Card, Loading, Toast, Btn, TableWrap } from './certificates/ui'
 
@@ -103,7 +103,8 @@ export default function CertificatesModelsClient() {
           <table style={{ minWidth: 720 }}>
             <thead>
               <tr>
-                <th>Serial · check</th>
+                <th>Serial</th>
+                <th>Check</th>
                 <th>Name — ours, and IGI follow it</th>
                 <th className="num">Ordered</th>
                 <th className="num">At IGI</th>
@@ -113,7 +114,8 @@ export default function CertificatesModelsClient() {
             <tbody>
               {shown.map((m) => (
                 <tr key={m.id} data-testid="model-row">
-                  <td><SerialSpec model={m} /></td>
+                  <td><Serial model={m}None /></td>
+                    <td><Spec model={m}None /></td>
                   <td>
                     <NameInput
                       value={m.name}

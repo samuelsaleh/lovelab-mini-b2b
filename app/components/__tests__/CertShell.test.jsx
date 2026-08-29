@@ -80,8 +80,7 @@ describe('the certificate application shell', () => {
 
   it('gives IGI the same shell, under their own name, with no way out', () => {
     // IGI are another company. There is nowhere in this app for them to go
-    // back to, so offering a door would be a lie — and LoveLab's mark over an
-    // outside company's workbench would be another one.
+    // back to, so offering a door would be a lie.
     pathname = '/igi/stock'
     const { container } = render(
       <CertShell nav={IGI_NAV_ITEMS} home="/igi" brand="IGI Antwerp" title="LoveLab certificates" banner="what LoveLab are waiting on" exit={null}>
@@ -90,11 +89,28 @@ describe('the certificate application shell', () => {
     )
     expect(container.querySelector('.certapp')).toBeInTheDocument()
     expect(container.querySelector('aside .logo')).toHaveTextContent('IGI Antwerp')
-    expect(container.querySelector('aside .logo img')).toBeNull()
 
     expect(screen.queryByText('← Back to LoveLab')).not.toBeInTheDocument()
     expect(screen.getByTestId('nav-igi-stock')).toHaveAttribute('aria-current', 'page')
     expect(screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/')).toHaveLength(0)
+  })
+
+  it('falls back to the typed name when the logo file is not there', () => {
+    // IGI's logo is wired to /igi-logo.png before anyone has supplied the file.
+    // Dropping it into public/ should be the whole job, and until then the
+    // sidebar must read their name rather than a broken image.
+    const { container } = render(
+      <CertShell nav={IGI_NAV_ITEMS} home="/igi" brand="IGI Antwerp" mark="/igi-logo.png" title="LoveLab certificates" banner="x" exit={null}>
+        <p>their page</p>
+      </CertShell>,
+    )
+    const img = container.querySelector('aside .logo img')
+    expect(img).toBeInTheDocument()
+
+    fireEvent.error(img)
+
+    expect(container.querySelector('aside .logo img')).toBeNull()
+    expect(container.querySelector('aside .logo')).toHaveTextContent('IGI Antwerp')
   })
 
   it('shows a count on a nav item when one is passed', () => {

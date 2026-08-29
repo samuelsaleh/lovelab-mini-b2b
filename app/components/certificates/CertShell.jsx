@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '../AuthProvider'
@@ -22,7 +23,9 @@ import { useAuth } from '../AuthProvider'
  *   nav      — [{ g: 'Group name' } | { id, label, href, badge }]
  *   home     — where the logo goes, and the route that counts as the root
  *   brand    — whose space this is ("LoveLab", "IGI Antwerp")
- *   mark     — an image to use instead of the brand text, or null
+ *   mark     — an image to use instead of the brand text; falls back to the
+ *              text if the file is not there, so a logo can be dropped into
+ *              public/ later with no code change
  *   title    — the line under it, and the word in the top strip
  *   banner   — what the top strip says on the left
  *   status   — what the top strip says on the right (optional)
@@ -30,6 +33,7 @@ import { useAuth } from '../AuthProvider'
  */
 export default function CertShell({ nav, home, brand, mark, title, banner, status, exit, children }) {
   const pathname = usePathname()
+  const [markFailed, setMarkFailed] = useState(false)
   const { user, profile, signOut } = useAuth()
 
   // The deepest href the current path sits under wins, so /visits/12 lights up
@@ -50,12 +54,21 @@ export default function CertShell({ nav, home, brand, mark, title, banner, statu
       <div className="app">
         <aside>
           <Link href={home} className="logo">
-            {mark ? (
-              // The PNG is dark artwork, so it is inverted to white for the
-              // slate, exactly as PortalLayout.jsx does it. The file is square
-              // with a lot of air around the wordmark; the stylesheet crops
-              // that rather than guessing at margins.
-              <img src={mark} alt={brand} style={{ filter: 'brightness(0) invert(1)' }} />
+            {mark && !markFailed ? (
+              // The PNGs are dark artwork, so they are inverted to white for
+              // the slate, exactly as PortalLayout.jsx does it. The files are
+              // square with a lot of air around the wordmark; the stylesheet
+              // crops that rather than guessing at margins.
+              //
+              // If the file is not there the name is typed instead, so a logo
+              // can be added later by dropping it into public/ with no code
+              // change — which is how IGI's got here.
+              <img
+                src={mark}
+                alt={brand}
+                onError={() => setMarkFailed(true)}
+                style={{ filter: 'brightness(0) invert(1)' }}
+              />
             ) : (
               brand
             )}

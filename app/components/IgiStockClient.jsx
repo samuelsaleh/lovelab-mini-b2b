@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { formatQty, poolStatus, POOL_LABELS } from '@/lib/igi/derive'
-import SerialSpec from './igi/SerialSpec'
+import { Serial, Spec } from './igi/SerialSpec'
 import Chip, { POOL_TONE } from './igi/Chip'
 import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
@@ -129,7 +129,8 @@ export default function IgiStockClient() {
             <thead>
               <tr>
                 <th>Model</th>
-                <th>Serial · check</th>
+                <th>Check</th>
+                <th>Serial</th>
                 <th className="num">You hold</th>
                 <th className="num">Warn me below</th>
                 <th className="num">Asked right now</th>
@@ -148,7 +149,8 @@ export default function IgiStockClient() {
                         </div>
                       )}
                     </td>
-                    <td><SerialSpec model={m} compact /></td>
+                    <td><Spec model={m} compact /></td>
+                    <td><Serial model={m} compact /></td>
                     <td className="num">{formatQty(m.pool)}</td>
                     <td className="num">
                       <LevelInput
