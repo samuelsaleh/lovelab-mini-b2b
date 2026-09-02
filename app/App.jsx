@@ -26,7 +26,8 @@ import {
   restoreClientFromStorage,
   formStateForRestock,
 } from '@/lib/clientGatePersistence'
-import { finalizeTransition, clientFromFormState, editingOrderLabel } from '@/lib/editFlow'
+import { clientFromOrderFormState } from '@/lib/orderFormHeader'
+import { finalizeTransition, editingOrderLabel } from '@/lib/editFlow'
 
 import { useAuth } from './components/AuthProvider'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -305,8 +306,10 @@ export default function App() {
     if (docYear != null) setPricelistYear(docYear)
     // The client gate must agree with the document, or anything that falls
     // back to the App-level client (the Builder → Finalize path) saves the
-    // order under whichever boutique was picked last.
-    setClient((prev) => clientFromFormState(formState, prev))
+    // order under whichever boutique was picked last. Snapshot only: an
+    // incoming website order that has no VAT/address must not inherit them
+    // from whatever session data is lying around (Sam, 2 Sept 2026).
+    setClient(clientFromOrderFormState(formState))
     setOrderFormQuote(null)
     setSavedFormState(formState)
     setEditingDocumentId(doc.id)
@@ -352,6 +355,7 @@ export default function App() {
           if (!data.document.metadata?.formState) {
             setOrderFormQuote(null)
             setSavedFormState(null)
+            setClient(clientFromOrderFormState(null))
             setEditingDocumentId(data.document.id)
             setEditingDocStatus(data.document.status || 'sent')
             setEditingDocDraftKind(data.document.draft_kind || null)
@@ -387,7 +391,7 @@ export default function App() {
           // client gate at this document's boutique (see handleReEdit).
           if (data.document.metadata?.formState) {
             setSavedFormState(data.document.metadata.formState)
-            setClient((prev) => clientFromFormState(data.document.metadata.formState, prev))
+            setClient(clientFromOrderFormState(data.document.metadata.formState))
           }
           setActiveTab('builder')
         })
@@ -414,7 +418,9 @@ export default function App() {
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
     // Sync App-level client so ClientGate / builder also see the boutique.
-    setClient((prev) => clientFromFormState(formState, prev))
+    // Snapshot only — leftover session VAT/address must not land on a restock
+    // whose source order never had those fields.
+    setClient(clientFromOrderFormState(rest))
     setOrderFormQuote(null)
     setSavedFormState(rest)
     setEditingDocumentId(null)
@@ -761,6 +767,7 @@ export default function App() {
           const formState = parsed.formState ?? parsed
           const documentId = parsed.documentId ?? null
           setSavedFormState(formState)
+          setClient(clientFromOrderFormState(formState))
           setOrderFormQuote(null)
           if (documentId) setEditingDocumentId(documentId)
           setEditingDocStatus(parsed.status ?? null)
@@ -862,7 +869,7 @@ export default function App() {
   return (
     <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} onDocumentReissued={(doc) => { setEditingDocumentId(doc.id); setEditingDocStatus(doc.status || 'sent'); setEditingDocDraftKind(doc.draft_kind || null) }} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 
       {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
       {accountPanelOpen && (
