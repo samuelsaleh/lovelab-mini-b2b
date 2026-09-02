@@ -146,15 +146,36 @@ describe('POST /api/documents/send-email — recipient payload', () => {
     expect(capturedFetchBody.bcc).toContain('albertosaleh@gmail.com')
   })
 
-  it('BCC includes every address in ADMIN_NOTIFICATION_EMAIL, deduped', async () => {
-    process.env.ADMIN_NOTIFICATION_EMAIL = 'albertosaleh@gmail.com,samuelsaleh@gmail.com'
+  it('BCC includes admin addresses except Sam personal Gmails', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'albertosaleh@gmail.com,samuelsaleh@gmail.com,sameworldsalad@gmail.com'
     await callRoute(VALID_BODY)
     expect(capturedFetchBody.bcc).toEqual([
       'dionne@love-lab.com',
       'elie@love-lab.com',
       'albertosaleh@gmail.com',
-      'samuelsaleh@gmail.com',
     ])
+    expect(capturedFetchBody.bcc).not.toContain('samuelsaleh@gmail.com')
+    expect(capturedFetchBody.bcc).not.toContain('sameworldsalad@gmail.com')
+  })
+
+  it('never BCCs samuelsaleh@gmail.com even if it is the only admin address', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'SamuelSaleh@gmail.com'
+    await callRoute(VALID_BODY)
+    expect(capturedFetchBody.bcc).toEqual([
+      'dionne@love-lab.com',
+      'elie@love-lab.com',
+    ])
+    expect(capturedFetchBody.bcc).not.toContain('samuelsaleh@gmail.com')
+  })
+
+  it('never BCCs sameworldsalad@gmail.com even if it is the only admin address', async () => {
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'SameWorldSalad@gmail.com'
+    await callRoute(VALID_BODY)
+    expect(capturedFetchBody.bcc).toEqual([
+      'dionne@love-lab.com',
+      'elie@love-lab.com',
+    ])
+    expect(capturedFetchBody.bcc).not.toContain('sameworldsalad@gmail.com')
   })
 
   it('does NOT set cc — BCC only, so client never sees internal addresses', async () => {

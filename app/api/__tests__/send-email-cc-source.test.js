@@ -46,6 +46,11 @@ describe('send-email routes — hardcoded admin CC regression', () => {
     expect(src).toMatch(/getAdminNotificationRecipients/)
   })
 
+  it('documents/send-email/route.js drops Sam personal Gmail from order copies', () => {
+    const src = readSource('documents/send-email/route.js')
+    expect(src).toMatch(/isExcludedFromOrderCopies/)
+  })
+
   it('documents/send-email/route.js still keeps the office inboxes hardcoded as team BCCs', () => {
     // Office mailboxes (dionne@, elie@) are intentional — every order email
     // must funnel through them. The fix only swapped Alberto's *personal*

@@ -2,7 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, requireEventPermission, isUserOwnerOrSameEmail } from '@/app/api/_lib/access';
-import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
+import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients, isExcludedFromOrderCopies } from '@/lib/email';
 import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 import { readOrderEmailCatalogue } from '@/lib/orderEmailCatalogue';
 
@@ -20,11 +20,12 @@ const OFFICE_BCC_RECIPIENTS = ['dionne@love-lab.com', 'elie@love-lab.com'];
 function buildOrderBccRecipients() {
   // Merge office inboxes + admin recipients, dedupe (case-insensitive),
   // preserve order. Returns at minimum the office inboxes even if env is empty.
+  // Sam's personal Gmail is never copied on client order emails.
   const seen = new Set();
   const out = [];
   for (const e of [...OFFICE_BCC_RECIPIENTS, ...getAdminNotificationRecipients().all]) {
     const key = e.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key) || isExcludedFromOrderCopies(key)) continue;
     seen.add(key);
     out.push(e);
   }
