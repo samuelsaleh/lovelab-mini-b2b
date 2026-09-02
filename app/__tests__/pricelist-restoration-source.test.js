@@ -40,6 +40,9 @@ describe('app/App.jsx — pricelistYear restoration', () => {
     const block = match[0]
     expect(block).toMatch(/setPricelistYear/)
     expect(block).toMatch(/formState\.pricelistYear/)
+    // Incoming website orders omit VAT/address/Order by. Re-edit must not
+    // merge leftover session client data onto those gaps.
+    expect(block).toMatch(/clientFromOrderFormState/)
   })
 
   it('editInBuilder URL branch restores pricelistYear before switching tabs', () => {
@@ -59,6 +62,7 @@ describe('app/App.jsx — pricelistYear restoration', () => {
     const match = src.match(/handleDuplicate\s*=\s*useCallback\([\s\S]*?\}\s*,\s*\[[^\]]*\]\)/)
     expect(match).not.toBeNull()
     expect(match[0]).toMatch(/setPricelistYear/)
+    expect(match[0]).toMatch(/clientFromOrderFormState/)
   })
 })
 

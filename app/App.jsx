@@ -26,6 +26,7 @@ import {
   restoreClientFromStorage,
   formStateForRestock,
 } from '@/lib/clientGatePersistence'
+import { clientFromOrderFormState } from '@/lib/orderFormHeader'
 
 import { useAuth } from './components/AuthProvider'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -295,6 +296,8 @@ export default function App() {
     if (docYear != null) setPricelistYear(docYear)
     setOrderFormQuote(null)
     setSavedFormState(formState)
+    // Snapshot only — do not merge leftover session VAT/address/client id.
+    setClient(clientFromOrderFormState(formState))
     setEditingDocumentId(doc.id)
     setEditingDocStatus(doc?.status || 'sent')
     setEditingDocDraftKind(doc?.draft_kind || null)
@@ -338,6 +341,7 @@ export default function App() {
           if (!data.document.metadata?.formState) {
             setOrderFormQuote(null)
             setSavedFormState(null)
+            setClient(clientFromOrderFormState(null))
             setEditingDocumentId(data.document.id)
             setEditingDocStatus(data.document.status || 'sent')
             setEditingDocDraftKind(data.document.draft_kind || null)
@@ -397,25 +401,9 @@ export default function App() {
     if (!rest) return
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
-    // Sync App-level client so ClientGate / builder also see the boutique.
-    setClient((prev) => ({
-      ...prev,
-      name: formState.contactName || prev.name || '',
-      company: formState.companyName || prev.company || '',
-      country: formState.country || prev.country || '',
-      address: formState.addressLine1 || prev.address || '',
-      city: prev.city || '',
-      zip: prev.zip || '',
-      email: formState.email || prev.email || '',
-      phone: formState.phone || prev.phone || '',
-      vat: formState.vatNumber || prev.vat || '',
-      dzb_client_number: formState.dzbClientNumber || prev.dzb_client_number || '',
-      jeweler_group: formState.jewelerGroup || prev.jeweler_group || null,
-      shipping_same_as_billing: formState.shippingSameAsBilling !== false,
-      shipping_address: formState.shippingAddressLine1 || prev.shipping_address || '',
-      shipping_address_line2: formState.shippingAddressLine2 || prev.shipping_address_line2 || '',
-      shipping_country: formState.shippingCountry || prev.shipping_country || '',
-    }))
+    // Snapshot only — leftover session VAT/address must not land on a restock
+    // whose source order never had those fields.
+    setClient(clientFromOrderFormState(rest))
     setOrderFormQuote(null)
     setSavedFormState(rest)
     setEditingDocumentId(null)
@@ -762,6 +750,7 @@ export default function App() {
           const formState = parsed.formState ?? parsed
           const documentId = parsed.documentId ?? null
           setSavedFormState(formState)
+          setClient(clientFromOrderFormState(formState))
           setOrderFormQuote(null)
           if (documentId) setEditingDocumentId(documentId)
           setEditingDocStatus(parsed.status ?? null)
