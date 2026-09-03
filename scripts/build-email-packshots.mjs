@@ -14,7 +14,7 @@
 import { execFileSync } from 'node:child_process';
 
 const SOURCES = {
-  'cuty':          '/Packshot Folder/Cuty/Cuty RG/Cuty Single RG/Bordeaux_rose_gold_0_2ct_nylon-fyxk43.png',
+  'cuty':          '/Packshot Folder/Cuty/Cuty YG/Cuty Single YG/Black_yellow_gold_0_05ct_nylon-j7nsf5.png',
   'triply':        '/Packshot Folder/Multi/Three/Three Detached/MIX/Gold_white_gold_0_15ct_nylon-qeh1d8.png',
   'riviera-eight': '/Packshot Folder/Iconix/Riviera Eight/Yellow Gold/Bordeaux_yellow_gold_0_1ct_silk-8vd823.png',
   'matchy':        '/Packshot Folder/Matchy/Pear/Pear Bezel/Matchy Pear YG/Navy_Blue_yellow_gold_0_3ct_nylon-zahvhu.png',
