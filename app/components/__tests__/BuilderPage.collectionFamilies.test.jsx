@@ -229,7 +229,9 @@ describe('BuilderPage — where Sam wanted each product', () => {
     renderBuilder()
 
     expect(queryCard('SSPF')).not.toBeInTheDocument()
-    expect(queryCard('SSRG')).not.toBeInTheDocument()
+    // SSRG is not a FAM_SHAPY_SPARKLE member, so like D VVS it stands on its
+    // own card rather than opening into shapes.
+    expect(card('SSRG')).toHaveTextContent('SHAPY SPARKLE RND G/H')
     expect(card('SSRD')).toHaveTextContent('SHAPY SPARKLE D VVS')
 
     fireEvent.click(family('FAM_SHAPY_SPARKLE'))
