@@ -394,4 +394,136 @@ describe('BuilderPage — PACK 6-RB-SYN', () => {
     expect(cutyLine.colorConfigs[0].id).toBe('existing') // original kept first
     expect(cutyLine.colorConfigs.length).toBeGreaterThan(1) // pack colours appended
   })
+
+  it('tags every row it adds with the pack identity so the pack can be removed in one click', async () => {
+    const setLines = jest.fn()
+    renderBuilder([], setLines)
+    await openFallbackPacks()
+
+    const labelEl = screen.getByText('PACK 6-RB-SYN')
+    const pack6Card = labelEl.parentElement.parentElement
+    act(() => { fireEvent.click(within(pack6Card).getByText('+ Add pack')) })
+
+    const updater = setLines.mock.calls[setLines.mock.calls.length - 1][0]
+    const newLines = updater([{ uid: 'pre', collectionId: 'SSF', colorConfigs: [{ id: 'keep' }], expanded: false }])
+    const packRows = newLines.flatMap(l => l.colorConfigs).filter(c => c.packId)
+    expect(packRows.length).toBeGreaterThan(0)
+    expect(packRows.every(c => c.packLabel === 'PACK 6-RB-SYN')).toBe(true)
+    expect(new Set(packRows.map(c => c.packId)).size).toBe(1)
+    // The row that was already in the order is NOT claimed by the pack.
+    const ssf = newLines.find(l => l.collectionId === 'SSF')
+    expect(ssf.colorConfigs[0].packId).toBeUndefined()
+  })
+})
+
+// ─── One-click "Remove pack" ──────────────────────────────────────────────────
+//
+// Before this, taking a pack back out of an order meant deleting each of its
+// collections one by one. Rows a pack adds are now tagged with packId, so the
+// Configure view lists the packs in the order and each has a single Remove.
+
+describe('BuilderPage — Remove pack in one click', () => {
+  const { packsInLines, removePackFromLines } = require('../BuilderPage')
+
+  const packRow = (packId, overrides = {}) =>
+    mockColorConfig({ packId, packLabel: packId === 'p1' ? 'Pack One' : 'Pack Two', caratIdx: 0, ...overrides })
+
+  function twoPacksAndAHandRow() {
+    // CUTY: 2 rows from Pack One + 1 hand-added row
+    // CUBIX: 1 row from Pack One only
+    // M3: 1 row from Pack Two only
+    const cuty = makeLine(CUTY, [
+      packRow('p1', { id: 'c1', qty: 2 }),
+      packRow('p1', { id: 'c2', qty: 3 }),
+      mockColorConfig({ id: 'hand', caratIdx: 0 }),
+    ])
+    const cubix = makeLine(COLLECTIONS.find(c => c.id === 'CUBIX'), [packRow('p1', { id: 'x1', qty: 1 })])
+    const m3 = makeLine(M3, [packRow('p2', { id: 'm1', qty: 4 })])
+    return [cuty, cubix, m3]
+  }
+
+  it('packsInLines lists each pack once with its collections and piece count', () => {
+    const packs = packsInLines(twoPacksAndAHandRow())
+    expect(packs.map(p => p.id)).toEqual(['p1', 'p2'])
+    expect(packs[0]).toMatchObject({ label: 'Pack One', collectionIds: ['CUTY', 'CUBIX'], rowCount: 3, pieceCount: 6 })
+    expect(packs[1]).toMatchObject({ label: 'Pack Two', collectionIds: ['M3'], rowCount: 1, pieceCount: 4 })
+  })
+
+  it('packsInLines ignores untagged rows and empty builds', () => {
+    expect(packsInLines([makeLine(CUTY, [mockColorConfig()])])).toEqual([])
+    expect(packsInLines([])).toEqual([])
+    expect(packsInLines(undefined)).toEqual([])
+  })
+
+  it('removePackFromLines drops the pack rows, keeps hand rows and other packs, and drops lines the pack alone filled', () => {
+    const next = removePackFromLines(twoPacksAndAHandRow(), 'p1')
+    // CUBIX only existed because of Pack One → gone. CUTY keeps the hand row.
+    expect(next.map(l => l.collectionId)).toEqual(['CUTY', 'M3'])
+    expect(next[0].colorConfigs.map(c => c.id)).toEqual(['hand'])
+    expect(next[1].colorConfigs.map(c => c.id)).toEqual(['m1']) // Pack Two untouched
+  })
+
+  it('removePackFromLines leaves one blank line when the pack was the whole order', () => {
+    const next = removePackFromLines([makeLine(M3, [packRow('p2', { id: 'm1' })])], 'p2')
+    expect(next).toHaveLength(1)
+    expect(next[0].collectionId).toBeNull()
+    expect(next[0].colorConfigs).toEqual([])
+  })
+
+  it('shows a "Packs in this order" strip with one Remove button per pack', () => {
+    const setLines = jest.fn()
+    renderBuilder(twoPacksAndAHandRow(), setLines)
+
+    const strip = screen.getByTestId('packs-in-order')
+    expect(within(strip).getByText('Pack One')).toBeInTheDocument()
+    expect(within(strip).getByText('Pack Two')).toBeInTheDocument()
+    expect(screen.getByTestId('remove-pack-p1')).toBeInTheDocument()
+    expect(screen.getByTestId('remove-pack-p2')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('remove-pack-p1'))
+    expect(setLines).toHaveBeenCalledTimes(1)
+    const updater = setLines.mock.calls[0][0]
+    const next = updater(twoPacksAndAHandRow())
+    expect(next.map(l => l.collectionId)).toEqual(['CUTY', 'M3'])
+    expect(next[0].colorConfigs.map(c => c.id)).toEqual(['hand'])
+  })
+
+  it('does not show the strip when nothing in the order came from a pack', () => {
+    renderBuilder([makeLine(CUTY, [mockColorConfig({ caratIdx: 0 })])])
+    expect(screen.queryByTestId('packs-in-order')).not.toBeInTheDocument()
+  })
+
+  it('the pack card shows "✓ Added" and a Remove button when its rows are in the order, derived from the build', async () => {
+    // Fallback packs render when the API returns none; find Pack 6's id by
+    // adding it once and reading the tag off the rows it produces.
+    const originalFetch = global.fetch
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: jest.fn().mockResolvedValue({ packs: [] }) })
+    try {
+      const probe = jest.fn()
+      const { unmount } = renderBuilder([], probe)
+      fireEvent.click(screen.getByText('Packs').closest('button'))
+      await screen.findByText('PACK 6-RB-SYN')
+      const card0 = screen.getByText('PACK 6-RB-SYN').parentElement.parentElement
+      act(() => { fireEvent.click(within(card0).getByText('+ Add pack')) })
+      const packLines = probe.mock.calls[probe.mock.calls.length - 1][0]([])
+      const pack6Id = packLines[0].colorConfigs[0].packId
+      unmount()
+
+      // Now render with those rows already in the build (as after a reload).
+      const setLines = jest.fn()
+      renderBuilder(packLines, setLines)
+      // The strip already names the pack; the card is the other match.
+      expect(within(screen.getByTestId('packs-in-order')).getByText('PACK 6-RB-SYN')).toBeInTheDocument()
+      fireEvent.click(screen.getByText('Packs').closest('button'))
+      const card = (await screen.findByTitle('PACK 6-RB-SYN')).parentElement.parentElement
+      expect(within(card).getByText('✓ Added')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByTestId(`pack-remove-from-order-${pack6Id}`))
+      const next = setLines.mock.calls[0][0](packLines)
+      expect(next).toHaveLength(1)
+      expect(next[0].collectionId).toBeNull()
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
 })
