@@ -48,7 +48,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCheckRateLimit.mockReturnValue(null);
   mockGenerateLink.mockResolvedValue({
-    data: { properties: { action_link: 'https://supabase.example/v1/verify?token=xyz&type=recovery' } },
+    data: {
+      properties: {
+        action_link: 'https://supabase.example/v1/verify?token=xyz&type=recovery',
+        hashed_token: 'xyz',
+      },
+    },
     error: null,
   });
   mockSendEmail.mockResolvedValue({ sent: true, message_id: 'msg_2' });
@@ -85,11 +90,15 @@ describe('POST /api/forgot-password — happy path', () => {
 
   it('(b) calls sendEmail with the resetPasswordEmail template payload', async () => {
     await POST(makeRequest({ email: 'agent@example.com' }));
+    // The emailed link must be OUR callback carrying token_hash — the raw
+    // Supabase action_link redirects with the session in a URL fragment the
+    // server-side callback can't read, so the reset landed on /login?error=auth_error.
     expect(mockResetPasswordEmail).toHaveBeenCalledWith(
       'agent@example.com',
-      'https://supabase.example/v1/verify?token=xyz&type=recovery',
+      expect.stringMatching(/\/auth\/callback\?next=\/reset-password&token_hash=xyz&type=recovery$/),
       expect.any(String),
     );
+    expect(mockResetPasswordEmail.mock.calls[0][1]).not.toContain('supabase.example');
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'agent@example.com',

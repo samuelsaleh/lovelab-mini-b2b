@@ -107,6 +107,55 @@ export function mkColorConfig(colorName, minC = 1) {
   }
 }
 
+/**
+ * Which packs are in the build, in first-seen order. A colour row belongs to
+ * a pack when applyPack tagged it with `packId` (merge adds only — editing a
+ * pack loads its rows untagged, since "remove the pack you're editing" would
+ * make no sense there).
+ *
+ * Returns [{ id, label, collectionIds, rowCount, pieceCount }].
+ */
+export function packsInLines(lines) {
+  const order = []
+  const byId = new Map()
+  for (const line of (lines || [])) {
+    if (!line?.collectionId) continue
+    for (const cfg of (line.colorConfigs || [])) {
+      if (!cfg?.packId) continue
+      let entry = byId.get(cfg.packId)
+      if (!entry) {
+        entry = { id: cfg.packId, label: cfg.packLabel || cfg.packId, collectionIds: [], rowCount: 0, pieceCount: 0 }
+        byId.set(cfg.packId, entry)
+        order.push(entry)
+      }
+      if (!entry.collectionIds.includes(line.collectionId)) entry.collectionIds.push(line.collectionId)
+      entry.rowCount += 1
+      entry.pieceCount += Number(cfg.qty) || 0
+    }
+  }
+  return order
+}
+
+/**
+ * Take one pack back out of the build in a single step: drop every colour
+ * row tagged with `packId`, and drop any collection line the pack alone had
+ * filled. Rows the user added by hand (untagged, or from another pack) are
+ * untouched, and a collection that had its own rows before the pack was added
+ * keeps them. Pure — the inverse of applyPack(merge:true).
+ */
+export function removePackFromLines(lines, packId) {
+  const next = []
+  for (const line of (lines || [])) {
+    const configs = line?.colorConfigs || []
+    const kept = configs.filter(c => c?.packId !== packId)
+    if (kept.length === configs.length) { next.push(line); continue }
+    // The pack was the only thing on this line — the line goes with it.
+    if (kept.length === 0) continue
+    next.push({ ...line, colorConfigs: kept })
+  }
+  return next.length > 0 ? next : [mkLine()]
+}
+
 export function mkLine() {
   return {
     uid: uniqueId(),
@@ -554,9 +603,13 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   const [budgetEditing, setBudgetEditing] = useState(false)
   const budgetInputRef = useRef(null)
   const [showPacks, setShowPacks] = useState(false)
-  // Packs the user has added to the current order (several can be combined).
-  // Drives the "✓ Added" affordance on each pack card.
-  const [addedPackIds, setAddedPackIds] = useState([])
+  // Packs currently in the order, derived from the build itself: every
+  // colour row a pack adds is tagged with packId/packLabel (see applyPack),
+  // so this survives a reload and stays honest after rows are edited or
+  // deleted one by one. Drives the "✓ Added" affordance on each pack card
+  // and the "Packs in this order" strip with its one-click "Remove pack".
+  const packsInOrder = useMemo(() => packsInLines(lines), [lines])
+  const addedPackIds = useMemo(() => packsInOrder.map(p => p.id), [packsInOrder])
   // Horizontal pack carousel: the row scrolls sideways. Trackpad/touch users
   // can swipe, but mouse-only users have no affordance — so we add prev/next
   // arrows + mouse-wheel-to-horizontal scrolling. These track whether more
@@ -1203,6 +1256,24 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
     })
   }, [setLines])
 
+  // Take a whole pack back out of the order in one click — every row the
+  // pack added goes, plus any collection line that only existed because of
+  // the pack. Hand-added rows and other packs' rows stay.
+  const removePack = useCallback((packId) => {
+    let removedConfigIds = new Set()
+    setLines(prev => {
+      removedConfigIds = new Set(
+        (prev || []).flatMap(l => (l.colorConfigs || []).filter(c => c?.packId === packId).map(c => c.id)),
+      )
+      return removePackFromLines(prev, packId)
+    })
+    setSelectedConfigs(prev => {
+      if (removedConfigIds.size === 0) return prev
+      const next = new Set([...prev].filter(id => !removedConfigIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [setLines])
+
   // Toggle selection of a single config
   const toggleConfigSelection = useCallback((configId) => {
     setSelectedConfigs(prev => {
@@ -1525,8 +1596,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   //                           appended to that collection's line.
   const applyPack = useCallback((pack, { merge = false } = {}) => {
     // Fold freshly-built pack lines into the existing build (or replace it).
-    const commitLines = (newLines) => {
-      if (newLines.length === 0) return
+    const commitLines = (builtLines) => {
+      if (builtLines.length === 0) return
+      // When a pack is ADDED to an order, stamp every row it brings with the
+      // pack's identity so the whole pack can be taken back out in one click
+      // (removePack) and the "✓ Added" state survives a reload.
+      const newLines = merge
+        ? builtLines.map(l => ({
+            ...l,
+            colorConfigs: l.colorConfigs.map(c => ({ ...c, packId: pack.id, packLabel: pack.label })),
+          }))
+        : builtLines
       if (merge) {
         setLines(prev => {
           const byId = new Map(prev.map(l => [l.collectionId, l]))
@@ -1777,28 +1857,51 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       {(() => {
         const added = addedPackIds.includes(pack.id)
         return (
-          <button
-            onClick={() => {
-              // Additive: combine multiple packs into one order.
-              applyPack(pack, { merge: true })
-              setAddedPackIds(prev => prev.includes(pack.id) ? prev : [...prev, pack.id])
-            }}
-            title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
-            style={{
-              marginTop: 'auto',
-              width: '100%', padding: mobile ? '10px 0' : '6px 0',
-              minHeight: mobile ? 40 : 'auto',
-              borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
-              background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 11,
-              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              transition: 'opacity .1s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
-          >
-            {added ? '✓ Added' : '+ Add pack'}
-          </button>
+          <div style={{ marginTop: 'auto', display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => {
+                // Additive: combine multiple packs into one order.
+                applyPack(pack, { merge: true })
+              }}
+              title={added ? 'Already added — click to add again' : 'Add this pack to the order'}
+              style={{
+                flex: 1, minWidth: 0, padding: mobile ? '10px 0' : '6px 0',
+                minHeight: mobile ? 40 : 'auto',
+                borderRadius: 8, border: `1.5px solid ${added ? '#27ae60' : colors.inkPlum}`,
+                background: added ? '#27ae60' : colors.inkPlum, color: '#fff', fontSize: 11,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                transition: 'opacity .1s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+            >
+              {added ? '✓ Added' : '+ Add pack'}
+            </button>
+            {/* One click takes the whole pack back out — no need to
+                delete its collections one by one. */}
+            {added && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); removePack(pack.id) }}
+                title={t('pack.removeFromOrderTitle')}
+                aria-label={`${t('pack.removeFromOrder')} — ${pack.label}`}
+                data-testid={`pack-remove-from-order-${pack.id}`}
+                style={{
+                  flex: '0 0 auto', padding: mobile ? '10px 10px' : '6px 9px',
+                  minHeight: mobile ? 40 : 'auto',
+                  borderRadius: 8, border: '1.5px solid #f0d7d7',
+                  background: '#fff', color: '#dc2626', fontSize: 11,
+                  fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  whiteSpace: 'nowrap', transition: 'background .1s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#fdeaea' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+              >
+                ✕ {t('pack.removeShort')}
+              </button>
+            )}
+          </div>
         )
       })()}
       {/* Icon strip. Order is fixed so the same action is always
@@ -3004,6 +3107,68 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </button>
                   </div>
                 </div>
+
+                {/* Packs in this order — one chip per pack that was added,
+                    with what it brought and a single "Remove pack" that
+                    takes all of it back out at once. Hidden while editing
+                    a pack (those rows are the pack, not an addition). */}
+                {packsInOrder.length > 0 && !editingPack && (
+                  <div
+                    data-testid="packs-in-order"
+                    style={{
+                      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6,
+                      padding: '8px 10px', marginBottom: 12,
+                      background: '#f8f5fa', border: '1px solid #e4dded', borderRadius: 10,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#9a7fa8', textTransform: 'uppercase', letterSpacing: 0.4, marginRight: 2 }}>
+                      {t('pack.inOrder')}
+                    </span>
+                    {packsInOrder.map(p => {
+                      const colLabels = p.collectionIds
+                        .map(id => COLLECTIONS.find(c => c.id === id)?.label || id)
+                        .join(', ')
+                      return (
+                        <div
+                          key={p.id}
+                          data-testid={`pack-in-order-${p.id}`}
+                          title={`${p.label}: ${colLabels}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '4px 4px 4px 10px', borderRadius: 999,
+                            background: '#fff', border: '1px solid #e4dded',
+                            maxWidth: '100%',
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, whiteSpace: 'nowrap' }}>
+                            {p.label}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: mobile ? 120 : 260 }}>
+                            {t('pack.inOrderSummary', { pieces: p.pieceCount, collections: colLabels })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removePack(p.id)}
+                            title={t('pack.removeFromOrderTitle')}
+                            aria-label={`${t('pack.removeFromOrder')} — ${p.label}`}
+                            data-testid={`remove-pack-${p.id}`}
+                            style={{
+                              padding: mobile ? '8px 10px' : '4px 9px', minHeight: mobile ? 36 : 'auto',
+                              borderRadius: 999, border: '1px solid #f0d7d7',
+                              background: '#fff', color: '#dc2626', fontSize: 11, fontWeight: 700,
+                              cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                              transition: 'background .1s',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#fdeaea' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                          >
+                            ✕ {t('pack.removeFromOrder')}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* Collection config panels */}
                 {lines.filter(l => l.collectionId).map(line => {
