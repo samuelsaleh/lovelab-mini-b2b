@@ -57,7 +57,12 @@ beforeEach(() => {
   mockCheckRateLimit.mockReturnValue(null);
   mockMaybeSingle.mockResolvedValue({ data: { email: 'agent@example.com' }, error: null });
   mockGenerateLink.mockResolvedValue({
-    data: { properties: { action_link: 'https://supabase.example/v1/verify?token=abc' } },
+    data: {
+      properties: {
+        action_link: 'https://supabase.example/v1/verify?token=abc',
+        hashed_token: 'abc',
+      },
+    },
     error: null,
   });
   mockSendEmail.mockResolvedValue({ sent: true, message_id: 'msg_1' });
@@ -94,9 +99,10 @@ describe('POST /api/magic-link — happy path (allowed email)', () => {
 
   it('(b)+(c) calls sendEmail with the magicLinkEmail template payload', async () => {
     await POST(makeRequest({ email: 'agent@example.com' }));
+    // Our own callback with token_hash, not Supabase's fragment-based action_link.
     expect(mockMagicLinkEmail).toHaveBeenCalledWith(
       'agent@example.com',
-      'https://supabase.example/v1/verify?token=abc',
+      expect.stringMatching(/\/auth\/callback\?token_hash=abc&type=magiclink$/),
       expect.any(String),
     );
     expect(mockSendEmail).toHaveBeenCalledWith(
