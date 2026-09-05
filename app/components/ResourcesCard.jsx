@@ -44,8 +44,43 @@ const BRAND_DOCUMENT_FILES = [
 
 // Controlled folder: selection state lives in the parent so a single email
 // can bundle picks from Catalogue + Packs + Price List together.
-function DownloadFolder({ label, files, selected, onToggle }) {
+// `status` is only used by folders whose files are fetched (Packs): while the
+// list is loading or failed, an opened folder must say so instead of showing
+// nothing — a silent blank reads as "the folder doesn't open".
+function DownloadFolder({ label, files, selected, onToggle, status = 'ready', onRetry }) {
   const [open, setOpen] = useState(false)
+  const { t } = useI18n()
+
+  const renderState = () => {
+    const muted = { fontSize: 12, color: colors.lovelabMuted, fontFamily: fonts.body, padding: '6px 10px' }
+    if (status === 'loading') {
+      return <div role="status" style={muted}>{t('resources.loading')}</div>
+    }
+    if (status === 'error') {
+      return (
+        <div role="alert" style={{ ...muted, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>{t('resources.loadFailed')}</span>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum,
+                cursor: 'pointer', fontFamily: fonts.body,
+              }}
+            >
+              {t('resources.retry')}
+            </button>
+          )}
+        </div>
+      )
+    }
+    if (files.length === 0) {
+      return <div style={muted}>{t('resources.emptyFolder')}</div>
+    }
+    return null
+  }
 
   return (
     <div>
@@ -73,7 +108,8 @@ function DownloadFolder({ label, files, selected, onToggle }) {
       </button>
       {open && (
         <div style={{ marginTop: 6, marginLeft: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {files.map(f => {
+          {renderState()}
+          {status === 'ready' && files.map(f => {
             const isChecked = selected.has(f.path)
             return (
               <div
@@ -150,19 +186,35 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
   // Pack order templates are generated per pack and listed dynamically, so the
   // filenames always reflect each pack's current label (admin only).
   const [packsFiles, setPacksFiles] = useState([])
+  // 'loading' | 'ready' | 'error' — surfaced inside the Packs folder so an
+  // admin who opens it during a slow (cold-start) fetch, or after a failed
+  // one, sees what's going on and can retry instead of an empty folder.
+  const [packsStatus, setPacksStatus] = useState('loading')
+  const [packsAttempt, setPacksAttempt] = useState(0)
+  const retryPacks = () => setPacksAttempt((n) => n + 1)
   useEffect(() => {
     if (!isAdmin || typeof fetch !== 'function') return
     let cancelled = false
+    setPacksStatus('loading')
     fetch('/api/pack-templates')
-      .then((r) => (r.ok ? r.json() : { templates: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then((d) => {
         if (cancelled) return
         const files = (d.templates || []).map((t) => ({ name: t.fileName, path: t.downloadUrl }))
         setPacksFiles(files)
+        setPacksStatus('ready')
       })
-      .catch(() => { if (!cancelled) setPacksFiles([]) })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('[ResourcesCard] pack templates failed to load:', err?.message)
+        setPacksFiles([])
+        setPacksStatus('error')
+      })
     return () => { cancelled = true }
-  }, [isAdmin])
+  }, [isAdmin, packsAttempt])
 
   const toggle = (path) => {
     setSelected(prev => {
@@ -274,7 +326,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                 </div>
                 <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
-                <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} status={packsStatus} onRetry={retryPacks} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} />
