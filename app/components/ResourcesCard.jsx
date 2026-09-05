@@ -36,6 +36,10 @@ const BRAND_DOCUMENT_FILES = [
     name: 'LoveLab Brand Presentation — English.pdf',
     path: '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
   },
+  {
+    name: 'LoveLab Lifestyle Slideshow.pdf',
+    path: '/BRAND PRESENTATION DOCS/LoveLab_Lifestyle_Slideshow.pdf',
+  },
 ]
 
 // Controlled folder: selection state lives in the parent so a single email
