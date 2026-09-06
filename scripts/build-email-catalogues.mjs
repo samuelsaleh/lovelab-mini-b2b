@@ -1,41 +1,54 @@
 #!/usr/bin/env node
 /**
- * Re-export every catalogue PDF at 300 dpi into public/catalogues/email/.
+ * Keep every catalogue PDF in public/catalogues small enough to email.
  *
  * WHY THIS EXISTS
- * The originals are print masters, 18–45 MB each. Base64 inflates an
- * attachment by a third, so a 22.6 MB catalogue travels as ~31 MB — under
- * Resend's 40 MB sending limit, but well over what a recipient's mailbox will
- * accept. iCloud caps an incoming message at 20 MB and Outlook around 25 MB;
- * Google accepts 50 MB inbound, which is why an order email on 6 Sep 2026
- * reached all three Google-hosted BCCs and bounced only for the iCloud client.
+ * Two limits bite, and neither is Resend's.
  *
- * 300 dpi ("/printer") is still print quality and is visually identical on a
- * screen, at roughly a third of the size. The originals stay untouched and are
- * what the app serves for download — only the email attachment uses these.
+ * 1. Recipient mailboxes. Base64 inflates an attachment by a third, so a
+ *    22.6 MB catalogue travels as ~31 MB. Resend accepts 40 MB and Google
+ *    accepts 50 MB inbound, but iCloud caps an incoming message at 20 MB and
+ *    Outlook at around 25 MB. On 6 Sep 2026 that combination delivered an
+ *    order email to all three internal BCCs and bounced the client's copy.
+ *
+ * 2. The serverless function. lib/orderEmailCatalogue.js reads its filename
+ *    dynamically, so @vercel/nft bundles the WHOLE public/catalogues directory
+ *    into api/documents/send-email. Keeping print masters next to email copies
+ *    put that function at 256 MB against Vercel's 250 MB limit and failed the
+ *    deploy. One copy of each catalogue, already small — that is the rule.
+ *
+ * 300 dpi ("/printer") is print quality and indistinguishable on screen at
+ * about a third of the size. The editable masters live in Canva (see the
+ * `canva` field on each entry in lib/catalogues.js), which is where a full
+ * resolution export should come from if one is ever needed.
  *
  * Usage:  node scripts/build-email-catalogues.mjs [--check]
- *         --check  verifies the email copies exist and are current, no writing
+ *         --check  report only, exit 1 if anything is over budget
+ *
+ * Safe to re-run: a file already under budget is left untouched, so repeated
+ * runs never re-compress an already-compressed catalogue.
  *
  * Requires Ghostscript (`brew install ghostscript`).
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 
-const SRC_ROOT = path.join('public', 'catalogues')
-const OUT_ROOT = path.join(SRC_ROOT, 'email')
+const ROOT = path.join('public', 'catalogues')
 const CHECK_ONLY = process.argv.includes('--check')
 
-// Mirrors MAX_CATALOGUE_BYTES in lib/orderEmailCatalogue.js — anything above
-// this cannot be attached and will be dropped in favour of a download link.
+// Mirrors MAX_CATALOGUE_BYTES in lib/orderEmailCatalogue.js.
 const BUDGET_MB = 11
+// Total weight the serverless function can carry (Vercel's cap is 250 MB and
+// the app code needs room too).
+const DIRECTORY_BUDGET_MB = 150
+
+const mb = (bytes) => bytes / 1024 / 1024
 
 function pdfsUnder(dir) {
   const out = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'email') continue
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) out.push(...pdfsUnder(full))
     else if (entry.name.toLowerCase().endsWith('.pdf')) out.push(full)
@@ -43,8 +56,8 @@ function pdfsUnder(dir) {
   return out
 }
 
-if (!existsSync(SRC_ROOT)) {
-  console.error(`No catalogues directory at ${SRC_ROOT}`)
+if (!existsSync(ROOT)) {
+  console.error(`No catalogues directory at ${ROOT}`)
   process.exit(1)
 }
 
@@ -57,50 +70,61 @@ if (!CHECK_ONLY) {
   }
 }
 
-const mb = (bytes) => bytes / 1024 / 1024
 let failures = 0
+let total = 0
 
-for (const src of pdfsUnder(SRC_ROOT)) {
-  const rel = path.relative(SRC_ROOT, src)
-  const out = path.join(OUT_ROOT, rel)
-  mkdirSync(path.dirname(out), { recursive: true })
+for (const file of pdfsUnder(ROOT)) {
+  const rel = path.relative(ROOT, file)
+  const before = statSync(file).size
 
-  if (CHECK_ONLY) {
-    if (!existsSync(out)) {
-      console.error(`MISSING  ${rel} — run without --check to build it`)
-      failures++
-      continue
-    }
-    if (statSync(out).mtimeMs < statSync(src).mtimeMs) {
-      console.error(`STALE    ${rel} — the source is newer than the email copy`)
-      failures++
-      continue
-    }
-    const size = statSync(out).size
-    const flag = mb(size) > BUDGET_MB ? 'OVER BUDGET' : 'ok'
-    console.log(`${String(flag).padEnd(11)} ${mb(size).toFixed(1).padStart(5)} MB  ${rel}`)
-    if (flag !== 'ok') failures++
+  if (mb(before) <= BUDGET_MB) {
+    total += before
+    console.log(`ok      ${mb(before).toFixed(1).padStart(5)} MB  ${rel}`)
     continue
   }
 
+  if (CHECK_ONLY) {
+    total += before
+    failures++
+    console.error(`OVER    ${mb(before).toFixed(1).padStart(5)} MB  ${rel}`)
+    continue
+  }
+
+  const tmp = `${file}.compressing`
   execFileSync('gs', [
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.5',
     '-dPDFSETTINGS=/printer',
     '-dNOPAUSE', '-dQUIET', '-dBATCH',
-    `-sOutputFile=${out}`,
-    src,
+    `-sOutputFile=${tmp}`,
+    file,
   ], { stdio: 'inherit' })
 
-  const before = mb(statSync(src).size)
-  const after = mb(statSync(out).size)
-  const warn = after > BUDGET_MB ? '  ⚠ still over the attachment budget' : ''
-  console.log(`${before.toFixed(1).padStart(5)} MB → ${after.toFixed(1).padStart(5)} MB   ${rel}${warn}`)
-  if (after > BUDGET_MB) failures++
+  const after = statSync(tmp).size
+  if (after >= before) {
+    // Ghostscript made it bigger — keep the original rather than bloat it.
+    unlinkSync(tmp)
+    total += before
+    failures++
+    console.error(`SKIPPED ${mb(before).toFixed(1).padStart(5)} MB  ${rel} — re-export did not shrink it`)
+    continue
+  }
+
+  renameSync(tmp, file)
+  total += after
+  if (mb(after) > BUDGET_MB) failures++
+  const warn = mb(after) > BUDGET_MB ? '  ⚠ still over budget' : ''
+  console.log(`${mb(before).toFixed(1).padStart(5)} MB → ${mb(after).toFixed(1).padStart(5)} MB  ${rel}${warn}`)
 }
 
-if (CHECK_ONLY && failures) {
-  console.error(`\n${failures} catalogue(s) missing, stale or over the ${BUDGET_MB} MB budget.`)
+console.log(`\npublic/catalogues: ${mb(total).toFixed(0)} MB total (budget ${DIRECTORY_BUDGET_MB} MB)`)
+if (mb(total) > DIRECTORY_BUDGET_MB) {
+  console.error('Over the directory budget — the send-email function will exceed Vercel\'s 250 MB limit.')
+  failures++
+}
+
+if (failures) {
+  console.error(`\n${failures} problem(s).`)
   process.exit(1)
 }
-console.log(failures ? `\nDone, but ${failures} file(s) exceed the ${BUDGET_MB} MB budget.` : '\nDone.')
+console.log('Done.')
