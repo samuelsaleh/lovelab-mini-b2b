@@ -8,7 +8,7 @@
  *   - Selecting the EAN file flips on the email button.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 
 jest.mock('@/lib/i18n', () => ({
   useI18n: () => ({
@@ -24,6 +24,10 @@ jest.mock('@/lib/i18n', () => ({
         'resources.brandDocuments': 'Brand Documents',
         'resources.sendByEmail': 'Send 1 file by email',
         'resources.sendByEmailPlural': 'Send 2 files by email',
+        'resources.loading': 'Loading…',
+        'resources.loadFailed': 'Could not load the files.',
+        'resources.retry': 'Try again',
+        'resources.emptyFolder': 'No files in this folder yet.',
       }
       return map[key] || key
     },
@@ -245,6 +249,68 @@ describe('ResourcesCard — Brand Documents folder', () => {
 
     fireEvent.click(screen.getByLabelText('Select LoveLab Brand Presentation — French.pdf'))
     expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
+  })
+})
+
+// The Packs folder is the only one whose files come from the API. Opening it
+// while the fetch is still running, or after it failed, used to show a blank
+// folder — which reads as "Packs won't open". It must say what's happening.
+describe('ResourcesCard — Packs folder states', () => {
+  const originalFetch = global.fetch
+  afterEach(() => { global.fetch = originalFetch })
+
+  const templates = [
+    { id: 'p1', fileName: 'LoveLab_Order_Template_Pack_2.xlsx', downloadUrl: '/api/pack-templates/p1/download' },
+    { id: 'p2', fileName: 'LoveLab_Order_Template_Pack_3.xlsx', downloadUrl: '/api/pack-templates/p2/download' },
+  ]
+  const okResponse = () => ({ ok: true, status: 200, json: async () => ({ templates }) })
+
+  it('shows "Loading…" while the templates are being fetched, then the files', async () => {
+    let resolveFetch
+    global.fetch = jest.fn(() => new Promise((resolve) => { resolveFetch = resolve }))
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    fireEvent.click(screen.getByText('Packs'))
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…')
+
+    await act(async () => { resolveFetch(okResponse()) })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByText('LoveLab_Order_Template_Pack_2.xlsx').closest('a').getAttribute('href'))
+      .toBe('/api/pack-templates/p1/download')
+    expect(screen.getByText('LoveLab_Order_Template_Pack_3.xlsx')).toBeInTheDocument()
+  })
+
+  it('shows an error with a working "Try again" when the API fails', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) })
+      .mockResolvedValueOnce(okResponse())
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+      await act(async () => {})
+      fireEvent.click(screen.getByText('Packs'))
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load the files.')
+
+      await act(async () => { fireEvent.click(screen.getByText('Try again')) })
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByText('LoveLab_Order_Template_Pack_2.xlsx')).toBeInTheDocument()
+    } finally {
+      errSpy.mockRestore()
+    }
+  })
+
+  it('says the folder is empty when the API returns no templates', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ templates: [] }) })
+    render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
+    await act(async () => {})
+    fireEvent.click(screen.getByText('Packs'))
+    expect(screen.getByText('No files in this folder yet.')).toBeInTheDocument()
+  })
+
+  it('never fetches templates for non-admins', () => {
+    global.fetch = jest.fn()
+    render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })
 
