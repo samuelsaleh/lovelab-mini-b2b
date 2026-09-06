@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
+import { canAccessDocument, getUserContext } from '@/app/api/_lib/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,7 +14,7 @@ export async function DELETE(request, { params }) {
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
 
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -28,18 +28,16 @@ export async function DELETE(request, { params }) {
     // Get the document to find its file path
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('file_path, created_by, event_id')
+      .select('file_path, created_by, event_id, agent_id')
       .eq('id', id)
       .single();
 
     if (fetchError || !doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
-      : { allowed: false };
-    const canPurge = isAdmin || isOwner || eventAccess.allowed;
+    const { allowed: canPurge } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'edit',
+    });
     if (!canPurge) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

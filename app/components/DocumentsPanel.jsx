@@ -103,7 +103,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [shareLoading, setShareLoading] = useState(false)
   const [shareSaving, setShareSaving] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
-  const [sharePermission, setSharePermission] = useState('read')
+  const [sharePermission, setSharePermission] = useState('edit')
+  const [shareAgentId, setShareAgentId] = useState('')
+  const [shareAgents, setShareAgents] = useState([])
+  const [showEmailFallback, setShowEmailFallback] = useState(false)
 
   // ── Auth helpers ──────────────────────────────────────────────────────────
   const isAdmin = profile?.role === 'admin'
@@ -118,9 +121,15 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     const docOwnerEmail = String(doc?.creator?.email || doc?.profiles?.email || '').trim().toLowerCase()
     const currentEmail = String(user?.email || '').trim().toLowerCase()
     if (docOwnerEmail && currentEmail && docOwnerEmail === currentEmail) return true
-    if (!doc?.event_id) return false
-    const perm = eventPermissionById.get(doc.event_id)
-    return perm === 'edit' || perm === 'manage'
+    if (doc?.agent_id && user?.id && doc.agent_id === user.id) return true
+    // Assistants may edit any order in a granted fair. Agents may not —
+    // event_access only opens the folder, not someone else's order.
+    if (profile?.is_assistant && profile?.role !== 'admin') {
+      if (!doc?.event_id) return false
+      const perm = eventPermissionById.get(doc.event_id)
+      return perm === 'edit' || perm === 'manage'
+    }
+    return false
   }
 
   // ── Data fetch ────────────────────────────────────────────────────────────
@@ -558,11 +567,20 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setShareEvent(event)
     setShowShareModal(true)
     setShareLoading(true)
+    setShareAgentId('')
+    setShowEmailFallback(false)
     try {
-      const res = await fetch(`/api/events/${encodeURIComponent(event.id)}/access`)
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Failed to load access')
+      const [accessRes, agentsRes] = await Promise.all([
+        fetch(`/api/events/${encodeURIComponent(event.id)}/access`),
+        isAdmin ? fetch('/api/agents') : Promise.resolve(null),
+      ])
+      const data = await accessRes.json().catch(() => ({}))
+      if (!accessRes.ok) throw new Error(data.error || 'Failed to load access')
       setShareAccessList(data.access || [])
+      if (agentsRes) {
+        const agentsData = await agentsRes.json().catch(() => ({}))
+        setShareAgents(agentsRes.ok ? (agentsData.agents || []) : [])
+      }
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load access')
       setShareAccessList([])
@@ -575,7 +593,35 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setShareEvent(null)
     setShareAccessList([])
     setShareEmail('')
-    setSharePermission('read')
+    setSharePermission('edit')
+    setShareAgentId('')
+    setShowEmailFallback(false)
+  }
+
+  const refreshShareAccess = async (eventId) => {
+    const refresh = await fetch(`/api/events/${encodeURIComponent(eventId)}/access`)
+    const refreshData = await refresh.json().catch(() => ({}))
+    setShareAccessList(refreshData.access || [])
+  }
+
+  const inviteAgentToFair = async (e) => {
+    e.preventDefault()
+    if (!shareEvent || !shareAgentId) return
+    setShareSaving(true)
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: shareAgentId, permission: 'edit' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to grant access')
+      setShareAgentId('')
+      await refreshShareAccess(shareEvent.id)
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to grant access')
+    }
+    setShareSaving(false)
   }
 
   const grantShareAccess = async (e) => {
@@ -591,32 +637,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Failed to grant access')
       setShareEmail('')
-      const refresh = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access`)
-      const refreshData = await refresh.json().catch(() => ({}))
-      setShareAccessList(refreshData.access || [])
+      await refreshShareAccess(shareEvent.id)
     } catch (err) {
       setErrorMsg(err.message || 'Failed to grant access')
-    }
-    setShareSaving(false)
-  }
-
-  const updateSharePermission = async (targetUserId, permission) => {
-    if (!shareEvent) return
-    setShareSaving(true)
-    try {
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(shareEvent.id)}/access/${encodeURIComponent(targetUserId)}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permission }),
-        },
-      )
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Failed to update permission')
-      setShareAccessList(prev => prev.map(row => row.user_id === targetUserId ? { ...row, permission } : row))
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to update permission')
     }
     setShareSaving(false)
   }
@@ -905,6 +928,22 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             <span style={{ fontSize: 14 }}>🗑</span>
             {!mobile && <span>Trash</span>}
           </button>
+          {isAdmin && isFolderView && selectedEventId && selectedEventId !== 'none' && !selectedOrgId && (
+            <button
+              data-testid="invite-fair-btn"
+              onClick={() => {
+                const event = events.find(e => e.id === selectedEventId)
+                if (event) openShareModal(event)
+              }}
+              style={{
+                padding: mobile ? '12px 16px' : '10px 18px', borderRadius: 10,
+                border: `1px solid ${colors.inkPlum}`, background: '#fff',
+                color: colors.inkPlum, fontSize: mobile ? 13 : 12,
+                fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body,
+                whiteSpace: 'nowrap', flexShrink: 0, minHeight: mobile ? 44 : 'auto',
+              }}
+            >{t('docs.invite')}</button>
+          )}
           <button
             onClick={() => router.push('/analytics')}
             style={{
@@ -1239,7 +1278,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#222' }}>Share Folder</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#222' }}>{t('docs.inviteTitle')}</div>
                 <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{shareEvent.name}</div>
               </div>
               <button
@@ -1249,42 +1288,86 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             </div>
 
             <div style={{ padding: '14px 20px 0' }}>
-              <form onSubmit={grantShareAccess} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input
-                  type="email"
-                  value={shareEmail}
-                  onChange={(e) => setShareEmail(e.target.value)}
-                  placeholder="Email address..."
-                  style={{
-                    flex: 1, minWidth: 200, padding: '9px 12px', borderRadius: 8,
-                    border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body, outline: 'none',
-                  }}
-                />
-                <select
-                  value={sharePermission}
-                  onChange={(e) => setSharePermission(e.target.value)}
-                  style={{
-                    padding: '9px 10px', borderRadius: 8, border: '1px solid #e3e3e3',
-                    fontSize: 13, fontFamily: fonts.body, background: '#fff',
-                  }}
-                >
-                  <option value="read">Read</option>
-                  <option value="edit">Edit</option>
-                  <option value="manage">Manage</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={shareSaving || !shareEmail.trim()}
-                  style={{
-                    padding: '9px 18px', borderRadius: 8, border: 'none',
-                    background: colors.inkPlum, color: '#fff',
-                    fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
-                    opacity: shareSaving || !shareEmail.trim() ? 0.6 : 1,
-                  }}
-                >
-                  {shareSaving ? 'Saving...' : 'Add'}
-                </button>
-              </form>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: '#666', lineHeight: 1.45 }}>
+                {t('docs.inviteHint')}
+              </p>
+              {(() => {
+                const alreadyIds = new Set(shareAccessList.map(row => row.user_id))
+                const availableAgents = shareAgents.filter(a =>
+                  a.id && !alreadyIds.has(a.id) && a.agent_status !== 'inactive'
+                )
+                return (
+                  <form onSubmit={inviteAgentToFair} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      data-testid="invite-agent-select"
+                      value={shareAgentId}
+                      onChange={(e) => setShareAgentId(e.target.value)}
+                      style={{
+                        flex: 1, minWidth: 200, padding: '9px 12px', borderRadius: 8,
+                        border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body,
+                        background: '#fff',
+                      }}
+                    >
+                      <option value="">{t('docs.invitePickAgent')}</option>
+                      {availableAgents.map(agent => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.full_name || agent.email}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      data-testid="invite-agent-submit"
+                      disabled={shareSaving || !shareAgentId}
+                      style={{
+                        padding: '9px 18px', borderRadius: 8, border: 'none',
+                        background: colors.inkPlum, color: '#fff',
+                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                        opacity: shareSaving || !shareAgentId ? 0.6 : 1,
+                      }}
+                    >
+                      {shareSaving ? 'Saving...' : t('docs.inviteAdd')}
+                    </button>
+                  </form>
+                )
+              })()}
+              <button
+                type="button"
+                onClick={() => setShowEmailFallback(v => !v)}
+                style={{
+                  marginTop: 10, background: 'none', border: 'none', padding: 0,
+                  fontSize: 12, color: '#888', cursor: 'pointer', fontFamily: fonts.body,
+                  textDecoration: 'underline',
+                }}
+              >
+                {t('docs.inviteByEmail')}
+              </button>
+              {showEmailFallback && (
+                <form onSubmit={grantShareAccess} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                  <input
+                    type="email"
+                    value={shareEmail}
+                    onChange={(e) => setShareEmail(e.target.value)}
+                    placeholder={t('docs.inviteEmailPlaceholder')}
+                    style={{
+                      flex: 1, minWidth: 200, padding: '9px 12px', borderRadius: 8,
+                      border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body, outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={shareSaving || !shareEmail.trim()}
+                    style={{
+                      padding: '9px 18px', borderRadius: 8, border: 'none',
+                      background: colors.inkPlum, color: '#fff',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                      opacity: shareSaving || !shareEmail.trim() ? 0.6 : 1,
+                    }}
+                  >
+                    {shareSaving ? 'Saving...' : t('docs.inviteAdd')}
+                  </button>
+                </form>
+              )}
             </div>
 
             <div style={{ overflowY: 'auto', padding: '14px 20px 20px', flex: 1 }}>
@@ -1292,12 +1375,15 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 <div style={{ textAlign: 'center', padding: 32, color: '#999' }}>Loading...</div>
               ) : shareAccessList.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 32, color: '#aaa', fontSize: 13 }}>
-                  No one else has access yet.
+                  {t('docs.inviteEmpty')}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {shareAccessList.map(row => (
-                    <div key={row.user_id} style={{
+                  {shareAccessList.map(row => {
+                    const name = row.profiles?.full_name || row.full_name || row.email || row.profiles?.email
+                    const email = row.profiles?.email || row.email
+                    return (
+                    <div key={row.user_id} data-testid={`invite-row-${row.user_id}`} style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '10px 12px', background: '#fafafa', borderRadius: 8,
                       border: '1px solid #ede8f0',
@@ -1307,40 +1393,29 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                         color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        {(row.full_name || row.email || '?')[0].toUpperCase()}
+                        {(name || '?')[0].toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>
-                          {row.full_name || row.email}
+                          {name || email}
                         </div>
-                        {row.full_name && (
-                          <div style={{ fontSize: 11, color: '#999' }}>{row.email}</div>
+                        {name && email && name !== email && (
+                          <div style={{ fontSize: 11, color: '#999' }}>{email}</div>
                         )}
                       </div>
-                      <select
-                        value={row.permission}
-                        onChange={(e) => updateSharePermission(row.user_id, e.target.value)}
-                        disabled={shareSaving}
-                        style={{
-                          padding: '5px 8px', borderRadius: 6, border: '1px solid #e3e3e3',
-                          fontSize: 12, fontFamily: fonts.body, background: '#fff',
-                        }}
-                      >
-                        <option value="read">Read</option>
-                        <option value="edit">Edit</option>
-                        <option value="manage">Manage</option>
-                      </select>
                       <button
                         onClick={() => revokeShareAccess(row.user_id)}
                         disabled={shareSaving}
+                        data-testid={`invite-remove-${row.user_id}`}
                         style={{
                           padding: '5px 10px', borderRadius: 6, border: '1px solid #fecaca',
                           background: '#fef2f2', color: '#dc2626', fontSize: 12,
                           cursor: 'pointer', fontFamily: fonts.body,
                         }}
-                      >Remove</button>
+                      >{t('docs.inviteRemove')}</button>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

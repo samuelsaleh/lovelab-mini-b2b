@@ -68,7 +68,6 @@ function MemoDetailPanel({ detailLoading, detailError, detail }) {
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginBottom: 12, color: colors.lovelabMuted, fontSize: 12 }}>
-        <span>Type: {detail.memo_type || '—'}</span>
         <span>Date: {detail.date || '—'}</span>
         <span>Currency: {detail.currency || '—'}</span>
         <span>Lines: {detail.lines?.length ?? 0}</span>
@@ -211,7 +210,7 @@ export default function AdminOutMemosPage() {
     setSelectedNo(null)
     setDetail(null)
     try {
-      // Party is everyone — pull Agent + Party + Internal and merge.
+      // Load only the selected memo_type (Agent / Party / Internal).
       const lists = await Promise.all(memoTypesToFetch(memoType).map(async (type) => {
         const qs = new URLSearchParams({ memo_type: type })
         const res = await fetch(`/api/admin/out-memos?${qs.toString()}`)
@@ -305,7 +304,7 @@ export default function AdminOutMemosPage() {
       setStatus(`Updated “${party}” → ${nextType}`)
 
       // Agent / Internal are filtered lists — drop the party when it leaves.
-      // Party is everyone, so the card stays and only the type label changes.
+      // Leave this filter: remove cards. Same type: only refresh the label.
       if (!staysInCurrentFilter(memoType, nextType)) {
         setMemos((prev) => {
           if (selectedNo) {
@@ -552,11 +551,6 @@ export default function AdminOutMemosPage() {
                       <span data-testid="out-memos-group-amount" style={{ color: '#249150', fontWeight: 700, fontSize: 13 }}>
                         Amount : {fmtAmount(group.amount)}
                       </span>
-                      {group.memo_type && (
-                        <span style={{ color: colors.inkPlum, fontWeight: 600, fontSize: 12 }}>
-                          Type : {group.memo_type}
-                        </span>
-                      )}
                     </div>
                     <Chevron open={partyOpen} />
                   </button>

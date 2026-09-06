@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
-import { getUserContext, isUserOwnerOrSameEmail, requireEventPermission } from '@/app/api/_lib/access';
+import { canAccessDocument, getUserContext } from '@/app/api/_lib/access';
 import { recordHealthEvent } from '@/lib/healthEvent';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,7 +15,7 @@ export async function POST(request, { params }) {
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
 
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -29,7 +29,7 @@ export async function POST(request, { params }) {
     // Verify document exists and is in trash
     const { data: doc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, deleted_at, created_by, event_id')
+      .select('id, deleted_at, created_by, event_id, agent_id')
       .eq('id', id)
       .single();
 
@@ -40,11 +40,9 @@ export async function POST(request, { params }) {
     if (!doc.deleted_at) {
       return NextResponse.json({ error: 'Document is not in trash' }, { status: 400 });
     }
-    const isOwner = await isUserOwnerOrSameEmail(adminSupabase, doc.created_by, user);
-    const eventAccess = doc.event_id
-      ? await requireEventPermission(adminSupabase, doc.event_id, user.id, 'edit', isAdmin)
-      : { allowed: false };
-    const canRestore = isAdmin || isOwner || eventAccess.allowed;
+    const { allowed: canRestore } = await canAccessDocument(adminSupabase, doc, {
+      user, isAdmin, isAssistant, requiredEventPermission: 'edit',
+    });
     if (!canRestore) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

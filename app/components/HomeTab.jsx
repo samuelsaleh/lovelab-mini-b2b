@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { colors, fonts } from '@/lib/styles'
 import { useAuth } from './AuthProvider'
 import { useI18n } from '@/lib/i18n'
@@ -126,6 +127,40 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
             </svg>
             View Product Photos
           </button>
+
+          {/* Fair Slideshow — opens the auto-advancing booth player. */}
+          <Link
+            href="/slideshow"
+            data-testid="fair-slideshow-button"
+            style={{
+              flex: '1 1 160px',
+              maxWidth: 240,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '14px 20px',
+              borderRadius: 12,
+              border: 'none',
+              background: colors.inkPlum,
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: fonts.body,
+              textDecoration: 'none',
+              transition: 'opacity .15s, transform .1s',
+              boxShadow: '0 4px 14px rgba(93,58,94,0.25)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.92'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Fair Slideshow
+          </Link>
 
           {isAdmin && (
             <a

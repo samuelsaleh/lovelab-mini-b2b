@@ -196,6 +196,7 @@ describe('PUT /api/documents/:id — folder preserved / auto-filed on update', (
       getUserContext: jest.fn().mockResolvedValue({ user: { id: 'agent-1' }, isAdmin }),
       isUserOwnerOrSameEmail: jest.fn().mockResolvedValue(true),
       requireEventPermission: jest.fn().mockResolvedValue({ allowed: true }),
+      canAccessDocument: jest.fn().mockResolvedValue({ allowed: true }),
       resolveAgentFolderEventId: resolveFolderMock,
     }));
     jest.doMock('@/lib/commissionAttribution', () => ({

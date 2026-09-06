@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { getUserContext, resolveAgentIds, getActiveOrgMemberships } from '@/app/api/_lib/access';
+import { documentIsOwnOrCredited } from '@/lib/documentAccess';
 
 // Simple ISO date validation (YYYY-MM-DD)
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,7 +15,7 @@ export async function GET(request) {
 
     const supabase = await createClient();
     const adminSupabase = createAdminClient();
-    const { user, isAdmin } = await getUserContext(supabase);
+    const { user, isAdmin, isAssistant } = await getUserContext(supabase);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -82,17 +83,21 @@ export async function GET(request) {
     if (visibleEventIds.length > 0) {
       const { data: docCountRows, error: countErr } = await adminSupabase
         .from('documents')
-        .select('event_id')
+        .select('event_id, created_by, agent_id')
         .in('event_id', visibleEventIds)
         .is('deleted_at', null)
         .not('order_channel', 'in', '("internal","consignment","delete_from_stock","sample")');
       if (countErr) {
         console.error('[Events GET] doc count query failed:', countErr.message);
       } else {
+        const restrictToOwn = !isAdmin && !isAssistant;
+        const selfIds = restrictToOwn
+          ? await resolveAgentIds(adminSupabase, user.id)
+          : null;
         for (const row of docCountRows || []) {
-          if (row.event_id) {
-            docCountByEvent.set(row.event_id, (docCountByEvent.get(row.event_id) || 0) + 1);
-          }
+          if (!row.event_id) continue;
+          if (restrictToOwn && !documentIsOwnOrCredited(row, selfIds)) continue;
+          docCountByEvent.set(row.event_id, (docCountByEvent.get(row.event_id) || 0) + 1);
         }
       }
     }

@@ -390,7 +390,9 @@ export default function FairAssistantClient() {
     if (!preset) return
     const patch = {}
     for (const f of BODY_FIELDS) {
-      if (f === 'subject') patch[`${type}_subject`] = preset.headline
+      // Agents/Partners seeded their subject from the headline for the same
+      // reason applyTemplate did — the presets now carry a real subject line.
+      if (f === 'subject') patch[`${type}_subject`] = preset.subject || preset.headline
       else patch[`${type}_${f}`] = preset[f] || ''
     }
     setBatch({ ...batch, ...patch })
@@ -710,6 +712,10 @@ export default function FairAssistantClient() {
     if (!template) return
     await saveBatchFields({
       template_id: template.id,
+      // subject was never copied, so the batch kept an empty subject and
+      // generate-all fell back to the headline — real sends went out titled
+      // "Great meeting you", which is a headline, not a subject line.
+      subject: template.subject || '',
       headline: template.headline,
       paragraph1: template.paragraph1,
       paragraph2: template.paragraph2,
@@ -931,7 +937,7 @@ export default function FairAssistantClient() {
                     <option key={t.id} value={t.id}>{t.label}</option>
                   ))}
                 </select>
-                <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: colors.lovelabMuted }}>
+                <span style={{ display: 'block', marginTop: 4, fontSize: 13, color: colors.lovelabMuted }}>
                   {FAIR_LEAD_TYPES.find((t) => t.id === (editingLead.lead_type || 'shop'))?.hint}
                 </span>
               </label>
@@ -1468,7 +1474,7 @@ export default function FairAssistantClient() {
                 {
                   id: 'content',
                   title: 'Email content',
-                  icon: '📝',
+                  icon: '',
                   description: 'The text Alberto wants the recipient to read.',
                   fields: [
                     { key: 'subject', label: 'Email subject line', kind: 'input', hint: 'What recipients see in their inbox. Defaults to your headline if blank. Use {fairName}, {firstName}, {company} for personalization.', placeholder: 'Following up from {fairName}' },
@@ -1481,7 +1487,7 @@ export default function FairAssistantClient() {
                 {
                   id: 'buttons',
                   title: 'Call-to-action buttons',
-                  icon: '🔗',
+                  icon: '',
                   description: 'Two pill buttons sit between paragraph 1 and 2. Clear Button 2 to hide it.',
                   fields: [
                     { key: 'button1_label', label: 'Button 1 label (filled)', kind: 'input', placeholder: 'Visit Our Website' },
@@ -1493,7 +1499,7 @@ export default function FairAssistantClient() {
                 {
                   id: 'advanced',
                   title: 'Extras',
-                  icon: '⚙️',
+                  icon: '',
                   description: 'Optional. Auto-hidden if it just mentions lovelab.be (buttons already say it).',
                   fields: [
                     { key: 'cta_line', label: 'Extra CTA sentence', kind: 'textarea', rows: 2 },
@@ -1533,7 +1539,7 @@ export default function FairAssistantClient() {
                     onBlur={() => saveBatchFields({ [resolvedKey(field.key)]: batch[resolvedKey(field.key)] })}
                     rows={field.rows || 3}
                     placeholder={field.placeholder}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical', fontSize: 14, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, resize: 'vertical', fontSize: 15, boxSizing: 'border-box' }}
                   />
                 ) : (
                   <input
@@ -1541,7 +1547,7 @@ export default function FairAssistantClient() {
                     onChange={(e) => setBatch({ ...batch, [resolvedKey(field.key)]: e.target.value })}
                     onBlur={() => saveBatchFields({ [resolvedKey(field.key)]: batch[resolvedKey(field.key)] })}
                     placeholder={field.placeholder}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 14, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 15, boxSizing: 'border-box' }}
                   />
                 )
               )
@@ -1580,7 +1586,7 @@ export default function FairAssistantClient() {
 
                   {/* Quick-start: preset templates + Claude chat */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                    <h3 style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>🚀 Start from a preset</h3>
+                    <h3 style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Start from a preset</h3>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                       {FAIR_OUTREACH_TEMPLATES.map((t) => (
                         <button
@@ -1588,7 +1594,7 @@ export default function FairAssistantClient() {
                           onClick={() => applyTemplate(t.id)}
                           style={{
                             padding: '6px 12px', borderRadius: 14, border: `1px solid ${batch.template_id === t.id ? colors.inkPlum : colors.border}`,
-                            background: batch.template_id === t.id ? '#f8f0fa' : '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12,
+                            background: batch.template_id === t.id ? '#f8f0fa' : '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 13,
                             color: batch.template_id === t.id ? colors.inkPlum : colors.text, fontWeight: batch.template_id === t.id ? 600 : 400,
                           }}
                         >
@@ -1603,29 +1609,26 @@ export default function FairAssistantClient() {
                           defaultValue=""
                           style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, fontSize: 12, background: '#fff', flex: 1, minWidth: 180 }}
                         >
-                          <option value="" disabled>📁 My saved templates ({savedTemplates.length})…</option>
+                          <option value="" disabled>My saved templates ({savedTemplates.length})…</option>
                           {savedTemplates.map((t) => (
                             <option key={t.id} value={t.id}>{t.name}{t.lead_type !== 'shop' ? ` · ${t.lead_type}` : ''}</option>
                           ))}
                         </select>
                       ) : (
-                        <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: 1 }}>No saved templates yet — save the current draft for next fair.</span>
+                        <span style={{ fontSize: 13, color: colors.lovelabMuted, flex: 1 }}>No saved templates yet — save the current draft for next fair.</span>
                       )}
                       <button
                         onClick={handleSaveAsTemplate}
                         style={{ padding: '7px 12px', borderRadius: 14, border: `1px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}
                       >
-                        💾 Save current
-                      </button>
-                      <button onClick={() => setChatOpen(true)} style={{ padding: '7px 12px', borderRadius: 14, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}>
-                        ✨ Chat with Claude
+                        Save current
                       </button>
                       <button onClick={handleClearAllFields} style={{ padding: '7px 12px', borderRadius: 14, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 600 }}>
-                        🧹 Start fresh
+                        Start fresh
                       </button>
                     </div>
                     {savedTemplates.length > 0 && (
-                      <details style={{ marginTop: 10, fontSize: 11, color: colors.lovelabMuted }}>
+                      <details style={{ marginTop: 10, fontSize: 13, color: colors.lovelabMuted }}>
                         <summary style={{ cursor: 'pointer' }}>Manage saved templates</summary>
                         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
                           {savedTemplates.map((t) => (
@@ -1644,14 +1647,17 @@ export default function FairAssistantClient() {
                       content fields below are editing. Buttons/attachments
                       stay shared across all three. */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Editing template for</span>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: colors.inkPlum }}>Who are you writing to?</span>
+                      <span style={{ fontSize: 13, color: colors.lovelabMuted }}>
+                        The text below belongs to whichever group is selected here.
+                      </span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {[
-                        { id: 'shop',    label: '🏬 Shops',    sub: 'jewelers, concept stores', count: (leadTypeCounts.shop || 0) + (leadTypeCounts.other || 0) },
-                        { id: 'agent',   label: '🤝 Agents',   sub: 'wholesale reps, territory', count: leadTypeCounts.agent || 0 },
-                        { id: 'partner', label: '🌱 Partners', sub: 'collaboration, co-brand',   count: leadTypeCounts.partner || 0 },
+                        { id: 'shop',    label: 'Shops',    sub: 'jewelers, concept stores', count: (leadTypeCounts.shop || 0) + (leadTypeCounts.other || 0) },
+                        { id: 'agent',   label: 'Agents',   sub: 'wholesale reps, territory', count: leadTypeCounts.agent || 0 },
+                        { id: 'partner', label: 'Partners', sub: 'collaboration, co-brand',   count: leadTypeCounts.partner || 0 },
                       ].map((tabDef) => {
                         const active = editingType === tabDef.id
                         const hasOverrides = tabDef.id === 'shop' || BODY_FIELDS.some((f) => batch[`${tabDef.id}_${f}`])
@@ -1673,9 +1679,9 @@ export default function FairAssistantClient() {
                               {tabDef.label}
                               {tabDef.count > 0 && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', background: active ? colors.inkPlum : '#e5e7eb', color: active ? '#fff' : '#374151', borderRadius: 8, fontWeight: 700 }}>{tabDef.count}</span>}
                             </div>
-                            <div style={{ fontSize: 10, color: colors.lovelabMuted }}>{tabDef.sub}</div>
+                            <div style={{ fontSize: 12, color: colors.lovelabMuted }}>{tabDef.sub}</div>
                             {!hasOverrides && tabDef.id !== 'shop' && (
-                              <div style={{ fontSize: 10, color: colors.lovelabMuted, marginTop: 2, fontStyle: 'italic' }}>uses preset until edited</div>
+                              <div style={{ fontSize: 12, color: colors.lovelabMuted, marginTop: 2, fontStyle: 'italic' }}>uses preset until edited</div>
                             )}
                           </button>
                         )
@@ -1690,15 +1696,21 @@ export default function FairAssistantClient() {
                     return (
                       <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
                         <div style={{ marginBottom: 12 }}>
-                          <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>{contentSection.icon}</span> {contentSection.title}
+                          <h3 style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            {contentSection.title}
+                            <span style={{
+                              fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 10,
+                              background: '#f8f0fa', color: colors.inkPlum, border: `1px solid ${colors.inkPlum}`,
+                            }}>
+                              {editingType === 'shop' ? 'Shops' : editingType === 'agent' ? 'Agents' : 'Partners'}
+                            </span>
                           </h3>
-                          <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>{contentSection.description}</p>
+                          <p style={{ margin: 0, fontSize: 13, color: colors.lovelabMuted }}>{contentSection.description}</p>
                         </div>
                         {contentSection.fields.map((field) => (
-                          <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
-                            <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
-                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                          <label key={field.key} style={{ display: 'block', marginBottom: 14, fontSize: 14 }}>
+                            <span style={{ display: 'block', marginBottom: 5, fontWeight: 600, color: colors.inkPlum, fontSize: 14 }}>{field.label}</span>
+                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 13, color: colors.lovelabMuted }}>{field.hint}</span>}
                             {fieldInput(field)}
                           </label>
                         ))}
@@ -1710,16 +1722,16 @@ export default function FairAssistantClient() {
                   {sections.filter((s) => s.id !== 'content').map((section) => (
                     <details key={section.id} style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 0 }}>
                       <summary style={{ cursor: 'pointer', padding: 16, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span>{section.icon}</span> {section.title}
+                        <span style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {section.title}
                         </span>
-                        <span style={{ fontSize: 11, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto' }}>{section.description}</span>
+                        <span style={{ fontSize: 13, color: colors.lovelabMuted, fontWeight: 400, marginLeft: 'auto' }}>{section.description}</span>
                       </summary>
                       <div style={{ padding: '0 16px 16px' }}>
                         {section.fields.map((field) => (
-                          <label key={field.key} style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
-                            <span style={{ display: 'block', marginBottom: 4, fontWeight: 600, color: colors.inkPlum }}>{field.label}</span>
-                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 11, color: colors.lovelabMuted }}>{field.hint}</span>}
+                          <label key={field.key} style={{ display: 'block', marginBottom: 14, fontSize: 14 }}>
+                            <span style={{ display: 'block', marginBottom: 5, fontWeight: 600, color: colors.inkPlum, fontSize: 14 }}>{field.label}</span>
+                            {field.hint && <span style={{ display: 'block', marginBottom: 6, fontSize: 13, color: colors.lovelabMuted }}>{field.hint}</span>}
                             {fieldInput(field)}
                           </label>
                         ))}
@@ -1737,18 +1749,18 @@ export default function FairAssistantClient() {
                   {/* Attachments section — PDFs from the B2B homepage */}
                   <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
                     <div style={{ marginBottom: 12 }}>
-                      <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, margin: '0 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        📎 Attachments
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Attachments
                         {attachedCount > 0 && <span style={{ background: colors.inkPlum, color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{attachedCount}</span>}
                       </h3>
-                      <p style={{ margin: 0, fontSize: 11, color: colors.lovelabMuted }}>Pick PDFs / Excels to attach to every email in this batch. Same files as your B2B home page.</p>
+                      <p style={{ margin: 0, fontSize: 13, color: colors.lovelabMuted }}>Pick PDFs / Excels to attach to every email in this batch. Same files as your B2B home page.</p>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {resourceGroups.map((group) => (
                         <details key={group.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8 }}>
                           <summary style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: colors.inkPlum, display: 'flex', alignItems: 'center', gap: 6 }}>
                             {group.label}
-                            <span style={{ marginLeft: 'auto', fontSize: 10, color: colors.lovelabMuted, fontWeight: 400 }}>
+                            <span style={{ marginLeft: 'auto', fontSize: 12, color: colors.lovelabMuted, fontWeight: 400 }}>
                               {group.files.filter((f) => attachedSet.has(f.path)).length} / {group.files.length} selected
                             </span>
                           </summary>
@@ -1773,33 +1785,73 @@ export default function FairAssistantClient() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, position: 'sticky', bottom: 8, boxShadow: '0 -4px 14px rgba(0,0,0,0.04)' }}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 13 }}>
-                        {busyAction === 'preview' ? 'Loading…' : '👁 Preview email'}
-                      </button>
-                      <button onClick={runGenerateAll} disabled={busyAction === 'generate'} style={{ ...actionBtnStyle, fontSize: 13 }}>
-                        {busyAction === 'generate' ? 'Generating…' : 'Generate drafts'}
-                      </button>
-                      <button
-                        onClick={runSend}
-                        disabled={(busyAction && busyAction.startsWith('send')) || uploading || leads.length === 0}
-                        title={
-                          uploading ? 'Wait for uploads to finish' :
-                          leads.length === 0 ? 'No leads in this batch yet' :
-                          ''
-                        }
-                        style={{ ...actionBtnStyle, background: (uploading || leads.length === 0) ? '#c5b9cf' : colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700, flex: '1 1 auto', minWidth: 180, cursor: (uploading || leads.length === 0) ? 'not-allowed' : 'pointer' }}
-                      >
-                        {busyAction === 'send' ? 'Sending…'
-                          : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} remaining`
-                          : uploading ? 'Wait for uploads…'
-                          : leads.length === 0 ? 'No leads yet'
-                          : `Send to ${leads.length} lead${leads.length === 1 ? '' : 's'}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}`}
-                      </button>
-                    </div>
-                  </div>
+                  {/* Actions.
+                      Send does the whole job: runSend calls generate-all first,
+                      then loops /send. "Write drafts" is therefore OPTIONAL — it
+                      exists so you can read the drafts in the Leads tab before
+                      committing. The old bar styled all three as peers, which
+                      made a one-click action look like a three-step ritual.
+                      Send is now unmistakably the main action and says what it
+                      will do; the other two read as the optional checks. */}
+                  {(() => {
+                    const sendBusy = Boolean(busyAction && busyAction.startsWith('send'))
+                    const sendBlocked = uploading || leads.length === 0
+                    return (
+                      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, position: 'sticky', bottom: 8, boxShadow: '0 -4px 14px rgba(0,0,0,0.04)' }}>
+                        <button
+                          onClick={runSend}
+                          disabled={sendBusy || sendBlocked}
+                          title={
+                            uploading ? 'Wait for uploads to finish' :
+                            leads.length === 0 ? 'No leads in this batch yet' :
+                            'Writes every email, translates it, then sends'
+                          }
+                          style={{
+                            ...actionBtnStyle,
+                            width: '100%',
+                            background: sendBlocked ? '#e7e1ea' : colors.inkPlum,
+                            color: sendBlocked ? '#6b5b71' : '#fff',
+                            border: `1px solid ${sendBlocked ? '#d9d0dd' : colors.inkPlum}`,
+                            fontSize: 16,
+                            fontWeight: 700,
+                            padding: '14px 18px',
+                            cursor: sendBlocked ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {busyAction === 'send' ? 'Writing and sending…'
+                            : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} to go`
+                            : uploading ? 'Wait for uploads…'
+                            : leads.length === 0 ? 'No leads yet'
+                            : `Write and send to ${leads.length} lead${leads.length === 1 ? '' : 's'}`}
+                        </button>
+                        <p role="status" style={{ margin: '10px 0 12px', fontSize: 13, color: colors.lovelabMuted, textAlign: 'center' }}>
+                          {leads.length === 0
+                            ? 'Upload card photos first — there is nobody to write to yet.'
+                            : sendStats.sent > 0
+                              ? `${sendStats.sent} email${sendStats.sent === 1 ? '' : 's'} sent so far${sendStats.failed > 0 ? ` · ${sendStats.failed} failed` : ''}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}. Sending again only writes to leads that have not received one.`
+                              : `Each lead gets their own email in their own language${attachedCount > 0 ? `, with ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}. Nothing is sent until you press this.`}
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${colors.borderLight || '#eee'}`, paddingTop: 12 }}>
+                          <span style={{ fontSize: 13, color: colors.lovelabMuted, alignSelf: 'center', marginRight: 2 }}>Check first:</span>
+                          <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 14 }}>
+                            {busyAction === 'preview' ? 'Loading…' : 'Preview one email'}
+                          </button>
+                          <button
+                            onClick={runGenerateAll}
+                            disabled={busyAction === 'generate' || leads.length === 0}
+                            title="Writes every draft now so you can read them in the Leads tab — without sending"
+                            style={{ ...actionBtnStyle, fontSize: 14 }}
+                          >
+                            {busyAction === 'generate'
+                              ? 'Writing…'
+                              : sendStats.ready > 0
+                                ? `Rewrite ${sendStats.ready} draft${sendStats.ready === 1 ? '' : 's'}`
+                                : 'Write drafts to review'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )
 
@@ -1817,7 +1869,7 @@ export default function FairAssistantClient() {
                 }}>
                   <div style={{ padding: '10px 14px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live preview</span>
-                    {livePreviewLoading && <span style={{ fontSize: 11, color: colors.lovelabMuted }}>• updating…</span>}
+                    {livePreviewLoading && <span style={{ fontSize: 13, color: colors.lovelabMuted }}>• updating…</span>}
                     <button
                       onClick={() => setShowLivePreview((v) => !v)}
                       style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 11, borderRadius: 6, border: `1px solid ${colors.border}`, background: '#fff', cursor: 'pointer', fontFamily: fonts.body, color: colors.text }}
@@ -1849,7 +1901,7 @@ export default function FairAssistantClient() {
                   <div className="fa-modal-card" style={{ background: '#fff', width: '100%', height: '92vh', borderRadius: '12px 12px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
                     <div style={{ padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live preview</span>
-                      {livePreviewLoading && <span style={{ fontSize: 11, color: colors.lovelabMuted }}>• updating…</span>}
+                      {livePreviewLoading && <span style={{ fontSize: 13, color: colors.lovelabMuted }}>• updating…</span>}
                       <button
                         onClick={() => setShowLivePreview(false)}
                         style={{ marginLeft: 'auto', background: 'none', border: 'none', color: colors.text, fontSize: 24, cursor: 'pointer', lineHeight: 1 }}
@@ -1898,7 +1950,7 @@ export default function FairAssistantClient() {
                     gap: 6,
                   }}
                 >
-                  👁 Preview
+                  Preview
                 </button>
               )
 
