@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { canAccessDocument, getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients, isExcludedFromOrderCopies } from '@/lib/email';
 import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
-import { readOrderEmailCatalogue } from '@/lib/orderEmailCatalogue';
+import { readOrderEmailCatalogue, orderEmailCatalogueUrl } from '@/lib/orderEmailCatalogue';
 
 // All client-facing order emails are BCC'd to the LoveLab office inboxes (so
 // every conversation funnels through inboxes someone actually reads) PLUS the
@@ -213,10 +213,18 @@ export async function POST(request) {
       },
     ];
 
-    // Catalogue is ALWAYS attached on admin sends — there's no opt-out toggle
-    // anymore. Falls back to the EN PDF for languages that don't have a
-    // localised version on disk yet.
-    const cat = await readOrderEmailCatalogue(langCode);
+    // The catalogue is attached whenever it fits. The order PDF's size is
+    // passed in so the budget is measured against the whole message, not the
+    // catalogue alone — a message that clears Resend can still be refused by
+    // the client's mailbox, which is how the 6 Sep 2026 order bounced at
+    // iCloud while the Google-hosted BCCs received it.
+    //
+    // When it doesn't fit, the confirmation still goes out and the email links
+    // to the catalogue instead. Falls back to the EN PDF for languages that
+    // don't have a localised version on disk yet.
+    const cat = await readOrderEmailCatalogue(langCode, {
+      reservedBytes: pdfBuffer.length,
+    });
     if (cat) {
       attachments.push({
         filename: cat.filename,
@@ -237,6 +245,8 @@ export async function POST(request) {
     const { subject, html } = clientOrderEmail({
       contactName: greetingName,
       lang: langCode,
+      catalogueAttached: Boolean(cat),
+      catalogueUrl: cat ? '' : orderEmailCatalogueUrl(langCode, siteUrl),
       overrides: {
         subject: subjectOverride,
         greeting: greetingOverride,
