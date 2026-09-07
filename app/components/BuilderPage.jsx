@@ -565,7 +565,7 @@ const CHANNEL_BANNER = {
   delete_from_stock: { label: 'Delete from Stock (Write-off)', color: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, pricelistYear, setPricelistYear, isAdmin = false, profile = null, openBuildWithClaude = false }) {
+export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, setBudget, budgetRecommendations, showRecommendations, setShowRecommendations, onRequestRecommendations, orderChannel, editingLabel = null, pricelistYear, setPricelistYear, isAdmin = false, profile = null, openBuildWithClaude = false }) {
   // Compact = phone OR iPad portrait (< 1024px). The summary becomes a FAB +
   // drawer, toolbars stack, and the pack carousel wraps on compact. `tablet`
   // is kept only to fine-tune the collection grid card size. `phone`
@@ -1987,6 +1987,27 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   return (
     <div style={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Order channel context banner — shown for non-B2B orders */}
+      {/* An existing order being modified must never look like a new build —
+          that is how edits used to get saved as a second document. */}
+      {editingLabel && (
+        <div
+          data-testid="builder-editing-banner"
+          style={{
+            padding: '6px 16px', fontSize: 12, fontWeight: 600,
+            color: colors.inkPlum, background: '#f3ecf6',
+            borderBottom: `1px solid ${colors.inkPlum}22`,
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          {editingLabel}
+          <span style={{ fontWeight: 500, color: colors.lovelabMuted }}>
+            — Finalize will update the saved order, not create a new one
+          </span>
+        </div>
+      )}
       {channelBanner && (
         <div style={{
           padding: '6px 16px', fontSize: 12, fontWeight: 600,
