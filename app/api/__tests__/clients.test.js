@@ -364,3 +364,64 @@ describe('POST /api/clients — contact overwrite guard', () => {
     expect(json.contact_warnings).toBeUndefined()
   })
 })
+
+// ── Address guard ────────────────────────────────────────────────────────────
+// The order form syncs its header onto the client after every save. This used
+// to null every address field the request did not carry — `zip` was never sent,
+// so every saved order erased the postcode, and a blank header erased the
+// street and city too (Folies, Sep 2026). Absent now means "keep as stored".
+describe('POST /api/clients — address fields on update', () => {
+  const stored = () => {
+    mockStoredContact()
+    mockQuery.maybeSingle.mockResolvedValueOnce({
+      data: { id: 'c-1', company: 'Folies', address: '5 Meir', city: 'Antwerpen', zip: '2000' },
+      error: null,
+    })
+  }
+
+  test('an update that carries no address fields leaves them untouched', async () => {
+    stored()
+    const res = await POST(makePost({ id: 'c-1', company: 'Folies', dzb_client_number: '123' }))
+    expect(res.status).toBe(200)
+    const payload = mockQuery.update.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('address')
+    expect(payload).not.toHaveProperty('city')
+    expect(payload).not.toHaveProperty('zip')
+    expect(payload).not.toHaveProperty('country')
+    expect(payload).not.toHaveProperty('vat')
+    expect(payload).not.toHaveProperty('vat_valid')
+  })
+
+  test('the regression shape — a sync sending only address and city — no longer nulls zip', async () => {
+    stored()
+    await POST(makePost({ id: 'c-1', company: 'Folies', address: '5 Meir', city: 'Antwerpen' }))
+    const payload = mockQuery.update.mock.calls[0][0]
+    expect(payload.address).toBe('5 Meir')
+    expect(payload.city).toBe('Antwerpen')
+    expect(payload).not.toHaveProperty('zip')
+  })
+
+  test('fields that are sent are written, trimmed', async () => {
+    stored()
+    await POST(makePost({ id: 'c-1', company: 'Folies', address: ' 7 Meir ', zip: ' 2000 ', city: 'Antwerpen', country: 'Belgium' }))
+    expect(mockQuery.update.mock.calls[0][0]).toEqual(expect.objectContaining({
+      address: '7 Meir', zip: '2000', city: 'Antwerpen', country: 'Belgium',
+    }))
+  })
+
+  test('an explicit empty string still clears — the client gate relies on it', async () => {
+    stored()
+    await POST(makePost({ id: 'c-1', company: 'Folies', address: '', city: '', zip: '' }))
+    expect(mockQuery.update.mock.calls[0][0]).toEqual(expect.objectContaining({
+      address: null, city: null, zip: null,
+    }))
+  })
+
+  test('creating a client is unchanged — blanks become null', async () => {
+    mockQuery.single.mockResolvedValueOnce({ data: { id: 'new' }, error: null })
+    await POST(makePost({ company: 'New Co' }))
+    expect(mockQuery.insert.mock.calls[0][0]).toEqual(expect.objectContaining({
+      address: null, city: null, zip: null,
+    }))
+  })
+})

@@ -76,6 +76,9 @@ export async function GET(request) {
 }
 
 // POST - Create or update a client
+// A text column value from a request field: trimmed, '' becomes null.
+const optionalText = (value) => (typeof value === 'string' ? (value.trim() || null) : (value ?? null));
+
 export async function POST(request) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 30, prefix: 'clients-post' });
@@ -185,14 +188,23 @@ export async function POST(request) {
           { confirmOverwrite: confirm_contact_overwrite === true },
       );
 
+      // Address and VAT change only when the request actually carries them.
+      // A field that is absent stays as stored; a field sent as '' is an
+      // explicit clear (the client gate does that when the user empties it).
+      //
+      // This used to null every absent field. The order form's after-save
+      // sync never sent `zip`, so every saved order erased the client's
+      // postcode — and when the form's address lines were blank it erased
+      // the street and city too. That is how Folies lost its address.
+      const addressPayload = {};
+      for (const [key, value] of Object.entries({ country, address, city, zip, vat })) {
+          if (value !== undefined) addressPayload[key] = optionalText(value);
+      }
+      if (vat_valid !== undefined) addressPayload.vat_valid = vat_valid ?? null;
+
       const updatePayload = {
           company: company.trim(),
-          country: country?.trim() || null,
-          address: address?.trim() || null,
-          city: city?.trim() || null,
-          zip: zip?.trim() || null,
-          vat: vat?.trim() || null,
-          vat_valid: vat_valid ?? null,
+          ...addressPayload,
           ...contactFields,
           ...extrasPayload,
           ...sourcePayload,

@@ -11,6 +11,7 @@ import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
+import { clientAddressPatch } from '@/lib/clientSync'
 import { findPackshot } from '@/lib/packshot-lookup'
 import PackshotThumb from './PackshotThumb'
 import {
@@ -1100,8 +1101,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       }
       // confirm_contact_overwrite is deliberately never sent: saving an order
       // is no moment to arbitrate a contact conflict, so the API keeps the
-      // stored name/email/phone of an existing client. Address, VAT, DZB and
-      // shipping still persist, and a brand new client takes everything.
+      // stored name/email/phone of an existing client. DZB and shipping
+      // still persist, and a brand new client takes everything.
+      //
+      // Address, postcode, city, country and VAT go through clientAddressPatch:
+      // only the fields the form actually holds are sent, so an order saved
+      // with a blank header can no longer erase a client's stored address —
+      // and the "Postal code, City" line lands in the two columns it names.
       await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1109,12 +1115,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           id: clientId || undefined,
           name: contactName,
           company,
-          country,
-          address: addressLine1,
-          city: addressLine2,
           email,
           phone,
-          vat: vatNumber,
+          ...clientAddressPatch({ addressLine1, addressLine2, country, vatNumber }),
           dzb_client_number: dzbEnabled ? (dzbClientNumber || null) : null,
           jeweler_group: jewelerGroup !== JEWELER_GROUP.AUCUN ? jewelerGroup : null,
           shipping_same_as_billing: shippingSameAsBilling,
