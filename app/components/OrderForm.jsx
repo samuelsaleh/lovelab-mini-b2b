@@ -6,7 +6,7 @@ import { colors, fonts } from '@/lib/styles'
 import { noAutofill } from '@/lib/noAutofill'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, closureOptionsFor } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, getDefaultClosure, closureOptionsFor, resolveClosure, sizeOptionsForClosure } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
@@ -207,7 +207,7 @@ function prefillRows(quote) {
       // so the OrderForm select can pre-pick it on prefill. Collections whose
       // closure is forced (Shapy Shine = braided) ignore the stored value so a
       // line saved before the rule can't come back as non-braided.
-      closure: getForcedClosure(colDef) || ln.closureType || '',
+      closure: resolveClosure(colDef, ln.closureType) || '',
       size: ln.size || '',
       material: buildMaterial(cordType, thickness),
       colorCord: normalizeCordColorName(colDef, cordType, ln.colorName || ''),
@@ -1232,9 +1232,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         next[rowIdx].size = ''
         next[rowIdx].material = ''
         next[rowIdx].colorCord = ''
-        // Collections whose closure isn't a choice (Shapy Shine = braided) get
-        // it stamped straight away so the cell is never left blank.
-        next[rowIdx].closure = getForcedClosure(newCol) || ''
+        // Collections whose closure isn't a choice (Shapy Shine = braided) or
+        // that start on a default (Iconix = non-braided) get it stamped straight
+        // away so the cell is never left blank; CUTY / CUBIX still ask.
+        next[rowIdx].closure = getDefaultClosure(newCol) || ''
       }
       // Shapy Shine sells only five shapes at 0.10 ct, and only in a bezel —
       // moving a row to that size drops a shape / setting it no longer sells.
@@ -1253,6 +1254,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         const rowCol = findCollection(next[rowIdx].collection)
         const { cordType } = parseMaterial(value)
         next[rowIdx].colorCord = normalizeCordColorName(rowCol, cordType, next[rowIdx].colorCord)
+      }
+      // Closure drives the available sizes. If the change makes the picked
+      // size invalid for the new closure, clear it so the agent re-picks from
+      // the right list rather than keeping an off-list value (same rule as
+      // the Builder's CollectionConfig).
+      if (key === 'closure') {
+        const rowCol = findCollection(next[rowIdx].collection)
+        if (rowCol?.hasClosure) {
+          const opts = sizeOptionsForClosure(rowCol, value)
+          if (next[rowIdx].size && !opts.includes(next[rowIdx].size)) next[rowIdx].size = ''
+        }
       }
       // For MULTI THREE: when setting changes to Fix (F), YWP is no longer valid
       if (key === 'setting' && value === 'F') {
@@ -2665,7 +2677,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
                             return { value: stripped, label: stripped }
                           }).filter((v, i, a) => a.findIndex(x => x.value === v.value) === i) : null
-                          const sizeOptions = isSizeCol && rowCol?.sizes ? rowCol.sizes.map(s => ({ value: s, label: s })) : null
+                          // Sizes follow the closure: a non-braided bracelet only comes in the
+                          // grouped silk sizes. Reading rowCol.sizes here used to show a
+                          // non-braided row a size list it could not actually be ordered in.
+                          const sizeOptions = isSizeCol && rowCol?.sizes
+                            ? sizeOptionsForClosure(rowCol, row.closure).map(s => ({ value: s, label: s }))
+                            : null
                           const hasMaterial = rowCol && (rowCol.cord === 'silk' || rowCol.cord === 'silkBraided')
                           const impliedMaterialLabel = !hasMaterial && rowCol ? (CORD_TYPE_LABELS[rowCol.cord] || rowCol.cord) : null
                           const materialOptions = isMaterialCol && hasMaterial ? (() => {

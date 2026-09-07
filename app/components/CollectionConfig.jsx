@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel, isBezelOnly, getShapesForCarat, getShapesForCaratIdx, getForcedClosure, resolveClosure } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel, isBezelOnly, getShapesForCarat, getShapesForCaratIdx, getForcedClosure, getDefaultClosure, resolveClosure } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -201,9 +201,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (hasCordOptions && !cfg.cordType) return false
     if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
     // Bracelet thread closure required for hasClosure collections (CUTY, CUBIX).
-    // Collections with a forced closure (Shapy Shine = braided) never ask, so
-    // the requirement is already satisfied.
-    if (col.hasClosure && !cfg.closureType && !getForcedClosure(col)) return false
+    // Collections with a forced closure (Shapy Shine = braided) or a default
+    // (Iconix = non-braided) never leave a row undecided, so the requirement
+    // is already satisfied — including for rows saved before the closure existed.
+    if (col.hasClosure && !cfg.closureType && !getDefaultClosure(col)) return false
     return true
   }
 
@@ -293,10 +294,12 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (presetShape) {
       newCfg = { ...newCfg, shape: presetShape }
     }
-    // Forced-closure collections (Shapy Shine = braided) never show a picker.
-    const forced = getForcedClosure(col)
-    if (forced) {
-      newCfg = { ...newCfg, closureType: forced }
+    // Forced-closure collections (Shapy Shine = braided) never show a picker;
+    // collections with a default (Iconix = non-braided) start on it and let
+    // the agent switch. CUTY / CUBIX have neither and still ask.
+    const startingClosure = getDefaultClosure(col)
+    if (startingClosure) {
+      newCfg = { ...newCfg, closureType: startingClosure }
     }
     return newCfg
   }
