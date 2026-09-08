@@ -206,10 +206,17 @@ function prefillRows(quote) {
       // Bracelet thread closure: builder stores it on the line as
       // 'braided' | 'nonBraided' | null. Persist as the exact same string
       // so the OrderForm select can pre-pick it on prefill. Collections whose
-      // closure is forced (Shapy Shine = braided) ignore the stored value so a
-      // line saved before the rule can't come back as non-braided.
+      // closure is forced (Shapy Shine, Riviera = braided) ignore the stored
+      // value so a line saved before the rule can't come back as non-braided;
+      // a size that only the old closure offered (Riviera S/M) is dropped too.
       closure: resolveClosure(colDef, ln.closureType) || '',
-      size: ln.size || '',
+      size: (() => {
+        const size = ln.size || ''
+        if (!size || !colDef?.hasClosure) return size
+        const forced = getForcedClosure(colDef)
+        if (!forced || ln.closureType === forced) return size
+        return sizeOptionsForClosure(colDef, forced).includes(size) ? size : ''
+      })(),
       material: buildMaterial(cordType, thickness),
       colorCord: normalizeCordColorName(colDef, cordType, ln.colorName || ''),
       unitPrice: unit ? String(unit) : '',
