@@ -173,15 +173,25 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.presetShape, line.colorConfigs])
 
-  // Forced-closure collections (Shapy Shine = braided): the picker is hidden, so
-  // stamp the value onto every row — including rows restored from an order saved
-  // while non-braided was still on offer.
+  // Forced-closure collections (Shapy Shine, Riviera = braided): the picker is
+  // hidden, so stamp the value onto every row — including rows restored from an
+  // order saved while non-braided was still on offer. A size that only existed
+  // for the old closure (Riviera S/M, L/XL) is dropped with it so the agent
+  // re-picks from the braided list instead of keeping an off-list value.
   useEffect(() => {
     const forced = getForcedClosure(col)
     if (!forced) return
     const configs = line.colorConfigs || []
     if (configs.length === 0 || configs.every(c => c.closureType === forced)) return
-    set({ colorConfigs: configs.map(c => (c.closureType === forced ? c : { ...c, closureType: forced })) })
+    const sizes = sizeOptionsForClosure(col, forced)
+    set({
+      colorConfigs: configs.map(c => {
+        if (c.closureType === forced) return c
+        const next = { ...c, closureType: forced }
+        if (next.size && !sizes.includes(next.size)) next.size = null
+        return next
+      }),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [col.id, line.colorConfigs])
 
@@ -201,8 +211,8 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (hasCordOptions && !cfg.cordType) return false
     if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
     // Bracelet thread closure required for hasClosure collections (CUTY, CUBIX).
-    // Collections with a forced closure (Shapy Shine = braided) or a default
-    // (Iconix = non-braided) never leave a row undecided, so the requirement
+    // Collections with a forced closure (Shapy Shine, Riviera = braided) or a
+    // default (Za-Ha / Flower = non-braided) never leave a row undecided, so the requirement
     // is already satisfied — including for rows saved before the closure existed.
     if (col.hasClosure && !cfg.closureType && !getDefaultClosure(col)) return false
     return true
@@ -294,9 +304,9 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (presetShape) {
       newCfg = { ...newCfg, shape: presetShape }
     }
-    // Forced-closure collections (Shapy Shine = braided) never show a picker;
-    // collections with a default (Iconix = non-braided) start on it and let
-    // the agent switch. CUTY / CUBIX have neither and still ask.
+    // Forced-closure collections (Shapy Shine, Riviera = braided) never show a
+    // picker; collections with a default (Za-Ha / Flower = non-braided) start on
+    // it and let the agent switch. CUTY / CUBIX have neither and still ask.
     const startingClosure = getDefaultClosure(col)
     if (startingClosure) {
       newCfg = { ...newCfg, closureType: startingClosure }
