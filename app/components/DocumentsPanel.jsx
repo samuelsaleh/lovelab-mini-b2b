@@ -14,6 +14,9 @@ import DocumentsSidebar from './DocumentsSidebar'
 import DocumentRow from './DocumentRow'
 import DocumentsAnalytics from './DocumentsAnalytics'
 
+// Picker value for "no fair" in the bulk bar — sends event_id: null.
+const BULK_UNFILE = '__none__'
+
 export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const router = useRouter()
   // Compact = phone OR iPad portrait → event sidebar becomes a drawer so the
@@ -95,6 +98,14 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [renamingDocId, setRenamingDocId] = useState(null)
   const [docRenameValue, setDocRenameValue] = useState('')
   const [docRenameLoading, setDocRenameLoading] = useState(false)
+
+  // ── Bulk filing into a fair ───────────────────────────────────────────────
+  // Admins tick several orders in the list and file them into one fair in a
+  // single request. Only event_id moves — the agent link is untouched.
+  const [selectedDocIds, setSelectedDocIds] = useState(() => new Set())
+  const [bulkFairId, setBulkFairId] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkNotice, setBulkNotice] = useState(null)
 
   // ── Share modal ───────────────────────────────────────────────────────────
   const [showShareModal, setShowShareModal] = useState(false)
@@ -359,6 +370,74 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       }
     } catch {
       setErrorMsg('Failed to move document to Internal Orders')
+    }
+  }
+
+  // ── Bulk filing into a fair ───────────────────────────────────────────────
+  const toggleDocSelected = (doc) => {
+    setSelectedDocIds(prev => {
+      const next = new Set(prev)
+      if (next.has(doc.id)) next.delete(doc.id)
+      else next.add(doc.id)
+      return next
+    })
+  }
+  const clearDocSelection = () => setSelectedDocIds(new Set())
+
+  const bulkFileToFair = async () => {
+    if (bulkBusy || selectedDocIds.size === 0) return
+    const ids = [...selectedDocIds]
+    // '__none__' is the "take them out of any fair" choice in the picker.
+    const eventId = bulkFairId && bulkFairId !== BULK_UNFILE ? bulkFairId : null
+    setBulkBusy(true)
+    setBulkNotice(null)
+    try {
+      const res = await fetch('/api/documents/bulk-file', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, event_id: eventId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setBulkNotice({ kind: 'error', text: data.error || t('docs.bulkFailed') })
+        return
+      }
+      const updatedIds = new Set(data.updated_ids || [])
+      const target = events.find(e => e.id === eventId) || null
+      // Re-tag the rows we already hold so the "@ fair" label and the No Event
+      // filter are right straight away, without a full reload.
+      const retag = (list) => list.map(d => {
+        if (!updatedIds.has(d.id)) return d
+        return {
+          ...d,
+          event_id: eventId,
+          events: target ? { ...(d.events || {}), name: target.name, organization_id: target.organization_id ?? null } : null,
+        }
+      })
+      setDocuments(prev => retag(prev))
+      if (isFolderView) fetchFolderDocs(selectedEventId, selectedOrgId)
+      else setFolderDocs(prev => retag(prev))
+      // Sidebar counts come from the server — refresh them so the fair's
+      // doc_count follows the move.
+      try {
+        const evRes = await safeFetch('/api/events')
+        if (evRes.ok) {
+          const evData = await evRes.json().catch(() => ({}))
+          if (evData.events) setEvents(evData.events)
+        }
+      } catch {
+        // Counts refresh on the next load; the filing itself succeeded.
+      }
+      const skipped = Array.isArray(data.skipped) ? data.skipped.length : 0
+      const fairName = data.event?.name || target?.name || t('docs.bulkNoFair')
+      const parts = [t('docs.bulkDone', { count: data.updated_count ?? updatedIds.size, fair: fairName })]
+      if (skipped > 0) parts.push(t('docs.bulkSkipped', { count: skipped }))
+      setBulkNotice({ kind: 'ok', text: parts.join(' · ') })
+      clearDocSelection()
+    } catch {
+      setBulkNotice({ kind: 'error', text: t('docs.bulkFailed') })
+    } finally {
+      setBulkBusy(false)
     }
   }
 
@@ -808,6 +887,45 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const displayDocs = showOffres ? offreDocs : showDrafts ? draftDocs : showInternal ? internalDocs : showConsignment ? consignmentDocs : filteredDocs
   const displayLoading = showOffres || showDrafts ? parkedLoading : showInternal ? internalLoading : showConsignment ? consignmentLoading : (isFolderView && !searchingAllDocs) ? folderLoading : loading
 
+  // ── Bulk selection derived state ──────────────────────────────────────────
+  // Only sent orders in All Documents / a folder can be filed; drafts, internal
+  // and consignment views have their own rules and never show the checkbox.
+  const bulkSelectable = isAdmin && !showInternal && !showConsignment && !showDrafts && !showOffres && !showTrash
+  const selectedCount = selectedDocIds.size
+  const allVisibleSelected = displayDocs.length > 0 && displayDocs.every(d => selectedDocIds.has(d.id))
+  const toggleSelectAllVisible = () => {
+    setSelectedDocIds(prev => {
+      const next = new Set(prev)
+      if (allVisibleSelected) displayDocs.forEach(d => next.delete(d.id))
+      else displayDocs.forEach(d => next.add(d.id))
+      return next
+    })
+  }
+  // Fairs / partners / other folders are valid targets; an agent's own folder is
+  // not what "add to the fair" means, so agent-type events stay out of the list.
+  const bulkTargetGroups = [
+    { key: 'fair', label: 'Fairs' },
+    { key: 'partner', label: 'Partners' },
+    { key: 'other', label: 'Other' },
+  ].map(group => ({ ...group, events: events.filter(e => (e.type || 'other') === group.key) }))
+    .filter(group => group.events.length > 0)
+
+  // Drop selections that point at rows we no longer hold (deleted, moved to
+  // internal, reloaded) so the count never lies.
+  useEffect(() => {
+    if (selectedDocIds.size === 0) return
+    const live = new Set([...documents, ...folderDocs].map(d => d.id))
+    setSelectedDocIds(prev => {
+      const kept = [...prev].filter(id => live.has(id))
+      return kept.length === prev.size ? prev : new Set(kept)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents, folderDocs])
+  useEffect(() => {
+    if (!bulkSelectable && selectedDocIds.size > 0) clearDocSelection()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkSelectable])
+
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Mobile toggle button */}
@@ -888,9 +1006,23 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             color: colors.inkPlum, fontFamily: fonts.body,
           }}>{currentEventName}</h2>
           {!displayLoading && (
-            <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
-              {displayDocs.length} {displayDocs.length === 1 ? 'document' : 'documents'}
-              {search && ' matching your search'}
+            <div style={{ fontSize: 11, color: '#999', marginTop: 3, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span>
+                {displayDocs.length} {displayDocs.length === 1 ? 'document' : 'documents'}
+                {search && ' matching your search'}
+              </span>
+              {bulkSelectable && displayDocs.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="bulk-select-all"
+                  onClick={toggleSelectAllVisible}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: colors.inkPlum, fontSize: 11, fontWeight: 600,
+                    textDecoration: 'underline', fontFamily: fonts.body,
+                  }}
+                >{allVisibleSelected ? t('docs.bulkClear') : t('docs.bulkSelectAll')}</button>
+              )}
               {searchingAllDocs && isFolderView && (
                 <div data-testid="searching-all-documents">Searching all documents</div>
               )}
@@ -954,6 +1086,87 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             }}
           >Analytics</button>
         </div>
+
+        {/* Bulk bar: file the ticked orders into a fair in one go. */}
+        {bulkSelectable && selectedCount > 0 && (
+          <div
+            data-testid="bulk-file-bar"
+            style={{
+              marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+              background: '#f3f0f8', border: `1px solid ${colors.inkPlum}`,
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, whiteSpace: 'nowrap' }}>
+              {t('docs.bulkSelected', { count: selectedCount })}
+            </span>
+            <select
+              data-testid="bulk-fair-select"
+              value={bulkFairId}
+              onChange={(e) => setBulkFairId(e.target.value)}
+              disabled={bulkBusy}
+              style={{
+                flex: 1, minWidth: 180, padding: mobile ? '10px 12px' : '8px 12px', borderRadius: 8,
+                border: `1px solid ${colors.lineGray}`, fontSize: 13, fontFamily: fonts.body,
+                background: '#fff', cursor: 'pointer', minHeight: mobile ? 44 : 'auto',
+              }}
+            >
+              <option value="">{t('docs.bulkPickFair')}</option>
+              {bulkTargetGroups.map(group => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.events.map(evt => (
+                    <option key={evt.id} value={evt.id}>{evt.name}</option>
+                  ))}
+                </optgroup>
+              ))}
+              <option value={BULK_UNFILE}>{t('docs.bulkNoFair')}</option>
+            </select>
+            <button
+              type="button"
+              data-testid="bulk-file-btn"
+              onClick={bulkFileToFair}
+              disabled={bulkBusy || !bulkFairId}
+              style={{
+                padding: mobile ? '10px 16px' : '8px 16px', borderRadius: 8, border: 'none',
+                background: colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700,
+                cursor: bulkBusy || !bulkFairId ? 'default' : 'pointer', fontFamily: fonts.body,
+                opacity: bulkBusy || !bulkFairId ? 0.55 : 1, whiteSpace: 'nowrap',
+                minHeight: mobile ? 44 : 'auto',
+              }}
+            >{bulkBusy ? t('docs.bulkAdding') : t('docs.bulkAddToFair')}</button>
+            <button
+              type="button"
+              onClick={clearDocSelection}
+              disabled={bulkBusy}
+              style={{
+                fontSize: 11, fontWeight: 700, color: '#888', background: 'none', border: 'none',
+                cursor: bulkBusy ? 'default' : 'pointer', textDecoration: 'underline', fontFamily: fonts.body,
+              }}
+            >{t('docs.bulkClear')}</button>
+            <div style={{ flexBasis: '100%', fontSize: 11, color: '#777' }}>{t('docs.bulkHint')}</div>
+          </div>
+        )}
+        {bulkNotice && (
+          <div
+            data-testid="bulk-file-notice"
+            role="status"
+            style={{
+              marginBottom: 12, padding: '8px 14px', borderRadius: 8, fontSize: 12,
+              background: bulkNotice.kind === 'error' ? '#fef2f2' : '#e8f4ea',
+              color: bulkNotice.kind === 'error' ? '#dc2626' : '#2d6a4f',
+              border: `1px solid ${bulkNotice.kind === 'error' ? '#fecaca' : '#c8e6c9'}`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span>{bulkNotice.text}</span>
+            <button
+              type="button"
+              onClick={() => setBulkNotice(null)}
+              aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, lineHeight: 1 }}
+            >×</button>
+          </div>
+        )}
 
         {/* Folder totals only — All Documents is not a useful revenue view. */}
         {!displayLoading && isFolderView && !searchingAllDocs && (
@@ -1075,6 +1288,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 commitDocRename={commitDocRename}
                 startDocRename={startDocRename}
                 docRenameLoading={docRenameLoading}
+                selectable={bulkSelectable}
+                selected={selectedDocIds.has(doc.id)}
+                onToggleSelect={toggleDocSelected}
               />
             ))}
           </div>
