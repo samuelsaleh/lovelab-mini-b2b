@@ -66,28 +66,10 @@ describe('OrderForm — adopts the saved document id for later saves', () => {
     );
   });
 
-  test('adopts the id from onSaveSuccess — for a draft', () => {
+  test('adopts the id from onSaveSuccess', () => {
     expect(ORDER_FORM_SOURCE).toMatch(/onSaveSuccess=\{async \(savedDoc\) => \{/);
-    expect(ORDER_FORM_SOURCE).toMatch(/const status = savedDoc\?\.status \|\| 'sent'/);
-    // Only a parked draft is remembered: "Save as draft" twice must update
-    // one row, never make two (the original July 2026 bug).
-    expect(ORDER_FORM_SOURCE).toMatch(
-      /if \(savedDoc\?\.id && status === 'draft'\) \{[\s\S]{0,400}setSavedDocId\(savedDoc\.id\)[\s\S]{0,80}setSavedDocStatus\(status\)/,
-    );
-  });
-
-  test('forgets a committed order on purpose (Sam, 9 Sept 2026)', () => {
-    // A sent order is NOT adopted. The next Save on the same screen is a new
-    // order, so the next customer typed there cannot overwrite this one.
-    // Corrections go through Re-edit, which re-issues the order server-side.
-    expect(ORDER_FORM_SOURCE).toMatch(
-      /\} else \{[\s\S]{0,600}setSavedDocId\(null\)[\s\S]{0,80}setSavedDocStatus\(null\)[\s\S]{0,80}setSavedDocDraftKind\(null\)/,
-    );
-    // In a Re-edit session the server hands back a NEW id; the form follows
-    // it so a further Save keeps re-issuing that same order.
-    expect(ORDER_FORM_SOURCE).toMatch(
-      /savedDoc\.id !== editingDocumentId && onDocumentReissued\) \{\s*\n\s*onDocumentReissued\(savedDoc\)/,
-    );
+    expect(ORDER_FORM_SOURCE).toMatch(/setSavedDocId\(savedDoc\.id\)/);
+    expect(ORDER_FORM_SOURCE).toMatch(/setSavedDocStatus\(savedDoc\.status \|\| 'sent'\)/);
   });
 
   test('forgets the adopted id when the editing target changes', () => {

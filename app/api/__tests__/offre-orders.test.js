@@ -166,16 +166,12 @@ describe('PUT /api/documents/:id — Offre bucket', () => {
 
   function setupMocks({ isAdmin = true } = {}) {
     const oldDoc = {
-      id: 'doc-1',
       file_path: 'x/old.pdf',
       created_by: 'admin-1',
       event_id: null,
       status: 'draft',
       order_channel: 'b2b',
     };
-    // Promoting to sent re-issues the order (fresh row) since Sept 2026, so
-    // that write is an INSERT; a draft re-save stays an UPDATE. Both land in
-    // updatedPayloads so the assertions read whichever row was written.
     const adminClient = {
       from: jest.fn((table) => {
         if (table === 'documents') {
@@ -183,19 +179,8 @@ describe('PUT /api/documents/:id — Offre bucket', () => {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
             single: jest.fn().mockResolvedValue({ data: oldDoc, error: null }),
-            insert: jest.fn((payload) => {
-              updatedPayloads.push(payload);
-              return {
-                select: jest.fn(() => ({
-                  single: jest.fn().mockResolvedValue({
-                    data: { id: 'doc-2', created_at: '2026-09-09T09:28:00.000Z', ...payload },
-                    error: null,
-                  }),
-                })),
-              };
-            }),
             update: jest.fn((payload) => {
-              if (!payload.deleted_at) updatedPayloads.push(payload);
+              updatedPayloads.push(payload);
               return {
                 eq: jest.fn(() => ({
                   select: jest.fn(() => ({
@@ -204,17 +189,9 @@ describe('PUT /api/documents/:id — Offre bucket', () => {
                       error: null,
                     }),
                   })),
-                  then: (resolve) => resolve({ error: null }),
                 })),
               };
             }),
-          };
-        }
-        if (table === 'agent_commissions') {
-          return {
-            update: jest.fn(() => ({
-              eq: jest.fn(() => ({ neq: jest.fn().mockResolvedValue({ error: null }) })),
-            })),
           };
         }
         if (table === 'events' || table === 'profiles') {

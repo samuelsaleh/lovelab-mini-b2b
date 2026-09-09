@@ -3,7 +3,8 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { canAccessDocument, getUserContext, resolveAgentFolderEventId } from '@/app/api/_lib/access';
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
-import { notifyOrderEvent } from '@/lib/orderNotices';
+import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
+import { orderNotificationEmail } from '@/lib/email-templates';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
@@ -11,69 +12,6 @@ import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// ─── Re-issue on update ───────────────────────────────────────────────────
-// Sam, 9 Sept 2026: Silke re-saved a week-old order and emailed it. It kept
-// its 2 September date, sat deep in the list, and nobody in the office was
-// told. From now on a re-saved, committed B2B/B2C order becomes a FRESH
-// order: new row dated now, commission moved onto it, the previous version
-// retired into Trash. Consignment, internal and write-off orders keep
-// updating in place — the ERP is linked to their id.
-
-/** Does this PUT re-issue the order instead of editing the row in place? */
-export function shouldReissue({ oldDoc, body, newStatus }) {
-  if (body?.reissue === false) return false;
-  if (newStatus !== 'sent') return false;
-  const channel = ['b2b', 'b2c', 'internal', 'consignment'].includes(body?.order_channel)
-    ? body.order_channel
-    : oldDoc?.order_channel;
-  return channel === 'b2b' || channel === 'b2c';
-}
-
-/**
- * Re-point the order's commissions at the fresh row. Paid rows stay where
- * they are — that money was already settled against the old version.
- */
-async function moveCommissionsToReissuedDocument(adminSupabase, { fromId, toId }) {
-  try {
-    const { error } = await adminSupabase
-      .from('agent_commissions')
-      .update({ document_id: toId })
-      .eq('document_id', fromId)
-      .neq('status', 'paid');
-    if (error) throw error;
-  } catch (err) {
-    await recordHealthEvent({
-      source: 'documents_put_reissue_commission_move',
-      severity: 'error',
-      message: err?.message || 'Could not move commissions to the re-issued order',
-      context: { fromDocumentId: fromId, toDocumentId: toId, code: err?.code || null },
-    });
-  }
-}
-
-/** Soft-delete the replaced version so it leaves the list but stays in Trash. */
-async function retireReplacedDocument(adminSupabase, { oldDoc, newId }) {
-  try {
-    const { error } = await adminSupabase
-      .from('documents')
-      .update({
-        deleted_at: new Date().toISOString(),
-        metadata: { ...(oldDoc.metadata || {}), replaced_by_document_id: newId },
-      })
-      .eq('id', oldDoc.id);
-    if (error) throw error;
-  } catch (err) {
-    // The fresh order exists; a stale twin in the list is recoverable,
-    // a lost order is not. Record it and carry on.
-    await recordHealthEvent({
-      source: 'documents_put_reissue_retire_old',
-      severity: 'error',
-      message: err?.message || 'Could not retire the replaced order',
-      context: { documentId: oldDoc.id, replacedBy: newId, code: err?.code || null },
-    });
-  }
-}
 
 // GET - Fetch a single document by ID
 export async function GET(request, { params }) {
@@ -138,18 +76,16 @@ export async function PUT(request, { params }) {
 
     const body = await request.json();
 
-    // The whole old row: a re-issue copies its provenance (creator, agent,
-    // folder, metadata) onto the fresh row and retires it with a pointer.
+    // First, get the old document to delete old file
     const { data: oldDoc, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('*')
+      .select('file_path, created_by, event_id, agent_id, status, order_channel')
       .eq('id', id)
       .single();
 
     if (fetchError || !oldDoc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-    if (!oldDoc.id) oldDoc.id = id;
     const { allowed: canEdit } = await canAccessDocument(adminSupabase, oldDoc, {
       user, isAdmin, isAssistant, requiredEventPermission: 'edit',
     });
@@ -157,17 +93,8 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Resolve draft/sent status. body.status wins when valid, otherwise keep
-    // whatever the row already had. A draft→sent change is a "promotion": the
-    // commission/bonus block below runs for any non-draft order, and the
-    // internal notification email fires once on the transition (mirroring POST).
-    const newStatus = (body.status === 'draft' || body.status === 'sent') ? body.status : oldDoc.status;
-    const promotedToSent = oldDoc.status === 'draft' && newStatus === 'sent';
-    const reissue = shouldReissue({ oldDoc, body, newStatus });
-
-    // Delete old file from storage if we have a new one. Not on a re-issue:
-    // the retired version keeps its PDF so it still opens from Trash.
-    if (!reissue && oldDoc.file_path && body.file_path && oldDoc.file_path !== body.file_path) {
+    // Delete old file from storage if we have a new one
+    if (oldDoc.file_path && body.file_path && oldDoc.file_path !== body.file_path) {
       await adminSupabase.storage.from('documents').remove([oldDoc.file_path]);
       // Also try owner-scoped path
       const filename = oldDoc.file_path.split('/').pop();
@@ -176,6 +103,13 @@ export async function PUT(request, { params }) {
         await adminSupabase.storage.from('documents').remove([ownerScopedPath]);
       }
     }
+
+    // Resolve draft/sent status. body.status wins when valid, otherwise keep
+    // whatever the row already had. A draft→sent change is a "promotion": the
+    // commission/bonus block below runs for any non-draft order, and the
+    // internal notification email fires once on the transition (mirroring POST).
+    const newStatus = (body.status === 'draft' || body.status === 'sent') ? body.status : oldDoc.status;
+    const promotedToSent = oldDoc.status === 'draft' && newStatus === 'sent';
 
     // Folder resolution on update. The save modal re-fetches its folder list
     // on every open and can send event_id null when that fetch is slow/failed —
@@ -235,65 +169,19 @@ export async function PUT(request, { params }) {
         creatorId: oldDoc.created_by,
       });
     }
-    let doc = null;
-    let retiredDoc = null;
-    if (reissue) {
-      // ── Re-issue: a fresh row, the old one retired ──────────────────────
-      const insertPayload = {
-        ...updatePayload,
-        created_by: oldDoc.created_by,
-        status: 'sent',
-        order_channel: updatePayload.order_channel || oldDoc.order_channel,
-        metadata: {
-          ...(updatePayload.metadata || {}),
-          replaces_document_id: oldDoc.id,
-          replaces_created_at: oldDoc.created_at || null,
-        },
-      };
-      // Offre provenance travels with the order, exactly as an in-place
-      // promotion keeps it. Only written when the row we read has the column.
-      if (oldDoc.draft_kind !== undefined && !Object.prototype.hasOwnProperty.call(insertPayload, 'draft_kind')) {
-        insertPayload.draft_kind = oldDoc.draft_kind ?? null;
-      }
-      // The selling agent must not be lost when the form does not resend it.
-      if (putAgentColumn && !Object.prototype.hasOwnProperty.call(insertPayload, 'agent_id')) {
-        insertPayload.agent_id = oldDoc.agent_id ?? null;
-      }
-      if (!putAgentColumn) delete insertPayload.agent_id;
+    const { data: doc, error: updateError } = await adminSupabase
+      .from('documents')
+      .update(updatePayload)
+      .eq('id', id)
+      .select()
+      .single();
 
-      const { data: fresh, error: insertError } = await adminSupabase
-        .from('documents')
-        .insert(insertPayload)
-        .select()
-        .single();
-
-      if (insertError || !fresh) {
-        console.error('[Documents PUT] Re-issue insert failed:', insertError?.message, insertError?.code, insertError?.details);
-        if (insertError?.code === '42501' || insertError?.message?.includes('policy')) {
-          return NextResponse.json({ error: 'Permission denied - RLS policy blocks update. Run the SQL migration to fix.' }, { status: 403 });
-        }
-        return NextResponse.json({ error: 'Failed to update document: ' + (insertError?.message || 'insert failed') }, { status: 500 });
+    if (updateError) {
+      console.error('[Documents PUT] Error:', updateError.message, updateError.code, updateError.details);
+      if (updateError.code === '42501' || updateError.message?.includes('policy')) {
+        return NextResponse.json({ error: 'Permission denied - RLS policy blocks update. Run the SQL migration to fix.' }, { status: 403 });
       }
-      doc = fresh;
-      retiredDoc = oldDoc;
-      await moveCommissionsToReissuedDocument(adminSupabase, { fromId: oldDoc.id, toId: fresh.id });
-      await retireReplacedDocument(adminSupabase, { oldDoc, newId: fresh.id });
-    } else {
-      const { data: updated, error: updateError } = await adminSupabase
-        .from('documents')
-        .update(updatePayload)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error('[Documents PUT] Error:', updateError.message, updateError.code, updateError.details);
-        if (updateError.code === '42501' || updateError.message?.includes('policy')) {
-          return NextResponse.json({ error: 'Permission denied - RLS policy blocks update. Run the SQL migration to fix.' }, { status: 403 });
-        }
-        return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
-      }
-      doc = updated;
+      return NextResponse.json({ error: 'Failed to update document: ' + updateError.message }, { status: 500 });
     }
 
     // Recalculate commission when total_amount changes (skip for internal and consignment orders)
@@ -346,21 +234,45 @@ export async function PUT(request, { params }) {
       });
     }
 
-    // Tell the office. A draft that just became a real order is "created";
-    // a re-issued order is "updated". Drafts and non-revenue channels are
-    // skipped inside the helper, which also reads Resend's answer and
-    // records a health event when the email does not go out.
-    await notifyOrderEvent(adminSupabase, {
-      kind: promotedToSent ? 'created' : 'updated',
-      document: doc,
-      actor: user,
-      replacedDocument: retiredDoc,
-    });
+    // Internal notification on draft→sent promotion only.
+    const shouldNotify = promotedToSent;
+    if (shouldNotify) {
+      try {
+        const resendApiKey =
+          doc?.order_channel === 'internal' || doc?.order_channel === 'consignment' || doc?.order_channel === 'delete_from_stock'
+            ? null
+            : process.env.RESEND_API_KEY;
+        if (resendApiKey) {
+          const eventName = doc.event_id
+            ? (await adminSupabase.from('events').select('name').eq('id', doc.event_id).single())?.data?.name
+            : null;
+          const creatorName =
+            (await adminSupabase.from('profiles').select('full_name').eq('id', doc.created_by).single())?.data?.full_name ||
+            user.email;
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+          const { subject, html } = orderNotificationEmail({
+            documentType: doc.document_type,
+            clientCompany: doc.client_company,
+            clientName: doc.client_name,
+            totalAmount: doc.total_amount,
+            eventName,
+            creatorName,
+          }, siteUrl);
+          const { Resend } = await import('resend');
+          const resend = new Resend(resendApiKey);
+          await resend.emails.send({
+            from: getSenderFrom(),
+            to: getOrderNotificationRecipients(),
+            subject,
+            html,
+          });
+        }
+      } catch (emailErr) {
+        console.error('[Documents PUT] Promotion notification email error (non-blocking):', emailErr.message);
+      }
+    }
 
-    return NextResponse.json({
-      document: doc,
-      ...(retiredDoc ? { reissued_from: retiredDoc.id } : {}),
-    });
+    return NextResponse.json({ document: doc });
   } catch (error) {
     console.error('[Documents PUT] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

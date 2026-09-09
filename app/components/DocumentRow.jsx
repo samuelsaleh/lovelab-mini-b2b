@@ -5,23 +5,6 @@ import { fmtRevenue as fmt } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 import { resolveDocumentAttribution } from '@/lib/documentAttribution'
 
-// Every save bumps updated_at by a few seconds; that is not an "update"
-// anyone needs to see. Only a save that came meaningfully later than the
-// order was created gets the label.
-const UPDATED_GRACE_MS = 5 * 60 * 1000
-
-function fmtDay(value) {
-  return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-export function wasUpdatedLater(doc) {
-  if (!doc?.created_at || !doc?.updated_at) return false
-  const created = new Date(doc.created_at).getTime()
-  const updated = new Date(doc.updated_at).getTime()
-  if (!Number.isFinite(created) || !Number.isFinite(updated)) return false
-  return updated - created > UPDATED_GRACE_MS
-}
-
 export default function DocumentRow({
   doc,
   mobile,
@@ -170,14 +153,7 @@ export default function DocumentRow({
                   style={{ color: '#666', fontWeight: 600 }}
                 >by {attribution.label}</span>
               )}
-              <span>{fmtDay(doc.created_at)}</span>
-              {wasUpdatedLater(doc) && (
-                <span
-                  data-testid="document-updated"
-                  title={`Created ${fmtDay(doc.created_at)}, last changed ${fmtDay(doc.updated_at)}`}
-                  style={{ color: '#b9770e', fontWeight: 600 }}
-                >{t('docs.updated')} {fmtDay(doc.updated_at)}</span>
-              )}
+              <span>{new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               {doc.events?.name && (
                 <span style={{ color: colors.luxeGold }}>@ {doc.events.name}</span>
               )}

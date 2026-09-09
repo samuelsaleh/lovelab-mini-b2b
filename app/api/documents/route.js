@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { notifyOrderEvent } from '@/lib/orderNotices';
+import { getSenderFrom, getOrderNotificationRecipients } from '@/lib/email';
+import { orderNotificationEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 import { syncConsignmentToLovelab, syncGiftLostToLovelab } from '@/lib/lovelab-sync';
 import { getAccessibleEventIds, getActiveOrgMemberships, getOrgTeamScope, getUserContext, requireEventPermission, resolveAgentIds, resolveAgentFolderEventId } from '@/app/api/_lib/access';
@@ -528,10 +529,42 @@ export async function POST(request) {
       });
     }
 
-    // Order notification. Drafts and non-revenue channels are skipped inside
-    // the helper. It reads Resend's answer and records a health event when
-    // the office is not told — the old inline call threw that answer away.
-    await notifyOrderEvent(adminSupabase, { kind: 'created', document, actor: user });
+    // Order notification: email on new documents/orders.
+    // Skipped for internal and consignment orders — not revenue-bearing.
+    // Non-blocking — document is already saved at this point.
+    try {
+      const resendApiKey = isDraft || isInternalOrder || isConsignmentOrder || isWriteOffOrder ? null : process.env.RESEND_API_KEY;
+      if (resendApiKey) {
+        const adminSupabase2 = createAdminClient();
+        const eventName = event_id
+          ? (await adminSupabase2.from('events').select('name').eq('id', event_id).single())?.data?.name
+          : null;
+        const creatorName =
+          (await adminSupabase2.from('profiles').select('full_name').eq('id', user.id).single())?.data?.full_name ||
+          user.email;
+
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+        const { subject, html } = orderNotificationEmail({
+          documentType: document.document_type,
+          clientCompany: document.client_company,
+          clientName: document.client_name,
+          totalAmount: document.total_amount,
+          eventName,
+          creatorName,
+        }, siteUrl);
+
+        const { Resend } = await import('resend');
+        const resend = new Resend(resendApiKey);
+        await resend.emails.send({
+          from: getSenderFrom(),
+          to: getOrderNotificationRecipients(),
+          subject,
+          html,
+        });
+      }
+    } catch (emailErr) {
+      console.error('[Documents POST] Notification email error (non-blocking):', emailErr.message);
+    }
 
     // Lovelab Sync: Sync consignment orders to main system.
     // Skipped for drafts — a parked order hasn't been committed yet.

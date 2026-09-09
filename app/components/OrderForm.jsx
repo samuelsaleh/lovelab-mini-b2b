@@ -31,7 +31,6 @@ import {
   jewelerGroupFromLegacy,
   normalizeJewelerGroup,
 } from '@/lib/jewelerGroup'
-import { resolveOrderFormHeader } from '@/lib/orderFormHeader'
 
 const ROWS_PER_PAGE = 10
 // Row counts tuned 2026-05-12 so each rendered page reliably fits one A4
@@ -616,7 +615,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, editingDocDraftKind = null, onEditInBuilder, onDocumentReissued, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, editingDocDraftKind = null, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
   // OrderForm reads `pricelistYear` from (in priority): the saved doc's
   // metadata.formState (handled in the formState init below), the parent
   // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
@@ -687,38 +686,41 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [showDraftPrompt, setShowDraftPrompt] = useState(false)
   const [draftChecked, setDraftChecked] = useState(false)
 
-  // Header fields. Re-opening a saved order (especially incoming website
-  // B2B/B2C) must paint ONLY what the snapshot has — missing Order by / VAT
-  // / street stay empty. Leftover ClientGate data and the logged-in name
-  // used to fill those gaps, so Sam and Hardik saw two different headers.
-  const [headerSeed] = useState(() => resolveOrderFormHeader({
-    savedFormState,
-    client,
-    currentUser,
-    editingExisting: Boolean(editingDocumentId),
-  }))
-  const [companyName, setCompanyName] = useState(headerSeed.companyName)
-  const [contactName, setContactName] = useState(headerSeed.contactName)
-  const [addressLine1, setAddressLine1] = useState(headerSeed.addressLine1)
-  const [addressLine2, setAddressLine2] = useState(headerSeed.addressLine2)
-  const [country, setCountry] = useState(headerSeed.country)
+  // Client info state (editable)
+  const [companyName, setCompanyName] = useState(client?.company || '')
+  const [contactName, setContactName] = useState(client?.name || '')
+  const [addressLine1, setAddressLine1] = useState(client?.address || '')
+  const [addressLine2, setAddressLine2] = useState(
+    [client?.zip, client?.city].filter(Boolean).join(' ')
+  )
+  const [country, setCountry] = useState(client?.country || '')
 
-  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(headerSeed.shippingSameAsBilling)
-  const [shippingAddressLine1, setShippingAddressLine1] = useState(headerSeed.shippingAddressLine1)
-  const [shippingAddressLine2, setShippingAddressLine2] = useState(headerSeed.shippingAddressLine2)
-  const [shippingCountry, setShippingCountry] = useState(headerSeed.shippingCountry)
-  const [vatNumber, setVatNumber] = useState(headerSeed.vatNumber)
-  const [vatLocalValid, setVatLocalValid] = useState(headerSeed.vatValid)
+  // Shipping address state — prefill from saved client when shipping differs
+  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(
+    () => client?.shipping_same_as_billing !== false,
+  )
+  const [shippingAddressLine1, setShippingAddressLine1] = useState(
+    () => client?.shipping_address || '',
+  )
+  const [shippingAddressLine2, setShippingAddressLine2] = useState(
+    () => client?.shipping_address_line2 || '',
+  )
+  const [shippingCountry, setShippingCountry] = useState(
+    () => client?.shipping_country || '',
+  )
+  const [vatNumber, setVatNumber] = useState(client?.vat || '')
+  const [vatLocalValid, setVatLocalValid] = useState(client?.vatValid ?? null)
   const [vatChecking, setVatChecking] = useState(false)
   const vatValid = vatLocalValid
-  const [email, setEmail] = useState(headerSeed.email)
-  const [phone, setPhone] = useState(headerSeed.phone)
+  const [email, setEmail] = useState(client?.email || '')
+  const [phone, setPhone] = useState(client?.phone || '')
   const [date, setDate] = useState(today())
   const [packaging, setPackaging] = useState('Black')  // Single value: 'Black', 'Pink', or 'Mix'
   const [remarks, setRemarks] = useState('')
   
-  const [eventName, setEventName] = useState(headerSeed.eventName)
-  const [createdBy, setCreatedBy] = useState(headerSeed.createdBy)
+  // New fields
+  const [eventName, setEventName] = useState('') // Fair/event where we met the client
+  const [createdBy, setCreatedBy] = useState(currentUser?.full_name || currentUser?.email || '') // LoveLab team member
 
   // Prepayment & discount state
   const [hasPrepayment, setHasPrepayment] = useState(false)
@@ -744,11 +746,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   // on the invoice. The supplier number is a constant; the client's adhérent
   // number is typed per order. Option is gated to Nicolas + admins (canUseDzb).
   // Prefill from the saved client record when opening a new order for a known boutique.
-  const [dzbEnabled, setDzbEnabled] = useState(headerSeed.dzbEnabled)
-  const [dzbClientNumber, setDzbClientNumber] = useState(headerSeed.dzbClientNumber)
+  const [dzbEnabled, setDzbEnabled] = useState(() => Boolean(client?.dzb_client_number))
+  const [dzbClientNumber, setDzbClientNumber] = useState(() => client?.dzb_client_number || '')
   const canUseDzb = isAdmin || isSynaliaAgentEmail(currentUser?.email)
 
-  const [jewelerGroup, setJewelerGroup] = useState(headerSeed.jewelerGroup)
+  const [jewelerGroup, setJewelerGroup] = useState(() => (
+    client?.jeweler_group ? normalizeJewelerGroup(client.jeweler_group) : JEWELER_GROUP.AUCUN
+  ))
   const synaliaEnabled = isSynaliaJewelerGroup(jewelerGroup)
   const selectedJewelerGroupLabel = getJewelerGroupLabel(jewelerGroup)
   const canUseJewelerGroup = isAdmin || isSynaliaAgentEmail(currentUser?.email)
@@ -852,32 +856,18 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   useEffect(() => {
     if (!savedFormState) return
     const s = savedFormState
-    // Header fields go through resolveOrderFormHeader so a missing createdBy /
-    // VAT / street on an incoming order stays empty — it must not pick up
-    // leftover ClientGate data or the logged-in user's name.
-    const header = resolveOrderFormHeader({
-      savedFormState,
-      client,
-      currentUser,
-      editingExisting: Boolean(editingDocumentId),
-    })
-    setCompanyName(header.companyName)
-    setContactName(header.contactName)
-    setAddressLine1(header.addressLine1)
-    setAddressLine2(header.addressLine2)
-    setCountry(header.country)
-    setShippingSameAsBilling(header.shippingSameAsBilling)
-    setShippingAddressLine1(header.shippingAddressLine1)
-    setShippingAddressLine2(header.shippingAddressLine2)
-    setShippingCountry(header.shippingCountry)
-    setVatNumber(header.vatNumber)
-    setVatLocalValid(header.vatValid)
-    setEmail(header.email)
-    setPhone(header.phone)
-    setEventName(header.eventName)
-    setCreatedBy(header.createdBy)
-    setDzbEnabled(header.dzbEnabled)
-    setDzbClientNumber(header.dzbClientNumber)
+    if (s.companyName != null) setCompanyName(s.companyName)
+    if (s.contactName != null) setContactName(s.contactName)
+    if (s.addressLine1 != null) setAddressLine1(s.addressLine1)
+    if (s.addressLine2 != null) setAddressLine2(s.addressLine2)
+    if (s.country != null) setCountry(s.country)
+    if (s.shippingSameAsBilling != null) setShippingSameAsBilling(s.shippingSameAsBilling)
+    if (s.shippingAddressLine1 != null) setShippingAddressLine1(s.shippingAddressLine1)
+    if (s.shippingAddressLine2 != null) setShippingAddressLine2(s.shippingAddressLine2)
+    if (s.shippingCountry != null) setShippingCountry(s.shippingCountry)
+    if (s.vatNumber != null) setVatNumber(s.vatNumber)
+    if (s.email != null) setEmail(s.email)
+    if (s.phone != null) setPhone(s.phone)
     if (s.date != null) setDate(s.date)
     if (s.packaging != null) {
       // Handle old array format by converting to single value
@@ -888,6 +878,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       }
     }
     if (s.remarks != null) setRemarks(s.remarks)
+    if (s.eventName != null) setEventName(s.eventName)
+    if (s.createdBy != null) setCreatedBy(s.createdBy)
     if (s.hasPrepayment != null) setHasPrepayment(s.hasPrepayment)
     if (s.prepaymentAmount != null) setPrepaymentAmount(s.prepaymentAmount)
     if (s.prepaymentMethod != null) setPrepaymentMethod(s.prepaymentMethod)
@@ -896,7 +888,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     if (s.hasVitrine != null) setHasVitrine(s.hasVitrine)
     if (s.vitrinePrice != null) setVitrinePrice(s.vitrinePrice)
     if (s.vitrineQty != null) setVitrineQty(Number(s.vitrineQty) || 0)
-    setJewelerGroup(header.jewelerGroup)
+    if (s.dzbEnabled != null) setDzbEnabled(s.dzbEnabled)
+    if (s.dzbClientNumber != null) setDzbClientNumber(s.dzbClientNumber)
+    setJewelerGroup(jewelerGroupFromLegacy(s))
     // Restore shipping / tax / custom line so re-opening a saved order
     // doesn't silently drop them from the totals (and from the saved
     // document on the next save). `deliveryCost` is the legacy field name
@@ -1755,26 +1749,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           ? (editingDocStatus === 'draft' && editingDocDraftKind === 'offre')
           : (savedDocStatus === 'draft' && savedDocDraftKind === 'offre')}
         onSaveSuccess={async (savedDoc) => {
-          const status = savedDoc?.status || 'sent'
-          if (savedDoc?.id && status === 'draft') {
-            // A parked draft is remembered so "Save as draft" twice updates
-            // one row instead of making two (Sam, July 2026).
+          if (savedDoc?.id) {
             setSavedDocId(savedDoc.id)
-            setSavedDocStatus(status)
+            setSavedDocStatus(savedDoc.status || 'sent')
             setSavedDocDraftKind(savedDoc.draft_kind || null)
-          } else {
-            // A committed order is forgotten on purpose. The next Save on
-            // this screen is a NEW order, never an update of this one, so
-            // the next customer typed here cannot overwrite it (Sam,
-            // 9 Sept 2026). Corrections go through Re-edit in Documents.
-            setSavedDocId(null)
-            setSavedDocStatus(null)
-            setSavedDocDraftKind(null)
-            // Re-edit session: the server re-issued the order under a new
-            // id. Follow it, so a further Save keeps re-issuing that order.
-            if (savedDoc?.id && editingDocumentId && savedDoc.id !== editingDocumentId && onDocumentReissued) {
-              onDocumentReissued(savedDoc)
-            }
           }
           await deleteDraft()
           await persistClientExtras()

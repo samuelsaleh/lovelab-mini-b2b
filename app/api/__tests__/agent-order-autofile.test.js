@@ -146,17 +146,12 @@ describe('PUT /api/documents/:id — folder preserved / auto-filed on update', (
 
   function setupMocks({ isAdmin = false, oldEventId = null, oldStatus = 'sent' } = {}) {
     const oldDoc = {
-      id: 'doc-1',
       file_path: 'x/old.pdf',
       created_by: 'agent-1',
       event_id: oldEventId,
       status: oldStatus,
       order_channel: 'b2b',
     };
-    // A committed b2b save is re-issued (fresh row) since Sept 2026, so the
-    // first write for a sent order is an INSERT and for a draft an UPDATE.
-    // Both land in updatedPayloads so the folder assertions below read the
-    // row that was actually written, whichever way it went.
     const adminClient = {
       from: jest.fn((table) => {
         if (table === 'documents') {
@@ -164,19 +159,8 @@ describe('PUT /api/documents/:id — folder preserved / auto-filed on update', (
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
             single: jest.fn().mockResolvedValue({ data: oldDoc, error: null }),
-            insert: jest.fn((payload) => {
-              updatedPayloads.push(payload);
-              return {
-                select: jest.fn(() => ({
-                  single: jest.fn().mockResolvedValue({
-                    data: { id: 'doc-2', created_at: '2026-09-09T09:28:00.000Z', ...payload },
-                    error: null,
-                  }),
-                })),
-              };
-            }),
             update: jest.fn((payload) => {
-              if (!payload.deleted_at) updatedPayloads.push(payload);
+              updatedPayloads.push(payload);
               return {
                 eq: jest.fn(() => ({
                   select: jest.fn(() => ({
@@ -185,17 +169,9 @@ describe('PUT /api/documents/:id — folder preserved / auto-filed on update', (
                       error: null,
                     }),
                   })),
-                  then: (resolve) => resolve({ error: null }),
                 })),
               };
             }),
-          };
-        }
-        if (table === 'agent_commissions') {
-          return {
-            update: jest.fn(() => ({
-              eq: jest.fn(() => ({ neq: jest.fn().mockResolvedValue({ error: null }) })),
-            })),
           };
         }
         if (table === 'events' || table === 'profiles') {
