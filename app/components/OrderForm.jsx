@@ -608,7 +608,7 @@ function Calculator({ subtotal, onApplyToForm, mobile }) {
 }
 
 // ═══ MAIN ORDER FORM ═══
-export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, editingDocDraftKind = null, onEditInBuilder, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
+export default function OrderForm({ quote, client, onClose, currentUser, savedFormState, editingDocumentId, editingDocStatus = null, editingDocDraftKind = null, onEditInBuilder, onDocumentReissued, initialOrderChannel = 'b2b', pricelistYear: pricelistYearProp, setPricelistYear }) {
   // OrderForm reads `pricelistYear` from (in priority): the saved doc's
   // metadata.formState (handled in the formState init below), the parent
   // App-level state via props, or DEFAULT_PRICELIST as a final fallback.
@@ -1733,10 +1733,26 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           ? (editingDocStatus === 'draft' && editingDocDraftKind === 'offre')
           : (savedDocStatus === 'draft' && savedDocDraftKind === 'offre')}
         onSaveSuccess={async (savedDoc) => {
-          if (savedDoc?.id) {
+          const status = savedDoc?.status || 'sent'
+          if (savedDoc?.id && status === 'draft') {
+            // A parked draft is remembered so "Save as draft" twice updates
+            // one row instead of making two (Sam, July 2026).
             setSavedDocId(savedDoc.id)
-            setSavedDocStatus(savedDoc.status || 'sent')
+            setSavedDocStatus(status)
             setSavedDocDraftKind(savedDoc.draft_kind || null)
+          } else {
+            // A committed order is forgotten on purpose. The next Save on
+            // this screen is a NEW order, never an update of this one, so
+            // the next customer typed here cannot overwrite it (Sam,
+            // 9 Sept 2026). Corrections go through Re-edit in Documents.
+            setSavedDocId(null)
+            setSavedDocStatus(null)
+            setSavedDocDraftKind(null)
+            // Re-edit session: the server re-issued the order under a new
+            // id. Follow it, so a further Save keeps re-issuing that order.
+            if (savedDoc?.id && editingDocumentId && savedDoc.id !== editingDocumentId && onDocumentReissued) {
+              onDocumentReissued(savedDoc)
+            }
           }
           await deleteDraft()
           await persistClientExtras()

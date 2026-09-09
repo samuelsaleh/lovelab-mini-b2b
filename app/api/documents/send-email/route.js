@@ -5,6 +5,7 @@ import { canAccessDocument, getUserContext } from '@/app/api/_lib/access';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients, isExcludedFromOrderCopies } from '@/lib/email';
 import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 import { readOrderEmailCatalogue } from '@/lib/orderEmailCatalogue';
+import { notifyOrderEvent } from '@/lib/orderNotices';
 
 // All client-facing order emails are BCC'd to the LoveLab office inboxes (so
 // every conversation funnels through inboxes someone actually reads) PLUS the
@@ -150,7 +151,7 @@ export async function POST(request) {
 
     const { data: doc, error: docError } = await adminSupabase
       .from('documents')
-      .select('id, file_path, file_name, created_by, event_id, agent_id, client_name, client_company, document_type')
+      .select('id, file_path, file_name, created_by, event_id, agent_id, client_name, client_company, document_type, status, order_channel, total_amount')
       .eq('id', documentId)
       .single();
 
@@ -288,6 +289,18 @@ export async function POST(request) {
     }
 
     const result = await res.json().catch(() => ({}));
+
+    // Tell the office the client was emailed. The BCC above puts a copy in
+    // the shared inboxes, but a copy of a German order confirmation is not
+    // the same as "Silke just sent Nanau their order" landing in Alberto's
+    // inbox. Best-effort and never throws — see lib/orderNotices.js.
+    await notifyOrderEvent(adminSupabase, {
+      kind: 'sent_to_client',
+      document: doc,
+      actor: user,
+      recipient,
+    });
+
     return NextResponse.json({ sent: true, id: result?.id || null });
   } catch (error) {
     console.error('[send-email] Internal error:', error?.message, error?.stack);

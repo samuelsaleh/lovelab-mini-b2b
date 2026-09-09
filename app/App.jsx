@@ -852,7 +852,7 @@ export default function App() {
   return (
     <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column', color: '#333' }}>
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
-      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
+      {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} onDocumentReissued={(doc) => { setEditingDocumentId(doc.id); setEditingDocStatus(doc.status || 'sent'); setEditingDocDraftKind(doc.draft_kind || null) }} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 
       {/* MyAccountPanel — backdrop is outside Suspense so it shows immediately */}
       {accountPanelOpen && (
