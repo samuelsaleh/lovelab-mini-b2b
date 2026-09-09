@@ -169,6 +169,21 @@ export async function POST(request) {
       return;
     }
 
+    if (!draft.body_html || !String(draft.body_html).trim() || !draft.subject) {
+      // A draft with no email in it (its translation was refused) must never
+      // reach Resend. Fail it with the reason so it is regenerated, not sent.
+      skipped += 1;
+      await auth.adminSupabase
+        .from('fair_email_drafts')
+        .update({
+          status: 'failed',
+          error: 'No email content — run "Generate all drafts" so this lead gets a verified translation',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', draft.id);
+      return;
+    }
+
     const result = await sendEmail({
       to,
       subject: draft.subject,

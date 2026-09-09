@@ -21,7 +21,7 @@ export async function POST(request) {
 
   const { data: failedDrafts, error } = await auth.adminSupabase
     .from('fair_email_drafts')
-    .select('id')
+    .select('id, body_html')
     .eq('batch_id', batchId)
     .eq('status', 'failed');
 
@@ -33,19 +33,31 @@ export async function POST(request) {
     return NextResponse.json({ error: 'No failed drafts to retry' }, { status: 400 });
   }
 
-  const { error: updateErr } = await auth.adminSupabase
-    .from('fair_email_drafts')
-    .update({ status: 'draft_ready', error: null, updated_at: new Date().toISOString() })
-    .eq('batch_id', batchId)
-    .eq('status', 'failed');
+  // Only a draft that has an email can be re-sent. A draft whose translation
+  // was refused has no body on purpose (generate-all clears it) — it must be
+  // regenerated with "Generate all drafts", never unlocked into the send queue.
+  const resendable = failedDrafts.filter((d) => d.body_html && String(d.body_html).trim());
+  const needsGeneration = failedDrafts.length - resendable.length;
 
-  if (updateErr) {
-    return NextResponse.json({ error: 'Failed to reset draft statuses' }, { status: 500 });
+  if (resendable.length) {
+    const { error: updateErr } = await auth.adminSupabase
+      .from('fair_email_drafts')
+      .update({ status: 'draft_ready', error: null, updated_at: new Date().toISOString() })
+      .in('id', resendable.map((d) => d.id));
+
+    if (updateErr) {
+      return NextResponse.json({ error: 'Failed to reset draft statuses' }, { status: 500 });
+    }
   }
+
+  const parts = [];
+  if (resendable.length) parts.push(`${resendable.length} draft${resendable.length === 1 ? '' : 's'} reset to draft_ready. Press Send to retry.`);
+  if (needsGeneration) parts.push(`${needsGeneration} draft${needsGeneration === 1 ? ' has' : 's have'} no email yet (translation refused) — run "Generate all drafts" to create ${needsGeneration === 1 ? 'it' : 'them'}.`);
 
   return NextResponse.json({
     ok: true,
-    retried: failedDrafts.length,
-    message: `${failedDrafts.length} draft${failedDrafts.length === 1 ? '' : 's'} reset to draft_ready. Press Send to retry.`,
+    retried: resendable.length,
+    needsGeneration,
+    message: parts.join(' '),
   });
 }

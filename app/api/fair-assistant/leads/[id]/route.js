@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
-import { languagesForCountry, languageLabel } from '@/lib/fair-assistant/languages';
+import { primaryLanguageForCountry, languageForLead, languageLabel } from '@/lib/fair-assistant/languages';
 
 const EDITABLE_FIELDS = [
   'first_name', 'last_name', 'company', 'email', 'phone', 'mobile_phone',
@@ -27,9 +27,15 @@ export async function PATCH(request, { params }) {
   // If country changed but language wasn't explicitly set, recompute the language
   // from the country map so users don't have to remember to update both.
   if (body.country !== undefined && body.language === undefined) {
-    const langs = languagesForCountry(body.country);
-    patch.language = langs.join('+');
-    patch.language_label = langs.map(languageLabel).join(' + ');
+    const language = primaryLanguageForCountry(body.country);
+    patch.language = language;
+    patch.language_label = languageLabel(language);
+  }
+  // A lead is emailed in exactly one language. An old combined value such
+  // as "fr+nl" collapses to its first part.
+  if (typeof patch.language === 'string' && patch.language.includes('+')) {
+    patch.language = languageForLead({ language: patch.language, country: body.country });
+    patch.language_label = languageLabel(patch.language);
   }
 
   const { data, error } = await auth.adminSupabase

@@ -797,11 +797,14 @@ export default function FairAssistantClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generate failed')
       await loadBatchDetails(activeBatchId)
-      // Tell the user when some drafts had to fall back to English. Without
-      // this they'd never know — the batch silently sends mixed-language.
-      if (Array.isArray(data.translationWarnings) && data.translationWarnings.length) {
-        const langs = [...new Set(data.translationWarnings.flatMap((w) => w.fellBackToEnglishFor))].join(', ')
-        setError(`⚠️ ${data.translationWarnings.length} draft${data.translationWarnings.length === 1 ? '' : 's'} couldn't be translated (${langs}) — those will go out in English. Click again to retry, or send anyway.`)
+      // A lead whose translation could not be verified gets NO draft — never
+      // an English one. Say so, with the reason, so it can be retried or the
+      // lead's language corrected before anything is sent.
+      if (Array.isArray(data.translationFailures) && data.translationFailures.length) {
+        const n = data.translationFailures.length
+        const langs = [...new Set(data.translationFailures.map((f) => f.languageLabel || f.language))].join(', ')
+        const reason = data.translationFailures[0]?.reason || ''
+        setError(`⚠️ ${n} draft${n === 1 ? ' was' : 's were'} NOT generated: the ${langs} translation did not pass the language check, so nothing goes out to ${n === 1 ? 'that lead' : 'those leads'} in the wrong language. ${reason} Click "Generate all drafts" again to retry, or set the lead's language in Edit Lead.`)
       }
     } catch (err) {
       setError(err.message)
@@ -947,7 +950,7 @@ export default function FairAssistantClient() {
                   value={editingLead.language || ''}
                   onChange={(e) => {
                     const code = e.target.value
-                    const labels = { en: 'English', fr: 'French', nl: 'Dutch', de: 'German', it: 'Italian', es: 'Spanish', pt: 'Portuguese', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', pl: 'Polish', el: 'Greek', tr: 'Turkish', he: 'Hebrew', 'fr+nl': 'French + Dutch', 'de+fr': 'German + French', 'fr+de': 'French + German', 'en+fr': 'English + French', 'de+it': 'German + Italian' }
+                    const labels = { en: 'English', fr: 'French', nl: 'Dutch', de: 'German', it: 'Italian', es: 'Spanish', pt: 'Portuguese', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', pl: 'Polish', el: 'Greek', tr: 'Turkish', he: 'Hebrew' }
                     setEditingLead({ ...editingLead, language: code, language_label: labels[code] || code })
                   }}
                   style={{ width: '100%', padding: 10, fontSize: 14, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: fonts.body, background: '#fff' }}
@@ -966,11 +969,10 @@ export default function FairAssistantClient() {
                   <option value="el">Greek</option>
                   <option value="tr">Turkish</option>
                   <option value="he">Hebrew</option>
-                  <option value="fr+nl">French + Dutch (Belgium)</option>
-                  <option value="de+fr">German + French (Switzerland)</option>
-                  <option value="fr+de">French + German (Luxembourg)</option>
-                  <option value="en+fr">English + French (Canada)</option>
                 </select>
+                <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: colors.lovelabMuted }}>
+                  One language per email, never mixed. Belgium defaults to French — pick Dutch here for a Flemish contact.
+                </span>
               </label>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, gap: 8 }}>

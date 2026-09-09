@@ -131,8 +131,10 @@ export async function POST(request) {
       batch_id: batchId,
       image_id: effectiveImageId,
       ...normalized,
-      language: langs.join('+'),
-      language_label: langs.map(languageLabel).join(' + '),
+      // One language per lead — the country's first. Belgium therefore
+      // defaults to French; switch a Flemish lead to Dutch in Edit Lead.
+      language: langs[0] || 'en',
+      language_label: languageLabel(langs[0] || 'en'),
       lead_hash: leadHash,
       status: 'extracted',
     })

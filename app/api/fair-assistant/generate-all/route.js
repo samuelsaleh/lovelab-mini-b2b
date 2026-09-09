@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin, siteUrl } from '@/lib/fair-assistant/server';
 import { buildEmailForLead, translateSlotsForLanguages } from '@/lib/fair-assistant/translate';
-import { languagesForCountry } from '@/lib/fair-assistant/languages';
+import { languageForLead, languageLabel } from '@/lib/fair-assistant/languages';
 import { defaultTemplateForLeadType } from '@/lib/fair-assistant/templates';
 
 const CONCURRENCY = 10;
@@ -101,46 +101,37 @@ export async function POST(request) {
     };
   }
 
-  // Cache translations by (lead_type, language-set) so we don't re-call Claude
+  // One email, one language (lib/fair-assistant/languages.js languageForLead).
+  // Cache translations by (lead_type, language) so we don't re-call Claude
   // for every lead that shares the same template + language.
   const translatedCache = new Map();
   async function getTranslations(lead) {
-    const langs = languagesForCountry(lead.country);
+    const language = languageForLead(lead);
     const slots = slotsForLead(lead);
-    const cacheKey = `${lead.lead_type || 'shop'}::${langs.join('+')}`;
+    const cacheKey = `${lead.lead_type || 'shop'}::${language}`;
     if (!translatedCache.has(cacheKey)) {
-      translatedCache.set(cacheKey, await translateSlotsForLanguages(slots, langs));
+      translatedCache.set(cacheKey, await translateSlotsForLanguages(slots, [language]));
     }
-    return { langs, slots, translatedByLanguage: translatedCache.get(cacheKey) };
+    return { language, slots, translatedByLanguage: translatedCache.get(cacheKey) };
   }
 
   let generated = 0;
   let failed = 0;
-  // Translation can silently fall back to English when Claude returns
-  // un-parseable JSON. translateEmailSlots tags the result with
-  // __translationFailed; collect those here so the response can warn
-  // the user instead of pretending the batch is in 5 languages when
-  // really half of it is English.
-  const translationWarnings = [];
+  // Sam, 9 Sept 2026: a lead whose translation could not be verified gets NO
+  // draft — never an English one, never a mixed one. The failure and its
+  // reason are stored on the draft and returned here so the screen can say
+  // exactly what went wrong and that nothing was generated for those leads.
+  const translationFailures = [];
 
   await mapPool(leads, CONCURRENCY, async (lead) => {
     try {
-      const { langs, slots, translatedByLanguage } = await getTranslations(lead);
-      const failedLangs = langs.filter((l) => l !== 'en' && translatedByLanguage[l]?.__translationFailed);
-      if (failedLangs.length) {
-        translationWarnings.push({
-          leadId: lead.id,
-          email: lead.email,
-          name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
-          fellBackToEnglishFor: failedLangs,
-        });
-      }
+      const { language, slots, translatedByLanguage } = await getTranslations(lead);
       const email = buildEmailForLead({
         siteUrl: siteUrl(),
         lead,
         templateSlots: slots,
         translatedByLanguage,
-        languages: langs,
+        language,
         button1: { label: batch.button1_label, url: batch.button1_url },
         button2: { label: batch.button2_label, url: batch.button2_url },
         customHtml: batch.custom_html || undefined,
@@ -154,7 +145,7 @@ export async function POST(request) {
           lead_id: lead.id,
           subject: email.subject,
           body_html: email.bodyHtml,
-          language: email.languages,
+          language: email.language,
           status: 'draft_ready',
           error: null,
           updated_at: new Date().toISOString(),
@@ -164,11 +155,26 @@ export async function POST(request) {
       generated += 1;
     } catch (err) {
       failed += 1;
+      if (err?.name === 'TranslationUnavailableError') {
+        translationFailures.push({
+          leadId: lead.id,
+          email: lead.email,
+          name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
+          language: err.languageCode,
+          languageLabel: languageLabel(err.languageCode),
+          reason: err.message,
+        });
+      }
+      // Clear any earlier body so a stale draft can never be sent by mistake:
+      // the send route only picks up draft_ready rows, and this one is failed
+      // with no content.
       await auth.adminSupabase
         .from('fair_email_drafts')
         .upsert({
           batch_id: batchId,
           lead_id: lead.id,
+          subject: null,
+          body_html: null,
           status: 'failed',
           error: err.message,
           updated_at: new Date().toISOString(),
@@ -186,6 +192,6 @@ export async function POST(request) {
     generated,
     failed,
     total: leads.length,
-    translationWarnings: translationWarnings.length ? translationWarnings : undefined,
+    translationFailures: translationFailures.length ? translationFailures : undefined,
   });
 }

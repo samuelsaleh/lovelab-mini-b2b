@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin, siteUrl } from '@/lib/fair-assistant/server';
 import { buildEmailForLead, translateSlotsForLanguages } from '@/lib/fair-assistant/translate';
-import { languagesForCountry } from '@/lib/fair-assistant/languages';
+import { languageForLead, languageLabel } from '@/lib/fair-assistant/languages';
 import { defaultTemplateForLeadType } from '@/lib/fair-assistant/templates';
 
 export async function POST(request) {
@@ -105,24 +105,37 @@ export async function POST(request) {
         ctaLine,
       };
 
-  const languages = languagesForCountry(lead.country);
+  // One email, one language. Unsaved edits are previewed in English (no
+  // translation call while typing); a saved template is previewed exactly as
+  // the lead would receive it — and if that translation cannot be verified,
+  // the preview says so instead of showing an English stand-in.
+  const language = skipTranslation ? 'en' : languageForLead(lead);
   const translatedByLanguage = skipTranslation
     ? { en: templateSlots }
-    : await translateSlotsForLanguages(templateSlots, languages);
-  // Force EN when previewing unsaved edits so we don't fall through to the
-  // (now empty) translated map for non-English leads.
-  const previewLanguages = skipTranslation ? ['en'] : languages;
-  const email = buildEmailForLead({
-    siteUrl: siteUrl(),
-    lead,
-    templateSlots,
-    translatedByLanguage,
-    languages: previewLanguages,
-    button1: { label: batch.button1_label, url: batch.button1_url },
-    button2: { label: batch.button2_label, url: batch.button2_url },
-    customHtml: batch.custom_html || undefined,
-    subject: batch.subject || undefined,
-  });
+    : await translateSlotsForLanguages(templateSlots, [language]);
+  let email;
+  try {
+    email = buildEmailForLead({
+      siteUrl: siteUrl(),
+      lead,
+      templateSlots,
+      translatedByLanguage,
+      language,
+      button1: { label: batch.button1_label, url: batch.button1_url },
+      button2: { label: batch.button2_label, url: batch.button2_url },
+      customHtml: batch.custom_html || undefined,
+      subject: batch.subject || undefined,
+    });
+  } catch (err) {
+    if (err?.name === 'TranslationUnavailableError') {
+      return NextResponse.json({
+        error: `${err.message} No email would be sent to this lead until the ${languageLabel(language)} translation passes the check. Try again, or set the lead's language.`,
+        translationFailed: true,
+        language,
+      }, { status: 502 });
+    }
+    throw err;
+  }
 
   return NextResponse.json({
     preview: email,
@@ -131,7 +144,8 @@ export async function POST(request) {
       first_name: lead.first_name,
       company: lead.company,
       country: lead.country,
-      languages,
+      language,
+      languages: [language],
     },
   });
 }
