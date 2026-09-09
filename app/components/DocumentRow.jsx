@@ -38,6 +38,11 @@ export default function DocumentRow({
   commitDocRename,
   startDocRename,
   docRenameLoading,
+  // Bulk selection (admin, All Documents): a checkbox in front of the row so
+  // several orders can be filed into a fair in one go.
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }) {
   const { t } = useI18n()
   const isRenaming = renamingDocId === doc.id
@@ -51,13 +56,25 @@ export default function DocumentRow({
 
   return (
     <div style={{
-      background: '#fff', borderRadius: 10, border: '1px solid #e8e8e8',
+      background: selected ? '#f7f3fa' : '#fff', borderRadius: 10,
+      border: `1px solid ${selected ? colors.inkPlum : '#e8e8e8'}`,
       padding: mobile ? '12px 12px' : '12px 16px',
       display: 'flex', flexDirection: mobile ? 'column' : 'row',
       alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 10 : 16,
     }}>
-      {/* Top row: icon + info */}
+      {/* Top row: (checkbox) + icon + info */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect?.(doc)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${doc.client_company || doc.client_name || 'document'}`}
+            data-testid="doc-select"
+            style={{ width: 18, height: 18, cursor: 'pointer', accentColor: colors.inkPlum, flexShrink: 0 }}
+          />
+        )}
         {/* Icon */}
         <div style={{
           width: 36, height: 36, borderRadius: 8,

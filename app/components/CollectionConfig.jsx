@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel, isBezelOnly, getShapesForCarat, getShapesForCaratIdx, getForcedClosure, resolveClosure } from '@/lib/catalog'
+import { CORD_COLORS, CORD_OPTIONS, CORD_TYPE_LABELS, HOUSING, CERT_LABELS, getPrice, getRetail, getDefaultCert, getAvailableCarats, getAvailableCerts, getThicknessOptions, sizeOptionsForClosure, resolvePricelist, getProductType, sizeDisplayLabel, isBezelOnly, getShapesForCarat, getShapesForCaratIdx, getForcedClosure, getDefaultClosure, resolveClosure } from '@/lib/catalog'
 import { fmt, isLight } from '@/lib/utils'
 import { colors } from '@/lib/styles'
 import { mkColorConfig } from './BuilderPage'
@@ -173,15 +173,25 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.presetShape, line.colorConfigs])
 
-  // Forced-closure collections (Shapy Shine = braided): the picker is hidden, so
-  // stamp the value onto every row — including rows restored from an order saved
-  // while non-braided was still on offer.
+  // Forced-closure collections (Shapy Shine, Riviera = braided): the picker is
+  // hidden, so stamp the value onto every row — including rows restored from an
+  // order saved while non-braided was still on offer. A size that only existed
+  // for the old closure (Riviera S/M, L/XL) is dropped with it so the agent
+  // re-picks from the braided list instead of keeping an off-list value.
   useEffect(() => {
     const forced = getForcedClosure(col)
     if (!forced) return
     const configs = line.colorConfigs || []
     if (configs.length === 0 || configs.every(c => c.closureType === forced)) return
-    set({ colorConfigs: configs.map(c => (c.closureType === forced ? c : { ...c, closureType: forced })) })
+    const sizes = sizeOptionsForClosure(col, forced)
+    set({
+      colorConfigs: configs.map(c => {
+        if (c.closureType === forced) return c
+        const next = { ...c, closureType: forced }
+        if (next.size && !sizes.includes(next.size)) next.size = null
+        return next
+      }),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [col.id, line.colorConfigs])
 
@@ -201,9 +211,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (hasCordOptions && !cfg.cordType) return false
     if ((col.cord === 'silk' || cfg.cordType === 'silk') && !cfg.thickness) return false
     // Bracelet thread closure required for hasClosure collections (CUTY, CUBIX).
-    // Collections with a forced closure (Shapy Shine = braided) never ask, so
-    // the requirement is already satisfied.
-    if (col.hasClosure && !cfg.closureType && !getForcedClosure(col)) return false
+    // Collections with a forced closure (Shapy Shine, Riviera = braided) or a
+    // default (Za-Ha / Flower = non-braided) never leave a row undecided, so the requirement
+    // is already satisfied — including for rows saved before the closure existed.
+    if (col.hasClosure && !cfg.closureType && !getDefaultClosure(col)) return false
     return true
   }
 
@@ -265,15 +276,11 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     'caratIdx' in updates ? normalizeToCarat(cfg) : cfg
   )
 
-  // Add or remove a color (toggle: clicking a selected color removes the last instance)
-  const addColor = (colorName) => {
-    const existing = line.colorConfigs.filter(c => c.colorName === colorName)
-    if (existing.length > 0) {
-      // Remove the last added instance of this color
-      const lastId = existing[existing.length - 1].id
-      set({ colorConfigs: line.colorConfigs.filter(c => c.id !== lastId) })
-      return
-    }
+  // Build the config a colour gets when it is added right now. Every rule that
+  // makes a row valid — cord type, silk thickness, the metal tile, a locked
+  // shape, a forced closure — lives here alone, so adding one swatch and adding
+  // the whole palette can never drift apart.
+  const buildColorConfig = (colorName) => {
     let newCfg = sameForAll
       ? { ...mkColorConfig(colorName, 1), ...sharedSettings }
       : mkColorConfig(colorName, 1)
@@ -297,12 +304,59 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
     if (presetShape) {
       newCfg = { ...newCfg, shape: presetShape }
     }
-    // Forced-closure collections (Shapy Shine = braided) never show a picker.
-    const forced = getForcedClosure(col)
-    if (forced) {
-      newCfg = { ...newCfg, closureType: forced }
+    // Forced-closure collections (Shapy Shine, Riviera = braided) never show a
+    // picker; collections with a default (Za-Ha / Flower = non-braided) start on
+    // it and let the agent switch. CUTY / CUBIX have neither and still ask.
+    const startingClosure = getDefaultClosure(col)
+    if (startingClosure) {
+      newCfg = { ...newCfg, closureType: startingClosure }
     }
-    set({ colorConfigs: [...line.colorConfigs, newCfg] })
+    return newCfg
+  }
+
+  // Add or remove a color (toggle: clicking a selected color removes the last instance)
+  const addColor = (colorName) => {
+    const existing = line.colorConfigs.filter(c => c.colorName === colorName)
+    if (existing.length > 0) {
+      // Remove the last added instance of this color
+      const lastId = existing[existing.length - 1].id
+      set({ colorConfigs: line.colorConfigs.filter(c => c.id !== lastId) })
+      return
+    }
+    set({ colorConfigs: [...line.colorConfigs, buildColorConfig(colorName)] })
+  }
+
+  // Silk carries a thickness on every row, so nothing can be added until the
+  // agent has picked Thin or Thick. Swatches and the add-all button share it.
+  const colorPickerDisabled =
+    (col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness
+
+  // Colours in the active palette that are not on the line yet.
+  const missingPaletteColors = palette.filter(
+    c => !line.colorConfigs.some(cfg => cfg.colorName === c.n)
+  )
+  const allPaletteColorsAdded = palette.length > 0 && missingPaletteColors.length === 0
+
+  // One click for the whole palette. On a fair stand the agent wants every
+  // colour of a collection on the order; twenty separate taps is the slow part
+  // of writing an order, not deciding. Adds only what is missing, so pressing
+  // it twice never doubles a colour.
+  const addAllColors = () => {
+    if (colorPickerDisabled || missingPaletteColors.length === 0) return
+    set({
+      colorConfigs: [
+        ...line.colorConfigs,
+        ...missingPaletteColors.map(c => buildColorConfig(c.n)),
+      ],
+    })
+  }
+
+  // The undo for the above: drops every row whose colour belongs to the active
+  // palette, duplicates included, and leaves off-palette rows (a colour added
+  // under a different cord or thickness) alone.
+  const removeAllPaletteColors = () => {
+    const names = new Set(palette.map(c => c.n))
+    set({ colorConfigs: line.colorConfigs.filter(cfg => !names.has(cfg.colorName)) })
   }
 
   // Remove a color config
@@ -1015,8 +1069,38 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                 </div>
               </div>
             )}
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              {t('collection.clickColorsToAdd')}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              flexWrap: 'wrap', marginBottom: 8,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {t('collection.clickColorsToAdd')}
+              </div>
+              {/* Whole-palette shortcut — the fair-stand path. */}
+              {palette.length > 1 && (
+                <button
+                  type="button"
+                  data-testid="add-all-colors"
+                  onClick={allPaletteColorsAdded ? removeAllPaletteColors : addAllColors}
+                  disabled={colorPickerDisabled}
+                  title={colorPickerDisabled ? t('collection.pickThicknessFirst') : undefined}
+                  style={{
+                    padding: '4px 11px', borderRadius: 999,
+                    border: `1px solid ${allPaletteColorsAdded ? '#d9c9d6' : colors.inkPlum}`,
+                    background: allPaletteColorsAdded ? '#faf6fb' : '#fff',
+                    color: allPaletteColorsAdded ? colors.lovelabMuted : colors.inkPlum,
+                    fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                    letterSpacing: '0.01em', whiteSpace: 'nowrap',
+                    cursor: colorPickerDisabled ? 'not-allowed' : 'pointer',
+                    opacity: colorPickerDisabled ? 0.45 : 1,
+                    transition: 'opacity .12s',
+                  }}
+                >
+                  {allPaletteColorsAdded
+                    ? t('collection.removeAllColors', { count: palette.length })
+                    : t('collection.addAllColors', { count: missingPaletteColors.length })}
+                </button>
+              )}
             </div>
             <div style={{
               display: 'grid',
@@ -1034,7 +1118,7 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                     <button
                       title={c.n}
                       onClick={() => addColor(c.n)}
-                      disabled={(col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness}
+                      disabled={colorPickerDisabled}
                       onMouseEnter={mobile ? undefined : (e) => {
                         const r = e.currentTarget.getBoundingClientRect()
                         setHoverPos({ x: r.left + r.width / 2, y: r.top })
@@ -1047,10 +1131,10 @@ export default function CollectionConfig({ line, col, onChange, onRemove, select
                       style={{
                         width: btnSize, height: btnSize, borderRadius: '50%', background: c.h, padding: 0,
                         border: count > 0 ? `2.5px solid ${colors.inkPlum}` : isLight(c.h) ? '1px solid #ddd' : '1px solid transparent',
-                        cursor: ((col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness) ? 'not-allowed' : 'pointer', transition: 'transform .1s',
+                        cursor: colorPickerDisabled ? 'not-allowed' : 'pointer', transition: 'transform .1s',
                         transform: count > 0 ? 'scale(1.08)' : 'scale(1)',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                        opacity: ((col.cord === 'silk' || selectedCordType === 'silk') && !selectedSilkThickness) ? 0.45 : 1,
+                        opacity: colorPickerDisabled ? 0.45 : 1,
                       }}
                     />
                     {count > 0 && (

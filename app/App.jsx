@@ -27,6 +27,7 @@ import {
   formStateForRestock,
 } from '@/lib/clientGatePersistence'
 import { clientFromOrderFormState } from '@/lib/orderFormHeader'
+import { finalizeTransition, editingOrderLabel } from '@/lib/editFlow'
 
 import { useAuth } from './components/AuthProvider'
 import { useResponsive } from '@/lib/useIsMobile'
@@ -241,14 +242,23 @@ export default function App() {
   }, [builderBudget, lines, pricelistYear])
 
   // ─── Finalize order ───
+  // Two very different things arrive here: a brand-new build, and an existing
+  // order that went through the Builder to change its lines. The first clears
+  // the editing context; the second must keep it — the document id (so Save
+  // UPDATES rather than creating a twin), and every saved form field except
+  // the rows (remarks, shipping, payment, the client), which the Order Form
+  // restores. The rows come from the Builder, which is why the user went there.
+  // Resetting both indiscriminately is what saved edits under the wrong client
+  // with blank shipping notes.
   const handleFinalize = useCallback(() => {
+    const next = finalizeTransition({ editingDocumentId, savedFormState, initialOrderChannel })
     setShowQuote(false)
     setOrderFormQuote(curQuote)
-    setSavedFormState(null)
-    setEditingDocumentId(null)
-    setInitialOrderChannel('b2b')
+    setSavedFormState(next.savedFormState)
+    setEditingDocumentId(next.editingDocumentId)
+    setInitialOrderChannel(next.initialOrderChannel)
     setShowOrderForm(true)
-  }, [curQuote])
+  }, [curQuote, editingDocumentId, savedFormState, initialOrderChannel])
 
   // Tracks which order channel is being built in the builder (for context banner + save modal pre-selection)
   const pendingOrderChannel = useRef('b2b')
@@ -294,10 +304,14 @@ export default function App() {
     if (!formState) return
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
+    // The client gate must agree with the document, or anything that falls
+    // back to the App-level client (the Builder → Finalize path) saves the
+    // order under whichever boutique was picked last. Snapshot only: an
+    // incoming website order that has no VAT/address must not inherit them
+    // from whatever session data is lying around (Sam, 2 Sept 2026).
+    setClient(clientFromOrderFormState(formState))
     setOrderFormQuote(null)
     setSavedFormState(formState)
-    // Snapshot only — do not merge leftover session VAT/address/client id.
-    setClient(clientFromOrderFormState(formState))
     setEditingDocumentId(doc.id)
     setEditingDocStatus(doc?.status || 'sent')
     setEditingDocDraftKind(doc?.draft_kind || null)
@@ -373,9 +387,11 @@ export default function App() {
           const docYear = data.document.metadata?.formState?.pricelistYear
             ?? data.document.metadata?.pricelistYear
           if (docYear != null) setPricelistYear(docYear)
-          // Load formState rows into builder if available
+          // Load formState rows into builder if available, and point the
+          // client gate at this document's boutique (see handleReEdit).
           if (data.document.metadata?.formState) {
             setSavedFormState(data.document.metadata.formState)
+            setClient(clientFromOrderFormState(data.document.metadata.formState))
           }
           setActiveTab('builder')
         })
@@ -401,6 +417,7 @@ export default function App() {
     if (!rest) return
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
+    // Sync App-level client so ClientGate / builder also see the boutique.
     // Snapshot only — leftover session VAT/address must not land on a restock
     // whose source order never had those fields.
     setClient(clientFromOrderFormState(rest))
@@ -948,6 +965,7 @@ export default function App() {
             setShowRecommendations={setShowRecommendations}
             onRequestRecommendations={handleBudgetRecommendations}
             orderChannel={initialOrderChannel}
+            editingLabel={editingOrderLabel({ editingDocumentId, savedFormState })}
             pricelistYear={pricelistYear}
             setPricelistYear={setPricelistYear}
             isAdmin={profile?.role === 'admin'}

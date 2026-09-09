@@ -6,11 +6,12 @@ import { colors, fonts } from '@/lib/styles'
 import { noAutofill } from '@/lib/noAutofill'
 import { useResponsive } from '@/lib/useIsMobile'
 import { fmt, today } from '@/lib/utils'
-import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, closureOptionsFor } from '@/lib/catalog'
+import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, getDefaultClosure, closureOptionsFor, resolveClosure, sizeOptionsForClosure } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
+import { clientAddressPatch } from '@/lib/clientSync'
 import { findPackshot } from '@/lib/packshot-lookup'
 import PackshotThumb from './PackshotThumb'
 import {
@@ -206,10 +207,17 @@ function prefillRows(quote) {
       // Bracelet thread closure: builder stores it on the line as
       // 'braided' | 'nonBraided' | null. Persist as the exact same string
       // so the OrderForm select can pre-pick it on prefill. Collections whose
-      // closure is forced (Shapy Shine = braided) ignore the stored value so a
-      // line saved before the rule can't come back as non-braided.
-      closure: getForcedClosure(colDef) || ln.closureType || '',
-      size: ln.size || '',
+      // closure is forced (Shapy Shine, Riviera = braided) ignore the stored
+      // value so a line saved before the rule can't come back as non-braided;
+      // a size that only the old closure offered (Riviera S/M) is dropped too.
+      closure: resolveClosure(colDef, ln.closureType) || '',
+      size: (() => {
+        const size = ln.size || ''
+        if (!size || !colDef?.hasClosure) return size
+        const forced = getForcedClosure(colDef)
+        if (!forced || ln.closureType === forced) return size
+        return sizeOptionsForClosure(colDef, forced).includes(size) ? size : ''
+      })(),
       material: buildMaterial(cordType, thickness),
       colorCord: normalizeCordColorName(colDef, cordType, ln.colorName || ''),
       unitPrice: unit ? String(unit) : '',
@@ -1106,8 +1114,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       }
       // confirm_contact_overwrite is deliberately never sent: saving an order
       // is no moment to arbitrate a contact conflict, so the API keeps the
-      // stored name/email/phone of an existing client. Address, VAT, DZB and
-      // shipping still persist, and a brand new client takes everything.
+      // stored name/email/phone of an existing client. DZB and shipping
+      // still persist, and a brand new client takes everything.
+      //
+      // Address, postcode, city, country and VAT go through clientAddressPatch:
+      // only the fields the form actually holds are sent, so an order saved
+      // with a blank header can no longer erase a client's stored address —
+      // and the "Postal code, City" line lands in the two columns it names.
       await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1115,12 +1128,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           id: clientId || undefined,
           name: contactName,
           company,
-          country,
-          address: addressLine1,
-          city: addressLine2,
           email,
           phone,
-          vat: vatNumber,
+          ...clientAddressPatch({ addressLine1, addressLine2, country, vatNumber }),
           dzb_client_number: dzbEnabled ? (dzbClientNumber || null) : null,
           jeweler_group: jewelerGroup !== JEWELER_GROUP.AUCUN ? jewelerGroup : null,
           shipping_same_as_billing: shippingSameAsBilling,
@@ -1238,9 +1248,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         next[rowIdx].size = ''
         next[rowIdx].material = ''
         next[rowIdx].colorCord = ''
-        // Collections whose closure isn't a choice (Shapy Shine = braided) get
-        // it stamped straight away so the cell is never left blank.
-        next[rowIdx].closure = getForcedClosure(newCol) || ''
+        // Collections whose closure isn't a choice (Shapy Shine = braided) or
+        // that start on a default (Iconix = non-braided) get it stamped straight
+        // away so the cell is never left blank; CUTY / CUBIX still ask.
+        next[rowIdx].closure = getDefaultClosure(newCol) || ''
       }
       // Shapy Shine sells only five shapes at 0.10 ct, and only in a bezel —
       // moving a row to that size drops a shape / setting it no longer sells.
@@ -1259,6 +1270,17 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         const rowCol = findCollection(next[rowIdx].collection)
         const { cordType } = parseMaterial(value)
         next[rowIdx].colorCord = normalizeCordColorName(rowCol, cordType, next[rowIdx].colorCord)
+      }
+      // Closure drives the available sizes. If the change makes the picked
+      // size invalid for the new closure, clear it so the agent re-picks from
+      // the right list rather than keeping an off-list value (same rule as
+      // the Builder's CollectionConfig).
+      if (key === 'closure') {
+        const rowCol = findCollection(next[rowIdx].collection)
+        if (rowCol?.hasClosure) {
+          const opts = sizeOptionsForClosure(rowCol, value)
+          if (next[rowIdx].size && !opts.includes(next[rowIdx].size)) next[rowIdx].size = ''
+        }
       }
       // For MULTI THREE: when setting changes to Fix (F), YWP is no longer valid
       if (key === 'setting' && value === 'F') {
@@ -2687,7 +2709,12 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             const stripped = h.startsWith('Bezel ') ? h.slice(6) : h.startsWith('Prong ') ? h.slice(6) : h
                             return { value: stripped, label: stripped }
                           }).filter((v, i, a) => a.findIndex(x => x.value === v.value) === i) : null
-                          const sizeOptions = isSizeCol && rowCol?.sizes ? rowCol.sizes.map(s => ({ value: s, label: s })) : null
+                          // Sizes follow the closure: a non-braided bracelet only comes in the
+                          // grouped silk sizes. Reading rowCol.sizes here used to show a
+                          // non-braided row a size list it could not actually be ordered in.
+                          const sizeOptions = isSizeCol && rowCol?.sizes
+                            ? sizeOptionsForClosure(rowCol, row.closure).map(s => ({ value: s, label: s }))
+                            : null
                           const hasMaterial = rowCol && (rowCol.cord === 'silk' || rowCol.cord === 'silkBraided')
                           const impliedMaterialLabel = !hasMaterial && rowCol ? (CORD_TYPE_LABELS[rowCol.cord] || rowCol.cord) : null
                           const materialOptions = isMaterialCol && hasMaterial ? (() => {
