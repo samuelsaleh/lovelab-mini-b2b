@@ -80,6 +80,28 @@ async function compressImage(file) {
   return last
 }
 
+/**
+ * One pill per lead answering "did the email reach them?".
+ *
+ * What Resend said after the send (webhook or daily check) outranks our own
+ * send status: "sent" only means it left us. Returns null when nothing has
+ * been written for the lead yet.
+ */
+export function emailStatusFor(draft) {
+  if (!draft) return null
+  const delivery = draft.delivery_status || null
+  const deliveryBad = delivery === 'bounced' || delivery === 'complained' || delivery === 'failed' || delivery === 'suppressed'
+  if (deliveryBad) {
+    return { bg: '#fee2e2', fg: '#991b1b', label: delivery === 'complained' ? '✗ marked as spam' : '✗ bounced', detail: draft.delivery_error || null, bad: true }
+  }
+  if (delivery === 'delivered') return { bg: '#dcfce7', fg: '#166534', label: '✓ delivered', detail: null, bad: false }
+  if (delivery === 'delivery_delayed') return { bg: '#fef3c7', fg: '#92400e', label: '⏳ delivery delayed', detail: draft.delivery_error || null, bad: false }
+  if (draft.status === 'sent') return { bg: '#dcfce7', fg: '#166534', label: '✓ sent, awaiting delivery', detail: null, bad: false }
+  if (draft.status === 'failed') return { bg: '#fee2e2', fg: '#991b1b', label: '✗ not sent', detail: draft.error || null, bad: true }
+  if (draft.status === 'draft_ready') return { bg: '#f3e8ff', fg: '#6b21a8', label: '○ draft ready', detail: null, bad: false }
+  return null
+}
+
 export default function FairAssistantClient() {
   const [batches, setBatches] = useState([])
   const [activeBatchId, setActiveBatchId] = useState(null)
@@ -1334,42 +1356,23 @@ export default function FairAssistantClient() {
                       const draft = draftsByLeadId[lead.id]
                       const draftStatus = draft?.status || null
                       const draftError = draft?.error || null
-                      // What Resend said happened after the send (webhook or
-                      // daily check). A bounce outranks "sent": the email left
-                      // us but never reached the lead.
-                      const delivery = draft?.delivery_status || null
-                      const deliveryError = draft?.delivery_error || null
-                      const deliveryBad = delivery === 'bounced' || delivery === 'complained' || delivery === 'failed' || delivery === 'suppressed'
-                      const sendPill = deliveryBad
-                          ? { bg: '#fee2e2', fg: '#991b1b', label: delivery === 'complained' ? '✗ marked as spam' : '✗ bounced' }
-                        : delivery === 'delivered'
-                          ? { bg: '#dcfce7', fg: '#166534', label: '✓ delivered' }
-                        : delivery === 'delivery_delayed'
-                          ? { bg: '#fef3c7', fg: '#92400e', label: '⏳ delivery delayed' }
-                        : draftStatus === 'sent'
-                          ? { bg: '#dcfce7', fg: '#166534', label: '✓ sent' }
-                        : draftStatus === 'failed'
-                          ? { bg: '#fee2e2', fg: '#991b1b', label: '✗ send failed' }
-                        : draftStatus === 'draft_ready'
-                          ? { bg: '#f3e8ff', fg: '#6b21a8', label: '○ draft ready' }
-                        : null
+                      const sendPill = emailStatusFor(draft)
+                      const emailBad = Boolean(sendPill?.bad)
                       return (
                         <div
                           key={lead.id}
                           onClick={() => {
-                            if (deliveryBad && deliveryError) {
-                              showToast(`Not delivered: ${deliveryError.slice(0, 240)}`)
-                            } else if (draftStatus === 'failed' && draftError) {
-                              showToast(`Send failed: ${draftError.slice(0, 200)}`)
+                            if (emailBad && sendPill.detail) {
+                              showToast(`Not delivered: ${sendPill.detail.slice(0, 240)}`)
                             }
                             setEditingLead({ ...lead })
                           }}
                           style={{
                             position: 'relative',
                             padding: 14,
-                            border: `1px solid ${draftStatus === 'failed' || deliveryBad ? '#fecaca' : colors.border}`,
+                            border: `1px solid ${emailBad ? '#fecaca' : colors.border}`,
                             borderRadius: 10,
-                            background: draftStatus === 'failed' || deliveryBad ? '#fef2f2' : '#fff',
+                            background: emailBad ? '#fef2f2' : '#fff',
                             cursor: 'pointer',
                           }}
                         >
@@ -1431,19 +1434,22 @@ export default function FairAssistantClient() {
                           <th style={{ padding: 8 }}>Country</th>
                           <th style={{ padding: 8 }}>Language</th>
                           <th style={{ padding: 8 }}>Email</th>
-                          <th style={{ padding: 8 }}>Status</th>
+                          <th style={{ padding: 8 }}>Email status</th>
                           <th style={{ padding: 8, width: 50 }}></th>
                           <th style={{ padding: 8, width: 40 }}></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredLeads.map((lead) => (
+                        {filteredLeads.map((lead) => {
+                          const pill = emailStatusFor(draftsByLeadId[lead.id])
+                          return (
                           <tr
                             key={lead.id}
+                            data-testid="fair-lead-row"
                             onClick={() => setEditingLead({ ...lead })}
-                            style={{ borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer' }}
+                            style={{ borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer', background: pill?.bad ? '#fef2f2' : 'transparent' }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = '#faf8fc' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = pill?.bad ? '#fef2f2' : 'transparent' }}
                           >
                             <td style={{ padding: 8 }}>
                               {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}
@@ -1457,7 +1463,20 @@ export default function FairAssistantClient() {
                             <td style={{ padding: 8 }}>{lead.country || '—'}</td>
                             <td style={{ padding: 8 }}>{lead.language_label || lead.language || '—'}</td>
                             <td style={{ padding: 8 }}>{lead.email || '—'}</td>
-                            <td style={{ padding: 8 }}>{lead.status}</td>
+                            <td style={{ padding: 8 }} data-testid="fair-lead-email-status">
+                              {pill ? (
+                                <span title={pill.detail || undefined} style={{ display: 'inline-block', fontSize: 11, padding: '3px 8px', background: pill.bg, color: pill.fg, borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  {pill.label}
+                                </span>
+                              ) : lead.status === 'failed' ? (
+                                <span style={{ color: '#dc2626', fontWeight: 600 }}>card not read</span>
+                              ) : (
+                                <span style={{ color: colors.lovelabMuted }}>not emailed yet</span>
+                              )}
+                              {pill?.bad && pill.detail && (
+                                <div style={{ fontSize: 11, color: '#991b1b', marginTop: 4, maxWidth: 360, lineHeight: 1.4 }}>{pill.detail.slice(0, 200)}</div>
+                              )}
+                            </td>
                             <td style={{ padding: 8, color: colors.inkPlum, fontSize: 12, fontWeight: 600 }}>Edit</td>
                             <td style={{ padding: 4 }}>
                               <button
@@ -1473,7 +1492,8 @@ export default function FairAssistantClient() {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                         {!filteredLeads.length && (
                           <tr><td colSpan={8} style={{ padding: 16, color: colors.lovelabMuted }}>No leads yet. Upload card photos to begin.</td></tr>
                         )}
@@ -1813,7 +1833,7 @@ export default function FairAssistantClient() {
                     const sendBusy = Boolean(busyAction && busyAction.startsWith('send'))
                     const sendBlocked = uploading || leads.length === 0
                     return (
-                      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, position: 'sticky', bottom: 8, boxShadow: '0 -4px 14px rgba(0,0,0,0.04)' }}>
+                      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
                         <button
                           onClick={runSend}
                           disabled={sendBusy || sendBlocked}
