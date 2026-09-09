@@ -56,6 +56,12 @@ jest.mock('@/lib/supabase/server', () => ({
 
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: jest.fn(() => null) }))
 
+// The internal "order emailed to client" notice goes out through
+// lib/orderNotices after the client email. It has its own tests
+// (send-email-notice.test.js); here it must not overwrite the captured
+// Resend payload we assert on.
+jest.mock('@/lib/orderNotices', () => ({ notifyOrderEvent: jest.fn().mockResolvedValue({ sent: true }) }))
+
 jest.mock('@/app/api/_lib/access', () => ({
   getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-user', email: 'admin@example.com' }, isAdmin: true }),
   requireEventPermission: jest.fn().mockResolvedValue({ allowed: true }),
