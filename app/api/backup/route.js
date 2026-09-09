@@ -17,6 +17,7 @@ const TABLES = [
   'agent_folder_files',
   'agent_payments',
   'saved_reports',
+  'email_deliveries',
 ];
 
 const MAX_ROWS_PER_TABLE = 50_000;

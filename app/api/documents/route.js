@@ -9,6 +9,7 @@ import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
+import { emailDeliveriesAvailable } from '@/lib/emailDeliveries';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // GET - List documents (optionally filtered by event_id)
@@ -51,9 +52,14 @@ export async function GET(request) {
     // the joined name; the summary branch needs both the id and the name.
     const hasAgentCol = await documentsHaveAgentIdColumn(adminSupabase);
     const agentEmbed = hasAgentCol ? ', agent:profiles!agent_id(full_name, email)' : '';
+    // Delivery outcome of the client email (delivered / bounced), only once
+    // the email_deliveries migration exists — same guard idea as agent_id.
+    const deliveryEmbed = (await emailDeliveriesAvailable(adminSupabase))
+      ? ', email_deliveries!document_id(kind, status, detail, advice, recipient, sent_at, last_event_at)'
+      : '';
     const selectFields = summaryOnly
       ? `id, created_at, client_name, client_company, total_amount, order_channel, status, file_path, file_name, consignment_agent_id, metadata${hasAgentCol ? ', agent_id' : ''}, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}`
-      : `*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}`;
+      : `*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}${deliveryEmbed}`;
 
     let query = adminSupabase
       .from('documents')

@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { findB2BFileByPath } from '@/lib/b2b-files';
 import { packTemplateIdFromPath } from '@/lib/packTemplates';
+import { emailDeliveriesAvailable } from '@/lib/emailDeliveries';
 
 export async function GET(request, { params }) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'fair-batch' });
@@ -13,12 +14,16 @@ export async function GET(request, { params }) {
 
   const { id } = await params;
 
+  // Delivery outcome columns exist only once the email_deliveries migration
+  // has run; a migration-behind environment keeps loading batches as before.
+  const draftDeliveryColumns = (await emailDeliveriesAvailable(auth.adminSupabase)) ? ', delivery_status, delivery_error' : '';
+
   const [{ data: batch, error: batchErr }, { data: leads, error: leadsErr }, { data: images, error: imagesErr }, { data: drafts, error: draftsErr }] =
     await Promise.all([
       auth.adminSupabase.from('fair_batches').select('*').eq('id', id).single(),
       auth.adminSupabase.from('fair_leads').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
       auth.adminSupabase.from('fair_images').select('*').eq('batch_id', id).order('created_at', { ascending: true }),
-      auth.adminSupabase.from('fair_email_drafts').select('id, lead_id, status, error, sent_at, message_id').eq('batch_id', id),
+      auth.adminSupabase.from('fair_email_drafts').select(`id, lead_id, status, error, sent_at, message_id${draftDeliveryColumns}`).eq('batch_id', id),
     ]);
 
   if (batchErr || !batch) {

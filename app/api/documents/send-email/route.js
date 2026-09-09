@@ -6,6 +6,7 @@ import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients, isExclud
 import { clientOrderEmail, stripCompanyPrefix } from '@/lib/email-templates';
 import { readOrderEmailCatalogue, orderEmailCatalogueUrl } from '@/lib/orderEmailCatalogue';
 import { notifyOrderEvent } from '@/lib/orderNotices';
+import { recordSend } from '@/lib/emailDeliveries';
 
 // All client-facing order emails are BCC'd to the LoveLab office inboxes (so
 // every conversation funnels through inboxes someone actually reads) PLUS the
@@ -299,6 +300,16 @@ export async function POST(request) {
     }
 
     const result = await res.json().catch(() => ({}));
+
+    // Remember the send so Resend's delivered / bounced answer has somewhere
+    // to land (lib/emailDeliveries.js). Non-blocking.
+    await recordSend(adminSupabase, {
+      resendId: result?.id || null,
+      kind: 'order_confirmation',
+      documentId: doc.id,
+      recipient,
+      subject,
+    });
 
     // Tell the office the client was emailed. The BCC above puts a copy in
     // the shared inboxes, but a copy of a German order confirmation is not

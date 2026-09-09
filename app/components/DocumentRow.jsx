@@ -14,6 +14,30 @@ function fmtDay(value) {
   return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// What Resend said about the client email for this order. Prefers the tracked
+// rows embedded by the API; falls back to the copy mirrored into metadata.
+export function clientEmailDelivery(doc) {
+  const list = Array.isArray(doc?.email_deliveries) ? doc.email_deliveries : []
+  const orders = list.filter((d) => !d.kind || d.kind === 'order_confirmation')
+  if (orders.length) {
+    return [...orders].sort((a, b) => new Date(b.sent_at || b.last_event_at || 0) - new Date(a.sent_at || a.last_event_at || 0))[0]
+  }
+  return doc?.metadata?.client_email || null
+}
+
+const BAD_DELIVERY = new Set(['bounced', 'complained', 'failed', 'suppressed'])
+
+export function deliveryPill(delivery) {
+  if (!delivery?.status) return null
+  const s = delivery.status
+  if (BAD_DELIVERY.has(s)) {
+    return { bg: '#fee2e2', fg: '#991b1b', label: s === 'complained' ? '✗ email marked as spam' : '✗ email bounced' }
+  }
+  if (s === 'delivered') return { bg: '#e8f4ea', fg: '#2d6a4f', label: '✓ email delivered' }
+  if (s === 'delivery_delayed') return { bg: '#fef3c7', fg: '#92400e', label: '⏳ email delayed' }
+  return { bg: '#f3f4f6', fg: '#4b5563', label: '✉ emailed' }
+}
+
 export function wasUpdatedLater(doc) {
   if (!doc?.created_at || !doc?.updated_at) return false
   const created = new Date(doc.created_at).getTime()
@@ -171,6 +195,23 @@ export default function DocumentRow({
                 >by {attribution.label}</span>
               )}
               <span>{fmtDay(doc.created_at)}</span>
+              {(() => {
+                const delivery = clientEmailDelivery(doc)
+                const pill = deliveryPill(delivery)
+                if (!pill) return null
+                return (
+                  <span
+                    data-testid="document-delivery"
+                    data-status={delivery.status}
+                    title={[delivery.recipient, delivery.advice || delivery.detail].filter(Boolean).join(' — ')}
+                    style={{
+                      padding: '1px 6px', borderRadius: 4,
+                      background: pill.bg, color: pill.fg,
+                      fontSize: 10, fontWeight: 600,
+                    }}
+                  >{pill.label}</span>
+                )
+              })()}
               {wasUpdatedLater(doc) && (
                 <span
                   data-testid="document-updated"

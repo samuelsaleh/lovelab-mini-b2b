@@ -1332,7 +1332,19 @@ export default function FairAssistantClient() {
                       const draft = draftsByLeadId[lead.id]
                       const draftStatus = draft?.status || null
                       const draftError = draft?.error || null
-                      const sendPill = draftStatus === 'sent'
+                      // What Resend said happened after the send (webhook or
+                      // daily check). A bounce outranks "sent": the email left
+                      // us but never reached the lead.
+                      const delivery = draft?.delivery_status || null
+                      const deliveryError = draft?.delivery_error || null
+                      const deliveryBad = delivery === 'bounced' || delivery === 'complained' || delivery === 'failed' || delivery === 'suppressed'
+                      const sendPill = deliveryBad
+                          ? { bg: '#fee2e2', fg: '#991b1b', label: delivery === 'complained' ? '✗ marked as spam' : '✗ bounced' }
+                        : delivery === 'delivered'
+                          ? { bg: '#dcfce7', fg: '#166534', label: '✓ delivered' }
+                        : delivery === 'delivery_delayed'
+                          ? { bg: '#fef3c7', fg: '#92400e', label: '⏳ delivery delayed' }
+                        : draftStatus === 'sent'
                           ? { bg: '#dcfce7', fg: '#166534', label: '✓ sent' }
                         : draftStatus === 'failed'
                           ? { bg: '#fee2e2', fg: '#991b1b', label: '✗ send failed' }
@@ -1343,7 +1355,9 @@ export default function FairAssistantClient() {
                         <div
                           key={lead.id}
                           onClick={() => {
-                            if (draftStatus === 'failed' && draftError) {
+                            if (deliveryBad && deliveryError) {
+                              showToast(`Not delivered: ${deliveryError.slice(0, 240)}`)
+                            } else if (draftStatus === 'failed' && draftError) {
                               showToast(`Send failed: ${draftError.slice(0, 200)}`)
                             }
                             setEditingLead({ ...lead })
@@ -1351,9 +1365,9 @@ export default function FairAssistantClient() {
                           style={{
                             position: 'relative',
                             padding: 14,
-                            border: `1px solid ${draftStatus === 'failed' ? '#fecaca' : colors.border}`,
+                            border: `1px solid ${draftStatus === 'failed' || deliveryBad ? '#fecaca' : colors.border}`,
                             borderRadius: 10,
-                            background: draftStatus === 'failed' ? '#fef2f2' : '#fff',
+                            background: draftStatus === 'failed' || deliveryBad ? '#fef2f2' : '#fff',
                             cursor: 'pointer',
                           }}
                         >

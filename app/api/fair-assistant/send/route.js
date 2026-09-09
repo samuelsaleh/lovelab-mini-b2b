@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/send-email';
 import { findB2BFileByPath } from '@/lib/b2b-files';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 import { publicAssetUrl } from '@/lib/publicAssetHref';
+import { recordSend } from '@/lib/emailDeliveries';
 
 // Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
 // the batch size, we time-box the loop: each worker checks an 8.5s deadline
@@ -192,6 +193,14 @@ export async function POST(request) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', draft.id);
+      // Track the outcome (delivered / bounced) — see lib/emailDeliveries.js.
+      await recordSend(auth.adminSupabase, {
+        resendId: result.message_id || null,
+        kind: 'fair_outreach',
+        draftId: draft.id,
+        recipient: to,
+        subject: draft.subject,
+      });
     } else {
       failed += 1;
       await auth.adminSupabase
