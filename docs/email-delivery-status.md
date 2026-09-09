@@ -38,7 +38,11 @@ It covers the three kinds of email the app sends:
      `email.opened`, `email.clicked`.
    - Resend then shows a **signing secret** starting with `whsec_`.
 3. **Put the secret in Vercel**: Settings → Environment Variables →
-   `RESEND_WEBHOOK_SECRET` = that value. Redeploy.
+   `RESEND_WEBHOOK_SECRET` = that value, with *Production* ticked.
+   **Then redeploy** — Deployments → ⋯ on the latest → *Redeploy*. Saving a
+   variable does not restart anything; until a new deployment runs, the
+   webhook keeps answering 503 "Webhook not configured" (9 Sept 2026: this
+   is exactly what happened on first setup).
 4. Send yourself a test order confirmation. Within a minute the row in
    Documents should show **✓ email delivered**.
 
