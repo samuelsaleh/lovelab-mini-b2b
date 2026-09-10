@@ -5,6 +5,7 @@ import { formatQty, modelSpec } from '@/lib/igi/derive'
 import SerialSpec, { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import { PageHead, Card, Loading, Toast, Btn, TableWrap } from './certificates/ui'
+import { MatchingSection } from './CertificatesMatchingClient'
 
 /**
  * The register of models and serials.
@@ -108,7 +109,7 @@ export default function CertificatesModelsClient() {
   return (
     <>
       <PageHead
-        title="Models & serials"
+        title="Models"
         sub={`${inUse.length} in use, ${reserved.length} reserved serials, ${awaiting.length} waiting for a serial`}
       >
         <input
@@ -263,6 +264,10 @@ export default function CertificatesModelsClient() {
           </div>
         ))}
       </Card>
+
+      {/* Which stock description belongs to which model — the other half of
+          "what is this model", so it lives here rather than on its own screen. */}
+      <MatchingSection />
     </>
   )
 }

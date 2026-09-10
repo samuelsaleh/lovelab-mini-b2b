@@ -6,11 +6,24 @@ import { formatQty, visitRef, sameDayLabel } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import { VISIT_LABELS, VISIT_TONES } from '@/lib/igi/visits'
 import Chip from './igi/Chip'
-import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
+import CertificatesDailyClient from './CertificatesDailyClient'
+import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty, Switch } from './certificates/ui'
 
-/** Every movement, newest first. */
-export default function CertificatesVisitsClient() {
+const VIEWS = [
+  { value: 'visit', label: 'By movement' },
+  { value: 'day', label: 'By day' },
+]
+
+/**
+ * Movements — everything that crossed the road, seen either way.
+ *
+ * "What happened on movement 22" and "what went across on the 25th" are the
+ * same history read two ways, so they are one screen with a switch, not two
+ * screens (Sam, 10 Sept 2026).
+ */
+export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   const router = useRouter()
+  const [view, setView] = useState(initialView)
   const [visits, setVisits] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -39,73 +52,80 @@ export default function CertificatesVisitsClient() {
   return (
     <>
       <PageHead
-        title="Visits"
+        title="Movements"
         sub={`${visits.length} movement${visits.length === 1 ? '' : 's'}${open.length ? `, ${open.length} still open` : ', all closed'}`}
       >
-        <Btn kind="primary" onClick={() => router.push('/certificates/requests')} testId="new-request">
-          New request
+        <Switch options={VIEWS} value={view} onChange={setView} testId="view" />
+        <Btn kind="primary" onClick={() => router.push('/certificates/stock')} testId="new-request">
+          Ask IGI for more
         </Btn>
       </PageHead>
 
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
 
-      <Card flush>
-        <TableWrap>
-          <table>
-            <thead>
-              <tr>
-                <th>Movement</th>
-                <th>Date</th>
-                <th>Where it is</th>
-                <th className="num">Models</th>
-                <th className="num">Certificates</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visits.map((v) => (
-                <tr
-                  key={v.id}
-                  className="clickable"
-                  onClick={() => router.push(`/certificates/visits/${v.id}`)}
-                  data-testid="visit-row"
-                >
-                  <td className="mono" style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                    {visitRef(v)}
-                    {sameDayLabel(v, visits) && (
-                      <span style={{ marginLeft: 6, color: 'var(--ink-faint)', fontWeight: 400 }}>
-                        {sameDayLabel(v, visits)}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {formatDate(v.visit_date)}
-                    {v.date_suspect && (
-                      <div style={{ marginTop: 3 }}>
-                        <Chip tone="a">Date mistyped in the file</Chip>
-                      </div>
-                    )}
-                  </td>
-                  <td><Chip tone={VISIT_TONES[v.status]}>{VISIT_LABELS[v.status]}</Chip></td>
-                  <td className="num">
-                    {v.unattributed_total != null
-                      ? <span className="spec">no breakdown</span>
-                      : formatQty(v.line_count)}
-                  </td>
-                  <td className="num">{formatQty(v.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-        {visits.length === 0 && <Empty>No movements yet. Start with a new request.</Empty>}
-      </Card>
+      {view === 'day' ? (
+        <CertificatesDailyClient embedded />
+      ) : (
+        <>
+          <Card flush>
+            <TableWrap>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Movement</th>
+                    <th>Date</th>
+                    <th>Where it is</th>
+                    <th className="num">Models</th>
+                    <th className="num">Certificates</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.map((v) => (
+                    <tr
+                      key={v.id}
+                      className="clickable"
+                      onClick={() => router.push(`/certificates/visits/${v.id}`)}
+                      data-testid="visit-row"
+                    >
+                      <td className="mono" style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                        {visitRef(v)}
+                        {sameDayLabel(v, visits) && (
+                          <span style={{ marginLeft: 6, color: 'var(--ink-faint)', fontWeight: 400 }}>
+                            {sameDayLabel(v, visits)}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {formatDate(v.visit_date)}
+                        {v.date_suspect && (
+                          <div style={{ marginTop: 3 }}>
+                            <Chip tone="a">Date mistyped in the file</Chip>
+                          </div>
+                        )}
+                      </td>
+                      <td><Chip tone={VISIT_TONES[v.status]}>{VISIT_LABELS[v.status]}</Chip></td>
+                      <td className="num">
+                        {v.unattributed_total != null
+                          ? <span className="spec">no breakdown</span>
+                          : formatQty(v.line_count)}
+                      </td>
+                      <td className="num">{formatQty(v.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+            {visits.length === 0 && <Empty>No movements yet. Ask IGI for certificates from the Stock screen.</Empty>}
+          </Card>
 
-      <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', maxWidth: 720, lineHeight: 1.6 }}>
-        A movement marked <em>no breakdown</em> is one IGI recorded as a daily total without the
-        models, between 16 June and 28 July 2026. Its certificates are counted but belong to no
-        model. Four movements also carry a mistyped year; the date is kept exactly as written and
-        the reporting month is taken from the movement before it.
-      </p>
+          <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', maxWidth: 720, lineHeight: 1.6 }}>
+            A movement marked <em>no breakdown</em> is one IGI recorded as a daily total without the
+            models, between 16 June and 28 July 2026. Its certificates are counted but belong to no
+            model. Four movements also carry a mistyped year; the date is kept exactly as written and
+            the reporting month is taken from the movement before it.
+          </p>
+        </>
+      )}
     </>
   )
 }

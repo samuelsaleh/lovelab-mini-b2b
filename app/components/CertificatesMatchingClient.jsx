@@ -21,6 +21,15 @@ const KINDS = [
  * know that "IGI 0.05 CERTIFICATE" and LGAJ6529 are the same thing.
  */
 export default function CertificatesMatchingClient() {
+  return <MatchingSection standalone />
+}
+
+/**
+ * The matching table itself. Lives on the Models screen since 10 Sept 2026
+ * (Sam: fewer screens); `standalone` keeps the old page shape for the
+ * redirect target and for anyone with the address bookmarked.
+ */
+export function MatchingSection({ standalone = false }) {
   const [descriptions, setDescriptions] = useState([])
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
@@ -89,18 +98,32 @@ export default function CertificatesMatchingClient() {
 
   if (loading) return <Loading />
 
+  const toggle = (
+    <Btn kind={showAll ? 'on' : undefined} onClick={() => setShowAll((v) => !v)} testId="toggle-all">
+      {showAll
+        ? `Show certificate lines only (${certificates.length})`
+        : `Show every description (${descriptions.length})`}
+    </Btn>
+  )
+
   return (
-    <>
-      <PageHead
-        title="Matching"
-        sub={`${certificates.length - needsHuman.length} of ${certificates.length} certificate lines linked to a model`}
-      >
-        <Btn kind={showAll ? 'on' : undefined} onClick={() => setShowAll((v) => !v)} testId="toggle-all">
-          {showAll
-            ? `Show certificate lines only (${certificates.length})`
-            : `Show every description (${descriptions.length})`}
-        </Btn>
-      </PageHead>
+    <div id="matching" data-testid="matching">
+      {standalone ? (
+        <PageHead
+          title="Matching"
+          sub={`${certificates.length - needsHuman.length} of ${certificates.length} certificate lines linked to a model`}
+        >
+          {toggle}
+        </PageHead>
+      ) : (
+        <div className="page-head" style={{ marginTop: 28 }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', margin: 0 }}>Our stock software</h2>
+          <span className="sub">
+            {certificates.length - needsHuman.length} of {certificates.length} certificate lines linked to a model
+          </span>
+          {toggle}
+        </div>
+      )}
 
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
 
@@ -219,6 +242,6 @@ export default function CertificatesMatchingClient() {
         new line needing a human, and the old model keeps its last known figure rather than dropping
         to zero.
       </p>
-    </>
+    </div>
   )
 }

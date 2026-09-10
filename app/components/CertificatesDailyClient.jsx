@@ -21,7 +21,7 @@ import { PageHead, Card, Loading, Note, Toast, TableWrap, Empty, Btn } from './c
  * are shown as their own line rather than spread across models that did not
  * earn them.
  */
-export default function CertificatesDailyClient() {
+export default function CertificatesDailyClient({ embedded = false }) {
   const router = useRouter()
   const [days, setDays] = useState([])
   const [loading, setLoading] = useState(true)
@@ -56,12 +56,20 @@ export default function CertificatesDailyClient() {
 
   return (
     <>
-      <PageHead
-        title="Daily history"
-        sub={days.length
-          ? `${days.length} day${days.length === 1 ? '' : 's'} on which certificates moved, ${formatQty(totals.total)} in total`
-          : 'Nothing has moved yet'}
-      />
+      {embedded ? (
+        <p className="sub" style={{ margin: '0 0 14px', color: 'var(--ink-soft)' }} data-testid="daily-sub">
+          {days.length
+            ? `${days.length} day${days.length === 1 ? '' : 's'} on which certificates moved, ${formatQty(totals.total)} in total`
+            : 'Nothing has moved yet'}
+        </p>
+      ) : (
+        <PageHead
+          title="Daily history"
+          sub={days.length
+            ? `${days.length} day${days.length === 1 ? '' : 's'} on which certificates moved, ${formatQty(totals.total)} in total`
+            : 'Nothing has moved yet'}
+        />
+      )}
 
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
 

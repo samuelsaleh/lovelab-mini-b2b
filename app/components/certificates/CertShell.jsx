@@ -30,8 +30,10 @@ import { useAuth } from '../AuthProvider'
  *   banner   — what the top strip says on the left
  *   status   — what the top strip says on the right (optional)
  *   exit     — { href, label } for the way out, or null (IGI has nowhere to go)
+ *   aside    — { href, label } for a secondary place worth a link but not a
+ *              screen of its own (LoveLab's look at IGI's side), or null
  */
-export default function CertShell({ nav, home, brand, mark, title, banner, status, exit, children }) {
+export default function CertShell({ nav, home, brand, mark, title, banner, status, exit, aside: asideLink, children }) {
   const pathname = usePathname()
   const [markFailed, setMarkFailed] = useState(false)
   const { user, profile, signOut } = useAuth()
@@ -94,6 +96,11 @@ export default function CertShell({ nav, home, brand, mark, title, banner, statu
           </nav>
 
           <div className="side-foot">
+            {asideLink ? (
+              <Link href={asideLink.href} data-testid="cert-aside-link" aria-current={pathname.startsWith(asideLink.href) ? 'page' : undefined}>
+                {asideLink.label}
+              </Link>
+            ) : null}
             <div className="who">{profile?.full_name || user?.email}</div>
             {exit ? <Link href={exit.href}>{exit.label}</Link> : null}
             <a role="button" tabIndex={0} onClick={() => signOut()} data-testid="cert-sign-out">

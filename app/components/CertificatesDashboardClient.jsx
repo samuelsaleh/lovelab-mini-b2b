@@ -111,7 +111,7 @@ export default function CertificatesDashboardClient() {
               linked to a model yet, so {data.shelf.unlinked > 1 ? 'those models have' : 'that model has'} no
               shelf figure.
             </span>
-            <Btn onClick={() => router.push('/certificates/matching')} testId="go-matching">
+            <Btn onClick={() => router.push('/certificates/models#matching')} testId="go-matching">
               Open matching
             </Btn>
           </div>

@@ -48,10 +48,13 @@ describe('the certificate application shell', () => {
     expect(logo.style.filter).toBe('brightness(0) invert(1)')
   })
 
-  it('shows the group headings, not just a flat list', () => {
-    renderShell()
-    for (const g of ['Overview', 'Every day', 'Money', 'Setup']) {
-      expect(screen.getByText(g)).toBeInTheDocument()
+  it('shows the five screens as a flat list — five things need no grouping', () => {
+    // Sam, 10 Sept 2026: nine grouped screens became five plain ones.
+    const { container } = renderShell()
+    expect(container.querySelectorAll('nav.nav a')).toHaveLength(5)
+    expect(container.querySelector('nav.nav .grp')).toBeNull()
+    for (const label of ['Dashboard', 'Stock', 'Movements', 'Models', 'Invoices']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
     }
   })
 

@@ -58,18 +58,19 @@ Running the file twice is safe. It corrects rather than duplicates.
 ## Then open the app
 
 **Admin → Certificates**, which opens the certificate application at
-`/certificates` — its own space, with its own sidebar and its own look. Seven
+`/certificates` — its own space, with its own sidebar and its own look. Five
 screens:
 
 | | |
 |---|---|
 | **Dashboard** | 3 504 on the shelf, 59 221 still at IGI, and the 3 245 gap |
-| **New request** | Choose models and quantities, send to IGI |
-| **Visits** | All 23 movements, and any new one you create |
-| **Stock & alerts** | Every model, both sides, both alert levels |
+| **Stock** | Every model, both sides, both alert levels — and an "ask for" column with one Send to IGI button |
+| **Movements** | All 23 movements, by movement or by day |
+| **Models** | The 61 in use, 15 reserved serials, the ones waiting for a serial, a "New model" form, and which stock description belongs to which model |
 | **Invoices** | What the movements say, beside what IGI billed |
-| **Models & serials** | The 61 in use, 15 reserved serials, 3 waiting for a serial |
-| **Matching** | Which stock description belongs to which model |
+
+IGI's side — what is on their screen right now — is a link at the foot of the
+sidebar.
 
 The old addresses under `/admin/certificates` still work — they redirect.
 

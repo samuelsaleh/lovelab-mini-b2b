@@ -39,6 +39,7 @@ export default function CertificatesLayout({ children }) {
       title="Certificates"
       banner="every IGI movement, held once"
       status="LoveLab Antwerp"
+      aside={{ href: '/certificates/igi-view', label: 'IGI’s side →' }}
       exit={{ href: '/admin', label: '← Back to LoveLab' }}
     >
       {children}

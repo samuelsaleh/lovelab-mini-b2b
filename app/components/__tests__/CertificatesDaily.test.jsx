@@ -1,6 +1,7 @@
 import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import CertificatesDailyClient from '../CertificatesDailyClient'
+import CertificatesVisitsClient from '../CertificatesVisitsClient'
 
 // Numbers group with a narrow no-break space; Testing Library normalises
 // whitespace, so these assertions use a plain one.
@@ -95,5 +96,47 @@ describe('what was taken, day by day', () => {
     render(<CertificatesDailyClient />)
     await waitFor(() => expect(screen.getByTestId('daily-empty')).toBeInTheDocument())
     expect(screen.queryByTestId('daily-gap-note')).not.toBeInTheDocument()
+  })
+})
+
+describe('the Movements screen reads the same history two ways', () => {
+  const VISITS = [
+    { id: 'v20', visit_no: 20, visit_date: '2026-08-25', status: 'closed', date_suspect: false, unattributed_total: null, line_count: 4, total: 250 },
+    { id: 'v21', visit_no: 21, visit_date: '2026-08-25', status: 'closed', date_suspect: false, unattributed_total: null, line_count: 1, total: 77 },
+  ]
+  function mockBoth() {
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      if (u.includes('/api/igi/daily')) return Promise.resolve({ ok: true, json: async () => ({ days: DAYS }) })
+      return Promise.resolve({ ok: true, json: async () => ({ visits: VISITS }) })
+    })
+  }
+
+  it('starts by movement and switches to by day without leaving the screen', async () => {
+    mockBoth()
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getAllByTestId('visit-row')).toHaveLength(2))
+    expect(screen.queryByTestId('daily-day')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('view-day'))
+    await waitFor(() => expect(screen.getAllByTestId('daily-day')).toHaveLength(2))
+    expect(screen.queryByTestId('visit-row')).toBeNull()
+    // One heading, not two: the embedded day view has no page head of its own.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Movements')
+  })
+
+  it('can open on the day view for the old Daily history address', async () => {
+    mockBoth()
+    render(<CertificatesVisitsClient initialView="day" />)
+    await waitFor(() => expect(screen.getAllByTestId('daily-day')).toHaveLength(2))
+  })
+
+  it('sends people to Stock to ask for more, since the request lives there now', async () => {
+    mockBoth()
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getByTestId('new-request')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('new-request'))
+    expect(push).toHaveBeenCalledWith('/certificates/stock')
   })
 })

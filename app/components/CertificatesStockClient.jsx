@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatQty, SHELF_LABELS, POOL_LABELS } from '@/lib/igi/derive'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
-import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
+import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -14,20 +15,30 @@ const FILTERS = [
 ]
 
 /**
- * Every model, both sides, with both alert levels.
+ * Stock — one row per model, and the request written on the same row.
  *
- * LoveLab sets the level on their own shelf; IGI's level is shown but not
- * editable here, because each rule has exactly one owner.
+ * Sam, 10 Sept 2026: "why is it so complex?" The old New request screen was
+ * this same table with an extra column, so the column moved here. You see
+ * what is on the shelf and what IGI hold, you type how many you want in the
+ * last column, and one button at the top sends it. Asking for more than IGI
+ * hold is allowed — the warning is there so nobody walks across the road
+ * expecting 500 and comes back with 41.
+ *
+ * LoveLab set the alert level on their own shelf; IGI's level is shown but
+ * not editable here, because each rule has exactly one owner.
  */
 export default function CertificatesStockClient() {
+  const router = useRouter()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [sending, setSending] = useState(false)
   const [notice, setNotice] = useState(null)
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [bulkValue, setBulkValue] = useState('')
+  const [draft, setDraft] = useState({})
 
   useEffect(() => { load() }, [])
 
@@ -38,7 +49,7 @@ export default function CertificatesStockClient() {
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Failed to load the certificate stock')
       // Reserved serials and models still waiting for one are kept off every
-      // operational screen.
+      // operational screen; neither can be asked for.
       setModels((body.models || []).filter((m) => m.state === 'in_use'))
       setError(null)
     } catch (err) {
@@ -59,6 +70,32 @@ export default function CertificatesStockClient() {
     })
   }, [models, filter, query])
 
+  // ── The request ─────────────────────────────────────────────────────────
+  const chosen = useMemo(() => models.filter((m) => draft[m.id] > 0), [models, draft])
+  const short = useMemo(
+    () => chosen.filter((m) => m.pool != null && draft[m.id] > m.pool),
+    [chosen, draft],
+  )
+  const total = chosen.reduce((t, m) => t + draft[m.id], 0)
+
+  async function send() {
+    setSending(true)
+    try {
+      const res = await fetch('/api/igi/visits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines: chosen.map((m) => ({ model_id: m.id, qty: draft[m.id] })) }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Failed to send the request')
+      router.push(`/certificates/visits/${body.visit.id}`)
+    } catch (err) {
+      setError(err.message)
+      setSending(false)
+    }
+  }
+
+  // ── The alert level ─────────────────────────────────────────────────────
   async function saveAlert(modelIds, shelfMin) {
     setSaving(true)
     try {
@@ -99,8 +136,8 @@ export default function CertificatesStockClient() {
   return (
     <>
       <PageHead
-        title="Stock & alerts"
-        sub={`${models.length} models in use. We set the level on our shelf; IGI sets theirs.`}
+        title="Stock"
+        sub={`${models.length} models. What is on our shelf, what IGI hold, and what to ask them for.`}
       >
         <input
           type="search"
@@ -115,6 +152,45 @@ export default function CertificatesStockClient() {
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
       {notice && <Toast testId="notice">{notice}</Toast>}
 
+      {/* ── What is about to be sent, and the one button that sends it ────── */}
+      <div className="card">
+        <div className="crow" data-testid="request-total">
+          <div className="k">
+            Asking IGI for
+            <small>
+              {chosen.length === 0
+                ? 'type a quantity in the last column of any model'
+                : `across ${chosen.length} model${chosen.length === 1 ? '' : 's'}`}
+            </small>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <span className="v">{formatQty(total)}</span>
+            <Btn kind="primary" onClick={send} disabled={sending || !chosen.length} testId="send-request">
+              {sending ? 'Sending…' : 'Send to IGI'}
+            </Btn>
+          </div>
+        </div>
+      </div>
+
+      {short.length > 0 && (
+        <Note warn testId="shortage-warning">
+          <strong>
+            IGI hold fewer than you are asking for on {short.length} model{short.length > 1 ? 's' : ''}.
+          </strong>
+          <div style={{ marginTop: 6 }}>
+            You can still send it — IGI will be told exactly what they are short by.
+          </div>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {short.map((m) => (
+              <li key={m.id}>
+                {m.name} — asking {formatQty(draft[m.id])}, they hold {formatQty(m.pool)},
+                short by {formatQty(draft[m.id] - m.pool)}
+              </li>
+            ))}
+          </ul>
+        </Note>
+      )}
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
         {FILTERS.map((f) => (
           <Btn
@@ -126,35 +202,25 @@ export default function CertificatesStockClient() {
             {f.label}
           </Btn>
         ))}
-      </div>
-
-      <div className="card">
-        <div className="nextstep">
-          <b>Set our alert level</b>
-          <span>for all {shown.length} models shown</span>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="number"
-              min="0"
-              value={bulkValue}
-              onChange={(e) => setBulkValue(e.target.value)}
-              data-testid="bulk-value"
-            />
-            <Btn
-              kind="primary"
-              onClick={applyToAllShown}
-              disabled={saving || !bulkValue || !shown.length}
-              testId="bulk-apply"
-            >
-              Apply
-            </Btn>
-          </span>
-        </div>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', fontSize: '.85rem', color: 'var(--ink-soft)' }}>
+          Our alert level for the {shown.length} shown
+          <input
+            type="number"
+            min="0"
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+            data-testid="bulk-value"
+            style={{ width: 72 }}
+          />
+          <Btn onClick={applyToAllShown} disabled={saving || !bulkValue || !shown.length} testId="bulk-apply">
+            Apply
+          </Btn>
+        </span>
       </div>
 
       <Card flush>
         <TableWrap>
-          <table style={{ minWidth: 760 }}>
+          <table style={{ minWidth: 860 }}>
             <thead>
               <tr>
                 <th>Model</th>
@@ -165,41 +231,60 @@ export default function CertificatesStockClient() {
                 <th className="num">At IGI</th>
                 <th className="num">IGI level</th>
                 <th className="num">Asked now</th>
+                <th className="num">Ask for</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((m) => (
-                <tr key={m.id} data-testid="stock-row">
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{m.name}</div>
-                    <div style={{ marginTop: 3, display: 'flex', gap: 6 }}>
-                      <Chip tone={SHELF_TONE[m.shelf_status]}>{SHELF_LABELS[m.shelf_status]}</Chip>
-                      {m.pool_status === 'reorder' && (
-                        <Chip tone={POOL_TONE[m.pool_status]}>{POOL_LABELS[m.pool_status]}</Chip>
-                      )}
-                    </div>
-                  </td>
-                  <td><Spec model={m} compact /></td>
+              {shown.map((m) => {
+                const asked = draft[m.id] || 0
+                const isShort = m.pool != null && asked > m.pool
+                return (
+                  <tr key={m.id} data-testid="stock-row">
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{m.name}</div>
+                      <div style={{ marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Chip tone={SHELF_TONE[m.shelf_status]}>{SHELF_LABELS[m.shelf_status]}</Chip>
+                        {m.pool_status === 'reorder' && (
+                          <Chip tone={POOL_TONE[m.pool_status]}>{POOL_LABELS[m.pool_status]}</Chip>
+                        )}
+                        {isShort && <Chip tone="watch">Short by {formatQty(asked - m.pool)}</Chip>}
+                      </div>
+                    </td>
+                    <td><Spec model={m} compact /></td>
                     <td><Serial model={m} compact /></td>
-                  <td className="num">
-                    {m.shelf == null ? <span className="spec">not mapped</span> : formatQty(m.shelf)}
-                  </td>
-                  <td className="num">
-                    <AlertInput
-                      value={m.shelf_min}
-                      disabled={saving}
-                      onCommit={(v) => v !== m.shelf_min && saveAlert([m.id], v)}
-                    />
-                  </td>
-                  <td className="num">{formatQty(m.pool)}</td>
-                  <td className="num">
-                    {m.pool_min == null ? <span className="spec">not set</span> : formatQty(m.pool_min)}
-                  </td>
-                  <td className="num">
-                    {m.asked_now ? formatQty(m.asked_now) : <span className="spec">—</span>}
-                  </td>
-                </tr>
-              ))}
+                    <td className="num">
+                      {m.shelf == null ? <span className="spec">not mapped</span> : formatQty(m.shelf)}
+                    </td>
+                    <td className="num">
+                      <AlertInput
+                        value={m.shelf_min}
+                        disabled={saving}
+                        onCommit={(v) => v !== m.shelf_min && saveAlert([m.id], v)}
+                      />
+                    </td>
+                    <td className="num">{formatQty(m.pool)}</td>
+                    <td className="num">
+                      {m.pool_min == null ? <span className="spec">not set</span> : formatQty(m.pool_min)}
+                    </td>
+                    <td className="num">
+                      {m.asked_now ? formatQty(m.asked_now) : <span className="spec">—</span>}
+                    </td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        min="0"
+                        value={draft[m.id] ?? ''}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          setDraft((d) => ({ ...d, [m.id]: Number.isInteger(n) && n >= 0 ? n : 0 }))
+                        }}
+                        data-testid="ask-qty"
+                        style={{ width: 72 }}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </TableWrap>

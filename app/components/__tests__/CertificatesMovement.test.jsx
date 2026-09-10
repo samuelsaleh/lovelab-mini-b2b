@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import CertificatesRequestClient from '../CertificatesRequestClient'
+import CertificatesStockClient from '../CertificatesStockClient'
 import CertificatesVisitDetail from '../CertificatesVisitDetail'
 import CertificatesModelsClient from '../CertificatesModelsClient'
 
@@ -55,8 +55,8 @@ beforeEach(() => { jest.clearAllMocks() })
 describe('asking IGI for certificates', () => {
   it('offers only models that can actually be made', async () => {
     mockFetch()
-    render(<CertificatesRequestClient />)
-    await waitFor(() => expect(screen.getAllByTestId('request-row')).toHaveLength(2))
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
     // The reserved serial and the one with no serial are both absent.
     expect(screen.queryByText('LGAJ6588')).not.toBeInTheDocument()
     expect(screen.queryByText('Full Moonlight')).not.toBeInTheDocument()
@@ -64,8 +64,8 @@ describe('asking IGI for certificates', () => {
 
   it('adds up what is being asked for', async () => {
     mockFetch()
-    render(<CertificatesRequestClient />)
-    await waitFor(() => expect(screen.getAllByTestId('request-row')).toHaveLength(2))
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
 
     const inputs = screen.getAllByTestId('ask-qty')
     fireEvent.change(inputs[0], { target: { value: '50' } })
@@ -79,8 +79,8 @@ describe('asking IGI for certificates', () => {
 
   it('warns when more is asked for than IGI hold, without blocking it', async () => {
     mockFetch()
-    render(<CertificatesRequestClient />)
-    await waitFor(() => expect(screen.getAllByTestId('request-row')).toHaveLength(2))
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
 
     // m2: asking 500, IGI hold 50.
     fireEvent.change(screen.getAllByTestId('ask-qty')[1], { target: { value: '500' } })
@@ -93,8 +93,8 @@ describe('asking IGI for certificates', () => {
 
   it('will not send an empty request', async () => {
     mockFetch()
-    render(<CertificatesRequestClient />)
-    await waitFor(() => expect(screen.getAllByTestId('request-row')).toHaveLength(2))
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
     expect(screen.getByTestId('send-request')).toBeDisabled()
   })
 
@@ -106,8 +106,8 @@ describe('asking IGI for certificates', () => {
         return Promise.resolve({ ok: true, json: async () => ({ visit: { id: 'v9' }, short: [] }) })
       },
     })
-    render(<CertificatesRequestClient />)
-    await waitFor(() => expect(screen.getAllByTestId('request-row')).toHaveLength(2))
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
 
     fireEvent.change(screen.getAllByTestId('ask-qty')[0], { target: { value: '50' } })
     fireEvent.click(screen.getByTestId('send-request'))
