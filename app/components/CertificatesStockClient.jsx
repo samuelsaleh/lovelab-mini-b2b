@@ -225,10 +225,10 @@ export default function CertificatesStockClient() {
 
       <Card flush>
         <TableWrap>
-          <table style={{ minWidth: 860 }}>
+          <table style={{ minWidth: 1080 }}>
             <thead>
               <tr>
-                <th>Model</th>
+                <th style={{ minWidth: 260 }}>Model</th>
                 <th>Check</th>
                 <th>Serial</th>
                 <th className="num">On our shelf</th>
