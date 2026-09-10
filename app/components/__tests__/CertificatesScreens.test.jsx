@@ -224,3 +224,47 @@ describe('a serial never appears without its carat and shape', () => {
     expect(screen.getByTestId('serial')).toHaveTextContent('no serial yet')
   })
 })
+
+describe('the dashboard proposes the request and sends it', () => {
+  // Sam, 10 Sept 2026: the dashboard already said what to collect; now it says
+  // how many and has the button. Shapy Shine: shelf 2, level 25 → back up to
+  // 50 would mean 48, but IGI only hold 40.
+  function mockWithVisits(onPost) {
+    global.fetch = jest.fn((url, init) => {
+      const u = String(url)
+      if (u.includes('/api/igi/overview')) return Promise.resolve({ ok: true, json: async () => OVERVIEW })
+      if (u.includes('/api/igi/visits') && init?.method === 'POST') return onPost(JSON.parse(init.body))
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+  }
+
+  it('prefills a suggested quantity, capped at what IGI hold', async () => {
+    mockWithVisits()
+    render(<CertificatesDashboardClient />)
+    await waitFor(() => expect(screen.getAllByTestId('collect-row')).toHaveLength(1))
+    expect(screen.getByTestId('collect-ask')).toHaveValue(40)
+    expect(screen.getByText('all they have')).toBeInTheDocument()
+    expect(screen.getByTestId('collect-send')).toHaveTextContent('Ask IGI for 40')
+  })
+
+  it('sends what is in the boxes and opens the movement', async () => {
+    const push = jest.fn()
+    jest.spyOn(require('next/navigation'), 'useRouter').mockReturnValue({ push })
+    let sent = null
+    mockWithVisits(async (body) => { sent = body; return { ok: true, json: async () => ({ visit: { id: 'v9' } }) } })
+    render(<CertificatesDashboardClient />)
+    await waitFor(() => expect(screen.getByTestId('collect-ask')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('collect-ask'), { target: { value: '30' } })
+    fireEvent.click(screen.getByTestId('collect-send'))
+    await waitFor(() => expect(sent).toEqual({ lines: [{ model_id: 'm2', qty: 30 }] }))
+    expect(push).toHaveBeenCalledWith('/certificates/visits/v9')
+  })
+
+  it('shows the four remaining figures as one line, not four boxes', async () => {
+    mockWithVisits()
+    render(<CertificatesDashboardClient />)
+    await waitFor(() => expect(screen.getByTestId('facts')).toBeInTheDocument())
+    expect(screen.getByTestId('stat-models')).toHaveTextContent('2 models in use')
+    expect(screen.getByTestId('stat-reserved')).toHaveTextContent('1 reserved serial')
+  })
+})

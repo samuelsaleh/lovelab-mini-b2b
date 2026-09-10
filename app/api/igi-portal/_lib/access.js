@@ -45,8 +45,21 @@ export async function requireIgi(request, prefix, maxRequests = 60) {
   return { user, profile, supabase };
 }
 
+/** The database has no certificate tables yet: the switch-on file was never run. */
+export function isNotSwitchedOn(error) {
+  const text = String(error?.message || error || '');
+  return error?.code === '42P01' || /relation "?(public\.)?igi_[a-z_]+"? does not exist/i.test(text);
+}
+
+export const NOT_SWITCHED_ON_MESSAGE =
+  'The certificate module is not switched on yet. Paste database-migrations/igi-switch-on.sql into the Supabase SQL editor and run it (docs/igi-switch-on.md).';
+
 /** One place to log a route failure, so the shape stays consistent. */
 export function fail(route, error, message, status = 500) {
+  if (isNotSwitchedOn(error)) {
+    console.warn(`[${route}] certificate tables missing — switch-on not run`);
+    return NextResponse.json({ error: NOT_SWITCHED_ON_MESSAGE, not_switched_on: true }, { status: 503 });
+  }
   console.error(`[${route}]`, error?.message || error);
   return NextResponse.json({ error: message }, { status });
 }
