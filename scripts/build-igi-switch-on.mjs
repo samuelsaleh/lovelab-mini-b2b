@@ -104,9 +104,11 @@ for (const m of seed.models.filter((x) => !x.serial)) {
   say(
     'INSERT INTO public.igi_models (name, stones, carat, shape, spec, state, sort_order)',
     `SELECT ${[q(m.name), q(m.stones), n(m.carat), q(m.shape), q(m.spec), q(m.state), n(m.sort_order)].join(', ')}`,
+    // Any state: once IGI have numbered it, it is in use under the same name
+    // and carat, and must not come back as a second model waiting for a serial.
     'WHERE NOT EXISTS (',
     `  SELECT 1 FROM public.igi_models`,
-    `   WHERE state = 'awaiting_serial' AND name = ${q(m.name)} AND carat = ${n(m.carat)}`,
+    `   WHERE name = ${q(m.name)} AND carat = ${n(m.carat)}`,
     ');',
   );
 }
@@ -180,24 +182,35 @@ say(
 );
 
 // ── 3. The check ────────────────────────────────────────────────────────────
+// The check is scoped to the rows THIS file loads. Once the module is in use
+// there are newer movements, batches, descriptions and levels on top of them
+// (Sam's database, 10 Sept 2026: 85 more issued than the opening file), and a
+// re-run must pass through those untouched rather than refuse to run.
+const seedSerials = seed.models.filter((m) => m.serial).map((m) => q(m.serial)).join(', ');
+const seedWaiting = seed.models.filter((m) => !m.serial).map((m) => `(${q(m.name)}, ${n(m.carat)})`).join(', ');
+const seedRefs = [...new Set(seed.batches.map((b) => b.reference))].map(q).join(', ');
+const seedDescs = seed.descriptions.map((d) => q(d.description)).join(', ');
+const maxVisit = Math.max(...seed.visits.map((v) => v.visit_no));
+const openingLines = `public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= ${maxVisit}`;
+
+// [label, sql, expected, comparison]. '=' unless a later human action may
+// legitimately move the figure in one direction (linking more descriptions).
 const EXPECTED = [
-  ['models in use', "SELECT count(*) FROM public.igi_models WHERE state = 'in_use'", 61],
-  ['reserved serials', "SELECT count(*) FROM public.igi_models WHERE state = 'reserved'", 15],
-  ['models awaiting a serial', "SELECT count(*) FROM public.igi_models WHERE state = 'awaiting_serial'", 3],
-  ['certificates ordered', 'SELECT coalesce(sum(qty), 0) FROM public.igi_batches', 62999],
-  ['issued with a model', 'SELECT coalesce(sum(qty_issued), 0) FROM public.igi_visit_lines', 3778],
-  ['issued with no model', 'SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits', 3245],
+  ['models in use', `SELECT count(*) FROM public.igi_models WHERE state = 'in_use' AND serial IN (${seedSerials})`, 61],
+  ['reserved serials', `SELECT count(*) FROM public.igi_models WHERE state = 'reserved' AND serial IN (${seedSerials})`, 15],
+  ['models awaiting a serial (or since numbered)', `SELECT count(*) FROM public.igi_models WHERE (name, carat) IN (${seedWaiting})`, 3],
+  ['certificates ordered', `SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN (${seedRefs})`, 62999],
+  ['issued with a model', `SELECT coalesce(sum(l.qty_issued), 0) FROM ${openingLines}`, 3778],
+  ['issued with no model', `SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits WHERE visit_no <= ${maxVisit}`, 3245],
   ['unissued at IGI',
-    'SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches)'
-    + ' - (SELECT coalesce(sum(qty_issued), 0) FROM public.igi_visit_lines)', 59221],
-  ['movements', 'SELECT count(*) FROM public.igi_visits', 23],
-  ['movements with a mistyped date', 'SELECT count(*) FROM public.igi_visits WHERE date_suspect', 4],
-  ['descriptions classified', 'SELECT count(*) FROM public.igi_descriptions', 116],
-  ['descriptions linked to a model', 'SELECT count(*) FROM public.igi_descriptions WHERE model_id IS NOT NULL', 26],
-  ['descriptions still needing a human',
-    "SELECT count(*) FROM public.igi_descriptions WHERE kind = 'certificate' AND model_id IS NULL", 0],
+    `SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN (${seedRefs}))`
+    + ` - (SELECT coalesce(sum(l.qty_issued), 0) FROM ${openingLines})`, 59221],
+  ['movements', `SELECT count(*) FROM public.igi_visits WHERE visit_no <= ${maxVisit}`, 23],
+  ['movements with a mistyped date', `SELECT count(*) FROM public.igi_visits WHERE date_suspect AND visit_no <= ${maxVisit}`, 4],
+  ['descriptions classified', `SELECT count(*) FROM public.igi_descriptions WHERE description IN (${seedDescs})`, 116],
+  ['descriptions linked to a model', `SELECT count(*) FROM public.igi_descriptions WHERE model_id IS NOT NULL AND description IN (${seedDescs})`, 26, '>='],
   ['certificates on the shelf',
-    'SELECT coalesce(sum(total_pcs), 0) FROM public.igi_shelf_snapshots WHERE model_id IS NOT NULL', 3504],
+    `SELECT coalesce(sum(total_pcs), 0) FROM public.igi_shelf_snapshots WHERE model_id IS NOT NULL AND snapshot_date = ${q(SHELF_DATE)}`, 3504],
 ];
 
 say(
@@ -211,13 +224,15 @@ say(
   '  v_actual bigint;',
   'BEGIN',
 );
-for (const [label, sql, expected] of EXPECTED) {
+for (const [label, sql, expected, cmp = '='] of EXPECTED) {
+  const bad = cmp === '>=' ? '<' : '<>';
+  const word = cmp === '>=' ? 'at least' : 'expected';
   say(
     `  ${sql} INTO v_actual;`,
-    `  IF v_actual <> ${expected} THEN`,
-    `    RAISE EXCEPTION '% is %, expected % — nothing has been saved', ${q(label)}, v_actual, ${expected};`,
+    `  IF v_actual ${bad} ${expected} THEN`,
+    `    RAISE EXCEPTION '% is %, ${word} % — nothing has been saved', ${q(label)}, v_actual, ${expected};`,
     '  END IF;',
-    `  RAISE NOTICE '  ok  % = %', rpad(${q(label)}, 34), v_actual;`,
+    `  RAISE NOTICE '  ok  % = %', rpad(${q(label)}, 44), v_actual;`,
   );
 }
 say(

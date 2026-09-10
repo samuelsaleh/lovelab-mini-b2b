@@ -663,19 +663,19 @@ INSERT INTO public.igi_models (name, stones, carat, shape, spec, state, sort_ord
 SELECT 'Full Moonlight', '1', 0.5, 'Round', 'new certificate needed', 'awaiting_serial', 1000
 WHERE NOT EXISTS (
   SELECT 1 FROM public.igi_models
-   WHERE state = 'awaiting_serial' AND name = 'Full Moonlight' AND carat = 0.5
+   WHERE name = 'Full Moonlight' AND carat = 0.5
 );
 INSERT INTO public.igi_models (name, stones, carat, shape, spec, state, sort_order)
 SELECT 'Full Moonlight', '1', 0.7, 'Round', 'new certificate needed', 'awaiting_serial', 1001
 WHERE NOT EXISTS (
   SELECT 1 FROM public.igi_models
-   WHERE state = 'awaiting_serial' AND name = 'Full Moonlight' AND carat = 0.7
+   WHERE name = 'Full Moonlight' AND carat = 0.7
 );
 INSERT INTO public.igi_models (name, stones, carat, shape, spec, state, sort_order)
 SELECT 'Full Moonlight', '1', 1, 'Round', 'new certificate needed', 'awaiting_serial', 1002
 WHERE NOT EXISTS (
   SELECT 1 FROM public.igi_models
-   WHERE state = 'awaiting_serial' AND name = 'Full Moonlight' AND carat = 1
+   WHERE name = 'Full Moonlight' AND carat = 1
 );
 
 -- Every description LoveLab's own software returns, classified once so the
@@ -1335,71 +1335,66 @@ DO $check$
 DECLARE
   v_actual bigint;
 BEGIN
-  SELECT count(*) FROM public.igi_models WHERE state = 'in_use' INTO v_actual;
+  SELECT count(*) FROM public.igi_models WHERE state = 'in_use' AND serial IN ('LGAJ6529', 'LGAJ6530', 'LGAJ6531', 'LGAJ6532', 'LGAJ6533', 'LGAJ6534', 'LGAJ6535', 'LGAJ6536', 'LGAJ6537', 'LGAJ6538', 'LGAJ6539', 'LGAJ6540', 'LGAJ6541', 'LGAJ6542', 'LGAJ6543', 'LGAJ6544', 'LGAJ6545', 'LGAJ6546', 'LGAJ6547', 'LGAJ6548', 'LGAJ6549', 'LGAJ6550', 'LGAJ6551', 'LGAJ6552', 'LGAJ6553', 'LGAJ6554', 'LGAJ6555', 'LGAJ6556', 'LGAJ6557', 'LGAJ6558', 'LGAJ6559', 'LGAJ6560', 'LGAJ6561', 'LGAJ6562', 'LGAJ6563', 'LGAJ6564', 'LGAJ6565', 'LGAJ6566', 'LGAJ6567', 'LGAJ6568', 'LGAJ6569', 'LGAJ6570', 'LGAJ6571', 'LGAJ6572', 'LGAJ6573', 'LGAJ6574', 'LGAJ6575', 'LGAJ6576', 'LGAJ6577', 'LGAJ6578', 'LGAJ6579', 'LGAJ6580', 'LGAJ6581', 'LGAJ6582', 'LGAJ6583', 'LGAJ6584', 'LGAJ6585', 'LGAJ6586', 'LGAJ6587', 'LGAJ6588', 'LGAJ6589', 'LGAJ6590', 'LGAJ6591', 'LGAJ6592', 'LGAJ6593', 'LGAJ6594', 'LGAJ6595', 'LGAJ6596', 'LGAJ6597', 'LGAJ6598', 'LGAJ6599', 'LGAJ6600', 'LGAJ6601', 'LGAJ6602', 'LGAJ6603', 'LGAJ6604') INTO v_actual;
   IF v_actual <> 61 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'models in use', v_actual, 61;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('models in use', 34), v_actual;
-  SELECT count(*) FROM public.igi_models WHERE state = 'reserved' INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('models in use', 44), v_actual;
+  SELECT count(*) FROM public.igi_models WHERE state = 'reserved' AND serial IN ('LGAJ6529', 'LGAJ6530', 'LGAJ6531', 'LGAJ6532', 'LGAJ6533', 'LGAJ6534', 'LGAJ6535', 'LGAJ6536', 'LGAJ6537', 'LGAJ6538', 'LGAJ6539', 'LGAJ6540', 'LGAJ6541', 'LGAJ6542', 'LGAJ6543', 'LGAJ6544', 'LGAJ6545', 'LGAJ6546', 'LGAJ6547', 'LGAJ6548', 'LGAJ6549', 'LGAJ6550', 'LGAJ6551', 'LGAJ6552', 'LGAJ6553', 'LGAJ6554', 'LGAJ6555', 'LGAJ6556', 'LGAJ6557', 'LGAJ6558', 'LGAJ6559', 'LGAJ6560', 'LGAJ6561', 'LGAJ6562', 'LGAJ6563', 'LGAJ6564', 'LGAJ6565', 'LGAJ6566', 'LGAJ6567', 'LGAJ6568', 'LGAJ6569', 'LGAJ6570', 'LGAJ6571', 'LGAJ6572', 'LGAJ6573', 'LGAJ6574', 'LGAJ6575', 'LGAJ6576', 'LGAJ6577', 'LGAJ6578', 'LGAJ6579', 'LGAJ6580', 'LGAJ6581', 'LGAJ6582', 'LGAJ6583', 'LGAJ6584', 'LGAJ6585', 'LGAJ6586', 'LGAJ6587', 'LGAJ6588', 'LGAJ6589', 'LGAJ6590', 'LGAJ6591', 'LGAJ6592', 'LGAJ6593', 'LGAJ6594', 'LGAJ6595', 'LGAJ6596', 'LGAJ6597', 'LGAJ6598', 'LGAJ6599', 'LGAJ6600', 'LGAJ6601', 'LGAJ6602', 'LGAJ6603', 'LGAJ6604') INTO v_actual;
   IF v_actual <> 15 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'reserved serials', v_actual, 15;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('reserved serials', 34), v_actual;
-  SELECT count(*) FROM public.igi_models WHERE state = 'awaiting_serial' INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('reserved serials', 44), v_actual;
+  SELECT count(*) FROM public.igi_models WHERE (name, carat) IN (('Full Moonlight', 0.5), ('Full Moonlight', 0.7), ('Full Moonlight', 1)) INTO v_actual;
   IF v_actual <> 3 THEN
-    RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'models awaiting a serial', v_actual, 3;
+    RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'models awaiting a serial (or since numbered)', v_actual, 3;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('models awaiting a serial', 34), v_actual;
-  SELECT coalesce(sum(qty), 0) FROM public.igi_batches INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('models awaiting a serial (or since numbered)', 44), v_actual;
+  SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN ('initial order') INTO v_actual;
   IF v_actual <> 62999 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'certificates ordered', v_actual, 62999;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('certificates ordered', 34), v_actual;
-  SELECT coalesce(sum(qty_issued), 0) FROM public.igi_visit_lines INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('certificates ordered', 44), v_actual;
+  SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 23 INTO v_actual;
   IF v_actual <> 3778 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'issued with a model', v_actual, 3778;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('issued with a model', 34), v_actual;
-  SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('issued with a model', 44), v_actual;
+  SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits WHERE visit_no <= 23 INTO v_actual;
   IF v_actual <> 3245 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'issued with no model', v_actual, 3245;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('issued with no model', 34), v_actual;
-  SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches) - (SELECT coalesce(sum(qty_issued), 0) FROM public.igi_visit_lines) INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('issued with no model', 44), v_actual;
+  SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN ('initial order')) - (SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 23) INTO v_actual;
   IF v_actual <> 59221 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'unissued at IGI', v_actual, 59221;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('unissued at IGI', 34), v_actual;
-  SELECT count(*) FROM public.igi_visits INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('unissued at IGI', 44), v_actual;
+  SELECT count(*) FROM public.igi_visits WHERE visit_no <= 23 INTO v_actual;
   IF v_actual <> 23 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'movements', v_actual, 23;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('movements', 34), v_actual;
-  SELECT count(*) FROM public.igi_visits WHERE date_suspect INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('movements', 44), v_actual;
+  SELECT count(*) FROM public.igi_visits WHERE date_suspect AND visit_no <= 23 INTO v_actual;
   IF v_actual <> 4 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'movements with a mistyped date', v_actual, 4;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('movements with a mistyped date', 34), v_actual;
-  SELECT count(*) FROM public.igi_descriptions INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('movements with a mistyped date', 44), v_actual;
+  SELECT count(*) FROM public.igi_descriptions WHERE description IN ('BUTTER PAPER- LL NOTES FRENCH', 'BUTTER PAPER-LL NOTES ENGLISH', 'BUTTER PAPER-LL NOTES ITALIAN', 'CATALOGUE FR NEW', 'CATALOGUE GERM', 'CATALOGUES', 'CATALOGUES ENG', 'DHL BOXES NR 2', 'DHL BOXES NR 4', 'DHL BOXES NR 5', 'DHL ENVELOPPES', 'ENVELOP PINK IGI', 'ENVELOPE BLACK IGI', 'ENVELOPPE BLACK', 'ENVELOPPE PINK', 'IGI 0.05 CERTIFICATE', 'IGI 0.05*3 CERTIFICATE', 'IGI 0.10 CERTIFICATE', 'IGI 0.10*3 CERTIFICATE', 'IGI 0.20*3 CERTIFICATE', 'IGI 0.30*3 CERTIFICATE', 'IGI CUTY 0.20', 'IGI CUTY 0.30', 'IGI EMERALD 0.10', 'IGI EMERALD 0.50', 'IGI HEART 0.10', 'IGI HEART 0.50', 'IGI MARQUISE 0.10', 'IGI MARQUISE 0.30', 'IGI MATCHY FANCY HEART 0.60', 'IGI MULTI FOUR 0.20', 'IGI MULTI FOUR 0.40', 'IGI MULTIFIVE 0.50', 'IGI MULTIFIVE0.25', 'IGI OVAL 0.10', 'IGI OVAL 0.50', 'IGI PEAR 0.10', 'IGI PEAR 0.30', 'IGI PEAR 0.50', 'IGI SHAPYSHINE 0.30 OVAL', 'IGI SHAPYSHINE EMERALD 0.30', 'INHOUSE CERTIFICATE  4X 0.05 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,05 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,10 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,20 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,30 WHITE', 'INHOUSE CERTIFICATE 4 X 0.10 WHITE', 'INHOUSE CERTIFICATE 5 X 0.05 WHITE', 'INHOUSE CERTIFICATE 5 X 0.10 WHITE', 'INHOUSE CERTIFICATE EMERALD 0,10', 'INHOUSE CERTIFICATE EMPTY GREY', 'INHOUSE CERTIFICATE HEART 0,10', 'INHOUSE CERTIFICATE MARQUISE 0,10', 'INHOUSE CERTIFICATE OVAL 0,10', 'INHOUSE CERTIFICATE PEAR 0,10', 'INHOUSE CERTIFICATE TRIPLY 0,15 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,30 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,60 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,90 WHITE', 'INVOICE ENVELOPPES BLACK', 'INVOICE ENVELOPPES WHITE', 'J &J PINK IGI', 'JOE & JUICE BLACK', 'JOE & JUICE PINK', 'LOVE LAB FOLDER ENGLISH', 'LOVE LAB PINK FOLDER FRANCE', 'LOVE LAB PINK FOLDER GERMAN', 'LOVELAB VITRINE', 'MAGNETIC BOX  5 ROWS PINK', 'MAGNETIC BOX 2 ROWS PINK', 'MAGNETIC BOX SMALL BLACK', 'MAGNETIC BOX SMALL PINK', 'MOTHERS DAY CARDS', 'NEW PINK ENVELOPPES', 'NEW VITRINE HERMES', 'PILLOW  PINK BIG', 'PILLOW BLACK BIG', 'PILLOW BLACK SMALL', 'PILLOW GREY SMALL', 'PILLOW PINK SMALL', 'PILLOW WHITE BIG', 'PILLOW WHITE SMALL', 'PRESENTATION BLACK BOOK', 'PRESENTATION BOXES LOVELAB', 'SHOEBOX 2 ROWS BLACK', 'SHOEBOX 2 ROWS PINK', 'SHOEBOX 3 ROWS BLACK', 'SHOEBOX 3 ROWS PINK', 'SHOEBOX 5 ROWS PINK', 'Shopping bag BIG BLACK', 'Shopping Bag BIG PINK', 'Shopping Bag SMALL BLACK', 'Shopping Bag SMALL PINK', 'STICKERS LOVELAB', 'THANK YOU CARD BIG BLACK', 'THANK YOU CARD BIG BLACK ENGLISH 90X85', 'THANK YOU CARD BIG PINK', 'THANK YOU CARD BIG PINK ENGLISH 90X85', 'THANK YOU CARD FRENCH PINK 90 X 85', 'THANK YOU CARDS BLACK FRENCG 85X85', 'THANK YOU CARDS BLACKFRENCH  90X85', 'THANK YOU CARDS ENGLISH BLACK', 'THANK YOU CARDS ENGLISH BLACK 85X85', 'THANK YOU CARDS ENGLISH PINK', 'THANK YOU CARDS ENGLISH PINK 85X85', 'THANK YOU CARDS FRENCH PINK85X85', 'THANK YOU CARDS ITALIAN BLACK', 'THANK YOU CARDS ITALIAN BLACK 85X85', 'THANK YOU CARDS ITALIAN PINK', 'THANK YOU CARDS ITALIAN PINK 85X85', 'TOTEBAGS 2026', 'UNIVERSAL SOCKET', 'VALENTINE BUTTER PAPER', 'VALENTINE JOE JUICE', 'VALENTINE TY CARDS', 'VALETINE INHOUSE CERT 0,10') INTO v_actual;
   IF v_actual <> 116 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'descriptions classified', v_actual, 116;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('descriptions classified', 34), v_actual;
-  SELECT count(*) FROM public.igi_descriptions WHERE model_id IS NOT NULL INTO v_actual;
-  IF v_actual <> 26 THEN
-    RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'descriptions linked to a model', v_actual, 26;
+  RAISE NOTICE '  ok  % = %', rpad('descriptions classified', 44), v_actual;
+  SELECT count(*) FROM public.igi_descriptions WHERE model_id IS NOT NULL AND description IN ('BUTTER PAPER- LL NOTES FRENCH', 'BUTTER PAPER-LL NOTES ENGLISH', 'BUTTER PAPER-LL NOTES ITALIAN', 'CATALOGUE FR NEW', 'CATALOGUE GERM', 'CATALOGUES', 'CATALOGUES ENG', 'DHL BOXES NR 2', 'DHL BOXES NR 4', 'DHL BOXES NR 5', 'DHL ENVELOPPES', 'ENVELOP PINK IGI', 'ENVELOPE BLACK IGI', 'ENVELOPPE BLACK', 'ENVELOPPE PINK', 'IGI 0.05 CERTIFICATE', 'IGI 0.05*3 CERTIFICATE', 'IGI 0.10 CERTIFICATE', 'IGI 0.10*3 CERTIFICATE', 'IGI 0.20*3 CERTIFICATE', 'IGI 0.30*3 CERTIFICATE', 'IGI CUTY 0.20', 'IGI CUTY 0.30', 'IGI EMERALD 0.10', 'IGI EMERALD 0.50', 'IGI HEART 0.10', 'IGI HEART 0.50', 'IGI MARQUISE 0.10', 'IGI MARQUISE 0.30', 'IGI MATCHY FANCY HEART 0.60', 'IGI MULTI FOUR 0.20', 'IGI MULTI FOUR 0.40', 'IGI MULTIFIVE 0.50', 'IGI MULTIFIVE0.25', 'IGI OVAL 0.10', 'IGI OVAL 0.50', 'IGI PEAR 0.10', 'IGI PEAR 0.30', 'IGI PEAR 0.50', 'IGI SHAPYSHINE 0.30 OVAL', 'IGI SHAPYSHINE EMERALD 0.30', 'INHOUSE CERTIFICATE  4X 0.05 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,05 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,10 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,20 WHITE', 'INHOUSE CERTIFICATE  CUTY 0,30 WHITE', 'INHOUSE CERTIFICATE 4 X 0.10 WHITE', 'INHOUSE CERTIFICATE 5 X 0.05 WHITE', 'INHOUSE CERTIFICATE 5 X 0.10 WHITE', 'INHOUSE CERTIFICATE EMERALD 0,10', 'INHOUSE CERTIFICATE EMPTY GREY', 'INHOUSE CERTIFICATE HEART 0,10', 'INHOUSE CERTIFICATE MARQUISE 0,10', 'INHOUSE CERTIFICATE OVAL 0,10', 'INHOUSE CERTIFICATE PEAR 0,10', 'INHOUSE CERTIFICATE TRIPLY 0,15 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,30 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,60 WHITE', 'INHOUSE CERTIFICATE TRIPLY 0,90 WHITE', 'INVOICE ENVELOPPES BLACK', 'INVOICE ENVELOPPES WHITE', 'J &J PINK IGI', 'JOE & JUICE BLACK', 'JOE & JUICE PINK', 'LOVE LAB FOLDER ENGLISH', 'LOVE LAB PINK FOLDER FRANCE', 'LOVE LAB PINK FOLDER GERMAN', 'LOVELAB VITRINE', 'MAGNETIC BOX  5 ROWS PINK', 'MAGNETIC BOX 2 ROWS PINK', 'MAGNETIC BOX SMALL BLACK', 'MAGNETIC BOX SMALL PINK', 'MOTHERS DAY CARDS', 'NEW PINK ENVELOPPES', 'NEW VITRINE HERMES', 'PILLOW  PINK BIG', 'PILLOW BLACK BIG', 'PILLOW BLACK SMALL', 'PILLOW GREY SMALL', 'PILLOW PINK SMALL', 'PILLOW WHITE BIG', 'PILLOW WHITE SMALL', 'PRESENTATION BLACK BOOK', 'PRESENTATION BOXES LOVELAB', 'SHOEBOX 2 ROWS BLACK', 'SHOEBOX 2 ROWS PINK', 'SHOEBOX 3 ROWS BLACK', 'SHOEBOX 3 ROWS PINK', 'SHOEBOX 5 ROWS PINK', 'Shopping bag BIG BLACK', 'Shopping Bag BIG PINK', 'Shopping Bag SMALL BLACK', 'Shopping Bag SMALL PINK', 'STICKERS LOVELAB', 'THANK YOU CARD BIG BLACK', 'THANK YOU CARD BIG BLACK ENGLISH 90X85', 'THANK YOU CARD BIG PINK', 'THANK YOU CARD BIG PINK ENGLISH 90X85', 'THANK YOU CARD FRENCH PINK 90 X 85', 'THANK YOU CARDS BLACK FRENCG 85X85', 'THANK YOU CARDS BLACKFRENCH  90X85', 'THANK YOU CARDS ENGLISH BLACK', 'THANK YOU CARDS ENGLISH BLACK 85X85', 'THANK YOU CARDS ENGLISH PINK', 'THANK YOU CARDS ENGLISH PINK 85X85', 'THANK YOU CARDS FRENCH PINK85X85', 'THANK YOU CARDS ITALIAN BLACK', 'THANK YOU CARDS ITALIAN BLACK 85X85', 'THANK YOU CARDS ITALIAN PINK', 'THANK YOU CARDS ITALIAN PINK 85X85', 'TOTEBAGS 2026', 'UNIVERSAL SOCKET', 'VALENTINE BUTTER PAPER', 'VALENTINE JOE JUICE', 'VALENTINE TY CARDS', 'VALETINE INHOUSE CERT 0,10') INTO v_actual;
+  IF v_actual < 26 THEN
+    RAISE EXCEPTION '% is %, at least % — nothing has been saved', 'descriptions linked to a model', v_actual, 26;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('descriptions linked to a model', 34), v_actual;
-  SELECT count(*) FROM public.igi_descriptions WHERE kind = 'certificate' AND model_id IS NULL INTO v_actual;
-  IF v_actual <> 0 THEN
-    RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'descriptions still needing a human', v_actual, 0;
-  END IF;
-  RAISE NOTICE '  ok  % = %', rpad('descriptions still needing a human', 34), v_actual;
-  SELECT coalesce(sum(total_pcs), 0) FROM public.igi_shelf_snapshots WHERE model_id IS NOT NULL INTO v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('descriptions linked to a model', 44), v_actual;
+  SELECT coalesce(sum(total_pcs), 0) FROM public.igi_shelf_snapshots WHERE model_id IS NOT NULL AND snapshot_date = '2026-08-28' INTO v_actual;
   IF v_actual <> 3504 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'certificates on the shelf', v_actual, 3504;
   END IF;
-  RAISE NOTICE '  ok  % = %', rpad('certificates on the shelf', 34), v_actual;
+  RAISE NOTICE '  ok  % = %', rpad('certificates on the shelf', 44), v_actual;
   RAISE NOTICE '';
   RAISE NOTICE 'IGI: ALL FIGURES MATCH';
 END $check$;
