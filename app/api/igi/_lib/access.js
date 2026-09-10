@@ -38,6 +38,15 @@ export function isNotSwitchedOn(error) {
   return error?.code === '42P01' || /relation "?(public\.)?igi_[a-z_]+"? does not exist/i.test(text);
 }
 
+/** The tables exist but a column the app now needs does not: the switch-on file was run before an update. */
+export function isBehindTheApp(error) {
+  const text = String(error?.message || error || '');
+  return error?.code === '42703' || /column "?(public\.)?igi_[a-z_]+\.[a-z_]+"? does not exist/i.test(text);
+}
+
+export const BEHIND_THE_APP_MESSAGE =
+  'The database is behind the app: a certificate column it needs does not exist yet. Run database-migrations/igi-switch-on.sql again in the Supabase SQL editor — it updates in place and is safe to re-run (docs/igi-switch-on.md).';
+
 export const NOT_SWITCHED_ON_MESSAGE =
   'The certificate module is not switched on yet. Paste database-migrations/igi-switch-on.sql into the Supabase SQL editor and run it (docs/igi-switch-on.md).';
 
@@ -46,6 +55,10 @@ export function fail(route, error, message, status = 500) {
   if (isNotSwitchedOn(error)) {
     console.warn(`[${route}] certificate tables missing — switch-on not run`);
     return NextResponse.json({ error: NOT_SWITCHED_ON_MESSAGE, not_switched_on: true }, { status: 503 });
+  }
+  if (isBehindTheApp(error)) {
+    console.warn(`[${route}] certificate column missing — switch-on file needs re-running:`, error?.message);
+    return NextResponse.json({ error: BEHIND_THE_APP_MESSAGE, behind_the_app: true }, { status: 503 });
   }
   console.error(`[${route}]`, error?.message || error);
   return NextResponse.json({ error: message }, { status });

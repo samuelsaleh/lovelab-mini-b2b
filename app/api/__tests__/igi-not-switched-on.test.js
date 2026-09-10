@@ -39,3 +39,18 @@ describe.each([['LoveLab', lovelab], ['IGI', igi]])('%s routes', (_name, helper)
     expect(helper.isNotSwitchedOn(new Error('relation "documents" does not exist'))).toBe(false);
   });
 });
+
+describe.each([['LoveLab', lovelab], ['IGI', igi]])('%s routes, database behind the app', (_name, helper) => {
+  beforeEach(() => { jest.spyOn(console, 'warn').mockImplementation(() => {}); });
+  afterEach(() => jest.restoreAllMocks());
+
+  test('a missing column says to run the switch-on file again', async () => {
+    const res = helper.fail('X', { code: '42703', message: 'column igi_models.requested_at does not exist' }, 'Failed');
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.behind_the_app).toBe(true);
+    expect(body.error).toMatch(/run database-migrations\/igi-switch-on\.sql again/i);
+    expect(helper.isBehindTheApp(new Error('column igi_models.numbered_at does not exist'))).toBe(true);
+    expect(helper.isBehindTheApp(new Error('column documents.foo does not exist'))).toBe(false);
+  });
+});

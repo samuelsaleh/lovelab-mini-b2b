@@ -12,11 +12,24 @@ import { poolOf, askedRightNow } from '@/lib/igi/derive';
  * preview is only honest if it shows exactly what IGI would see. Filtering here
  * rather than at the call site means the guarantee holds for whoever calls it.
  */
+const MODEL_COLUMNS = 'id, serial, name, stones, carat, shape, spec, state, pool_min, sort_order';
+
+// requested_at arrived with the new-model flow (10 Sept 2026). A database that
+// has the tables but not yet that column — the switch-on file run once before
+// today — must still serve every IGI screen, so ask for it and fall back.
+async function loadModels(supabase) {
+  const withDate = await supabase.from('igi_models')
+    .select(`${MODEL_COLUMNS}, requested_at`)
+    .order('sort_order', { ascending: true });
+  if (!withDate.error) return withDate;
+  const undefinedColumn = withDate.error.code === '42703' || /requested_at/.test(withDate.error.message || '');
+  if (!undefinedColumn) return withDate;
+  return supabase.from('igi_models').select(MODEL_COLUMNS).order('sort_order', { ascending: true });
+}
+
 export async function loadIgiWorld(supabase) {
   const [models, batches, lines, visits] = await Promise.all([
-    supabase.from('igi_models')
-      .select('id, serial, name, stones, carat, shape, spec, state, pool_min, sort_order, requested_at')
-      .order('sort_order', { ascending: true }),
+    loadModels(supabase),
     supabase.from('igi_batches').select('id, model_id, qty, batch_date, reference, created_at'),
     supabase.from('igi_visit_lines').select('id, visit_id, model_id, qty_requested, qty_issued'),
     supabase.from('igi_visits')
