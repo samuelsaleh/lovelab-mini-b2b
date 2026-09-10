@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { isUserAllowed } from '@/lib/auth/isUserAllowed';
+import { isIgiEmail } from '@/lib/auth/igiEmails';
 import { NextResponse } from 'next/server';
 
 // Validate the redirect path to prevent open redirects
@@ -70,13 +71,15 @@ export async function GET(request) {
     if (!profileRow && userEmail) {
       const { data: emailProfile } = await adminSupabase
         .from('profiles')
-        .select('id, role, is_agent, agent_status, agent_deleted_at, has_password_set')
+        .select('id, role, is_agent, is_igi, agent_status, agent_deleted_at, has_password_set')
         .eq('email', userEmail)
         .maybeSingle();
       if (emailProfile) agentProfileForGate = emailProfile;
     }
 
-    if (!isUserAllowed({ isInAllowedEmails: allowedRow, agentProfile: agentProfileForGate })) {
+    const igiEmail = isIgiEmail(userEmail);
+
+    if (!isUserAllowed({ isInAllowedEmails: allowedRow, agentProfile: agentProfileForGate, isIgiEmail: igiEmail })) {
       await supabase.auth.signOut();
       const url = new URL('/login', origin);
       url.searchParams.set('error', 'access_denied');
@@ -102,6 +105,12 @@ export async function GET(request) {
     if (!isOAuthSignIn && p?.is_agent === true && !p?.has_password_set) {
       const setPasswordPath = `/set-password${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
       return NextResponse.redirect(buildRedirect(setPasswordPath));
+    }
+
+    // IGI land on their own portal. The middleware would send them there
+    // anyway from anywhere else; this just saves the detour.
+    if ((igiEmail || p?.is_igi === true) && (next === '/' || next.startsWith('/admin') || next.startsWith('/certificates'))) {
+      return NextResponse.redirect(buildRedirect('/igi'));
     }
 
     return NextResponse.redirect(buildRedirect(next));
@@ -146,7 +155,7 @@ async function fetchAuthProfile(adminSupabase, userId) {
   try {
     const { data } = await adminSupabase
       .from('profiles')
-      .select('id, role, is_agent, agent_status, agent_deleted_at, has_password_set')
+      .select('id, role, is_agent, is_igi, agent_status, agent_deleted_at, has_password_set')
       .eq('id', userId)
       .maybeSingle();
     return data || null;
@@ -181,7 +190,13 @@ function getAdminEmails() {
 async function ensureProfile(adminSupabase, user, existingProfile) {
   try {
     const userEmail = (user.email || '').toLowerCase();
-    const shouldBeAdmin = getAdminEmails().includes(userEmail);
+    const igi = isIgiEmail(userEmail);
+    // An IGI address is never an admin, whatever other list it is on: the
+    // narrower role wins, so another company cannot end up inside LoveLab.
+    const shouldBeAdmin = !igi && getAdminEmails().includes(userEmail);
+    if (igi && getAdminEmails().includes(userEmail)) {
+      console.error('[auth/callback] email is in both IGI_EMAILS and ADMIN_EMAILS — treated as IGI:', userEmail);
+    }
 
     if (!existingProfile) {
       // Check if there's an agent profile for this email under a different auth ID
@@ -243,19 +258,33 @@ async function ensureProfile(adminSupabase, user, existingProfile) {
         return emailProfile;
       } else {
         // No profile at all — create a fresh one
-        const { error } = await adminSupabase.from('profiles').insert({
+        const fresh = {
           id: user.id,
           email: user.email,
           full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
           avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
           role: shouldBeAdmin ? 'admin' : 'member',
-        });
+          ...(igi ? { is_igi: true } : {}),
+        };
+        const { error } = await adminSupabase.from('profiles').insert(fresh);
         if (error) {
           console.error('[auth/callback] Failed to create profile:', error.message);
         }
-        return null;
+        return igi ? fresh : null;
       }
     } else {
+      // Keep an IGI account marked as IGI, and never as admin.
+      if (igi && (existingProfile.is_igi !== true || existingProfile.role === 'admin')) {
+        const { error: igiErr } = await adminSupabase
+          .from('profiles')
+          .update({ is_igi: true, role: 'member' })
+          .eq('id', user.id);
+        if (igiErr) {
+          console.error('[auth/callback] IGI mark repair failed:', igiErr.message, 'user:', user.id);
+        }
+        return { ...existingProfile, is_igi: true, role: 'member' };
+      }
+
       // Repair admin role if needed.
       // supabase-js returns { error } and does NOT throw on failure, so a
       // try/catch alone silently swallows update errors. Check `error`

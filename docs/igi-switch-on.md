@@ -110,16 +110,23 @@ Nobody at IGI can sign in until you add them, so nothing is exposed in the
 meantime. Until you do, LoveLab records both halves of a movement — which is
 what happens physically anyway, since Christelle carries the bracelets.
 
-When you are ready, two lines add them:
+When you are ready, per person at IGI:
 
-```sql
-insert into allowed_emails (email) values ('...@igi.org'), ('...@igi.org');
-update profiles set is_igi = true where email in ('...@igi.org', '...@igi.org');
-```
+1. In Vercel, Settings → Environment Variables, add their address to
+   `IGI_EMAILS` (comma-separated), then redeploy.
+2. On your Mac, in the project folder:
 
-Two accounts, because IGI is a company rather than a person. They then sign in
-with the normal email link and land on their own screens — and only those: an
-IGI account is refused everywhere else in the app.
+   ```
+   node --env-file=.env.local scripts/add-igi-user.mjs michael@igi.org "Michael"
+   ```
+
+   It prints a temporary password. Send it to them privately.
+
+They sign in at the normal login page with email and password, choose their
+own password, and land on their portal — and only that: an IGI account is
+refused everywhere else in the app, and is never an admin even if the same
+address is also on ADMIN_EMAILS. Two accounts is right, because IGI is a
+company rather than a person.
 
 **Every IGI-side number is an estimate until the stock count.** Nobody knows the
 true per-model remainder yet. The figures come from Michael's file as of 27
