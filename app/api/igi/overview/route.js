@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import {
-  poolOf, shelfOf, askedRightNow, shelfStatus, poolStatus, unattributedTotal,
+  poolOf, shelfOf, askedRightNow, shelfStatus, poolStatus, orderStatus, unattributedTotal,
 } from '@/lib/igi/derive';
 
 /**
@@ -22,7 +22,7 @@ export async function GET(request) {
   try {
     const [models, batches, lines, visits, snapshots, descriptions] = await Promise.all([
       adminSupabase.from('igi_models')
-        .select('id, serial, serial_full, name, stones, carat, shape, spec, state, qty_ordered, shelf_min, pool_min, sort_order')
+        .select('id, serial, serial_full, name, stones, carat, shape, spec, state, qty_ordered, shelf_min, pool_min, order_min, sort_order')
         .order('sort_order', { ascending: true }),
       adminSupabase.from('igi_batches').select('model_id, qty'),
       adminSupabase.from('igi_visit_lines').select('visit_id, model_id, qty_requested, qty_issued, qty_received'),
@@ -51,6 +51,8 @@ export async function GET(request) {
         asked_now: askedRightNow(m.id, lines.data, visits.data),
         shelf_status: shelfStatus(m, shelf),
         pool_status: poolStatus(m, pool),
+        // LoveLab's own level on IGI's stock (10 Sept 2026).
+        order_status: orderStatus(m, pool),
       };
     });
 
@@ -70,7 +72,9 @@ export async function GET(request) {
         reserved: rows.filter((r) => r.state === 'reserved').length,
         awaiting_serial: rows.filter((r) => r.state === 'awaiting_serial').length,
         to_collect: inUse.filter((r) => r.shelf_status === 'collect').length,
-        to_produce: inUse.filter((r) => r.pool_status === 'reorder').length,
+        // Below IGI's level, or below ours on IGI's stock — either means production.
+        to_produce: inUse.filter((r) => r.pool_status === 'reorder' || r.order_status === 'order').length,
+        to_order: inUse.filter((r) => r.order_status === 'order').length,
         open_visits: visits.data.filter((v) => v.status !== 'closed').length,
       },
       shelf: {

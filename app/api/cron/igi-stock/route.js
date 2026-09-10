@@ -25,6 +25,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { syncShelfSnapshot } from '@/lib/igi/syncShelf';
+import { runLevelAlerts } from '@/lib/igi/levelAlerts';
 
 function verifyCronAuth(request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -72,6 +73,20 @@ export async function GET(request) {
         severity: 'info',
         message: `${summary.new_descriptions.length} new description(s) need linking to a model.`,
         context: { descriptions: summary.new_descriptions.slice(0, 20) },
+      });
+    }
+
+    // With tonight's shelf figure in, check every level and email LoveLab
+    // about any model that has just crossed one (lib/igi/levelAlerts.js).
+    // A failure here must not undo the shelf read above, so it is contained.
+    try {
+      summary.level_alerts = await runLevelAlerts(adminSupabase);
+    } catch (err) {
+      summary.level_alerts = { error: err?.message || 'level check failed' };
+      await recordHealthEvent({
+        source: 'cron_igi_stock',
+        severity: 'warn',
+        message: `Certificate level alerts could not be checked: ${err?.message || 'unknown'}`,
       });
     }
 

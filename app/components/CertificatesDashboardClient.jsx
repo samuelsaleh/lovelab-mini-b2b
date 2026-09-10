@@ -55,8 +55,10 @@ export default function CertificatesDashboardClient() {
     () => (data?.models || []).filter((m) => m.shelf_status === 'collect'),
     [data],
   )
+  // Below IGI's own level, or below ours on IGI's stock (Sam, 10 Sept 2026):
+  // either way, production is the answer.
   const toProduce = useMemo(
-    () => (data?.models || []).filter((m) => m.pool_status === 'reorder'),
+    () => (data?.models || []).filter((m) => m.pool_status === 'reorder' || m.order_status === 'order'),
     [data],
   )
   const lines = toCollect
@@ -230,10 +232,12 @@ export default function CertificatesDashboardClient() {
 
         <ActionList
           title="Produce more"
-          subtitle="Below IGI's own alert level. Ordering production takes about a month."
+          subtitle="IGI hold fewer than a level — theirs or ours. Ordering production takes about a month."
           models={toProduce}
-          emptyText="IGI holds enough of every model, or has set no level yet."
-          render={(m) => ({ value: formatQty(m.pool), tone: POOL_TONE[m.pool_status], label: POOL_LABELS[m.pool_status] })}
+          emptyText="IGI hold enough of every model, by their level and by ours."
+          render={(m) => (m.order_status === 'order'
+            ? { value: formatQty(m.pool), tone: 'now', label: `Below our level (${formatQty(m.order_min)})` }
+            : { value: formatQty(m.pool), tone: POOL_TONE[m.pool_status], label: `Below IGI's level (${formatQty(m.pool_min)})` })}
           testId="list-produce"
         />
       </div>

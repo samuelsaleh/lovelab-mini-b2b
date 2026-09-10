@@ -4,12 +4,15 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 /**
  * PATCH /api/igi/alerts
  *
- * Sets LoveLab's alert level on their own shelf — below it means go collect,
- * because IGI already holds them. Plain numbers only; there is deliberately no
- * "weeks of cover" or any other derived forecast.
+ * Sets LoveLab's alert levels. Two of them, both LoveLab's:
+ *   shelf_min — on our own shelf. Below it means go collect, because IGI
+ *               already hold them.
+ *   order_min — on IGI's stock (Sam, 10 Sept 2026). Below it means order
+ *               production, whether or not IGI have reacted. Null clears it.
  *
- * Accepts one model or a list, which is what the "set for all shown" control
- * on the stock screen sends.
+ * Plain numbers only; there is deliberately no "weeks of cover" or any other
+ * derived forecast. Accepts one model or a list, which is what the "set for
+ * all shown" control on the stock screen sends.
  *
  * IGI's own level (pool_min) is theirs to set and is not writable here.
  */
@@ -24,7 +27,7 @@ export async function PATCH(request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { model_ids: modelIds, shelf_min: shelfMin } = body || {};
+  const { model_ids: modelIds, shelf_min: shelfMin, order_min: orderMin } = body || {};
 
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
     return NextResponse.json({ error: 'At least one model is required' }, { status: 400 });
@@ -35,19 +38,32 @@ export async function PATCH(request) {
   if (!modelIds.every((id) => typeof id === 'string' && id)) {
     return NextResponse.json({ error: 'Invalid model' }, { status: 400 });
   }
-  if (!Number.isInteger(shelfMin) || shelfMin < 0) {
-    return NextResponse.json(
-      { error: 'The alert level must be a whole number, zero or more' },
-      { status: 400 },
-    );
+
+  const patch = { updated_at: new Date().toISOString() };
+  if (shelfMin !== undefined) {
+    if (!Number.isInteger(shelfMin) || shelfMin < 0) {
+      return NextResponse.json({ error: 'The alert level must be a whole number, zero or more' }, { status: 400 });
+    }
+    patch.shelf_min = shelfMin;
+  }
+  if (orderMin !== undefined) {
+    if (orderMin !== null && (!Number.isInteger(orderMin) || orderMin < 0)) {
+      return NextResponse.json({ error: 'The level at IGI must be a whole number, zero or more, or empty' }, { status: 400 });
+    }
+    patch.order_min = orderMin;
+    // A new level is a new question; the next nightly check answers it fresh.
+    patch.order_alerted_at = null;
+  }
+  if (Object.keys(patch).length === 1) {
+    return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
   }
 
   try {
     const { data, error } = await auth.adminSupabase
       .from('igi_models')
-      .update({ shelf_min: shelfMin, updated_at: new Date().toISOString() })
+      .update(patch)
       .in('id', modelIds)
-      .select('id, shelf_min');
+      .select('id, shelf_min, order_min');
 
     if (error) return fail('IGI/Alerts PATCH', error, 'Failed to save the alert level');
 

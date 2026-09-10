@@ -19,3 +19,4 @@ export default function Chip({ tone = 'flat', children }) {
 /** The tone each alert status is shown in. */
 export const SHELF_TONE = { collect: 'now', watch: 'watch', fine: 'fine', unmapped: 'unmapped' }
 export const POOL_TONE = { reorder: 'now', watch: 'watch', fine: 'fine', unknown: 'flat' }
+export const ORDER_TONE = { order: 'now', watch: 'watch', fine: 'fine', unknown: 'flat' }

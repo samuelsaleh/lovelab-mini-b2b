@@ -268,3 +268,33 @@ describe('the dashboard proposes the request and sends it', () => {
     expect(screen.getByTestId('stat-reserved')).toHaveTextContent('1 reserved serial')
   })
 })
+
+describe('our level on IGI’s stock (10 Sept 2026)', () => {
+  it('is editable per model on Stock, and empty means none', async () => {
+    const onAlert = jest.fn()
+    mockFetch(OVERVIEW, { onAlert })
+    render(<CertificatesStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('order-min')).toHaveLength(2))
+    const input = screen.getAllByTestId('order-min')[0]
+    fireEvent.change(input, { target: { value: '500' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m1'], order_min: 500 }))
+  })
+
+  it('lists a model below our level under Produce more, saying whose level', async () => {
+    mockFetch({
+      ...OVERVIEW,
+      models: [
+        { ...MODELS[0], order_min: 20000, order_status: 'order', pool_status: 'fine' },
+        { ...MODELS[1], order_status: 'fine' },
+      ],
+    })
+    render(<CertificatesDashboardClient />)
+    await waitFor(() => expect(screen.getByTestId('list-produce')).toBeInTheDocument())
+    const list = screen.getByTestId('list-produce')
+    expect(list).toHaveTextContent('Cuty-Cubix')
+    expect(list).toHaveTextContent('Below our level (20 000)')
+    expect(list).toHaveTextContent('Shapy Shine')
+    expect(list).toHaveTextContent("Below IGI's level (100)")
+  })
+})

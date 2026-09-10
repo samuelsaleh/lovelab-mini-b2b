@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { formatQty, SHELF_LABELS, POOL_LABELS } from '@/lib/igi/derive'
+import { formatQty, SHELF_LABELS, POOL_LABELS, ORDER_LABELS } from '@/lib/igi/derive'
 import { Serial, Spec } from './igi/SerialSpec'
-import Chip, { SHELF_TONE, POOL_TONE } from './igi/Chip'
+import Chip, { SHELF_TONE, POOL_TONE, ORDER_TONE } from './igi/Chip'
 import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 const FILTERS = [
@@ -63,7 +63,7 @@ export default function CertificatesStockClient() {
     const q = query.trim().toLowerCase()
     return models.filter((m) => {
       if (filter === 'collect' && m.shelf_status !== 'collect') return false
-      if (filter === 'produce' && m.pool_status !== 'reorder') return false
+      if (filter === 'produce' && m.pool_status !== 'reorder' && m.order_status !== 'order') return false
       if (filter === 'unmapped' && m.shelf != null) return false
       if (!q) return true
       return `${m.name} ${m.serial} ${m.shape}`.toLowerCase().includes(q)
@@ -95,23 +95,28 @@ export default function CertificatesStockClient() {
     }
   }
 
-  // ── The alert level ─────────────────────────────────────────────────────
-  async function saveAlert(modelIds, shelfMin) {
+  // ── The alert levels: ours on the shelf, ours on IGI's stock ───────────
+  async function saveAlert(modelIds, shelfMin, orderMin) {
     setSaving(true)
     try {
+      const payload = { model_ids: modelIds }
+      if (shelfMin !== undefined) payload.shelf_min = shelfMin
+      if (orderMin !== undefined) payload.order_min = orderMin
       const res = await fetch('/api/igi/alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_ids: modelIds, shelf_min: shelfMin }),
+        body: JSON.stringify(payload),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Failed to save the alert level')
       setModels((prev) => prev.map((m) => (
-        modelIds.includes(m.id) ? { ...m, shelf_min: shelfMin } : m
+        modelIds.includes(m.id)
+          ? { ...m, ...(shelfMin !== undefined ? { shelf_min: shelfMin } : {}), ...(orderMin !== undefined ? { order_min: orderMin } : {}) }
+          : m
       )))
       setNotice(
         modelIds.length === 1
-          ? 'Alert level saved.'
+          ? (orderMin !== undefined ? 'Level at IGI saved. You will be emailed when they fall below it.' : 'Alert level saved.')
           : `Alert level set to ${shelfMin} for ${modelIds.length} models.`,
       )
       setTimeout(() => setNotice(null), 4000)
@@ -229,6 +234,7 @@ export default function CertificatesStockClient() {
                 <th className="num">On our shelf</th>
                 <th className="num">Our level</th>
                 <th className="num">At IGI</th>
+                <th className="num" title="When IGI hold fewer than this, you are emailed and it shows under Produce more">Our level at IGI</th>
                 <th className="num">IGI level</th>
                 <th className="num">Asked now</th>
                 <th className="num">Ask for</th>
@@ -247,6 +253,9 @@ export default function CertificatesStockClient() {
                         {m.pool_status === 'reorder' && (
                           <Chip tone={POOL_TONE[m.pool_status]}>{POOL_LABELS[m.pool_status]}</Chip>
                         )}
+                        {(m.order_status === 'order' || m.order_status === 'watch') && (
+                          <Chip tone={ORDER_TONE[m.order_status]}>{ORDER_LABELS[m.order_status]}{m.order_status === 'watch' ? ' at IGI' : ''}</Chip>
+                        )}
                         {isShort && <Chip tone="watch">Short by {formatQty(asked - m.pool)}</Chip>}
                       </div>
                     </td>
@@ -263,6 +272,15 @@ export default function CertificatesStockClient() {
                       />
                     </td>
                     <td className="num">{formatQty(m.pool)}</td>
+                    <td className="num">
+                      <LevelInput
+                        value={m.order_min}
+                        allowEmpty
+                        disabled={saving}
+                        testId="order-min"
+                        onCommit={(v) => v !== (m.order_min ?? null) && saveAlert([m.id], undefined, v)}
+                      />
+                    </td>
                     <td className="num">
                       {m.pool_min == null ? <span className="spec">not set</span> : formatQty(m.pool_min)}
                     </td>
@@ -296,23 +314,37 @@ export default function CertificatesStockClient() {
 
 /** A number field that saves when it loses focus, not on every keystroke. */
 function AlertInput({ value, disabled, onCommit }) {
-  const [draft, setDraft] = useState(String(value ?? ''))
+  return <LevelInput value={value} disabled={disabled} onCommit={onCommit} testId="shelf-min" />
+}
 
-  useEffect(() => { setDraft(String(value ?? '')) }, [value])
+/**
+ * The same, with `allowEmpty` meaning "no level" is a valid answer — used for
+ * our level on IGI's stock, which is an opinion LoveLab may choose not to hold.
+ */
+function LevelInput({ value, disabled, onCommit, testId, allowEmpty = false }) {
+  const [draft, setDraft] = useState(value == null ? '' : String(value))
+
+  useEffect(() => { setDraft(value == null ? '' : String(value)) }, [value])
 
   return (
     <input
       type="number"
       min="0"
       value={draft}
+      placeholder={allowEmpty ? 'none' : undefined}
       disabled={disabled}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
+        if (draft.trim() === '') {
+          if (allowEmpty) onCommit(null)
+          else setDraft(value == null ? '' : String(value))
+          return
+        }
         const n = Number(draft)
         if (Number.isInteger(n) && n >= 0) onCommit(n)
-        else setDraft(String(value ?? ''))
+        else setDraft(value == null ? '' : String(value))
       }}
-      data-testid="shelf-min"
+      data-testid={testId}
       style={{ width: 72 }}
     />
   )
