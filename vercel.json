@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/igi-stock",
+      "schedule": "0 1 * * *"
+    },
+    {
       "path": "/api/backup",
       "schedule": "0 3 * * *"
     },
