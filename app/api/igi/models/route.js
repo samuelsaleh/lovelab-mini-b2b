@@ -1,6 +1,70 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 
+const SHAPES = ['Round', 'Oval', 'Pear', 'Marquise', 'Cushion', 'Long Cushion', 'Emerald', 'Heart', 'Princess', 'Radiant', 'Asscher', 'Baguette'];
+
+/**
+ * POST /api/igi/models — LoveLab add a new model.
+ *
+ * Sam, 10 Sept 2026: LoveLab say what the piece is — name, stones, carat,
+ * shape — and IGI give it its serial from their side. Until they do, the model
+ * is awaiting_serial: visible, but it cannot be requested or produced.
+ */
+export async function POST(request) {
+  const auth = await requireLoveLab(request, 'igi-models-write', 30);
+  if (auth.error) return auth.error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 200) : '';
+  if (!name) return NextResponse.json({ error: 'Give the model a name.' }, { status: 400 });
+
+  // Stones is text on purpose: '6+1' and '3+2' are real values in IGI's file.
+  const stones = typeof body?.stones === 'string' || typeof body?.stones === 'number'
+    ? String(body.stones).trim().slice(0, 20) : '';
+  if (!stones || !/^\d+(\+\d+)*$/.test(stones)) {
+    return NextResponse.json({ error: 'How many stones? A number, or a sum like 6+1.' }, { status: 400 });
+  }
+
+  const carat = Number(body?.carat);
+  if (!Number.isFinite(carat) || carat <= 0 || carat > 99) {
+    return NextResponse.json({ error: 'The carat weight must be a number above zero.' }, { status: 400 });
+  }
+
+  const shapeRaw = typeof body?.shape === 'string' ? body.shape.trim() : '';
+  const shape = SHAPES.find((s) => s.toLowerCase() === shapeRaw.toLowerCase()) || shapeRaw.slice(0, 40);
+  if (!shape) return NextResponse.json({ error: 'Which shape?' }, { status: 400 });
+
+  const spec = typeof body?.spec === 'string' ? body.spec.trim().slice(0, 200) || null : null;
+
+  try {
+    const { data, error } = await auth.adminSupabase
+      .from('igi_models')
+      .insert({
+        name,
+        stones,
+        carat: Math.round(carat * 100) / 100,
+        shape,
+        spec,
+        state: 'awaiting_serial',
+        requested_by: auth.user.id,
+        requested_at: new Date().toISOString(),
+      })
+      .select('id, name, stones, carat, shape, spec, state, requested_at')
+      .single();
+
+    if (error) return fail('IGI/Models POST', error, 'Failed to add the model');
+    return NextResponse.json({ model: data }, { status: 201 });
+  } catch (err) {
+    return fail('IGI/Models POST', err, 'Internal server error');
+  }
+}
+
 /**
  * PATCH /api/igi/models — rename a model, or set IGI's alert level.
  *

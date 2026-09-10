@@ -15,7 +15,7 @@ import { poolOf, askedRightNow } from '@/lib/igi/derive';
 export async function loadIgiWorld(supabase) {
   const [models, batches, lines, visits] = await Promise.all([
     supabase.from('igi_models')
-      .select('id, serial, name, stones, carat, shape, spec, state, pool_min, sort_order')
+      .select('id, serial, name, stones, carat, shape, spec, state, pool_min, sort_order, requested_at')
       .order('sort_order', { ascending: true }),
     supabase.from('igi_batches').select('id, model_id, qty, batch_date, reference, created_at'),
     supabase.from('igi_visit_lines').select('id, visit_id, model_id, qty_requested, qty_issued'),
@@ -27,12 +27,18 @@ export async function loadIgiWorld(supabase) {
   const firstError = [models, batches, lines, visits].find((r) => r.error)?.error;
   if (firstError) throw new Error(firstError.message);
 
-  // Reserved serials were numbered and never ordered; a model still awaiting a
-  // serial cannot be produced. Neither belongs on an IGI screen.
+  // Reserved serials were numbered and never ordered; they belong on no IGI
+  // screen. A model still awaiting a serial cannot be produced, so it stays out
+  // of the stock and request views — but it IS IGI's job to number it, so the
+  // To do gets them separately.
   const inUse = models.data.filter((m) => m.state === 'in_use');
+  const awaiting = models.data
+    .filter((m) => m.state === 'awaiting_serial')
+    .sort((a, b) => String(a.requested_at || '').localeCompare(String(b.requested_at || '')));
 
   return {
     models: inUse,
+    awaiting,
     batches: batches.data,
     lines: lines.data,
     visits: visits.data,

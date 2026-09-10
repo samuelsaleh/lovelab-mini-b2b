@@ -15,8 +15,13 @@ import { PageHead, Card, Loading, Toast, Btn, TableWrap } from './certificates/u
  *                     numbers are not lost, hidden from every other screen
  *   awaiting serial — asked for, IGI have not numbered it. Cannot be made
  *
- * Creating models and assigning serials happens with IGI directly, not here.
+ * Each company enters its own half (Sam, 10 Sept 2026): LoveLab add the model
+ * here — name, stones, carat, shape — and IGI give it its serial from their
+ * To do. The serial is set once and never changed.
  */
+const SHAPES = ['Round', 'Oval', 'Pear', 'Marquise', 'Cushion', 'Long Cushion', 'Emerald', 'Heart', 'Princess', 'Radiant', 'Asscher', 'Baguette']
+const EMPTY_FORM = { name: '', stones: '1', carat: '', shape: 'Round' }
+
 export default function CertificatesModelsClient() {
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
@@ -25,6 +30,31 @@ export default function CertificatesModelsClient() {
   const [savingId, setSavingId] = useState(null)
   const [showReserved, setShowReserved] = useState(false)
   const [query, setQuery] = useState('')
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [adding, setAdding] = useState(false)
+
+  async function addModel(e) {
+    e?.preventDefault?.()
+    setAdding(true)
+    try {
+      const res = await fetch('/api/igi/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name, stones: form.stones, carat: Number(form.carat), shape: form.shape }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Failed to add the model')
+      setModels((prev) => [...prev, { ...body.model, pool: null, shelf: null }])
+      setForm(EMPTY_FORM)
+      setNotice(`${body.model.name} added. It is on IGI's To do; once they give it a serial it can be requested.`)
+      setTimeout(() => setNotice(null), 7000)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setAdding(false)
+    }
+  }
 
   useEffect(() => { load() }, [])
 
@@ -95,8 +125,61 @@ export default function CertificatesModelsClient() {
       {notice && <Toast testId="notice">{notice}</Toast>}
 
       <Card
+        title="New model"
+        sub="Say what the piece is. IGI give it its serial on their side; until then it cannot be requested."
+        testId="new-model"
+      >
+        <form onSubmit={addModel} data-testid="new-model-form" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+          <label style={{ display: 'grid', gap: 4, flex: '2 1 240px' }}>
+            <span className="spec">Name</span>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Full Moonlight"
+              data-testid="new-model-name"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4, flex: '0 1 90px' }}>
+            <span className="spec">Stones</span>
+            <input
+              type="text"
+              value={form.stones}
+              onChange={(e) => setForm((f) => ({ ...f, stones: e.target.value }))}
+              placeholder="1 or 6+1"
+              data-testid="new-model-stones"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4, flex: '0 1 100px' }}>
+            <span className="spec">Carat</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={form.carat}
+              onChange={(e) => setForm((f) => ({ ...f, carat: e.target.value }))}
+              placeholder="0.50"
+              data-testid="new-model-carat"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4, flex: '0 1 150px' }}>
+            <span className="spec">Shape</span>
+            <select value={form.shape} onChange={(e) => setForm((f) => ({ ...f, shape: e.target.value }))} data-testid="new-model-shape">
+              {SHAPES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <Btn kind="primary" type="submit" disabled={adding} testId="new-model-submit">
+            {adding ? 'Adding…' : 'Add model'}
+          </Btn>
+        </form>
+      </Card>
+
+      <Card
         title="In use"
-        sub="New models and serials are agreed with IGI directly, not created here."
+        sub="Serials come from IGI and never change. Names are ours to edit."
         flush
       >
         <TableWrap>
@@ -142,18 +225,18 @@ export default function CertificatesModelsClient() {
 
       {awaiting.length > 0 && (
         <Card
-          title={`Waiting for a serial (${awaiting.length})`}
-          sub="Asked for, but IGI have not numbered them yet. They cannot be requested until a serial and a first batch exist."
+          title={`Waiting for IGI to give a serial (${awaiting.length})`}
+          sub="On IGI's To do. They cannot be requested until the serial and a first batch exist."
           flush
           testId="awaiting-serial"
         >
           {awaiting.map((m) => (
-            <div className="crow" key={m.id}>
+            <div className="crow" key={m.id} data-testid="awaiting-row">
               <div className="k">
                 {m.name}
                 <small>{modelSpec(m)}</small>
               </div>
-              <Chip tone="watch">No serial yet</Chip>
+              <Chip tone="watch">Waiting for IGI</Chip>
             </div>
           ))}
         </Card>

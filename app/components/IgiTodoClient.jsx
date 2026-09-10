@@ -17,11 +17,13 @@ import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates
 export default function IgiTodoClient() {
   const { base, preview } = useIgiPortal()
   const [visits, setVisits] = useState([])
+  const [newModels, setNewModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const [made, setMade] = useState({})
+  const [serials, setSerials] = useState({})
 
   useEffect(() => { load() }, [])
 
@@ -32,11 +34,34 @@ export default function IgiTodoClient() {
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error || 'Could not load your list')
       setVisits(body.visits || [])
+      setNewModels(body.new_models || [])
       setError(null)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // LoveLab added a model; IGI give it its number. Once, and for good.
+  async function giveSerial(model) {
+    setSavingId(model.id)
+    try {
+      const res = await fetch(`${base}/models/${model.id}/serial`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial: serials[model.id] || '' }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not save the serial')
+      setNotice(`${body.model.name} is now ${body.model.serial}. LoveLab can request it.`)
+      setTimeout(() => setNotice(null), 6000)
+      setNewModels((list) => list.filter((m) => m.id !== model.id))
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -67,15 +92,58 @@ export default function IgiTodoClient() {
     <>
       <PageHead
         title="To do"
-        sub={visits.length === 0
-          ? 'Nothing waiting. LoveLab have not asked for anything.'
-          : `${visits.length} request${visits.length === 1 ? '' : 's'} from LoveLab`}
+        sub={[
+          visits.length === 0 ? null : `${visits.length} request${visits.length === 1 ? '' : 's'} from LoveLab`,
+          newModels.length === 0 ? null : `${newModels.length} new model${newModels.length === 1 ? '' : 's'} to number`,
+        ].filter(Boolean).join(' · ') || 'Nothing waiting. LoveLab have not asked for anything.'}
       />
 
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
       {notice && <Toast testId="notice">{notice}</Toast>}
 
-      {visits.length === 0 && !error && (
+      {newModels.length > 0 && (
+        <div className="task" data-testid="new-models">
+          <div className="task-h">
+            <h2>New models from LoveLab</h2>
+            <span className="ask">Give each its serial</span>
+          </div>
+          <div className="nextstep">
+            <b>LoveLab added these. They need a serial from you before they can be requested.</b>
+            <span>Type the number as you print it. It is set once and cannot be changed afterwards.</span>
+          </div>
+          {newModels.map((m) => (
+            <div className="task-line" key={m.id} data-testid="new-model-line">
+              <div className="who">
+                <b>{m.name}</b>
+                <SerialSpec model={m} compact />
+                {m.requested_at && <span className="spec">asked {formatDate(m.requested_at)}</span>}
+              </div>
+              <div className="made" style={{ flex: '0 0 auto' }}>
+                <label htmlFor={`serial-${m.id}`}>Serial</label>
+                <input
+                  id={`serial-${m.id}`}
+                  type="text"
+                  placeholder="LGAJ6600"
+                  value={serials[m.id] ?? ''}
+                  onChange={(e) => setSerials((s) => ({ ...s, [m.id]: e.target.value.toUpperCase() }))}
+                  data-testid="serial-input"
+                  style={{ fontFamily: 'var(--font-num)', width: 130 }}
+                />
+              </div>
+              <Btn
+                kind="primary"
+                onClick={() => giveSerial(m)}
+                disabled={savingId === m.id || !(serials[m.id] || '').trim()}
+                testId="confirm-serial"
+              >
+                {savingId === m.id ? 'Saving…' : 'Confirm serial'}
+              </Btn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {visits.length === 0 && newModels.length === 0 && !error && (
         <Card flush>
           <Empty>
             <span data-testid="empty">When LoveLab ask for certificates, the request appears here.</span>

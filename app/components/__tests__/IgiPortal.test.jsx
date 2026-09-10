@@ -91,6 +91,60 @@ describe('IGI: to do', () => {
   })
 })
 
+describe('IGI: new models to number', () => {
+  const NEW_MODELS = [
+    { id: 'm-new', name: 'Full Moonlight', stones: '1', carat: 0.5, shape: 'Round', spec: null, requested_at: '2026-09-10T09:00:00Z' },
+  ]
+  function withNewModels(onPatch) {
+    mockFetch({
+      '/serial': (init) => onPatch(JSON.parse(init.body)),
+      '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: VISITS, new_models: NEW_MODELS }) }),
+    })
+  }
+
+  it('lists the models LoveLab added, with what they are', async () => {
+    withNewModels()
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getByTestId('new-models')).toBeInTheDocument())
+    expect(screen.getAllByTestId('new-model-line')).toHaveLength(1)
+    expect(screen.getByTestId('new-models')).toHaveTextContent('Full Moonlight')
+    expect(screen.getByTestId('new-models')).toHaveTextContent('0,50 ct')
+    expect(screen.getByTestId('confirm-serial')).toBeDisabled()
+  })
+
+  it('sends the serial and takes the model off the list', async () => {
+    const sent = []
+    withNewModels(async (body) => {
+      sent.push(body)
+      return { ok: true, json: async () => ({ model: { id: 'm-new', name: 'Full Moonlight', serial: 'LGAJ6600', state: 'in_use' } }) }
+    })
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getByTestId('serial-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('serial-input'), { target: { value: 'lgaj6600' } })
+    expect(screen.getByTestId('confirm-serial')).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('confirm-serial'))
+    await waitFor(() => expect(screen.queryByTestId('new-models')).toBeNull())
+    expect(sent).toEqual([{ serial: 'LGAJ6600' }])
+    expect(screen.getByTestId('notice')).toHaveTextContent('Full Moonlight is now LGAJ6600')
+  })
+
+  it('shows the refusal and keeps the model on the list', async () => {
+    withNewModels(async () => ({ ok: false, json: async () => ({ error: 'LGAJ6530 is already the serial of Cuty-Cubix.' }) }))
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getByTestId('serial-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('serial-input'), { target: { value: 'LGAJ6530' } })
+    fireEvent.click(screen.getByTestId('confirm-serial'))
+    await waitFor(() => expect(screen.getByText(/already the serial of Cuty-Cubix/)).toBeInTheDocument())
+    expect(screen.getAllByTestId('new-model-line')).toHaveLength(1)
+  })
+
+  it('still says nothing is waiting when both lists are empty', async () => {
+    mockFetch({ '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: [], new_models: [] }) }) })
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getByTestId('empty')).toBeInTheDocument())
+  })
+})
+
 describe('IGI: my stock', () => {
   it('shows their stock and what is asked right now, and nothing of LoveLab\'s', async () => {
     mockFetch()
