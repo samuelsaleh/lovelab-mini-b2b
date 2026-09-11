@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
+import { formatModelName } from '@/lib/igi/modelName';
 
 const SHAPES = ['Round', 'Oval', 'Pear', 'Marquise', 'Cushion', 'Long Cushion', 'Emerald', 'Heart', 'Princess', 'Radiant', 'Asscher', 'Baguette'];
 
@@ -21,7 +22,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 200) : '';
+  const name = typeof body?.name === 'string' ? formatModelName(body.name).slice(0, 200) : '';
   if (!name) return NextResponse.json({ error: 'Give the model a name.' }, { status: 400 });
 
   // Stones is text on purpose: '6+1' and '3+2' are real values in IGI's file.
@@ -95,10 +96,12 @@ export async function PATCH(request) {
   const patch = { updated_at: new Date().toISOString() };
 
   if (name !== undefined) {
-    if (typeof name !== 'string' || !name.trim()) {
+    const formatted = typeof name === 'string' ? formatModelName(name) : '';
+    if (!formatted) {
       return NextResponse.json({ error: 'A model needs a name' }, { status: 400 });
     }
-    patch.name = name.trim().slice(0, 200);
+    // Whatever the keyboard did, it is saved the way every other name reads.
+    patch.name = formatted.slice(0, 200);
   }
 
   // IGI's alert level on their own stock. LoveLab can seed it before IGI have

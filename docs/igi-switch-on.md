@@ -80,6 +80,30 @@ to tell you.
 
 ---
 
+## The model names
+
+Every model is written one way: digits rather than words (Multi 3, Linea 5,
+Riviera 8), each word starting with a capital (Zaha, Flower Marquise), the
+products a certificate serves separated by a slash with a space either side
+(Cuty / Cubix / Sienna 1), and the shape in the name for Shapy Shine and Matchy
+Fancy (Shapy Shine Pear). A name typed on the Models screen is saved in that
+shape whatever the keyboard did, so MULTI MOONLIGHT and Multi Moonlight can no
+longer sit on neighbouring rows.
+
+If your database was switched on **before 11 September 2026**, it still holds
+the earlier spellings. Paste `database-migrations/igi-model-names.sql` into
+the SQL editor and run it — it renames the 59 models in place and ends with:
+
+```
+IGI: 0 of 59 models still carry an old name
+```
+
+A name you had already changed yourself on the Models screen is left as you
+set it. Running the full switch-on file again does the same renames, so a
+fresh database needs nothing extra.
+
+---
+
 ## The shelf figure
 
 The dashboard opens with a reading of LoveLab's shelf taken on 28 August 2026, so

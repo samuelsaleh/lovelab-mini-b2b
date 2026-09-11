@@ -580,65 +580,65 @@ COMMENT ON COLUMN public.igi_models.order_alerted_at IS
 INSERT INTO public.igi_models
   (serial, serial_full, name, igi_name, stones, carat, shape, spec, state, qty_ordered, sort_order)
 VALUES
-  ('LGAJ6529', 'LGAJ65292505', 'Cuty-Cubix / Moonlight Long', 'Cuty - Cubix', '1', 0.05, 'Round', NULL, 'in_use', 12250, 2),
-  ('LGAJ6530', 'LGAJ65302505', 'Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long', 'Cuty - Cubix', '1', 0.1, 'Round', NULL, 'in_use', 12250, 3),
-  ('LGAJ6531', 'LGAJ65312505', 'Cuty-Cubix / Sienna 1 / Moonlight Original', 'Cuty - Cubix', '1', 0.2, 'Round', NULL, 'in_use', 500, 4),
-  ('LGAJ6532', 'LGAJ65322505', 'Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long', 'Cuty - Cubix', '1', 0.3, 'Round', NULL, 'in_use', 250, 5),
-  ('LGAJ6533', 'LGAJ65332505', 'Multi Three', 'Multi Three', '3', 0.15, 'Round', NULL, 'in_use', 3550, 6),
-  ('LGAJ6534', 'LGAJ65342505', 'Multi Three', 'Multi Three', '3', 0.3, 'Round', NULL, 'in_use', 2000, 7),
-  ('LGAJ6535', 'LGAJ65352505', 'Multi Three', 'Multi Three', '3', 0.6, 'Round', NULL, 'in_use', 100, 8),
-  ('LGAJ6536', 'LGAJ65362505', 'Multi Three', 'Multi Three', '3', 0.9, 'Round', NULL, 'in_use', 100, 9),
-  ('LGAJ6537', 'LGAJ65372505', 'Multi Four / Sienna 4', 'Multi Four', '4', 0.2, 'Round', NULL, 'in_use', 500, 10),
-  ('LGAJ6538', 'LGAJ65382505', 'Multi Four / Sienna 4', 'Multi Four', '4', 0.4, 'Round', NULL, 'in_use', 500, 11),
-  ('LGAJ6539', 'LGAJ65392505', 'Multi Five / Sienna 5', 'Multi Five', '5', 0.25, 'Round', NULL, 'in_use', 500, 12),
-  ('LGAJ6540', 'LGAJ65402505', 'Multi Five / Sienna 5', 'Multi Five', '5', 0.5, 'Round', NULL, 'in_use', 500, 13),
-  ('LGAJ6541', 'LGAJ65412505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Cushion', NULL, 'in_use', 250, 14),
-  ('LGAJ6542', 'LGAJ65422505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Cushion', NULL, 'in_use', 250, 15),
-  ('LGAJ6543', 'LGAJ65432505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Long Cushion', NULL, 'in_use', 250, 16),
-  ('LGAJ6544', 'LGAJ65442505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Long Cushion', NULL, 'in_use', 250, 17),
-  ('LGAJ6545', 'LGAJ65452505', 'Shapy Shine', 'Shapy Shine', '1', 0.1, 'Emerald', NULL, 'in_use', 2000, 18),
-  ('LGAJ6546', 'LGAJ65462505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Emerald', NULL, 'in_use', 500, 19),
-  ('LGAJ6547', 'LGAJ65472505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Emerald', NULL, 'in_use', 250, 20),
-  ('LGAJ6548', 'LGAJ65482505', 'Matchy Fancy', 'Matchy Fancy', '2', 0.6, 'Emerald', NULL, 'in_use', 500, 21),
-  ('LGAJ6549', 'LGAJ65492505', 'Matchy Fancy', 'Matchy Fancy', '2', 1, 'Emerald', NULL, 'in_use', 250, 22),
-  ('LGAJ6550', 'LGAJ65502505', 'Shapy Shine', 'Shapy Shine', '1', 0.1, 'Heart', NULL, 'in_use', 2000, 23),
-  ('LGAJ6551', 'LGAJ65512505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Heart', NULL, 'in_use', 500, 24),
-  ('LGAJ6552', 'LGAJ65522505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Heart', NULL, 'in_use', 250, 25),
-  ('LGAJ6553', 'LGAJ65532505', 'Matchy Fancy', 'Matchy Fancy', '2', 0.6, 'Heart', NULL, 'in_use', 500, 26),
-  ('LGAJ6554', 'LGAJ65542505', 'Matchy Fancy', 'Matchy Fancy', '2', 1, 'Heart', NULL, 'in_use', 250, 27),
-  ('LGAJ6555', 'LGAJ65552505', 'Shapy Shine', 'Shapy Shine', '1', 0.1, 'Marquise', NULL, 'in_use', 2000, 28),
-  ('LGAJ6556', 'LGAJ65562505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Marquise', NULL, 'in_use', 500, 29),
-  ('LGAJ6557', 'LGAJ65572505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Marquise', NULL, 'in_use', 250, 30),
-  ('LGAJ6558', 'LGAJ65582505', 'Shapy Shine', 'Shapy Shine', '1', 0.1, 'Oval', NULL, 'in_use', 2000, 31),
-  ('LGAJ6559', 'LGAJ65592505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Oval', NULL, 'in_use', 500, 32),
-  ('LGAJ6560', 'LGAJ65602505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Oval', NULL, 'in_use', 250, 33),
-  ('LGAJ6561', 'LGAJ65612505', 'Shapy Shine', 'Shapy Shine', '1', 0.1, 'Pear', NULL, 'in_use', 2000, 34),
-  ('LGAJ6562', 'LGAJ65622505', 'Shapy Shine', 'Shapy Shine', '1', 0.3, 'Pear', NULL, 'in_use', 500, 35),
-  ('LGAJ6563', 'LGAJ65632505', 'Shapy Shine', 'Shapy Shine', '1', 0.5, 'Pear', NULL, 'in_use', 250, 36),
-  ('LGAJ6564', 'LGAJ65642505', 'Matchy Fancy', 'Matchy Fancy', '2', 0.6, 'Pear', NULL, 'in_use', 500, 37),
-  ('LGAJ6565', 'LGAJ65652505', 'Matchy Fancy', 'Matchy Fancy', '2', 1, 'Pear', NULL, 'in_use', 250, 38),
+  ('LGAJ6529', 'LGAJ65292505', 'Cuty / Cubix / Long Moonlight', 'Cuty - Cubix', '1', 0.05, 'Round', NULL, 'in_use', 12250, 2),
+  ('LGAJ6530', 'LGAJ65302505', 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight', 'Cuty - Cubix', '1', 0.1, 'Round', NULL, 'in_use', 12250, 3),
+  ('LGAJ6531', 'LGAJ65312505', 'Cuty / Cubix / Sienna 1 / Original Moonlight', 'Cuty - Cubix', '1', 0.2, 'Round', NULL, 'in_use', 500, 4),
+  ('LGAJ6532', 'LGAJ65322505', 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight', 'Cuty - Cubix', '1', 0.3, 'Round', NULL, 'in_use', 250, 5),
+  ('LGAJ6533', 'LGAJ65332505', 'Multi 3', 'Multi Three', '3', 0.15, 'Round', NULL, 'in_use', 3550, 6),
+  ('LGAJ6534', 'LGAJ65342505', 'Multi 3', 'Multi Three', '3', 0.3, 'Round', NULL, 'in_use', 2000, 7),
+  ('LGAJ6535', 'LGAJ65352505', 'Multi 3', 'Multi Three', '3', 0.6, 'Round', NULL, 'in_use', 100, 8),
+  ('LGAJ6536', 'LGAJ65362505', 'Multi 3', 'Multi Three', '3', 0.9, 'Round', NULL, 'in_use', 100, 9),
+  ('LGAJ6537', 'LGAJ65372505', 'Multi 4 / Sienna 4 / Riviera 4', 'Multi Four', '4', 0.2, 'Round', NULL, 'in_use', 500, 10),
+  ('LGAJ6538', 'LGAJ65382505', 'Multi 4 / Sienna 4 / Riviera 4', 'Multi Four', '4', 0.4, 'Round', NULL, 'in_use', 500, 11),
+  ('LGAJ6539', 'LGAJ65392505', 'Multi 5 / Sienna 5', 'Multi Five', '5', 0.25, 'Round', NULL, 'in_use', 500, 12),
+  ('LGAJ6540', 'LGAJ65402505', 'Multi 5 / Sienna 5', 'Multi Five', '5', 0.5, 'Round', NULL, 'in_use', 500, 13),
+  ('LGAJ6541', 'LGAJ65412505', 'Shapy Shine Cushion', 'Shapy Shine', '1', 0.3, 'Cushion', NULL, 'in_use', 250, 14),
+  ('LGAJ6542', 'LGAJ65422505', 'Shapy Shine Cushion', 'Shapy Shine', '1', 0.5, 'Cushion', NULL, 'in_use', 250, 15),
+  ('LGAJ6543', 'LGAJ65432505', 'Shapy Shine Long Cushion', 'Shapy Shine', '1', 0.3, 'Long Cushion', NULL, 'in_use', 250, 16),
+  ('LGAJ6544', 'LGAJ65442505', 'Shapy Shine Long Cushion', 'Shapy Shine', '1', 0.5, 'Long Cushion', NULL, 'in_use', 250, 17),
+  ('LGAJ6545', 'LGAJ65452505', 'Shapy Shine Emerald', 'Shapy Shine', '1', 0.1, 'Emerald', NULL, 'in_use', 2000, 18),
+  ('LGAJ6546', 'LGAJ65462505', 'Shapy Shine Emerald', 'Shapy Shine', '1', 0.3, 'Emerald', NULL, 'in_use', 500, 19),
+  ('LGAJ6547', 'LGAJ65472505', 'Shapy Shine Emerald', 'Shapy Shine', '1', 0.5, 'Emerald', NULL, 'in_use', 250, 20),
+  ('LGAJ6548', 'LGAJ65482505', 'Matchy Fancy Emerald', 'Matchy Fancy', '2', 0.6, 'Emerald', NULL, 'in_use', 500, 21),
+  ('LGAJ6549', 'LGAJ65492505', 'Matchy Fancy Emerald', 'Matchy Fancy', '2', 1, 'Emerald', NULL, 'in_use', 250, 22),
+  ('LGAJ6550', 'LGAJ65502505', 'Shapy Shine Heart', 'Shapy Shine', '1', 0.1, 'Heart', NULL, 'in_use', 2000, 23),
+  ('LGAJ6551', 'LGAJ65512505', 'Shapy Shine Heart', 'Shapy Shine', '1', 0.3, 'Heart', NULL, 'in_use', 500, 24),
+  ('LGAJ6552', 'LGAJ65522505', 'Shapy Shine Heart', 'Shapy Shine', '1', 0.5, 'Heart', NULL, 'in_use', 250, 25),
+  ('LGAJ6553', 'LGAJ65532505', 'Matchy Fancy Heart', 'Matchy Fancy', '2', 0.6, 'Heart', NULL, 'in_use', 500, 26),
+  ('LGAJ6554', 'LGAJ65542505', 'Matchy Fancy Heart', 'Matchy Fancy', '2', 1, 'Heart', NULL, 'in_use', 250, 27),
+  ('LGAJ6555', 'LGAJ65552505', 'Shapy Shine Marquise', 'Shapy Shine', '1', 0.1, 'Marquise', NULL, 'in_use', 2000, 28),
+  ('LGAJ6556', 'LGAJ65562505', 'Shapy Shine Marquise', 'Shapy Shine', '1', 0.3, 'Marquise', NULL, 'in_use', 500, 29),
+  ('LGAJ6557', 'LGAJ65572505', 'Shapy Shine Marquise', 'Shapy Shine', '1', 0.5, 'Marquise', NULL, 'in_use', 250, 30),
+  ('LGAJ6558', 'LGAJ65582505', 'Shapy Shine Oval', 'Shapy Shine', '1', 0.1, 'Oval', NULL, 'in_use', 2000, 31),
+  ('LGAJ6559', 'LGAJ65592505', 'Shapy Shine Oval', 'Shapy Shine', '1', 0.3, 'Oval', NULL, 'in_use', 500, 32),
+  ('LGAJ6560', 'LGAJ65602505', 'Shapy Shine Oval', 'Shapy Shine', '1', 0.5, 'Oval', NULL, 'in_use', 250, 33),
+  ('LGAJ6561', 'LGAJ65612505', 'Shapy Shine Pear', 'Shapy Shine', '1', 0.1, 'Pear', NULL, 'in_use', 2000, 34),
+  ('LGAJ6562', 'LGAJ65622505', 'Shapy Shine Pear', 'Shapy Shine', '1', 0.3, 'Pear', NULL, 'in_use', 500, 35),
+  ('LGAJ6563', 'LGAJ65632505', 'Shapy Shine Pear', 'Shapy Shine', '1', 0.5, 'Pear', NULL, 'in_use', 250, 36),
+  ('LGAJ6564', 'LGAJ65642505', 'Matchy Fancy Pear', 'Matchy Fancy', '2', 0.6, 'Pear', NULL, 'in_use', 500, 37),
+  ('LGAJ6565', 'LGAJ65652505', 'Matchy Fancy Pear', 'Matchy Fancy', '2', 1, 'Pear', NULL, 'in_use', 250, 38),
   ('LGAJ6566', 'LGAJ65662607', 'Multi Moonlight', 'HALO', '3', 0.2, 'Round', 'D/E', 'in_use', 500, 39),
   ('LGAJ6567', 'LGAJ65672607', 'Multi Moonlight', 'HALO', '3', 0.4, 'Round', 'D/E', 'in_use', 500, 40),
-  ('LGAJ6568', 'LGAJ65682607', 'ZAHA', 'ZAHA', '1', 0.3, 'Marquise', 'D/E', 'in_use', 500, 41),
-  ('LGAJ6569', 'LGAJ65692607', 'FLOWER MARQ', 'LUMA', '4', 0.4, 'Marquise', 'D/E', 'in_use', 500, 42),
-  ('LGAJ6570', 'LGAJ65702607', 'FLOWER HEART', 'LUVA', '4', 0.4, 'Heart', 'D/E', 'in_use', 500, 43),
-  ('LGAJ6571', 'LGAJ65712607', 'LINEA', 'LINEA', '3', 0.3, 'Princess', 'D/E', 'in_use', 500, 44),
-  ('LGAJ6572', 'LGAJ65722607', 'LINEA', 'LINEA', '5', 0.5, 'Princess', 'D/E', 'in_use', 500, 45),
-  ('LGAJ6573', 'LGAJ65732607', 'SIENNA', 'SIENNA', '2', 0.2, 'Pear', 'D/E', 'in_use', 500, 46),
-  ('LGAJ6574', 'LGAJ65742607', 'RIVIERA', 'RIVIERA', '8', 0.8, 'Round', 'D/E', 'in_use', 500, 47),
-  ('LGAJ6575', 'LGAJ65752607', 'RIVIERA', 'RIVIERA', '8', 0.4, 'Round', 'D/E', 'in_use', 500, 48),
-  ('LGAJ6576', 'LGAJ65762607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Yellow', 'in_use', 833, 49),
-  ('LGAJ6577', 'LGAJ65772607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Blue', 'in_use', 833, 50),
-  ('LGAJ6578', 'LGAJ65782607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Pink', 'in_use', 833, 51),
-  ('LGAJ6579', 'LGAJ65792607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 52),
-  ('LGAJ6580', 'LGAJ65802607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 53),
-  ('LGAJ6581', 'LGAJ65812607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 54),
-  ('LGAJ6582', 'LGAJ65822607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 55),
-  ('LGAJ6583', 'LGAJ65832607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 56),
-  ('LGAJ6584', 'LGAJ65842607', 'CUTY FANCY COLOR', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 57),
-  ('LGAJ6585', 'LGAJ65852607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 58),
-  ('LGAJ6586', 'LGAJ65862607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 59),
-  ('LGAJ6587', 'LGAJ65872607', 'THREE FANCY COLOR', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 60),
+  ('LGAJ6568', 'LGAJ65682607', 'Zaha', 'ZAHA', '1', 0.3, 'Marquise', 'D/E', 'in_use', 500, 41),
+  ('LGAJ6569', 'LGAJ65692607', 'Flower Marquise', 'LUMA', '4', 0.4, 'Marquise', 'D/E', 'in_use', 500, 42),
+  ('LGAJ6570', 'LGAJ65702607', 'Flower Heart', 'LUVA', '4', 0.4, 'Heart', 'D/E', 'in_use', 500, 43),
+  ('LGAJ6571', 'LGAJ65712607', 'Linea 3', 'LINEA', '3', 0.3, 'Princess', 'D/E', 'in_use', 500, 44),
+  ('LGAJ6572', 'LGAJ65722607', 'Linea 5', 'LINEA', '5', 0.5, 'Princess', 'D/E', 'in_use', 500, 45),
+  ('LGAJ6573', 'LGAJ65732607', 'Sienna 2', 'SIENNA', '2', 0.2, 'Pear', 'D/E', 'in_use', 500, 46),
+  ('LGAJ6574', 'LGAJ65742607', 'Riviera 8', 'RIVIERA', '8', 0.8, 'Round', 'D/E', 'in_use', 500, 47),
+  ('LGAJ6575', 'LGAJ65752607', 'Riviera 8', 'RIVIERA', '8', 0.4, 'Round', 'D/E', 'in_use', 500, 48),
+  ('LGAJ6576', 'LGAJ65762607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Yellow', 'in_use', 833, 49),
+  ('LGAJ6577', 'LGAJ65772607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Blue', 'in_use', 833, 50),
+  ('LGAJ6578', 'LGAJ65782607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Pink', 'in_use', 833, 51),
+  ('LGAJ6579', 'LGAJ65792607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 52),
+  ('LGAJ6580', 'LGAJ65802607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 53),
+  ('LGAJ6581', 'LGAJ65812607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 54),
+  ('LGAJ6582', 'LGAJ65822607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 55),
+  ('LGAJ6583', 'LGAJ65832607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 56),
+  ('LGAJ6584', 'LGAJ65842607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.1, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 57),
+  ('LGAJ6585', 'LGAJ65852607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 58),
+  ('LGAJ6586', 'LGAJ65862607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 59),
+  ('LGAJ6587', 'LGAJ65872607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 60),
   ('LGAJ6588', 'LGAJ65882607', '—', '—', '4', 0.8, 'Rd', NULL, 'reserved', NULL, 61),
   ('LGAJ6589', 'LGAJ65892607', '—', '—', '4', 1.2, 'Rd', NULL, 'reserved', NULL, 62),
   ('LGAJ6590', 'LGAJ65902607', '—', '—', '5', 1, 'Rd', NULL, 'reserved', NULL, 63),
@@ -654,8 +654,8 @@ VALUES
   ('LGAJ6600', 'LGAJ66002607', 'D', 'D', '3+2', 1.3, 'Rd', NULL, 'reserved', NULL, 73),
   ('LGAJ6601', 'LGAJ66012607', 'E', 'E', '3+2', 0.8, 'Rd', NULL, 'reserved', NULL, 74),
   ('LGAJ6602', 'LGAJ66022607', 'F', 'F', '3+2', 0.4, 'Rd', NULL, 'reserved', NULL, 75),
-  ('LGAJ6603', 'LGAJ66032607', 'LONG MULTI ML', 'LONG MULTI ML', '5', 0.3, 'Rd', '4 X 0,05 1 X 0,10', 'in_use', 500, 76),
-  ('LGAJ6604', 'LGAJ66042607', 'LONG MULTI ML', 'LONG MULTI ML', '7', 0.4, 'Rd', '6 X 0,05 1 X 0,10', 'in_use', 500, 77)
+  ('LGAJ6603', 'LGAJ66032607', 'Long Multi Moonlight', 'LONG MULTI ML', '5', 0.3, 'Rd', '4 X 0,05 1 X 0,10', 'in_use', 500, 76),
+  ('LGAJ6604', 'LGAJ66042607', 'Long Multi Moonlight', 'LONG MULTI ML', '7', 0.4, 'Rd', '6 X 0,05 1 X 0,10', 'in_use', 500, 77)
 ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING;
 
 -- Models LoveLab have asked for that IGI have not numbered yet.
@@ -677,6 +677,68 @@ WHERE NOT EXISTS (
   SELECT 1 FROM public.igi_models
    WHERE name = 'Full Moonlight' AND carat = 1
 );
+
+-- Model names as LoveLab write them (11 Sept 2026). Only rows still carrying
+-- the earlier name are touched.
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Long Moonlight' WHERE serial = 'LGAJ6529' AND name = 'Cuty-Cubix / Moonlight Long';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight' WHERE serial = 'LGAJ6530' AND name = 'Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight' WHERE serial = 'LGAJ6531' AND name = 'Cuty-Cubix / Sienna 1 / Moonlight Original';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight' WHERE serial = 'LGAJ6532' AND name = 'Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long';
+UPDATE public.igi_models SET name = 'Multi 3' WHERE serial = 'LGAJ6533' AND name = 'Multi Three';
+UPDATE public.igi_models SET name = 'Multi 3' WHERE serial = 'LGAJ6534' AND name = 'Multi Three';
+UPDATE public.igi_models SET name = 'Multi 3' WHERE serial = 'LGAJ6535' AND name = 'Multi Three';
+UPDATE public.igi_models SET name = 'Multi 3' WHERE serial = 'LGAJ6536' AND name = 'Multi Three';
+UPDATE public.igi_models SET name = 'Multi 4 / Sienna 4 / Riviera 4' WHERE serial = 'LGAJ6537' AND name = 'Multi Four / Sienna 4';
+UPDATE public.igi_models SET name = 'Multi 4 / Sienna 4 / Riviera 4' WHERE serial = 'LGAJ6538' AND name = 'Multi Four / Sienna 4';
+UPDATE public.igi_models SET name = 'Multi 5 / Sienna 5' WHERE serial = 'LGAJ6539' AND name = 'Multi Five / Sienna 5';
+UPDATE public.igi_models SET name = 'Multi 5 / Sienna 5' WHERE serial = 'LGAJ6540' AND name = 'Multi Five / Sienna 5';
+UPDATE public.igi_models SET name = 'Shapy Shine Cushion' WHERE serial = 'LGAJ6541' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Cushion' WHERE serial = 'LGAJ6542' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Long Cushion' WHERE serial = 'LGAJ6543' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Long Cushion' WHERE serial = 'LGAJ6544' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald' WHERE serial = 'LGAJ6545' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald' WHERE serial = 'LGAJ6546' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald' WHERE serial = 'LGAJ6547' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Matchy Fancy Emerald' WHERE serial = 'LGAJ6548' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Matchy Fancy Emerald' WHERE serial = 'LGAJ6549' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart' WHERE serial = 'LGAJ6550' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart' WHERE serial = 'LGAJ6551' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart' WHERE serial = 'LGAJ6552' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Matchy Fancy Heart' WHERE serial = 'LGAJ6553' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Matchy Fancy Heart' WHERE serial = 'LGAJ6554' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise' WHERE serial = 'LGAJ6555' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise' WHERE serial = 'LGAJ6556' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise' WHERE serial = 'LGAJ6557' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval' WHERE serial = 'LGAJ6558' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval' WHERE serial = 'LGAJ6559' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval' WHERE serial = 'LGAJ6560' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear' WHERE serial = 'LGAJ6561' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear' WHERE serial = 'LGAJ6562' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear' WHERE serial = 'LGAJ6563' AND name = 'Shapy Shine';
+UPDATE public.igi_models SET name = 'Matchy Fancy Pear' WHERE serial = 'LGAJ6564' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Matchy Fancy Pear' WHERE serial = 'LGAJ6565' AND name = 'Matchy Fancy';
+UPDATE public.igi_models SET name = 'Zaha' WHERE serial = 'LGAJ6568' AND name = 'ZAHA';
+UPDATE public.igi_models SET name = 'Flower Marquise' WHERE serial = 'LGAJ6569' AND name = 'FLOWER MARQ';
+UPDATE public.igi_models SET name = 'Flower Heart' WHERE serial = 'LGAJ6570' AND name = 'FLOWER HEART';
+UPDATE public.igi_models SET name = 'Linea 3' WHERE serial = 'LGAJ6571' AND name = 'LINEA';
+UPDATE public.igi_models SET name = 'Linea 5' WHERE serial = 'LGAJ6572' AND name = 'LINEA';
+UPDATE public.igi_models SET name = 'Sienna 2' WHERE serial = 'LGAJ6573' AND name = 'SIENNA';
+UPDATE public.igi_models SET name = 'Riviera 8' WHERE serial = 'LGAJ6574' AND name = 'RIVIERA';
+UPDATE public.igi_models SET name = 'Riviera 8' WHERE serial = 'LGAJ6575' AND name = 'RIVIERA';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6576' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6577' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6578' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6579' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6580' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6581' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6582' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6583' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color' WHERE serial = 'LGAJ6584' AND name = 'CUTY FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6585' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6586' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color' WHERE serial = 'LGAJ6587' AND name = 'THREE FANCY COLOR';
+UPDATE public.igi_models SET name = 'Long Multi Moonlight' WHERE serial = 'LGAJ6603' AND name = 'LONG MULTI ML';
+UPDATE public.igi_models SET name = 'Long Multi Moonlight' WHERE serial = 'LGAJ6604' AND name = 'LONG MULTI ML';
 
 -- Every description LoveLab's own software returns, classified once so the
 -- "needs a human" queue starts empty.

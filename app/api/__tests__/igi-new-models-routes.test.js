@@ -79,6 +79,14 @@ describe('LoveLab add a model', () => {
     expect(global.__admin.state.inserted).not.toHaveProperty('serial');
   });
 
+  test('saves the name the way every other name reads, whatever was typed', async () => {
+    // Sam, 11 Sept 2026: "MULTI MOONLIGHT" next to "Multi Moonlight" must not happen.
+    const res = await models.POST(req({ name: 'multi  MOONLIGHT/sienna three', stones: '3', carat: 0.4, shape: 'Round' }));
+    expect(res.status).toBe(201);
+    expect((await res.json()).model.name).toBe('Multi Moonlight / Sienna 3');
+    expect(global.__admin.state.inserted.name).toBe('Multi Moonlight / Sienna 3');
+  });
+
   test('accepts a stone sum like 6+1 and refuses nonsense', async () => {
     expect((await models.POST(req({ name: 'X', stones: '6+1', carat: 1.2, shape: 'Oval' }))).status).toBe(201);
     expect((await models.POST(req({ name: 'X', stones: 'many', carat: 1, shape: 'Oval' }))).status).toBe(400);
