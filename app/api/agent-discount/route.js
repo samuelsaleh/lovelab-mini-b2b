@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 
-const API_BASE = 'https://software.love-lab.com/api';
+const API_BASE = 'https://software.lovelab-antwerp.com/api';
 
 // Both GET and POST proxy into the LoveLab Laravel API which holds private
 // agent discount information. The Laravel side has no auth of its own, so we
