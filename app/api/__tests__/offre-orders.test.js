@@ -173,9 +173,8 @@ describe('PUT /api/documents/:id — Offre bucket', () => {
       status: 'draft',
       order_channel: 'b2b',
     };
-    // Promoting to sent re-issues the order (fresh row) since Sept 2026, so
-    // that write is an INSERT; a draft re-save stays an UPDATE. Both land in
-    // updatedPayloads so the assertions read whichever row was written.
+    // Re-edit updates the same row (insert is unused). updatedPayloads
+    // records that update so the assertions below read the written fields.
     const adminClient = {
       from: jest.fn((table) => {
         if (table === 'documents') {

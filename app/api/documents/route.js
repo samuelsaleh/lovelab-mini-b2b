@@ -9,6 +9,7 @@ import { canUseOrgScope, buildTeamScopeOrFilter } from '@/lib/organizations/team
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
 import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
+import { documentsHaveActivityAtColumn } from '@/lib/activityAtColumn';
 import { emailDeliveriesAvailable } from '@/lib/emailDeliveries';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
@@ -50,7 +51,10 @@ export async function GET(request) {
     // otherwise PostgREST would reject the whole select on a migration-behind
     // environment. The '*' branch already returns agent_id, so it only needs
     // the joined name; the summary branch needs both the id and the name.
-    const hasAgentCol = await documentsHaveAgentIdColumn(adminSupabase);
+    const [hasAgentCol, hasActivityAt] = await Promise.all([
+      documentsHaveAgentIdColumn(adminSupabase),
+      documentsHaveActivityAtColumn(adminSupabase),
+    ]);
     const agentEmbed = hasAgentCol ? ', agent:profiles!agent_id(full_name, email)' : '';
     // Delivery outcome of the client email (delivered / bounced), only once
     // the email_deliveries migration exists — same guard idea as agent_id.
@@ -61,9 +65,16 @@ export async function GET(request) {
       ? `id, created_at, client_name, client_company, total_amount, order_channel, status, file_path, file_name, consignment_agent_id, metadata${hasAgentCol ? ', agent_id' : ''}, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}`
       : `*, events(name, organization_id), creator:profiles!created_by(full_name, email), consignment_agent:profiles!consignment_agent_id(full_name, email)${agentEmbed}${deliveryEmbed}`;
 
+    // activity_at is the last user re-edit, so an updated order stays the same
+    // row but sorts to the top. created_at remains the tie-break and the
+    // fallback until the column migration is applied.
     let query = adminSupabase
       .from('documents')
-      .select(selectFields, { count: 'exact' })
+      .select(selectFields, { count: 'exact' });
+    if (hasActivityAt) {
+      query = query.order('activity_at', { ascending: false, nullsFirst: false });
+    }
+    query = query
       .order('created_at', { ascending: false })
       .range(offset, offset + perPage - 1);
 
