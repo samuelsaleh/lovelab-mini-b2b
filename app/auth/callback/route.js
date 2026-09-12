@@ -24,7 +24,12 @@ function getSafeHost(forwardedHost) {
 }
 
 export async function GET(request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams, origin: requestOrigin } = new URL(request.url);
+  // Self-hosted `next start` builds request.url from the server's own bind
+  // address, not the proxied Host header — so it resolves to localhost even
+  // behind Apache/Nginx with the Host header forwarded correctly. Prefer the
+  // configured site URL (same pattern used by every other route in this app).
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || requestOrigin;
   const code = searchParams.get('code');
   const token_hash = searchParams.get('token_hash');
   const type = searchParams.get('type');
