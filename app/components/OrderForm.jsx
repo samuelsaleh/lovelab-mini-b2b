@@ -1770,8 +1770,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
             setSavedDocId(null)
             setSavedDocStatus(null)
             setSavedDocDraftKind(null)
-            // Re-edit session: the server re-issued the order under a new
-            // id. Follow it, so a further Save keeps re-issuing that order.
+            // Re-edit saves the same row. Follow a new id only if the
+            // server ever returns one, so a further Save still targets it.
             if (savedDoc?.id && editingDocumentId && savedDoc.id !== editingDocumentId && onDocumentReissued) {
               onDocumentReissued(savedDoc)
             }

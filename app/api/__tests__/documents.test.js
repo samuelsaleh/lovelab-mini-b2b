@@ -43,6 +43,10 @@ jest.mock('@/lib/supabase/server', () => ({
 
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: jest.fn(() => null) }))
 
+jest.mock('@/lib/activityAtColumn', () => ({
+  documentsHaveActivityAtColumn: jest.fn().mockResolvedValue(true),
+}))
+
 jest.mock('@/app/api/_lib/access', () => ({
   getUserContext: jest.fn().mockResolvedValue({ user: { id: 'admin-user' }, isAdmin: true }),
   getAccessibleEventIds: jest.fn().mockResolvedValue([]),
@@ -103,6 +107,12 @@ describe('GET /api/documents', () => {
   test('applies eq(order_channel, b2b) when b2b is requested', async () => {
     await GET(makeRequest({ order_channel: 'b2b' }))
     expect(mockQuery.eq).toHaveBeenCalledWith('order_channel', 'b2b')
+  })
+
+  test('orders by activity_at then created_at so a re-edit floats to the top', async () => {
+    await GET(makeRequest())
+    expect(mockQuery.order).toHaveBeenNthCalledWith(1, 'activity_at', { ascending: false, nullsFirst: false })
+    expect(mockQuery.order).toHaveBeenNthCalledWith(2, 'created_at', { ascending: false })
   })
 
   test('does not call eq(order_channel, ...) for the default (no filter param) query', async () => {

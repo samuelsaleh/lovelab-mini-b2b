@@ -153,10 +153,8 @@ describe('PUT /api/documents/:id — folder preserved / auto-filed on update', (
       status: oldStatus,
       order_channel: 'b2b',
     };
-    // A committed b2b save is re-issued (fresh row) since Sept 2026, so the
-    // first write for a sent order is an INSERT and for a draft an UPDATE.
-    // Both land in updatedPayloads so the folder assertions below read the
-    // row that was actually written, whichever way it went.
+    // Re-edit updates the same row. updatedPayloads records that update
+    // (not a trash retire) so the folder assertions below read it.
     const adminClient = {
       from: jest.fn((table) => {
         if (table === 'documents') {

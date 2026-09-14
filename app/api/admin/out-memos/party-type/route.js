@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 
-const API_BASE = process.env.LOVELAB_API_URL || 'https://software.love-lab.com/api';
+const API_BASE = process.env.LOVELAB_API_URL || 'https://software.lovelab-antwerp.com/api';
 const MEMO_TYPES = new Set(['Agent', 'Party', 'Internal']);
 
 async function requireAdmin(request) {

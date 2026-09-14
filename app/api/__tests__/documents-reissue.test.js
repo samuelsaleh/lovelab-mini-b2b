@@ -1,16 +1,12 @@
 /**
  * @jest-environment node
  *
- * PUT /api/documents/:id — re-issue on update.
+ * PUT /api/documents/:id — re-edit updates the same order.
  *
- * Sam, 9 Sept 2026: Silke re-saved a week-old order and emailed it. It kept
- * its 2 September date, sat deep in the list, and the office heard nothing.
- * A re-saved committed B2B/B2C order now becomes a FRESH order (new row,
- * dated now), its commission moves onto that row, the previous version is
- * retired into Trash, and the office is told it was updated.
- *
- * Consignment / internal / write-off orders and drafts keep updating in
- * place, exactly as before.
+ * A re-saved order used to become a fresh row and the previous version went
+ * to Trash. It now updates in place (same id, commissions stay attached) and
+ * stamps activity_at so the list can float that same order to the top.
+ * created_at is not rewritten. The office is still told it was updated.
  */
 
 const OLD_ID = '11111111-1111-4111-8111-111111111111';
@@ -28,7 +24,7 @@ function setupMocks({
   oldDoc: oldDocOverrides = {},
   isAdmin = false,
   agentColumn = true,
-  commissionMoveError = null,
+  activityColumn = true,
 } = {}) {
   const oldDoc = {
     id: OLD_ID,
@@ -91,7 +87,7 @@ function setupMocks({
                 return {
                   neq: jest.fn((ncol, nval) => {
                     commissionUpdates[commissionUpdates.length - 1].neq = [ncol, nval];
-                    return Promise.resolve({ error: commissionMoveError });
+                    return Promise.resolve({ error: null });
                   }),
                 };
               }),
@@ -137,6 +133,9 @@ function setupMocks({
     documentsHaveAgentIdColumn: jest.fn().mockResolvedValue(agentColumn),
     normalizeAgentId: jest.fn(async (v) => v ?? null),
   }));
+  jest.doMock('@/lib/activityAtColumn', () => ({
+    documentsHaveActivityAtColumn: jest.fn().mockResolvedValue(activityColumn),
+  }));
   jest.doMock('@/lib/healthEvent', () => ({ recordHealthEvent }));
   jest.doMock('@/lib/orderNotices', () => ({ notifyOrderEvent: notify }));
   jest.doMock('@/lib/lovelab-sync', () => ({ syncConsignmentToLovelab: jest.fn() }));
@@ -173,118 +172,111 @@ beforeEach(() => {
   delete process.env.RESEND_API_KEY;
 });
 
-describe('PUT re-issues a committed B2B/B2C order', () => {
-  test('creates a fresh row carrying the edit, creator, folder and agent', async () => {
+describe('PUT updates a committed B2B/B2C order in place', () => {
+  test('writes the edit onto the same row and does not create another', async () => {
     setupMocks();
     const { PUT } = require('../documents/[id]/route');
     const res = await PUT(makePut(), PARAMS);
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    expect(insertedPayloads).toHaveLength(1);
-    const inserted = insertedPayloads[0];
-    expect(inserted).toMatchObject({
+    expect(insertedPayloads).toHaveLength(0);
+    expect(updatedDocPayloads).toHaveLength(1);
+    expect(updatedDocPayloads[0]).toMatchObject({
       client_company: 'Nanau Vertriebsgesellschaft mbH',
       file_path: 'silke-uuid/new.pdf',
       total_amount: 2497.5,
       status: 'sent',
       order_channel: 'b2b',
-      created_by: 'silke-uuid',
-      agent_id: 'silke-uuid',
       event_id: 'evt-nordstil',
     });
-    expect(inserted.metadata).toMatchObject({
-      formState: { rows: [{ no: 1 }] },
-      replaces_document_id: OLD_ID,
-      replaces_created_at: '2026-09-02T10:00:00.000Z',
-    });
-    expect(body.document.id).toBe(NEW_ID);
-    expect(body.reissued_from).toBe(OLD_ID);
+    expect(updatedDocPayloads[0].metadata).toEqual({ formState: { rows: [{ no: 1 }] } });
+    expect(updatedDocPayloads[0].deleted_at).toBeUndefined();
+    expect(body.document.id).toBe(OLD_ID);
+    expect(body.reissued_from).toBeUndefined();
+    expect(body.document.created_at).toBe('2026-09-02T10:00:00.000Z');
   });
 
-  test('retires the old version into Trash, pointing at the fresh one', async () => {
+  test('stamps activity_at so the same order sorts to the top', async () => {
+    setupMocks();
+    const { PUT } = require('../documents/[id]/route');
+    const before = Date.now();
+    await PUT(makePut(), PARAMS);
+    const stamped = Date.parse(updatedDocPayloads[0].activity_at);
+    expect(Number.isNaN(stamped)).toBe(false);
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+  });
+
+  test('does not move commissions onto a new document', async () => {
     setupMocks();
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut(), PARAMS);
-    const retire = updatedDocPayloads.find((p) => p.deleted_at);
-    expect(retire).toBeTruthy();
-    expect(retire.metadata).toMatchObject({ formState: { rows: [] }, replaced_by_document_id: NEW_ID });
-    // No in-place edit of the old row's content.
-    expect(updatedDocPayloads.some((p) => p.client_company)).toBe(false);
+    expect(commissionUpdates).toHaveLength(0);
   });
 
-  test('moves unpaid commissions onto the fresh row', async () => {
+  test('replaces the old PDF on the same order', async () => {
     setupMocks();
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut(), PARAMS);
-    expect(commissionUpdates).toHaveLength(1);
-    expect(commissionUpdates[0]).toMatchObject({
-      payload: { document_id: NEW_ID },
-      eq: ['document_id', OLD_ID],
-      neq: ['status', 'paid'],
-    });
+    expect(storageRemoved).toContain('silke-uuid/old.pdf');
   });
 
-  test('keeps the old PDF so the retired version still opens from Trash', async () => {
-    setupMocks();
-    const { PUT } = require('../documents/[id]/route');
-    await PUT(makePut(), PARAMS);
-    expect(storageRemoved).toEqual([]);
-  });
-
-  test('tells the office it was updated and which version it replaces', async () => {
+  test('tells the office it was updated, without a retired version', async () => {
     setupMocks();
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut(), PARAMS);
     expect(notify).toHaveBeenCalledTimes(1);
     const [, args] = notify.mock.calls[0];
     expect(args.kind).toBe('updated');
-    expect(args.document.id).toBe(NEW_ID);
-    expect(args.replacedDocument.id).toBe(OLD_ID);
+    expect(args.document.id).toBe(OLD_ID);
+    expect(args.replacedDocument).toBeUndefined();
     expect(args.actor).toMatchObject({ id: 'silke-uuid' });
   });
 
-  test('a draft promoted to sent is re-issued and announced as created', async () => {
+  test('a draft promoted to sent stays the same row and is announced as created', async () => {
     setupMocks({ oldDoc: { status: 'draft' } });
     const { PUT } = require('../documents/[id]/route');
-    await PUT(makePut(), PARAMS);
-    expect(insertedPayloads).toHaveLength(1);
+    const res = await PUT(makePut(), PARAMS);
+    const body = await res.json();
+    expect(insertedPayloads).toHaveLength(0);
+    expect(body.document.id).toBe(OLD_ID);
     expect(notify.mock.calls[0][1].kind).toBe('created');
+    expect(updatedDocPayloads[0].activity_at).toEqual(expect.any(String));
   });
 
-  test('keeps the selling agent when the form does not resend it', async () => {
+  test('does not wipe the selling agent when the form does not resend it', async () => {
     setupMocks({ oldDoc: { agent_id: 'agent-x' } });
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut(), PARAMS); // body has no agent_id key
-    expect(insertedPayloads[0].agent_id).toBe('agent-x');
+    expect(Object.prototype.hasOwnProperty.call(updatedDocPayloads[0], 'agent_id')).toBe(false);
   });
 
   test('never writes agent_id on a database without the column', async () => {
     setupMocks({ agentColumn: false });
     const { PUT } = require('../documents/[id]/route');
-    await PUT(makePut(), PARAMS);
-    expect(Object.prototype.hasOwnProperty.call(insertedPayloads[0], 'agent_id')).toBe(false);
+    await PUT(makePut({ agent_id: 'agent-x' }), PARAMS);
+    expect(Object.prototype.hasOwnProperty.call(updatedDocPayloads[0], 'agent_id')).toBe(false);
   });
 
-  test('a failed commission move is recorded, and the fresh order still returns', async () => {
-    setupMocks({ commissionMoveError: { message: 'boom', code: 'XX000' } });
+  test('skips activity_at until that column migration is applied', async () => {
+    setupMocks({ activityColumn: false });
     const { PUT } = require('../documents/[id]/route');
     const res = await PUT(makePut(), PARAMS);
     expect(res.status).toBe(200);
-    expect(recordHealthEvent).toHaveBeenCalledWith(expect.objectContaining({
-      source: 'documents_put_reissue_commission_move',
-      severity: 'error',
-    }));
+    expect(Object.prototype.hasOwnProperty.call(updatedDocPayloads[0], 'activity_at')).toBe(false);
+    expect(insertedPayloads).toHaveLength(0);
   });
 });
 
-describe('PUT still edits in place where a re-issue would be wrong', () => {
+describe('PUT still edits drafts and non-revenue orders in place', () => {
   test('a draft saved as a draft', async () => {
     setupMocks({ oldDoc: { status: 'draft' } });
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut({ status: 'draft' }), PARAMS);
     expect(insertedPayloads).toHaveLength(0);
     expect(updatedDocPayloads[0]).toMatchObject({ status: 'draft', client_company: 'Nanau Vertriebsgesellschaft mbH' });
+    expect(updatedDocPayloads[0].activity_at).toEqual(expect.any(String));
   });
 
   test('a consignment order (the ERP holds its id)', async () => {
@@ -293,6 +285,7 @@ describe('PUT still edits in place where a re-issue would be wrong', () => {
     await PUT(makePut({ order_channel: 'consignment', consignment_agent_id: 'agent-x' }), PARAMS);
     expect(insertedPayloads).toHaveLength(0);
     expect(updatedDocPayloads[0].order_channel).toBe('consignment');
+    expect(updatedDocPayloads[0].activity_at).toEqual(expect.any(String));
   });
 
   test('an internal order', async () => {
@@ -300,16 +293,6 @@ describe('PUT still edits in place where a re-issue would be wrong', () => {
     const { PUT } = require('../documents/[id]/route');
     await PUT(makePut({ order_channel: 'internal' }), PARAMS);
     expect(insertedPayloads).toHaveLength(0);
-  });
-
-  test('when the caller asks for it explicitly (reissue: false)', async () => {
-    setupMocks();
-    const { PUT } = require('../documents/[id]/route');
-    const res = await PUT(makePut({ reissue: false }), PARAMS);
-    expect(res.status).toBe(200);
-    expect(insertedPayloads).toHaveLength(0);
-    expect(updatedDocPayloads[0].file_path).toBe('silke-uuid/new.pdf');
-    // In-place edits still drop the replaced PDF, as before.
-    expect(storageRemoved).toContain('silke-uuid/old.pdf');
+    expect(updatedDocPayloads[0].activity_at).toEqual(expect.any(String));
   });
 });

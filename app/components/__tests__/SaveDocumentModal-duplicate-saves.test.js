@@ -79,12 +79,12 @@ describe('OrderForm — adopts the saved document id for later saves', () => {
   test('forgets a committed order on purpose (Sam, 9 Sept 2026)', () => {
     // A sent order is NOT adopted. The next Save on the same screen is a new
     // order, so the next customer typed there cannot overwrite this one.
-    // Corrections go through Re-edit, which re-issues the order server-side.
+    // Corrections go through Re-edit, which updates that order in place.
     expect(ORDER_FORM_SOURCE).toMatch(
       /\} else \{[\s\S]{0,600}setSavedDocId\(null\)[\s\S]{0,80}setSavedDocStatus\(null\)[\s\S]{0,80}setSavedDocDraftKind\(null\)/,
     );
-    // In a Re-edit session the server hands back a NEW id; the form follows
-    // it so a further Save keeps re-issuing that same order.
+    // If a re-edit save ever returns a different id, the form follows it
+    // so a further Save still targets that order.
     expect(ORDER_FORM_SOURCE).toMatch(
       /savedDoc\.id !== editingDocumentId && onDocumentReissued\) \{\s*\n\s*onDocumentReissued\(savedDoc\)/,
     );

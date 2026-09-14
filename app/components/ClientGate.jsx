@@ -10,6 +10,7 @@ import { lookupCompany } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
 import LoadingDots from './LoadingDots'
 import UserMenu from './UserMenu'
+import { useAuth } from './AuthProvider'
 
 /**
  * Full-screen client identification gate.
@@ -19,6 +20,8 @@ import UserMenu from './UserMenu'
  */
 export default function ClientGate({ client, setClient, onComplete, onGoHome }) {
   const { t } = useI18n()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const [loading, setLoading] = useState(false)
   const [viesLoading, setViesLoading] = useState(false)
   const [error, setError] = useState('')
@@ -40,6 +43,14 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
   const searchDebounceRef = useRef(null)
   const clientRequestRef = useRef(0)
 
+  // ERP party search state
+  const [partySearch, setPartySearch] = useState('')
+  const [erpParties, setErpParties] = useState([])
+  const [partiesLoading, setPartiesLoading] = useState(false)
+  const [showErpParties, setShowErpParties] = useState(false)
+  const partyDebounceRef = useRef(null)
+  const partyRequestRef = useRef(0)
+
   const canLookup = client.company.trim() && client.country.trim()
   const canStart = client.company.trim()
 
@@ -48,7 +59,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
     fetchClients()
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+      if (partyDebounceRef.current) clearTimeout(partyDebounceRef.current)
       clientRequestRef.current += 1
+      partyRequestRef.current += 1
     }
   }, [])
 
@@ -113,6 +126,74 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       shipping_address_line2: savedClient.shipping_address_line2 || '',
       shipping_country: savedClient.shipping_country || '',
     })
+    setShowSavedClients(false)
+    setClientSearch('')
+    setShowErpParties(false)
+    setPartySearch('')
+    setPerplexityDone(true)
+    setShowManualAddress(true)
+  }
+
+  const fetchErpParties = async (search = '') => {
+    const requestId = ++partyRequestRef.current
+    setPartiesLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      if (search.trim()) qs.set('q', search.trim())
+      const res = await fetch(`/api/parties?${qs.toString()}`)
+      const data = await res.json()
+      if (requestId !== partyRequestRef.current) return
+      setErpParties(data.parties || [])
+    } catch (err) {
+      if (requestId !== partyRequestRef.current) return
+      setErpParties([])
+    } finally {
+      if (requestId === partyRequestRef.current) setPartiesLoading(false)
+    }
+  }
+
+  const handlePartySearch = (value) => {
+    setPartySearch(value)
+    setShowErpParties(true)
+    if (partyDebounceRef.current) clearTimeout(partyDebounceRef.current)
+    partyDebounceRef.current = setTimeout(() => {
+      fetchErpParties(value)
+    }, 300)
+  }
+
+  // Select ERP party_masters row — same form fill as saved client, no Supabase id
+  const selectErpParty = (party) => {
+    const address = [party.address, party.address2].filter(Boolean).join(', ')
+    const shippingAddress = party.shipping_address || ''
+    const shippingLine2 = party.shipping_address2 || ''
+    const shippingCountry = party.shipping_country || ''
+    const hasShipping = Boolean(shippingAddress || shippingLine2 || shippingCountry || party.shipping_city || party.shipping_zipcode)
+
+    setClient({
+      name: party.contact_person || party.name || '',
+      phone: party.phone1 || party.mobile || '',
+      email: party.email || '',
+      company: party.name || '',
+      country: party.country || '',
+      address,
+      city: party.city || '',
+      zip: party.zipcode || '',
+      vat: party.vat || '',
+      vatValid: null,
+      vatStatus: null,
+      vatErrorCode: null,
+      vatMessageKey: null,
+      vatValidating: false,
+      savedClientId: null,
+      dzb_client_number: '',
+      jeweler_group: null,
+      shipping_same_as_billing: !hasShipping,
+      shipping_address: shippingAddress,
+      shipping_address_line2: shippingLine2,
+      shipping_country: shippingCountry,
+    })
+    setShowErpParties(false)
+    setPartySearch('')
     setShowSavedClients(false)
     setClientSearch('')
     setPerplexityDone(true)
@@ -404,6 +485,65 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             )}
           </div>
         </div>
+
+        {/* ─── ERP Party Picker (admin only) ─── */}
+        {isAdmin && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={lbl}>{t('client.searchErp')}</div>
+          <div style={{ position: 'relative' }}>
+            <input
+              value={partySearch}
+              onChange={(e) => handlePartySearch(e.target.value)}
+              onFocus={() => { setShowErpParties(true); if (!partySearch) fetchErpParties() }}
+              onBlur={() => setTimeout(() => setShowErpParties(false), 150)}
+              placeholder={t('client.searchErpPlaceholder')}
+              style={{ ...inp, width: '100%' }}
+              {...noAutofill('q-erp')}
+            />
+            {showErpParties && (erpParties.length > 0 || partiesLoading || partySearch.trim()) && (
+              <div style={{
+                position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)',
+                left: 0, right: 0, maxHeight: 200, overflowY: 'auto',
+                background: '#fff', border: '1px solid #eaeaea', borderRadius: 10,
+                boxShadow: '0 10px 30px rgba(0,0,0,0.08)', padding: 4,
+              }}>
+                {partiesLoading ? (
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: '#999', textAlign: 'center' }}>{t('client.searching')}</div>
+                ) : erpParties.length === 0 ? (
+                  <div style={{ padding: mobile ? '14px 14px' : '10px 12px', fontSize: mobile ? 13 : 12, color: '#999', textAlign: 'center' }}>{t('client.noErpParties')}</div>
+                ) : (
+                  erpParties.map((party) => (
+                    <button
+                      key={party.id}
+                      onMouseDown={(e) => { e.preventDefault(); selectErpParty(party) }}
+                      onTouchStart={(e) => { e.currentTarget.style.background = '#f5f3f7' }}
+                      onTouchEnd={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: mobile ? '14px 14px' : '8px 12px',
+                        borderRadius: 8, border: 'none', cursor: 'pointer',
+                        background: 'transparent', fontFamily: 'inherit', fontSize: mobile ? 14 : 12,
+                        display: 'flex', flexDirection: 'column', gap: mobile ? 4 : 2,
+                        minHeight: mobile ? 56 : 'auto',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f3f7' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <div style={{ fontWeight: 600, color: '#333', fontSize: mobile ? 15 : 'inherit' }}>{party.name}</div>
+                      <div style={{ fontSize: mobile ? 12 : 11, color: '#999', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {party.contact_person && <span>{party.contact_person}</span>}
+                        {party.email && <span>{party.email}</span>}
+                        {party.city && <span>{party.city}</span>}
+                        {party.country && <span>{party.country}</span>}
+                        {party.vat && <span>VAT: {party.vat}</span>}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        )}
 
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18,
