@@ -158,7 +158,10 @@ describe('OrderForm — single-thread collections are unchanged', () => {
       totalPieces: 1,
     })
 
-    expect(screen.getAllByText('Shine').length).toBeGreaterThan(0)
+    // Shapy Shine's thread is nylon; the material column says so rather than
+    // naming its colour palette (14 Sep 2026).
+    expect(screen.getAllByText('Nylon').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Shine')).toBeNull()
     // No material dropdown for a collection with a single thread.
     expect(selectsWithOption('Silk (Thin)')).toHaveLength(0)
   })
