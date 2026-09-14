@@ -1,5 +1,9 @@
 // One-shot: provision (or promote) an internal ADMIN user.
 //
+// Since 14 Sep 2026 the normal way is the Employees screen (Admin → Sales
+// Team → Employees → Invite Employee), which does all of this from a button.
+// Keep this script for the day nobody can sign in.
+//
 // Does everything needed for a non-agent admin to log in with a password:
 //   1. Adds the email to allowed_emails (the login gate).
 //   2. Creates a Supabase auth account with a temp password (or reuses an
@@ -62,7 +66,10 @@ let authUser = null;
 
   if (match) {
     authUser = match;
-    const { error } = await admin.auth.admin.updateUserById(match.id, { password });
+    const { error } = await admin.auth.admin.updateUserById(match.id, {
+      password,
+      user_metadata: { ...(match.user_metadata || {}), must_set_password: true },
+    });
     if (error) {
       console.error('Failed to set password on existing auth user:', error.message);
       process.exit(1);
@@ -73,7 +80,7 @@ let authUser = null;
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName },
+      user_metadata: { full_name: fullName, must_set_password: true },
     });
     if (error || !data?.user) {
       console.error('Failed to create auth user:', error?.message);

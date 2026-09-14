@@ -131,14 +131,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (loading) return;
     if (!profile) return;
-    if (!profile.is_agent && !profile.is_assistant) return;
+    // Agents and assistants always start on a temporary password. Employees
+    // invited from the Employees screen are marked on the auth user instead,
+    // because has_password_set is false on every Google-created profile too
+    // and must not trap the admins who never had a password.
+    const invitedWithTempPassword = user?.user_metadata?.must_set_password === true;
+    if (!profile.is_agent && !profile.is_assistant && !invitedWithTempPassword) return;
     if (profile.has_password_set) return;
     if (!pathname) return;
     if (AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'))) return;
 
     const next = pathname && pathname !== '/' ? `?next=${encodeURIComponent(pathname)}` : '';
     router.replace(`/set-password${next}`);
-  }, [profile, pathname, loading, router]);
+  }, [profile, user, pathname, loading, router]);
 
   const signOut = async () => {
     setHideRevenue(false);

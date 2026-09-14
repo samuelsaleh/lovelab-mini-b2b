@@ -22,6 +22,12 @@ const TABS = [
     href: '/admin/organizations',
     description: 'Teams with one or more agents, shared totals, and one settlement.',
   },
+  {
+    id: 'employees',
+    label: 'Employees',
+    href: '/admin/employees',
+    description: 'Colleagues with the same access as you.',
+  },
 ]
 
 export default function SalesTeamTabs({ active }) {
@@ -53,7 +59,7 @@ export default function SalesTeamTabs({ active }) {
           display: 'flex',
           gap: 4,
           padding: 4,
-          maxWidth: 510,
+          maxWidth: 660,
           border: `1px solid ${colors.lovelabBorder}`,
           borderRadius: 12,
           background: '#f6f1f5',
