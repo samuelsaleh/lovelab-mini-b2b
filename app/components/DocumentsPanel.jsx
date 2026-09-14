@@ -116,6 +116,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [shareEmail, setShareEmail] = useState('')
   const [sharePermission, setSharePermission] = useState('edit')
   const [shareAgentId, setShareAgentId] = useState('')
+  const [shareTeamId, setShareTeamId] = useState('')
+  const [shareNotice, setShareNotice] = useState('')
   const [shareAgents, setShareAgents] = useState([])
   const [showEmailFallback, setShowEmailFallback] = useState(false)
 
@@ -647,6 +649,8 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setShowShareModal(true)
     setShareLoading(true)
     setShareAgentId('')
+    setShareTeamId('')
+    setShareNotice('')
     setShowEmailFallback(false)
     try {
       const [accessRes, agentsRes] = await Promise.all([
@@ -674,7 +678,33 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     setShareEmail('')
     setSharePermission('edit')
     setShareAgentId('')
+    setShareTeamId('')
+    setShareNotice('')
     setShowEmailFallback(false)
+  }
+
+  // Sam, 14 Sep 2026: "how can I add Sarah's whole organization to the fair?"
+  // One request; the server grants every current member of the team.
+  const inviteTeamToFair = async (e) => {
+    e.preventDefault()
+    if (!shareEvent || !shareTeamId) return
+    setShareSaving(true)
+    setShareNotice('')
+    try {
+      const res = await fetch(`/api/events/${encodeURIComponent(shareEvent.id)}/access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organization_id: shareTeamId, permission: 'edit' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to grant access')
+      setShareTeamId('')
+      setShareNotice(t('docs.inviteTeamDone', { count: data.granted ?? 0, name: data.organization?.name || '' }))
+      await refreshShareAccess(shareEvent.id)
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to grant access')
+    }
+    setShareSaving(false)
   }
 
   const refreshShareAccess = async (eventId) => {
@@ -1547,6 +1577,61 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                   </form>
                 )
               })()}
+              {(() => {
+                // Teams come from the agent list: every agent carries the id and
+                // name of the team they belong to. A team whose members all have
+                // access already is not offered again.
+                const alreadyIds = new Set(shareAccessList.map(row => row.user_id))
+                const teams = new Map()
+                for (const a of shareAgents) {
+                  if (!a.organization_id || a.agent_status === 'inactive') continue
+                  const team = teams.get(a.organization_id) || { id: a.organization_id, name: a.organization_name || 'Team', members: 0, pending: 0 }
+                  team.members += 1
+                  if (a.id && !alreadyIds.has(a.id)) team.pending += 1
+                  teams.set(a.organization_id, team)
+                }
+                const availableTeams = [...teams.values()].filter(tm => tm.pending > 0).sort((x, y) => x.name.localeCompare(y.name))
+                if (availableTeams.length === 0) return null
+                return (
+                  <form onSubmit={inviteTeamToFair} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                    <select
+                      data-testid="invite-team-select"
+                      value={shareTeamId}
+                      onChange={(e) => setShareTeamId(e.target.value)}
+                      style={{
+                        flex: 1, minWidth: 200, padding: '9px 12px', borderRadius: 8,
+                        border: '1px solid #e3e3e3', fontSize: 13, fontFamily: fonts.body,
+                        background: '#fff',
+                      }}
+                    >
+                      <option value="">{t('docs.inviteTeamPick')}</option>
+                      {availableTeams.map(tm => (
+                        <option key={tm.id} value={tm.id}>
+                          {tm.name} ({tm.pending}/{tm.members})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      data-testid="invite-team-submit"
+                      disabled={shareSaving || !shareTeamId}
+                      style={{
+                        padding: '9px 18px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
+                        background: '#fff', color: colors.inkPlum,
+                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body,
+                        opacity: shareSaving || !shareTeamId ? 0.6 : 1,
+                      }}
+                    >
+                      {shareSaving ? 'Saving...' : t('docs.inviteTeam')}
+                    </button>
+                  </form>
+                )
+              })()}
+              {shareNotice && (
+                <div data-testid="invite-team-notice" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: '#f0fdf4', color: '#15803d', fontSize: 12 }}>
+                  {shareNotice}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setShowEmailFallback(v => !v)}

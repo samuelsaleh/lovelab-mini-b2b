@@ -118,6 +118,52 @@ describe('DocumentsPanel — invite agent to a fair', () => {
     })
   })
 
+  // Sam, 14 Sep 2026: "how can I add Sarah's whole organization to the fair?"
+  test('offers each team once and posts organization_id for the picked team', async () => {
+    const sarah = { id: 'sarah', full_name: 'Sarah Goutard', email: 's@x.com', agent_status: 'active', organization_id: 'org-sarah', organization_name: "Sarah's team" }
+    const wassila = { id: 'wassila', full_name: 'Wassila', email: 'w@x.com', agent_status: 'invited', organization_id: 'org-sarah', organization_name: "Sarah's team" }
+    global.fetch = jest.fn((url, opts = {}) => {
+      const u = String(url)
+      if (u.includes('/access') && opts.method === 'POST') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ organization: { id: 'org-sarah', name: "Sarah's team" }, granted: 2, access: [] }) })
+      }
+      return mockFetch({ agents: [BASTIAN, sarah, wassila] })(url, opts)
+    })
+
+    render(<DocumentsPanel />)
+    fireEvent.click(await screen.findByText('select-inova'))
+    fireEvent.click(await screen.findByTestId('invite-fair-btn'))
+
+    const teamSelect = await screen.findByTestId('invite-team-select')
+    const options = Array.from(teamSelect.querySelectorAll('option')).map((o) => [o.value, o.textContent])
+    expect(options).toEqual([['', 'docs.inviteTeamPick'], ['org-sarah', "Sarah's team (2/2)"]])
+
+    fireEvent.change(teamSelect, { target: { value: 'org-sarah' } })
+    fireEvent.click(screen.getByTestId('invite-team-submit'))
+
+    await waitFor(() => {
+      const post = global.fetch.mock.calls.find((c) =>
+        String(c[0]).includes('/api/events/inova/access') && c[1]?.method === 'POST',
+      )
+      expect(post).toBeTruthy()
+      expect(JSON.parse(post[1].body)).toEqual({ organization_id: 'org-sarah', permission: 'edit' })
+    })
+    expect(await screen.findByTestId('invite-team-notice')).toHaveTextContent('docs.inviteTeamDone')
+  })
+
+  test('a team whose members all have access already is not offered', async () => {
+    const sarah = { id: 'sarah', full_name: 'Sarah Goutard', email: 's@x.com', agent_status: 'active', organization_id: 'org-sarah', organization_name: "Sarah's team" }
+    global.fetch = mockFetch({
+      agents: [BASTIAN, sarah],
+      access: [{ user_id: 'sarah', permission: 'edit', profiles: { full_name: 'Sarah Goutard', email: 's@x.com' } }],
+    })
+    render(<DocumentsPanel />)
+    fireEvent.click(await screen.findByText('select-inova'))
+    fireEvent.click(await screen.findByTestId('invite-fair-btn'))
+    expect(await screen.findByText('Sarah Goutard')).toBeInTheDocument()
+    expect(screen.queryByTestId('invite-team-select')).toBeNull()
+  })
+
   test('Remove revokes the share row', async () => {
     global.fetch = mockFetch({
       access: [{
