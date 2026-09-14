@@ -19,6 +19,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { generateTempPassword } from '../lib/auth/generateTempPassword.js';
+import { findAuthUserByEmail } from '../lib/auth/findAuthUser.js';
 
 const [, , emailArg, nameArg, passwordArg] = process.argv;
 
@@ -51,11 +52,10 @@ const fullName = (nameArg || '').trim();
 const password = passwordArg || generateTempPassword(fullName);
 let authUser = null;
 {
-  const { data: existing } = await admin.auth.admin.listUsers({ filter: `email.eq.${email}`, perPage: 1 });
-  const match = (existing?.users || []).find((u) => u.email?.toLowerCase() === email);
+  const match = await findAuthUserByEmail(admin, email);
   if (match) {
     authUser = match;
-    const { error } = await admin.auth.admin.updateUserById(match.id, { password });
+    const { error } = await admin.auth.admin.updateUserById(match.id, { password, email_confirm: true });
     if (error) { console.error('Failed to set password on existing auth user:', error.message); process.exit(1); }
     console.log(`✓ auth user existed — password reset (id ${match.id})`);
   } else {
