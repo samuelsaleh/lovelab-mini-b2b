@@ -161,6 +161,7 @@ test('inviteAgent new user with existing auth account (Google OAuth): sets passw
   const pwUpdate = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pwUpdate.id, 'oauth-id');
   assert.equal(pwUpdate.payload.password, 'Temp1234!');
+  assert.equal(pwUpdate.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
 
   const upsert = supabase.calls.find((c) => c.table === 'profiles' && c.op === 'upsert');
   assert.equal(upsert.payload.id, 'oauth-id', 'profile keyed to the existing auth id');
@@ -316,6 +317,7 @@ test('resendAgentInvite resets password and re-sends the welcome email', async (
   const pwUpdate = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pwUpdate.id, 'u-1');
   assert.equal(pwUpdate.payload.password, 'Temp1234!');
+  assert.equal(pwUpdate.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(record.emails.length, 1);
   assert.ok(record.emails[0].html.includes('Temp1234!'));
 });

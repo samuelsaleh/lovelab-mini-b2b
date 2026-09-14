@@ -46,6 +46,7 @@ export async function POST(request, { params }) {
 
     const { error: pwErr } = await adminSupabase.auth.admin.updateUserById(id, {
       password: tempPassword,
+      email_confirm: true,
     });
     if (pwErr) {
       console.error('[Agent reset-password] updateUserById error:', pwErr.message);

@@ -79,7 +79,7 @@ describe('Login page — UI contracts', () => {
 
 describe('Login page — error states with anchors', () => {
   it('(a) failed password sign-in renders <a href="/forgot-password"> Reset password', async () => {
-    mockSignInWithPassword.mockResolvedValueOnce({ data: null, error: { message: 'Invalid creds' } });
+    mockSignInWithPassword.mockResolvedValueOnce({ data: null, error: { message: 'Invalid login credentials' } });
     const user = userEvent.setup();
     render(<LoginPage />);
     await user.click(screen.getByRole('button', { name: 'Password' }));
@@ -92,6 +92,43 @@ describe('Login page — error states with anchors', () => {
     const resetLink = banner.querySelector('a[href="/forgot-password"]');
     expect(resetLink).not.toBeNull();
     expect(resetLink).toHaveTextContent(/reset password/i);
+  });
+
+  it('an unconfirmed address is told so, instead of "wrong password"', async () => {
+    mockSignInWithPassword.mockResolvedValueOnce({ data: null, error: { message: 'Email not confirmed' } });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.click(screen.getByRole('button', { name: 'Password' }));
+    await user.type(screen.getByPlaceholderText(/email address/i), 'foo@bar.com');
+    await user.type(screen.getByPlaceholderText(/^password$/i), 'Temp1234!');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText(/has not been confirmed yet/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('login-error-with-link')).not.toBeInTheDocument();
+  });
+
+  it('any other refusal is shown as Supabase worded it', async () => {
+    mockSignInWithPassword.mockResolvedValueOnce({ data: null, error: { message: 'Email logins are disabled' } });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.click(screen.getByRole('button', { name: 'Password' }));
+    await user.type(screen.getByPlaceholderText(/email address/i), 'foo@bar.com');
+    await user.type(screen.getByPlaceholderText(/^password$/i), 'Temp1234!');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText('Email logins are disabled')).toBeInTheDocument();
+  });
+
+  it('the password can be shown to check what was typed or autofilled', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await user.click(screen.getByRole('button', { name: 'Password' }));
+    const field = screen.getByPlaceholderText(/^password$/i);
+    await user.type(field, 'Raphael7520!');
+    expect(field).toHaveAttribute('type', 'password');
+    await user.click(screen.getByTestId('toggle-password'));
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveValue('Raphael7520!');
+    await user.click(screen.getByTestId('toggle-password'));
+    expect(field).toHaveAttribute('type', 'password');
   });
 
   it('(b) network error on magic-link renders <a href="/request-access"> Request access', async () => {

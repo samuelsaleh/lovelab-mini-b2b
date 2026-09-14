@@ -127,8 +127,10 @@ describe('POST /api/agents — new user', () => {
       full_name: 'Test Agent',
     }));
 
+    // supabase-js drops any `filter` key; the lookup pages through the list
+    // and matches the address itself (lib/auth/findAuthUser.js).
     expect(mockAdminSupabase.auth.admin.listUsers).toHaveBeenCalledWith(
-      expect.objectContaining({ filter: expect.stringContaining('new@test.com') })
+      expect.objectContaining({ page: 1, perPage: expect.any(Number) })
     );
   });
 
