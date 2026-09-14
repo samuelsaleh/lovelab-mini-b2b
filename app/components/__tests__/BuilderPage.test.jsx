@@ -360,8 +360,9 @@ describe('BuilderPage — PACK 6-RB-SYN', () => {
     expect(cutyLine.colorConfigs.every(c => c.closureType === 'nonBraided')).toBe(true)
     expect(cubixLine.colorConfigs.every(c => c.closureType === 'nonBraided')).toBe(true)
     expect(cutyLine.colorConfigs.every(c => c.certType === 'igi')).toBe(true)
-    // MULTI THREE doesn't opt into closure, so it stays null, but cert restores.
-    expect(m3Line.colorConfigs.every(c => c.closureType === null)).toBe(true)
+    // MULTI THREE is braided-only (Sam, 14 Sep 2026), so the pack's non-braided
+    // does not apply to it: every row is pinned to braided. Cert restores.
+    expect(m3Line.colorConfigs.every(c => c.closureType === 'braided')).toBe(true)
     expect(m3Line.colorConfigs.every(c => c.certType === 'igi')).toBe(true)
     // Royal Blue cord throughout.
     expect(cutyLine.colorConfigs.every(c => c.colorName === 'Royal Blue')).toBe(true)
@@ -438,7 +439,9 @@ describe('BuilderPage — Remove pack in one click', () => {
       mockColorConfig({ id: 'hand', caratIdx: 0 }),
     ])
     const cubix = makeLine(COLLECTIONS.find(c => c.id === 'CUBIX'), [packRow('p1', { id: 'x1', qty: 1 })])
-    const m3 = makeLine(M3, [packRow('p2', { id: 'm1', qty: 4 })])
+    // M3 is braided-only: a row already carrying it is left alone on open, so
+    // the only setLines call in these tests is the one the click makes.
+    const m3 = makeLine(M3, [packRow('p2', { id: 'm1', qty: 4, closureType: 'braided' })])
     return [cuty, cubix, m3]
   }
 
