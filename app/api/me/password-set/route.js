@@ -25,6 +25,20 @@ export async function PATCH(request) {
       return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });
     }
 
+    // An invited employee carries must_set_password on the auth user (see
+    // lib/employees/invite.js). Clear it now they chose a password. Best
+    // effort: has_password_set = true above already ends the redirect.
+    if (user.user_metadata?.must_set_password) {
+      try {
+        const { error: metaErr } = await adminSupabase.auth.admin.updateUserById(user.id, {
+          user_metadata: { ...user.user_metadata, must_set_password: false },
+        });
+        if (metaErr) console.error('[password-set PATCH] Could not clear must_set_password:', metaErr.message);
+      } catch (metaErr) {
+        console.error('[password-set PATCH] Could not clear must_set_password:', metaErr?.message);
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[password-set PATCH] Exception:', err);
