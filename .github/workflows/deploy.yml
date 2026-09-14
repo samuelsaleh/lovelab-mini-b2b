@@ -1,0 +1,21 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # The server restricts this key to one forced command
+          # (scripts/deploy.sh) via authorized_keys, so whatever is sent
+          # here is informational only — the server decides what actually
+          # runs.
+          script: echo "triggering deploy"
