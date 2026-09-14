@@ -11,6 +11,7 @@ import { suggestFairForDate } from '@/lib/fairSuggestion';
 import { findAgentFolderEvent } from '@/lib/agentFolderSelection';
 import { useAuth } from './AuthProvider';
 import ConsignmentRecipientForm from './ConsignmentRecipientForm';
+import { readJson } from '@/lib/readJson';
 
 const EMAIL_LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -51,15 +52,9 @@ function pdfTimeoutMessage() {
 // Safe JSON parser that gracefully handles non-JSON server responses.
 // When the API returns plain text like "Internal Server Error", we surface a
 // clean error instead of crashing with "Unexpected token 'I'... is not valid JSON".
-async function safeJson(res) {
-  const text = await res.text();
-  try {
-    return text ? JSON.parse(text) : {};
-  } catch {
-    const snippet = (text || '').slice(0, 140).trim();
-    return { error: snippet || `HTTP ${res.status}` };
-  }
-}
+// Every answer this dialog reads goes through readJson: a text page from a
+// restarting server becomes a sentence, not a JSON parse error (14 Sep 2026).
+const safeJson = readJson;
 
 // Per-channel UI config — drives all conditional rendering in the modal.
 // Adding a new channel: add one entry here; no inline ternaries needed elsewhere.
@@ -217,8 +212,8 @@ export default function SaveDocumentModal({
         fetch('/api/events', { signal: controller.signal }),
         fetch('/api/agents?summary=true', { signal: controller.signal }).catch(() => null),
       ]);
-      const data = await eventsRes.json();
-      if (!eventsRes.ok) throw new Error(data?.error || 'Failed to load events');
+      const data = await safeJson(eventsRes);
+      if (!eventsRes.ok || data?.notJson) throw new Error(data?.error || 'Failed to load events');
 
       let allEvents = data.events || [];
 
@@ -228,7 +223,7 @@ export default function SaveDocumentModal({
       let activeAgents = [];
       if (agentsRes?.ok) {
         try {
-          const agentsData = await agentsRes.json();
+          const agentsData = await safeJson(agentsRes);
           activeAgents = (agentsData.agents || []).filter(
             a => a.agent_status === 'active' || a.agent_status === 'invited'
           );
@@ -287,7 +282,7 @@ export default function SaveDocumentModal({
                   organization_id: a.organization_id || undefined,
                 }),
               })
-                .then(r => r.ok ? r.json() : null)
+                .then(r => r.ok ? safeJson(r) : null)
                 .then(d => d?.event || null)
                 .catch(() => null)
             )
@@ -344,7 +339,7 @@ export default function SaveDocumentModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newEventName.trim(), type: newEventType }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
         setSelectedEventId(data.event.id);
@@ -523,7 +518,7 @@ export default function SaveDocumentModal({
               address: consignmentData.recipient_address || null,
             }),
           });
-          const contactData = await contactRes.json();
+          const contactData = await safeJson(contactRes);
           if (contactData.contact?.id) resolvedContactId = contactData.contact.id;
         } catch { /* non-blocking — contact save failure doesn't block the document save */ }
       }
