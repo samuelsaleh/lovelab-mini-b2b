@@ -176,6 +176,7 @@ test('inviteAssistant new user with existing auth account (Google OAuth): sets p
   const pwUpdate = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pwUpdate.id, 'oauth-id');
   assert.equal(pwUpdate.payload.password, 'Temp1234!');
+  assert.equal(pwUpdate.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
 
   const upsert = supabase.calls.find((c) => c.table === 'profiles' && c.op === 'upsert');
   assert.equal(upsert.payload.id, 'oauth-id', 'profile keyed to the existing auth id');
@@ -252,6 +253,7 @@ test('inviteAssistant retries a half-finished invitation with a fresh password a
   const passwordUpdate = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(passwordUpdate.id, 'partial-user');
   assert.equal(passwordUpdate.payload.password, 'Temp1234!');
+  assert.equal(passwordUpdate.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(record.emails.length, 1);
   assert.ok(record.emails[0].html.includes('Temp1234!'), 'retry sends the welcome email, not an upgrade email');
 });

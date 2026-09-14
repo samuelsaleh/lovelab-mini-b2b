@@ -108,6 +108,7 @@ test('new employee: allowlist, auth user with the mark, admin profile, welcome e
   assert.ok(createUser, 'auth user should be created');
   assert.equal(createUser.payload.email, 'new.colleague@love-lab.com');
   assert.equal(createUser.payload.password, 'Temp1234!');
+  assert.equal(createUser.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(createUser.payload.email_confirm, true);
   assert.equal(createUser.payload.user_metadata.must_set_password, true, 'the mark that forces /set-password');
   assert.equal(createUser.payload.user_metadata.full_name, 'New Colleague');
@@ -146,6 +147,7 @@ test('new employee whose address already has an auth account (Google): password 
   const pw = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pw.id, 'oauth-id');
   assert.equal(pw.payload.password, 'Temp1234!');
+  assert.equal(pw.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(pw.payload.user_metadata.must_set_password, true);
   assert.equal(pw.payload.user_metadata.avatar_url, 'x', 'existing metadata survives');
   assert.equal(pw.payload.user_metadata.full_name, 'Col');
@@ -232,6 +234,7 @@ test('pending invite (profile exists, no password yet): password rotated, welcom
   const pw = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pw.id, 'pending-1');
   assert.equal(pw.payload.password, 'Temp1234!');
+  assert.equal(pw.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(pw.payload.user_metadata.must_set_password, true);
   assert.ok(record.emails[0].html.includes('Temp1234!'), 'welcome email, not the upgrade one');
 });
@@ -268,6 +271,7 @@ test('resendEmployeeInvite: fresh temp password, mark re-applied, has_password_s
   const pw = supabase.calls.find((c) => c.op === 'updateUserById');
   assert.equal(pw.id, 'emp-1');
   assert.equal(pw.payload.password, 'Temp1234!');
+  assert.equal(pw.payload.email_confirm, true, 'a mailed temp password confirms the address (14 Sep 2026)');
   assert.equal(pw.payload.user_metadata.must_set_password, true);
   assert.equal(pw.payload.user_metadata.full_name, 'Emp');
 

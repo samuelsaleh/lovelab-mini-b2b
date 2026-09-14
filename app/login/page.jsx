@@ -31,6 +31,7 @@ function LoginContent() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [magicEmail, setMagicEmail] = useState('');
 
@@ -115,12 +116,22 @@ function LoginContent() {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) {
-        setErrorWithLink({
-          text: 'Wrong email or password. ',
-          linkHref: '/forgot-password',
-          linkText: 'Reset password',
-          suffix: ' or use the Magic Link tab.',
-        });
+        // Say what Supabase said. One generic line for every failure hid the
+        // difference between a mistyped password, an unconfirmed address and
+        // password logins being switched off (14 Sep 2026).
+        const reason = String(error.message || '');
+        if (/not confirmed/i.test(reason)) {
+          setError('This address has not been confirmed yet. Ask an admin to resend your invite.');
+        } else if (/invalid login credentials/i.test(reason) || !reason) {
+          setErrorWithLink({
+            text: 'Wrong email or password. ',
+            linkHref: '/forgot-password',
+            linkText: 'Reset password',
+            suffix: ' or use the Magic Link tab.',
+          });
+        } else {
+          setError(reason);
+        }
         setLoading(false);
         return;
       }
@@ -209,14 +220,33 @@ function LoginContent() {
                 required
                 style={styles.input}
               />
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                style={styles.input}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  style={{ ...styles.input, paddingRight: 64 }}
+                />
+                {/* A typed or autofilled password can be checked by eye
+                    before it is sent — the difference between "wrong
+                    password" and knowing which one was wrong. */}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  data-testid="toggle-password"
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    border: 'none', background: 'transparent', color: '#5D3A5E',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '4px 6px',
+                  }}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
               <button type="submit" disabled={loading} style={{ ...styles.submitBtn, opacity: loading ? 0.7 : 1 }}>
                 {loading ? 'Signing in…' : 'Sign in'}
               </button>
