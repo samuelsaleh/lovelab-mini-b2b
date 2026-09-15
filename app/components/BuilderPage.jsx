@@ -3035,19 +3035,17 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: mobile ? 'flex-start' : 'flex-end' }}>
-                    {/* ─── Pricelist toggle (2025 / 2026 / 2026 from Oct.) ─── */}
-                    {/* Wraps in a fieldset for screen-reader semantics: a clear
-                        radiogroup label avoids confusing AT users who
-                        otherwise hear three unconnected buttons. */}
+                    {/* ─── Pricelist toggle ─── */}
+                    {/* Only shown when there is a choice. Since 15 Sep 2026 a
+                        new order is offered the October 2026 list alone; the
+                        toggle reappears on an order saved on an older list, so
+                        that list stays visible and can be left for October. */}
+                    {offeredPricelists.length > 1 && (
                     <fieldset
                       data-testid="pricelist-toggle"
                       aria-label="Active price list"
-                      title={
-                        'Choose 2025 for legacy clients still on the old pricing during the 6-month transition. 2026 is the current list.'
-                        + (offeredPricelists.includes('2026-10')
-                          ? ' The October revision reprices Moonlight, Sienna and Za-Ha.'
-                          : '')
-                      }
+                      title="This order was saved on an earlier price list. It keeps those prices until you switch it to the current list."
+
                       style={{
                         display: 'inline-flex', flexWrap: 'wrap', border: '1px solid #ddd',
                         borderRadius: 8, padding: 0, margin: 0, gap: 0,
@@ -3083,6 +3081,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         )
                       })}
                     </fieldset>
+                    )}
                     {/* Collapse / Expand all */}
                     {(() => {
                       const allExpanded = lines.filter(l => l.collectionId).every(l => l.expanded !== false)

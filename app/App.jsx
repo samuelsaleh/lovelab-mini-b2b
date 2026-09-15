@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
 import { sendChat, sendRecommendationChat } from '@/lib/api'
-import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getVisibleCollections, DEFAULT_PRICELIST, resolvePricelist } from '@/lib/catalog'
+import { COLLECTIONS, CORD_COLORS, CORD_TYPE_LABELS, HOUSING, calculateQuote, getVisibleCollections, NEW_ORDER_PRICELIST, resolvePricelist } from '@/lib/catalog'
 import { colors, fonts } from '@/lib/styles'
 import { validateVAT } from '@/lib/vat'
 import { useI18n } from '@/lib/i18n'
@@ -78,12 +78,13 @@ export default function App() {
   const [budgetRecommendations, setBudgetRecommendations] = useState(null)
   const [showRecommendations, setShowRecommendations] = useState(false)
 
-  // Active price list (2025 vs 2026). Defaults to DEFAULT_PRICELIST ('2026').
+  // Active price list. A new order starts on NEW_ORDER_PRICELIST (October 2026);
+  // re-edit, copy and session restore put back the list the document was saved on.
   // Lives at App-level so the same value flows into Builder, OrderForm,
   // saved metadata, and AI prompt context — single source of truth.
   // Wrapped setter normalizes the input through resolvePricelist so a stray
   // undefined or unknown year never lands in state.
-  const [pricelistYear, setPricelistYearRaw] = useState(DEFAULT_PRICELIST)
+  const [pricelistYear, setPricelistYearRaw] = useState(NEW_ORDER_PRICELIST)
   const setPricelistYear = useCallback((next) => {
     setPricelistYearRaw(resolvePricelist(next))
   }, [])
