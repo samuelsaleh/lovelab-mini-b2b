@@ -6,11 +6,19 @@ import { createClient } from '@/lib/supabase/client'
 import { FAIR_OUTREACH_TEMPLATES, FAIR_LEAD_TYPES, defaultTemplateForLeadType } from '@/lib/fair-assistant/templates'
 import { B2B_RESOURCE_GROUPS } from '@/lib/b2b-files'
 import FairOutreachChatPanel from '@/app/components/FairOutreachChatPanel'
+import FairBatchFollowUp from '@/app/components/FairBatchFollowUp'
+import { useI18n } from '@/lib/i18n'
+import { emailStatusFor } from '@/lib/fair-assistant/emailStatus'
+
+// Still exported from here for the Leads tab and its test; the helper now
+// lives in lib/fair-assistant/emailStatus.js so the follow-up shares it.
+export { emailStatusFor }
 
 const TABS = [
   { id: 'upload', label: 'Upload' },
   { id: 'leads', label: 'Leads' },
   { id: 'outreach', label: 'Outreach' },
+  { id: 'followup', label: 'Follow-up', i18nKey: 'fair.followup.tab' },
 ]
 
 // Vercel's serverless body limit is 4.5 MB. iPhone photos are 5-10 MB
@@ -80,30 +88,12 @@ async function compressImage(file) {
   return last
 }
 
-/**
- * One pill per lead answering "did the email reach them?".
- *
- * What Resend said after the send (webhook or daily check) outranks our own
- * send status: "sent" only means it left us. Returns null when nothing has
- * been written for the lead yet.
- */
-export function emailStatusFor(draft) {
-  if (!draft) return null
-  const delivery = draft.delivery_status || null
-  const deliveryBad = delivery === 'bounced' || delivery === 'complained' || delivery === 'failed' || delivery === 'suppressed'
-  if (deliveryBad) {
-    return { bg: '#fee2e2', fg: '#991b1b', label: delivery === 'complained' ? '✗ marked as spam' : '✗ bounced', detail: draft.delivery_error || null, bad: true }
-  }
-  if (delivery === 'delivered') return { bg: '#dcfce7', fg: '#166534', label: '✓ delivered', detail: null, bad: false }
-  if (delivery === 'delivery_delayed') return { bg: '#fef3c7', fg: '#92400e', label: '⏳ delivery delayed', detail: draft.delivery_error || null, bad: false }
-  if (draft.status === 'sent') return { bg: '#dcfce7', fg: '#166534', label: '✓ sent, awaiting delivery', detail: null, bad: false }
-  if (draft.status === 'failed') return { bg: '#fee2e2', fg: '#991b1b', label: '✗ not sent', detail: draft.error || null, bad: true }
-  if (draft.status === 'draft_ready') return { bg: '#f3e8ff', fg: '#6b21a8', label: '○ draft ready', detail: null, bad: false }
-  return null
-}
-
 export default function FairAssistantClient() {
+  const { t: tr } = useI18n()
   const [batches, setBatches] = useState([])
+  // Can the server translate? Checked once per visit to the Outreach tab
+  // (Sam, 15 Sep 2026: a rejected AI key surfaced as a translation error).
+  const [aiHealth, setAiHealth] = useState(null)
   const [activeBatchId, setActiveBatchId] = useState(null)
   const [batch, setBatch] = useState(null)
   const [leads, setLeads] = useState([])
@@ -209,6 +199,25 @@ export default function FairAssistantClient() {
       if (res.ok) setSavedTemplates(data.templates || [])
     } catch {}
   }, [])
+
+  useEffect(() => {
+    if (tab !== 'outreach' || aiHealth) return
+    let cancelled = false
+    fetch('/api/fair-assistant/diagnose')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) setAiHealth({ status: d.anthropic || 'unknown', detail: d.anthropicDetail || null }) })
+      .catch(() => { if (!cancelled) setAiHealth({ status: 'unknown', detail: null }) })
+    return () => { cancelled = true }
+  }, [tab, aiHealth])
+
+  const refreshDeliveries = useCallback(async () => {
+    if (!activeBatchId) return null
+    const res = await fetch(`/api/fair-assistant/batches/${activeBatchId}/refresh-deliveries`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Check failed')
+    await loadBatchDetails(activeBatchId)
+    return data
+  }, [activeBatchId, loadBatchDetails])
 
   useEffect(() => {
     loadBatches()
@@ -452,6 +461,8 @@ export default function FairAssistantClient() {
     }
     return stats
   }, [drafts])
+
+  const openedCount = useMemo(() => (drafts || []).filter((d) => d.opened_at || d.clicked_at).length, [drafts])
 
   const leadTypeCounts = useMemo(() => {
     const counts = { shop: 0, agent: 0, partner: 0, other: 0 }
@@ -826,7 +837,7 @@ export default function FairAssistantClient() {
         const n = data.translationFailures.length
         const langs = [...new Set(data.translationFailures.map((f) => f.languageLabel || f.language))].join(', ')
         const reason = data.translationFailures[0]?.reason || ''
-        setError(`⚠️ ${n} draft${n === 1 ? ' was' : 's were'} NOT generated: the ${langs} translation did not pass the language check, so nothing goes out to ${n === 1 ? 'that lead' : 'those leads'} in the wrong language. ${reason} Click "Generate all drafts" again to retry, or set the lead's language in Edit Lead.`)
+        setError(`⚠️ ${n} draft${n === 1 ? ' was' : 's were'} NOT generated: the ${langs} translation did not pass the language check, so nothing goes out to ${n === 1 ? 'that lead' : 'those leads'} in the wrong language. ${reason} Click "Write drafts to review" again to retry, or set the lead's language in Edit Lead.`)
       }
     } catch (err) {
       setError(err.message)
@@ -1110,8 +1121,8 @@ export default function FairAssistantClient() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: colors.lovelabMuted, flexWrap: 'wrap' }}>
               {TABS.map((t, idx) => {
                 const isActive = tab === t.id
-                const stepCount = t.id === 'upload' ? images.length : t.id === 'leads' ? leads.length : (batch?.total_sent || 0)
-                const stepLabels = ['Upload cards', 'Review leads', 'Send outreach']
+                const stepCount = t.id === 'upload' ? images.length : t.id === 'leads' ? leads.length : t.id === 'outreach' ? (batch?.total_sent || 0) : openedCount
+                const stepLabels = ['Upload cards', 'Review leads', 'Send outreach', tr('fair.followup.tab')]
                 return (
                   <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button
@@ -1141,6 +1152,7 @@ export default function FairAssistantClient() {
               {TABS.map((t) => (
                 <button
                   key={t.id}
+                  data-testid={`fair-tab-${t.id}`}
                   onClick={() => setTab(t.id)}
                   style={{
                     padding: '10px 18px', minHeight: 40, borderRadius: 20, border: `1px solid ${tab === t.id ? colors.inkPlum : colors.border}`,
@@ -1148,7 +1160,7 @@ export default function FairAssistantClient() {
                     fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 14, whiteSpace: 'nowrap', flexShrink: 0,
                   }}
                 >
-                  {t.label}
+                  {t.i18nKey ? tr(t.i18nKey) : t.label}
                 </button>
               ))}
               {batch && (
@@ -1504,6 +1516,17 @@ export default function FairAssistantClient() {
               </div>
             )}
 
+            {tab === 'followup' && batch && (
+              <FairBatchFollowUp
+                batch={batch}
+                images={images}
+                leads={leads}
+                drafts={drafts}
+                isMobile={isMobile}
+                onRefreshDeliveries={refreshDeliveries}
+              />
+            )}
+
             {tab === 'outreach' && batch && (() => {
               // ── Section definitions for the form column ──────────────────
               const sections = [
@@ -1588,41 +1611,12 @@ export default function FairAssistantClient() {
                 )
               )
 
-              const formColumn = (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {/* Hero: chat is the primary way to build emails. Everything below
-                      is a manual escape hatch. */}
-                  <button
-                    onClick={() => setChatOpen(true)}
-                    style={{
-                      width: '100%',
-                      padding: isMobile ? '18px 20px' : '22px 24px',
-                      borderRadius: 14,
-                      border: 'none',
-                      background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #8b5e92 100%)`,
-                      color: '#fff',
-                      cursor: 'pointer',
-                      fontFamily: fonts.body,
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      boxShadow: '0 4px 16px rgba(93,58,94,0.25)',
-                    }}
-                  >
-                    <div style={{ fontSize: isMobile ? 26 : 30, lineHeight: 1 }}>✨</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, marginBottom: 2 }}>Build this email with Claude</div>
-                      <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.4 }}>
-                        Describe what you want — Claude writes the copy, picks images, drafts the HTML. You approve.
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 22, opacity: 0.7 }}>→</div>
-                  </button>
-
-                  {/* Quick-start: preset templates + Claude chat */}
-                  <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                    <h3 style={{ fontSize: 12, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Start from a preset</h3>
+              // Presets and saved templates live inside the content card now —
+              // one place to start the text from, instead of a card of their own
+              // above everything (Sam, 15 Sep 2026: the page read as clutter).
+              const presetBlock = (
+                <div data-testid="fair-preset-block" style={{ padding: '12px 14px', marginBottom: 14, background: '#faf7fb', border: `1px solid ${colors.borderLight || '#eee'}`, borderRadius: 10 }}>
+<div style={{ fontSize: 12, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Start from</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                       {FAIR_OUTREACH_TEMPLATES.map((t) => (
                         <button
@@ -1677,7 +1671,20 @@ export default function FairAssistantClient() {
                         </ul>
                       </details>
                     )}
-                  </div>
+                                  </div>
+              )
+
+              const aiBad = aiHealth && aiHealth.status !== 'ok' && aiHealth.status !== 'unknown'
+
+              const formColumn = (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {aiBad && (
+                    <div role="alert" data-testid="fair-ai-banner" style={{ padding: '12px 14px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13, lineHeight: 1.45 }}>
+                      <strong>The server's AI key is missing or invalid — emails cannot be translated.</strong>{' '}
+                      Ask the server admin to set a valid ANTHROPIC_API_KEY and restart the app. Until then, Send stays off.
+                      {aiHealth.detail ? <span style={{ display: 'block', marginTop: 4, color: '#b91c1c', fontSize: 12 }}>{aiHealth.detail}</span> : null}
+                    </div>
+                  )}
 
                   {/* Per-type editing tab strip — choose which template the
                       content fields below are editing. Buttons/attachments
@@ -1731,18 +1738,30 @@ export default function FairAssistantClient() {
                     if (!contentSection) return null
                     return (
                       <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
-                        <div style={{ marginBottom: 12 }}>
-                          <h3 style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            {contentSection.title}
-                            <span style={{
-                              fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 10,
-                              background: '#f8f0fa', color: colors.inkPlum, border: `1px solid ${colors.inkPlum}`,
-                            }}>
-                              {editingType === 'shop' ? 'Shops' : editingType === 'agent' ? 'Agents' : 'Partners'}
-                            </span>
-                          </h3>
-                          <p style={{ margin: 0, fontSize: 13, color: colors.lovelabMuted }}>{contentSection.description}</p>
+                        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                            <h3 style={{ fontSize: 15, fontWeight: 700, color: colors.inkPlum, margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              {contentSection.title}
+                              <span style={{
+                                fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 10,
+                                background: '#f8f0fa', color: colors.inkPlum, border: `1px solid ${colors.inkPlum}`,
+                              }}>
+                                {editingType === 'shop' ? 'Shops' : editingType === 'agent' ? 'Agents' : 'Partners'}
+                              </span>
+                            </h3>
+                            <p style={{ margin: 0, fontSize: 13, color: colors.lovelabMuted }}>{contentSection.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setChatOpen(true)}
+                            data-testid="fair-build-with-claude"
+                            title="Describe what you want — Claude writes the copy, picks images, drafts the HTML. You approve."
+                            style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg, ${colors.inkPlum} 0%, #8b5e92 100%)`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                          >
+                            ✨ Build with Claude
+                          </button>
                         </div>
+                        {presetBlock}
                         {contentSection.fields.map((field) => (
                           <label key={field.key} style={{ display: 'block', marginBottom: 14, fontSize: 14 }}>
                             <span style={{ display: 'block', marginBottom: 5, fontWeight: 600, color: colors.inkPlum, fontSize: 14 }}>{field.label}</span>
@@ -1831,13 +1850,14 @@ export default function FairAssistantClient() {
                       will do; the other two read as the optional checks. */}
                   {(() => {
                     const sendBusy = Boolean(busyAction && busyAction.startsWith('send'))
-                    const sendBlocked = uploading || leads.length === 0
+                    const sendBlocked = uploading || leads.length === 0 || Boolean(aiBad)
                     return (
                       <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
                         <button
                           onClick={runSend}
                           disabled={sendBusy || sendBlocked}
                           title={
+                            aiBad ? 'The server\'s AI key is missing or invalid — ask the server admin' :
                             uploading ? 'Wait for uploads to finish' :
                             leads.length === 0 ? 'No leads in this batch yet' :
                             'Writes every email, translates it, then sends'
@@ -1856,6 +1876,7 @@ export default function FairAssistantClient() {
                         >
                           {busyAction === 'send' ? 'Writing and sending…'
                             : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} to go`
+                            : aiBad ? 'AI key missing — Send is off'
                             : uploading ? 'Wait for uploads…'
                             : leads.length === 0 ? 'No leads yet'
                             : `Write and send to ${leads.length} lead${leads.length === 1 ? '' : 's'}`}
@@ -1867,24 +1888,29 @@ export default function FairAssistantClient() {
                               ? `${sendStats.sent} email${sendStats.sent === 1 ? '' : 's'} sent so far${sendStats.failed > 0 ? ` · ${sendStats.failed} failed` : ''}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}. Sending again only writes to leads that have not received one.`
                               : `Each lead gets their own email in their own language${attachedCount > 0 ? `, with ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}. Nothing is sent until you press this.`}
                         </p>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${colors.borderLight || '#eee'}`, paddingTop: 12 }}>
-                          <span style={{ fontSize: 13, color: colors.lovelabMuted, alignSelf: 'center', marginRight: 2 }}>Check first:</span>
-                          <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 14 }}>
-                            {busyAction === 'preview' ? 'Loading…' : 'Preview one email'}
-                          </button>
-                          <button
-                            onClick={runGenerateAll}
-                            disabled={busyAction === 'generate' || leads.length === 0}
-                            title="Writes every draft now so you can read them in the Leads tab — without sending"
-                            style={{ ...actionBtnStyle, fontSize: 14 }}
-                          >
-                            {busyAction === 'generate'
-                              ? 'Writing…'
-                              : sendStats.ready > 0
-                                ? `Rewrite ${sendStats.ready} draft${sendStats.ready === 1 ? '' : 's'}`
-                                : 'Write drafts to review'}
-                          </button>
-                        </div>
+                        <details data-testid="fair-check-first" style={{ borderTop: `1px solid ${colors.borderLight || '#eee'}`, paddingTop: 10 }}>
+                          <summary style={{ cursor: 'pointer', fontSize: 13, color: colors.lovelabMuted, userSelect: 'none' }}>Check before sending (optional)</summary>
+                          <p style={{ margin: '8px 0 10px', fontSize: 13, color: colors.lovelabMuted }}>
+                            Send already writes, translates and checks every email. Use these only to read them first.
+                          </p>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button onClick={runPreview} disabled={busyAction === 'preview'} style={{ ...actionBtnStyle, fontSize: 14 }}>
+                              {busyAction === 'preview' ? 'Loading…' : 'Preview one email'}
+                            </button>
+                            <button
+                              onClick={runGenerateAll}
+                              disabled={busyAction === 'generate' || leads.length === 0}
+                              title="Writes every draft now so you can read them in the Leads tab — without sending"
+                              style={{ ...actionBtnStyle, fontSize: 14 }}
+                            >
+                              {busyAction === 'generate'
+                                ? 'Writing…'
+                                : sendStats.ready > 0
+                                  ? `Rewrite ${sendStats.ready} draft${sendStats.ready === 1 ? '' : 's'}`
+                                  : 'Write drafts to review'}
+                            </button>
+                          </div>
+                        </details>
                       </div>
                     )
                   })()}

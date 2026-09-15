@@ -50,6 +50,13 @@ describe('POST /api/webhooks/resend', () => {
     expect(event).toEqual(EVENT);
   });
 
+  it('passes an open event through untouched, so opens can be counted', async () => {
+    const opened = { type: 'email.opened', created_at: '2026-09-15T09:00:00.000Z', data: { email_id: 're_9' } };
+    const res = await POST(makeRequest(JSON.stringify(opened)));
+    expect(res.status).toBe(200);
+    expect(applyResendEvent.mock.calls[0][1]).toEqual(opened);
+  });
+
   it('refuses a bad signature and never touches the database', async () => {
     const res = await POST(makeRequest(JSON.stringify(EVENT), { signature: 'v1,bm9wZQ==' }));
     expect(res.status).toBe(401);

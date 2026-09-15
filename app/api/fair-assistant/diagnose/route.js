@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
 import { getFolderInfo } from '@/lib/google-drive';
+import { checkAnthropicKey } from '@/lib/fair-assistant/aiHealth';
 
 export async function GET() {
   const auth = await requireFairAdmin();
@@ -60,6 +61,10 @@ export async function GET() {
       result.accountEmail = 'parse_error';
     }
   }
+
+  const ai = await checkAnthropicKey();
+  result.anthropic = ai.status;
+  result.anthropicDetail = ai.detail;
 
   if (result.folderId) {
     try {
