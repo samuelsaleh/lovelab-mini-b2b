@@ -20,6 +20,7 @@ jest.mock('@/lib/google-drive', () => ({
   createDailyBackupFolder: (...args) => mockCreateDailyBackupFolder(...args),
   uploadJsonToDrive: (...args) => mockUploadJsonToDrive(...args),
   uploadFileToDrive: (...args) => mockUploadFileToDrive(...args),
+  hasDriveCredentials: () => true,
 }))
 
 jest.mock('@/lib/supabase/server', () => ({
@@ -107,5 +108,28 @@ describe('GET /api/backup — admin alert recipient parsing', () => {
     const body = capturedFetchBodies[0]
     expect(body.to).toEqual(['a@x.com'])
     expect(body.cc).toEqual(['b@x.com'])
+  })
+})
+
+describe('GET /api/backup — no Drive credentials on this server (Sam, 15 Sep 2026)', () => {
+  test('skips quietly, no alert email, and says why in the response', async () => {
+    jest.resetModules()
+    jest.doMock('@/lib/google-drive', () => ({
+      createDailyBackupFolder: (...args) => mockCreateDailyBackupFolder(...args),
+      uploadJsonToDrive: (...args) => mockUploadJsonToDrive(...args),
+      uploadFileToDrive: (...args) => mockUploadFileToDrive(...args),
+      hasDriveCredentials: () => false,
+    }))
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    const { GET } = require('../backup/route')
+    const res = await GET(makeCronRequest())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.skipped).toBe(true)
+    expect(body.reason).toBe('no_drive_credentials')
+    expect(body.message).toMatch(/GOOGLE_DRIVE_REFRESH_TOKEN/)
+    expect(mockCreateDailyBackupFolder).not.toHaveBeenCalled()
+    expect(capturedFetchBodies).toEqual([])
+    console.error.mockRestore()
   })
 })
