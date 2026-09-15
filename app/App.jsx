@@ -25,6 +25,7 @@ import {
   shouldAdminBypassClientGate,
   restoreClientFromStorage,
   formStateForRestock,
+  formStateForNewClient,
 } from '@/lib/clientGatePersistence'
 import { clientFromOrderFormState } from '@/lib/orderFormHeader'
 import { finalizeTransition, editingOrderLabel } from '@/lib/editFlow'
@@ -406,15 +407,24 @@ export default function App() {
     }
   }, [authLoading, user, handleReEdit, setPricelistYear])
 
-  // ─── Duplicate / restock a saved document as a NEW order ───
-  // Keeps product rows AND client contact fields (company, email, phone, VAT,
-  // shipping, DZB, groupement) so Copy = same-boutique restock. Clears only
-  // editingDocumentId so save creates a new document.
-  const handleDuplicate = useCallback((doc) => {
+  // ─── Duplicate a saved document as a NEW order ───
+  // The dialog (DuplicateOrderModal) asks who it is for first, so this runs
+  // in one of two modes (Sam, 15 Sep 2026):
+  //   same → keeps the boutique's contact fields: a restock, the old Copy.
+  //   new  → keeps only the cart and takes the new client's fields, because
+  //          the old shop's address, VAT, delivery and discounts would be
+  //          wrong on someone else's order.
+  // Either way editingDocumentId is cleared, so saving writes a new document,
+  // and the fair is carried over when the dialog asked to keep it — otherwise
+  // the copy files itself outside the fair it belongs to.
+  const handleDuplicate = useCallback((doc, choice = {}) => {
     const formState = doc?.metadata?.formState
     if (!formState) return
-    const rest = formStateForRestock(formState)
+    const rest = choice.mode === 'new'
+      ? formStateForNewClient(formState, choice.clientFields || {})
+      : formStateForRestock(formState)
     if (!rest) return
+    if (choice.keepFair && formState.eventName) rest.eventName = formState.eventName
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
     // Sync App-level client so ClientGate / builder also see the boutique.

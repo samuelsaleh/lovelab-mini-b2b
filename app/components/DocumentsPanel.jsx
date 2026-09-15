@@ -12,6 +12,7 @@ import ConfirmDialog from './ConfirmDialog'
 import { useAuth } from './AuthProvider'
 import DocumentsSidebar from './DocumentsSidebar'
 import DocumentRow from './DocumentRow'
+import DuplicateOrderModal from './DuplicateOrderModal'
 import DocumentsAnalytics from './DocumentsAnalytics'
 
 // Picker value for "no fair" in the bulk bar — sends event_id: null.
@@ -124,6 +125,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [shareNotice, setShareNotice] = useState('')
   const [shareAgents, setShareAgents] = useState([])
   const [showEmailFallback, setShowEmailFallback] = useState(false)
+  // Duplicate asks who the new order is for before anything opens
+  // (Sam, 15 Sep 2026). Everyone who can see the order may do it.
+  const [duplicateDoc, setDuplicateDoc] = useState(null)
 
   // ── Auth helpers ──────────────────────────────────────────────────────────
   const isAdmin = profile?.role === 'admin'
@@ -1330,7 +1334,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
                 isAdmin={isAdmin}
                 canEdit={canEditDoc(doc)}
                 onReEdit={onReEdit}
-                onDuplicate={onDuplicate}
+                onDuplicate={onDuplicate ? ((d) => setDuplicateDoc(d)) : undefined}
                 onDownload={downloadDocument}
                 onDelete={requestDelete}
                 onRequestInternal={requestMoveToInternal}
@@ -1744,6 +1748,18 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateDoc && (
+        <DuplicateOrderModal
+          doc={duplicateDoc}
+          onCancel={() => setDuplicateDoc(null)}
+          onConfirm={(choice) => {
+            const doc = duplicateDoc
+            setDuplicateDoc(null)
+            onDuplicate?.(doc, choice)
+          }}
+        />
       )}
     </div>
   )
