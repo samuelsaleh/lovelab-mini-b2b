@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server';
-import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive } from '@/lib/google-drive';
+import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive, hasDriveCredentials } from '@/lib/google-drive';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
 import { NextResponse } from 'next/server';
@@ -105,6 +105,17 @@ export async function GET(request) {
 
   const today = new Date().toISOString().split('T')[0];
   const results = { date: today, tables: {}, errors: [] };
+
+  // Sam, 15 Sep 2026: "cancel this message, it gets sent every day". Since
+  // the move to the new server there are no Google Drive credentials, so the
+  // backup cannot run at all. That is a setup gap, not a failed backup: say
+  // so in the log and the response, and keep the alert email for real
+  // failures. The health check still surfaces it on its own report.
+  if (!hasDriveCredentials()) {
+    const message = 'Backup skipped: no Google Drive credentials on this server. Set GOOGLE_DRIVE_REFRESH_TOKEN + GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET, or GOOGLE_SERVICE_ACCOUNT_KEY.';
+    console.error('[backup] ' + message);
+    return NextResponse.json({ ...results, skipped: true, reason: 'no_drive_credentials', message }, { status: 200 });
+  }
 
   try {
     const adminSupabase = createAdminClient();
