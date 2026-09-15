@@ -106,3 +106,26 @@ test('resend sends a PUT with _resend', async () => {
   await waitFor(() => expect(bodies).toEqual([{ _resend: true }]))
   expect(await screen.findByTestId('employee-notice')).toHaveTextContent('new@love-lab.com')
 })
+
+// Sam, 15 Sep 2026: an employee can be marked commercial with a rate.
+test('Make commercial asks for a rate and sends it; a commercial shows the badge', async () => {
+  const bodies = []
+  const list = [
+    ...employees,
+    { id: 'emp-3', full_name: 'Raphael', email: 'raphael@love-lab.com', role: 'admin', has_password_set: true, you: false, is_agent: true, agent_status: 'active', commission_rate: 10 },
+  ]
+  mockFetch([
+    { method: 'GET', url: /\/api\/employees$/, reply: async () => ({ body: { employees: list } }) },
+    { method: 'PUT', url: /\/api\/employees\/emp-1$/, reply: async (init) => { bodies.push(JSON.parse(init.body)); return { body: { employee: {} } } } },
+  ])
+  render(<AdminEmployeesPage />)
+  const rows = await screen.findAllByTestId('employee-row')
+  expect(within(rows[3]).getByTestId('employee-commercial-badge')).toHaveTextContent('Commercial · 10 %')
+  expect(within(rows[1]).queryByTestId('employee-commercial-badge')).toBeNull()
+
+  fireEvent.click(within(rows[1]).getByTestId('employee-commercial-on'))
+  fireEvent.change(within(rows[1]).getByTestId('employee-rate'), { target: { value: '12.5' } })
+  fireEvent.click(within(rows[1]).getByTestId('employee-commercial-save'))
+  await waitFor(() => expect(bodies).toEqual([{ commercial: true, commission_rate: 12.5 }]))
+  expect(await screen.findByTestId('employee-notice')).toHaveTextContent('Christelle is now a commercial at 12.5 %')
+})

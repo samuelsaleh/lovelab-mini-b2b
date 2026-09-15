@@ -95,7 +95,18 @@ export async function GET(request) {
     // to the agent through a commission row. Do NOT expand through every event
     // in the agent's organization: that made every teammate order appear on the
     // owner's personal page and looked like recurring duplicates.
-    if (isAdmin && createdByAgent) {
+    if (isAdmin && scopeMine) {
+      // An admin's own page (/agent, "my orders"): the orders they saved or
+      // were credited with, and nothing else — the same rule an agent gets.
+      // Sam, 15 Sep 2026: admins who are also commercials track their sales.
+      const selfIds = await resolveAgentIds(adminSupabase, user.id);
+      const selfOr = buildAgentDocumentOrFilter({ selfIds, teamCreatorIds: selfIds, includeAgentId: hasAgentCol });
+      if (selfOr) {
+        query = query.or(selfOr);
+      } else {
+        return NextResponse.json({ documents: [], total_count: 0, page, per_page: perPage });
+      }
+    } else if (isAdmin && createdByAgent) {
       const agentIds = await resolveAgentIds(adminSupabase, createdByAgent);
 
       const { data: attributedCommissions } = await adminSupabase

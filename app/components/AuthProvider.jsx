@@ -136,6 +136,10 @@ export function AuthProvider({ children }) {
     // because has_password_set is false on every Google-created profile too
     // and must not trap the admins who never had a password.
     const invitedWithTempPassword = user?.user_metadata?.must_set_password === true;
+    // An admin is only ever asked when they were invited with a temporary
+    // password. An admin who is also a commercial (is_agent, Sam 15 Sep 2026)
+    // signs in with Google and has no password to replace.
+    if (profile.role === 'admin' && !invitedWithTempPassword) return;
     if (!profile.is_agent && !profile.is_assistant && !invitedWithTempPassword) return;
     if (profile.has_password_set) return;
     if (!pathname) return;

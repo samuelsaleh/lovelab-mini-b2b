@@ -70,6 +70,42 @@ export async function PUT(request, { params }) {
       }
     }
 
+    // Sam, 15 Sep 2026: some admins are commercials too — they take orders
+    // and earn commission on them, like an agent. "Commercial" is the agent
+    // flag on their profile: the Save dialog then credits their orders to
+    // them, a commission row is written on save, and they appear on Admin →
+    // Agents with orders, commissions and what is owed. Switching it off
+    // keeps the history and the rate; only new orders stop being credited.
+    if (body?.commercial === true || body?.commercial === false) {
+      let patch;
+      if (body.commercial) {
+        const rate = Number(body.commission_rate);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+          return NextResponse.json({ error: 'Commission rate must be between 0 and 100' }, { status: 400 });
+        }
+        patch = {
+          is_agent: true,
+          agent_status: 'active',
+          agent_deleted_at: null,
+          commission_rate: rate,
+          agent_since: employee.agent_since || new Date().toISOString(),
+        };
+      } else {
+        patch = { is_agent: false, agent_status: 'inactive' };
+      }
+      const { data, error } = await adminSupabase
+        .from('profiles')
+        .update(patch)
+        .eq('id', id)
+        .select(EMPLOYEE_SELECT)
+        .single();
+      if (error) {
+        console.error('[Employee PUT] commercial update error:', error.message);
+        return NextResponse.json({ error: 'Failed to update the employee' }, { status: 500 });
+      }
+      return NextResponse.json({ employee: { ...data, you: id === session.user.id } });
+    }
+
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
   } catch (err) {
     console.error('[Employee PUT] Exception:', err);

@@ -104,7 +104,10 @@ export async function GET(request) {
     // OAuth users already have an identity — forcing a password step makes no sense.
     // Use falsy check (not strict ===) so null and undefined also trigger the redirect.
     const p = effectiveProfile || profileRow;
-    if (!isOAuthSignIn && p?.is_agent === true && !p?.has_password_set) {
+    // An admin who is also a commercial (is_agent, Sam 15 Sep 2026) is not an
+    // invited agent: only the temp-password mark sends an admin to set-password.
+    const adminWithoutMark = p?.role === 'admin' && sessionUser?.user_metadata?.must_set_password !== true;
+    if (!isOAuthSignIn && p?.is_agent === true && !p?.has_password_set && !adminWithoutMark) {
       const setPasswordPath = `/set-password${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`;
       return NextResponse.redirect(buildRedirect(setPasswordPath));
     }
