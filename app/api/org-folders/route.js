@@ -3,6 +3,70 @@ import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { checkRateLimit } from '@/lib/rateLimit';
 
+// Commercials (Sam, 15 Sep 2026): admins who take orders and earn commission.
+// They have no organization, so the Agents section of the Documents sidebar
+// never lists them. This gives the sidebar its own "Commercials" section: one
+// row per commercial with the number of orders saved by them or credited to
+// them — the same set /api/documents?created_by_agent=<id> returns.
+// Admin callers only; never throws (the sidebar just shows no section).
+const EXCLUDED_CHANNELS = '("internal","consignment","delete_from_stock","sample")';
+
+async function loadCommercials(adminSupabase) {
+  try {
+    const { data: people, error } = await adminSupabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('role', 'admin')
+      .eq('is_agent', true)
+      .is('agent_deleted_at', null)
+      .neq('agent_status', 'inactive')
+      .order('full_name');
+    if (error) throw error;
+    const commercials = (people || []).map((p) => ({
+      user_id: p.id,
+      full_name: p.full_name || '',
+      email: p.email || '',
+      doc_count: 0,
+    }));
+    if (commercials.length === 0) return commercials;
+
+    const ids = commercials.map((c) => c.user_id);
+    const { data: commissions, error: commErr } = await adminSupabase
+      .from('agent_commissions')
+      .select('agent_id, document_id')
+      .in('agent_id', ids);
+    if (commErr) throw commErr;
+    const docOwners = new Map(); // document_id -> Set<user_id>
+    for (const c of commissions || []) {
+      if (!c.document_id) continue;
+      if (!docOwners.has(c.document_id)) docOwners.set(c.document_id, new Set());
+      docOwners.get(c.document_id).add(c.agent_id);
+    }
+
+    const orParts = [`created_by.in.(${ids.join(',')})`];
+    if (docOwners.size > 0) orParts.push(`id.in.(${[...docOwners.keys()].join(',')})`);
+    const { data: docs, error: docsErr } = await adminSupabase
+      .from('documents')
+      .select('id, created_by')
+      .or(orParts.join(','))
+      .is('deleted_at', null)
+      .not('order_channel', 'in', EXCLUDED_CHANNELS);
+    if (docsErr) throw docsErr;
+
+    const countBy = new Map();
+    for (const d of docs || []) {
+      const owners = new Set(docOwners.get(d.id) || []);
+      if (d.created_by) owners.add(d.created_by);
+      for (const uid of owners) countBy.set(uid, (countBy.get(uid) || 0) + 1);
+    }
+    for (const c of commercials) c.doc_count = countBy.get(c.user_id) || 0;
+    return commercials;
+  } catch (err) {
+    console.error('[org-folders GET] commercials failed:', err?.message);
+    return [];
+  }
+}
+
 export async function GET(request) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'org-folders' });
@@ -14,6 +78,12 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
     const admin = isAdmin(session.profile);
+    // Runs alongside the organization queries; only admins get the section.
+    const commercialsPromise = admin ? loadCommercials(adminSupabase) : Promise.resolve(null);
+    const respond = async (orgFolders) => {
+      const commercials = await commercialsPromise;
+      return NextResponse.json(commercials ? { orgFolders, commercials } : { orgFolders });
+    };
 
     let orgs;
 
@@ -35,7 +105,7 @@ export async function GET(request) {
 
       const userOrgIds = (userMemberships || []).map(m => m.organization_id);
       if (userOrgIds.length === 0) {
-        return NextResponse.json({ orgFolders: [] });
+        return respond([]);
       }
 
       const { data, error } = await adminSupabase
@@ -49,7 +119,7 @@ export async function GET(request) {
     }
 
     if (orgs.length === 0) {
-      return NextResponse.json({ orgFolders: [] });
+      return respond([]);
     }
 
     const orgIds = orgs.map(o => o.id);
@@ -250,7 +320,7 @@ export async function GET(request) {
       // its in-memory filter when doc_count looks unset/zero.
     }
 
-    return NextResponse.json({ orgFolders });
+    return respond(orgFolders);
   } catch (err) {
     console.error('[org-folders GET]', err.message);
     return NextResponse.json({ error: err.message || 'Failed to load organization folders' }, { status: 500 });

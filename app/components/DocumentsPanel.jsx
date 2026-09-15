@@ -36,6 +36,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   const [events, setEvents] = useState([])
   const [documents, setDocuments] = useState([])
   const [orgFolders, setOrgFolders] = useState([])
+  // Commercials (Sam, 15 Sep 2026): admins who take orders, listed in their
+  // own sidebar section with the orders saved by or credited to them.
+  const [commercials, setCommercials] = useState([])
   const [orgFoldersError, setOrgFoldersError] = useState(null)
   const orgFoldersCacheRef = useRef(null)
 
@@ -53,6 +56,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // to one member. Matched on created_by, so it stays correct for the historical
   // orders whose event_id still points at another member's folder.
   const [selectedOrgMemberId, setSelectedOrgMemberId] = useState(null)
+  const [selectedCommercialId, setSelectedCommercialId] = useState(null)
   const [showInternal, setShowInternal] = useState(false)
   const [showConsignment, setShowConsignment] = useState(false)
   // Draft (parked orders) view — its own "Draft" folder, separate from the
@@ -220,6 +224,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
             orgFoldersCacheRef.current = orgData.orgFolders
             setOrgFoldersError(null)
           }
+          if (Array.isArray(orgData.commercials)) setCommercials(orgData.commercials)
         }
       } catch {
         setOrgFoldersError('Failed to load company folders')
@@ -267,9 +272,13 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // ── Folder fetch ──────────────────────────────────────────────────────────
   // Same page loop as All Documents. A single per_page=200 call used to hide
   // every order past the first page of a fat fair.
-  const fetchFolderDocs = async (eventId, orgId) => {
+  const fetchFolderDocs = async (eventId, orgId, commercialId) => {
     let base = null
-    if (orgId) {
+    if (commercialId) {
+      // Orders the commercial saved or was credited with — the same filter
+      // their commercial page uses.
+      base = `/api/documents?created_by_agent=${encodeURIComponent(commercialId)}`
+    } else if (orgId) {
       base = `/api/documents?organization_id=${encodeURIComponent(orgId)}`
     } else if (eventId && eventId !== 'none') {
       base = `/api/documents?event_id=${encodeURIComponent(eventId)}`
@@ -304,13 +313,13 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
 
   useEffect(() => {
     if (showInternal || showConsignment || showDrafts || showOffres) return
-    if (selectedOrgId || (selectedEventId && selectedEventId !== 'none')) {
-      fetchFolderDocs(selectedEventId, selectedOrgId)
+    if (selectedCommercialId || selectedOrgId || (selectedEventId && selectedEventId !== 'none')) {
+      fetchFolderDocs(selectedEventId, selectedOrgId, selectedCommercialId)
     } else {
       setFolderDocs([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId, selectedOrgId, refreshKey, showInternal, showConsignment, showDrafts, showOffres])
+  }, [selectedEventId, selectedOrgId, selectedCommercialId, refreshKey, showInternal, showConsignment, showDrafts, showOffres])
 
   // ── Internal orders ───────────────────────────────────────────────────────
   const fetchInternalDocs = async () => {
@@ -417,7 +426,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         }
       })
       setDocuments(prev => retag(prev))
-      if (isFolderView) fetchFolderDocs(selectedEventId, selectedOrgId)
+      if (isFolderView) fetchFolderDocs(selectedEventId, selectedOrgId, selectedCommercialId)
       else setFolderDocs(prev => retag(prev))
       // Sidebar counts come from the server — refresh them so the fair's
       // doc_count follows the move.
@@ -785,7 +794,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
   // `documents` array (All Documents / No Event views).
   const isFolderView =
     !showInternal && !showConsignment && !showDrafts && !showOffres &&
-    (Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
+    (Boolean(selectedCommercialId) || Boolean(selectedOrgId) || (selectedEventId !== null && selectedEventId !== 'none'))
 
   // Typing in search always looks at every loaded order, not just the open
   // folder. Clear the box and you are back in that folder only.
@@ -799,7 +808,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       // they live only in the dedicated Draft folder until promoted to sent.
       if (doc.status === 'draft') return false
       if (searchingAllDocs) return matchesSearch(doc)
-      if (selectedOrgId) {
+      if (selectedCommercialId) {
+        // folderDocs already came back filtered by the server for this person.
+      } else if (selectedOrgId) {
         const byMember = selectedOrgMemberIds?.has(doc.created_by)
         const byEvent = doc.events?.organization_id === selectedOrgId
         if (!byMember && !byEvent) return false
@@ -816,7 +827,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return matchesSearch(doc)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documents, folderDocs, isFolderView, searchingAllDocs, selectedOrgId, selectedOrgMemberIds, selectedOrgMemberId, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
+  }, [documents, folderDocs, isFolderView, searchingAllDocs, selectedOrgId, selectedOrgMemberIds, selectedOrgMemberId, selectedCommercialId, selectedEventId, search, showInternal, showConsignment, showDrafts, showOffres])
 
   // The global list is complete, so the rows and analytics always use the same
   // filtered dataset. This prevents a result from appearing only in analytics.
@@ -842,6 +853,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (showDrafts) return 'Draft'
     if (showInternal) return 'Internal Orders'
     if (showConsignment) return 'Consignment Orders'
+    if (selectedCommercialId) {
+      const c = commercials.find(x => x.user_id === selectedCommercialId)
+      return c?.full_name || c?.email || 'Commercial'
+    }
     if (selectedOrgId) {
       const org = orgFolders.find(o => o.organization_id === selectedOrgId)
       const members = org?.members || []
@@ -861,7 +876,7 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
       return events.find(e => e.id === selectedEventId)?.name || ''
     if (selectedEventId === 'none') return 'No Event'
     return 'All Documents'
-  }, [showDrafts, showOffres, showInternal, showConsignment, selectedOrgId, selectedOrgMemberId, selectedEventId, orgFolders, events])
+  }, [showDrafts, showOffres, showInternal, showConsignment, selectedOrgId, selectedOrgMemberId, selectedCommercialId, commercials, selectedEventId, orgFolders, events])
 
   const getEmptyState = () => {
     if (loadIssue === 'unauthorized') return {
@@ -883,6 +898,10 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
     if (showDrafts) return {
       title: 'No drafts yet',
       subtitle: 'Save an order as a draft to park it here until it’s ready to send.',
+    }
+    if (selectedCommercialId) return {
+      title: `No orders for ${currentEventName} yet`,
+      subtitle: 'Orders they save, or that are credited to them, will show here.',
     }
     if (selectedOrgId) return {
       title: `No documents in ${currentEventName}`,
@@ -991,6 +1010,9 @@ export default function DocumentsPanel({ onReEdit, onDuplicate, refreshKey }) {
         events={events}
         documents={documents}
         orgFolders={orgFolders}
+        commercials={commercials}
+        selectedCommercialId={selectedCommercialId}
+        setSelectedCommercialId={setSelectedCommercialId}
         selectedEventId={selectedEventId}
         setSelectedEventId={setSelectedEventId}
         selectedOrgId={selectedOrgId}

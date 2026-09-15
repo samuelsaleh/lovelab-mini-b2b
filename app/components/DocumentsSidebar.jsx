@@ -21,6 +21,11 @@ export default function DocumentsSidebar({
   events,
   documents,
   orgFolders,
+  // Commercials (Sam, 15 Sep 2026): admins who take orders. Their own section,
+  // fed by /api/org-folders like the teams, selected by user id.
+  commercials = [],
+  selectedCommercialId = null,
+  setSelectedCommercialId,
   selectedEventId,
   setSelectedEventId,
   selectedOrgId,
@@ -110,9 +115,10 @@ export default function DocumentsSidebar({
   const allDocsCount = documents.filter(d => d.status !== 'draft').length
 
   const eventFolders = (events || []).filter(e => (e.type || 'other') !== 'agent')
-  const isAllSelected = selectedEventId === null && !selectedOrgId && !showInternal && !showConsignment && !showDrafts && !showOffres
+  const isAllSelected = selectedEventId === null && !selectedOrgId && !selectedCommercialId && !showInternal && !showConsignment && !showDrafts && !showOffres
 
   const selectAll = () => {
+    setSelectedCommercialId?.(null)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
     setSelectedOrgMemberId?.(null)
@@ -123,6 +129,7 @@ export default function DocumentsSidebar({
   }
 
   const selectEvent = (eventId) => {
+    setSelectedCommercialId?.(null)
     setSelectedEventId(eventId)
     setSelectedOrgId?.(null)
     setSelectedOrgMemberId?.(null)
@@ -134,6 +141,7 @@ export default function DocumentsSidebar({
 
   // memberId narrows the team folder to one person; null shows the whole team.
   const selectOrg = (orgId, memberId = null) => {
+    setSelectedCommercialId?.(null)
     setSelectedOrgId?.(orgId)
     setSelectedOrgMemberId?.(memberId)
     setSelectedEventId(null)
@@ -143,7 +151,20 @@ export default function DocumentsSidebar({
     if (showConsignment) setShowConsignment?.(false)
   }
 
+  // One commercial's folder: every order they saved or were credited with.
+  const selectCommercial = (userId) => {
+    setSelectedCommercialId?.(userId)
+    setSelectedOrgId?.(null)
+    setSelectedOrgMemberId?.(null)
+    setSelectedEventId(null)
+    setShowDrafts?.(false)
+    setShowOffres?.(false)
+    if (showInternal) setShowInternal(false)
+    if (showConsignment) setShowConsignment?.(false)
+  }
+
   const selectInternal = () => {
+    setSelectedCommercialId?.(null)
     setShowInternal(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
@@ -154,6 +175,7 @@ export default function DocumentsSidebar({
   }
 
   const selectConsignment = () => {
+    setSelectedCommercialId?.(null)
     setShowConsignment?.(true)
     setSelectedEventId(null)
     setSelectedOrgId?.(null)
@@ -164,6 +186,7 @@ export default function DocumentsSidebar({
   }
 
   const selectDrafts = () => {
+    setSelectedCommercialId?.(null)
     setShowDrafts?.(true)
     setShowOffres?.(false)
     setSelectedEventId(null)
@@ -174,6 +197,7 @@ export default function DocumentsSidebar({
   }
 
   const selectOffres = () => {
+    setSelectedCommercialId?.(null)
     setShowOffres?.(true)
     setShowDrafts?.(false)
     setSelectedEventId(null)
@@ -533,6 +557,41 @@ export default function DocumentsSidebar({
                     )
                   })}
                 </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── COMMERCIALS ── */}
+      {(commercials || []).length > 0 && (
+        <>
+          <SectionLabel>Commercials</SectionLabel>
+          <div style={{ padding: '0 8px' }}>
+            {commercials.map((c) => {
+              const isSelected = selectedCommercialId === c.user_id && !showInternal && !showConsignment && !showDrafts && !showOffres
+              return (
+                <button
+                  key={c.user_id}
+                  data-testid={`commercial-folder-${c.user_id}`}
+                  onClick={() => selectCommercial(c.user_id)}
+                  style={{
+                    width: '100%', marginBottom: 2,
+                    padding: '8px 12px', borderRadius: 8, border: 'none',
+                    background: isSelected ? '#f3f0f5' : 'transparent',
+                    color: isSelected ? colors.inkPlum : '#555',
+                    fontSize: 13, fontWeight: isSelected ? 600 : 400,
+                    cursor: 'pointer', textAlign: 'left', fontFamily: fonts.body,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.full_name || c.email || 'Commercial'}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#999', flexShrink: 0, marginLeft: 8 }}>
+                    {c.doc_count ?? 0}
+                  </span>
+                </button>
               )
             })}
           </div>
