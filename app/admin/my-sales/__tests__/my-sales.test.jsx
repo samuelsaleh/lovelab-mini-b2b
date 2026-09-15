@@ -14,7 +14,7 @@ jest.mock('@/app/components/AgentSelfView', () => function AgentSelfView({ defau
 })
 
 import MySalesPage from '../page'
-import { getAdminNavItems } from '@/lib/navItems'
+import { getAdminNavItems, getMainNavItems } from '@/lib/navItems'
 
 describe('My Sales', () => {
   beforeEach(() => replace.mockClear())
@@ -39,5 +39,13 @@ describe('My Sales', () => {
     expect(mine).toEqual({ id: 'my-sales', label: 'My Sales', href: '/admin/my-sales' })
     expect(items[items.findIndex((i) => i.id === 'sales-team') + 1]).toBe(mine)
     expect(getAdminNavItems({ role: 'admin', is_agent: false }).some((i) => i.id === 'my-sales')).toBe(false)
+  })
+
+  it('is also in the main app sidebar for a commercial admin only', () => {
+    const mine = getMainNavItems({ role: 'admin', is_agent: true, agent_status: 'active' }).find((i) => i.id === 'my-sales')
+    expect(mine).toEqual({ id: 'my-sales', label: 'My Sales', href: '/admin/my-sales' })
+    expect(getMainNavItems({ role: 'admin' }).some((i) => i.id === 'my-sales')).toBe(false)
+    expect(getMainNavItems({ role: 'agent', is_agent: true, agent_status: 'active' }).some((i) => i.id === 'my-sales')).toBe(false)
+    expect(getMainNavItems({ role: 'admin', is_agent: true, agent_status: 'inactive' }).some((i) => i.id === 'my-sales')).toBe(false)
   })
 })

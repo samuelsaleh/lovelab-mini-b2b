@@ -209,6 +209,7 @@ const ICONS = {
   organizations:    <OrganizationsIcon />,
   people:           <AgentsIcon />,
   'sales-team':     <AgentsIcon />,
+  'my-sales':       <ReportsIcon />,
   fairs:            <FairsIcon />,
   'fairs-group':    <FairsIcon />,
   'fair-assistant': <AIIcon />,

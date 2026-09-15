@@ -59,7 +59,10 @@ export default function AdminDashboard() {
     orderDocs.reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0),
   [orderDocs])
 
-  const activeAgents = agents.filter(a => a.agent_status === 'active' || a.agent_status === 'invited')
+  // Commercials (admins who take orders — Sam, 15 Sep 2026) are followed
+  // under Sales Team → Commercials, not counted or ranked as agents here.
+  const realAgents = useMemo(() => agents.filter(a => !a.is_commercial), [agents])
+  const activeAgents = realAgents.filter(a => a.agent_status === 'active' || a.agent_status === 'invited')
   const upcomingEvents = events.filter(e => e.end_date && new Date(e.end_date) >= new Date())
   const pendingCommission = commissions.summary?.pending_amount || 0
 
@@ -67,7 +70,7 @@ export default function AdminDashboard() {
   const recentDocs = documents.filter(d => d.status !== 'draft').slice(0, 10)
 
   const topAgents = useMemo(() =>
-    [...agents]
+    [...realAgents]
       .filter(a => !a.agent_deleted_at)
       .sort((a, b) => {
         const revA = a.stats?.effective_revenue || a.stats?.total_revenue || 0
@@ -75,7 +78,7 @@ export default function AdminDashboard() {
         return revB - revA
       })
       .slice(0, 5),
-  [agents])
+  [realAgents])
 
   // Revenue grouped by organization (partner-company template) — links to
   // the /admin/organizations pages for the full team dashboards.
@@ -128,7 +131,7 @@ export default function AdminDashboard() {
         {/* Summary Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 28 }}>
           <Card label="Total Revenue" value={fmt(totalRevenue)} sub={`${orderDocs.length} orders`} accent={colors.inkPlum} />
-          <Card label="Active Agents" value={activeAgents.length} sub={`${agents.length} registered`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
+          <Card label="Active Agents" value={activeAgents.length} sub={`${realAgents.length} registered`} accent={colors.success} onClick={() => router.push('/admin/agents')} />
           <Card label="Fairs" value={events.length} sub={upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming` : 'none upcoming'} accent={colors.luxeGold} onClick={() => router.push('/admin/fairs')} />
           <Card label="Commission Owed" value={fmt(pendingCommission)} sub="pending payouts" accent={colors.warning} />
         </div>
