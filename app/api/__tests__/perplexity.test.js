@@ -91,16 +91,21 @@ describe('toAgentRequest — chat completions → Agent API', () => {
       webSearchOptions: { search_context_size: 'high' },
     });
     expect(body).toEqual({
-      model: 'perplexity/sonar-pro',
+      model: 'perplexity/sonar',
       input: 'Company details lookup.\nCompany: Nanau',
       max_output_tokens: 500,
       tools: [{ type: 'web_search', search_context_size: 'high' }],
     });
   });
 
-  it('addresses the model as provider/model, without doubling an existing prefix', () => {
+  it('maps every Sonar name to the one Sonar model the Agent API offers (Sam, 15 Sept 2026)', () => {
+    // Perplexity: `model "perplexity/sonar-pro" is not supported` — only
+    // perplexity/sonar exists on /v1/agent.
     expect(toAgentModel('sonar')).toBe('perplexity/sonar');
-    expect(toAgentModel('perplexity/sonar-pro')).toBe('perplexity/sonar-pro');
+    expect(toAgentModel('sonar-pro')).toBe('perplexity/sonar');
+    expect(toAgentModel('sonar-reasoning-pro')).toBe('perplexity/sonar');
+    expect(toAgentModel('perplexity/sonar-pro')).toBe('perplexity/sonar');
+    expect(toAgentModel('anthropic/claude-sonnet-5')).toBe('anthropic/claude-sonnet-5');
   });
 
   it('turns a system message into instructions and keeps the turns in order', () => {
@@ -185,7 +190,7 @@ describe('POST /api/perplexity', () => {
     expect(init.headers.Authorization).toBe('Bearer test-key');
     const sent = JSON.parse(init.body);
     expect(sent).toEqual({
-      model: 'perplexity/sonar-pro',
+      model: 'perplexity/sonar',
       input: 'Company details lookup.',
       max_output_tokens: 500,
       tools: [{ type: 'web_search', search_context_size: 'high' }],
