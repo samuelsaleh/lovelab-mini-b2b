@@ -33,6 +33,19 @@ export DEPLOY_SSH_PASSWORD='...'        # the server's root password, from the p
 The key must exist in the local `.env` first. The script refuses an empty
 value rather than blanking out a working production one.
 
+Several keys in one call means one restart instead of three. The three that
+were outstanding on 15 Sept 2026:
+
+```bash
+./scripts/sync-env.sh RESEND_API_KEY RESEND_WEBHOOK_SECRET ANTHROPIC_API_KEY
+```
+
+**Install before you revoke.** Deleting a key in a provider's dashboard stops
+production instantly: on 15 Sept 2026 every Resend key was deleted at once and
+order confirmations, invites and fair follow-ups all failed until a new key
+reached this file. Create the replacement, sync it, check it works, then
+revoke the old one.
+
 What it does per key: base64 the value, hand it to `set-env-key.sh` on the
 server, then `pm2 restart app-lovelab-antwerp --update-env`. The restart is
 a few seconds of downtime, in fork mode, with no zero-downtime handover.
