@@ -16,6 +16,7 @@ describe('SalesTeamTabs', () => {
 
     expect(screen.getByRole('heading', { name: 'Sales Team' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Agents' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Commercials' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Assistants' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Agent Teams' })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Out Memos' })).not.toBeInTheDocument()
@@ -37,5 +38,14 @@ describe('SalesTeamTabs', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Agent Teams' }))
     expect(push).toHaveBeenCalledWith('/admin/organizations')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Commercials' }))
+    expect(push).toHaveBeenCalledWith('/admin/commercials')
+  })
+
+  it('says a commercial is a colleague, not an agent', () => {
+    render(<SalesTeamTabs active="commercials" />)
+    expect(screen.getByRole('tab', { name: 'Commercials' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText(/Colleagues who take orders themselves.*Not agents/i)).toBeInTheDocument()
   })
 })

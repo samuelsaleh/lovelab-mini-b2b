@@ -215,7 +215,7 @@ export default function AdminEmployeesPage() {
       setRateDraft('');
       const who = employee.full_name || employee.email;
       setNotice(commercial
-        ? `${who} is now a commercial at ${Number(rateDraft)} %. Their orders are credited to them and appear under Sales Team → Agents.`
+        ? `${who} is now a commercial at ${Number(rateDraft)} %. Their orders are credited to them and appear under Sales Team → Commercials.`
         : `${who} is no longer a commercial. Past orders and commissions are kept.`);
       fetchData();
     } catch (err) {
@@ -263,7 +263,7 @@ export default function AdminEmployeesPage() {
           </button>
         </div>
         <p style={{ fontSize: 13, color: '#999', margin: '0 0 24px' }}>
-          Colleagues with the same access as you. They get an email with a temporary password and choose their own on first sign-in. Remove access here any time. Mark someone as commercial when they take orders themselves: those orders are credited to them and earn commission, and they appear under Sales Team → Agents.
+          Colleagues with the same access as you. They get an email with a temporary password and choose their own on first sign-in. Remove access here any time. Mark someone as commercial when they take orders themselves: those orders are credited to them and earn commission, and they appear under Sales Team → Commercials, not among the agents.
         </p>
 
         {error && (
