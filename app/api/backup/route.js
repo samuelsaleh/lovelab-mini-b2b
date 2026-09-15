@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive, hasDriveCredentials } from '@/lib/google-drive';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom, getSenderEmail, getAdminNotificationRecipients } from '@/lib/email';
+import { backupFailedEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 
 const TABLES = [
@@ -59,25 +60,7 @@ async function sendAlertEmail(error) {
         from: getSenderFrom(),
         to: [toAddress],
         ...(ccAdmins.length > 0 ? { cc: ccAdmins } : {}),
-        subject: 'LoveLab Backup FAILED',
-        html: `
-          <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px;">
-            <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-            <h2 style="color: #dc2626; margin: 0 0 8px;">Daily Backup Failed</h2>
-            <p style="color: #555; font-size: 15px; margin: 0 0 16px;">
-              The automated daily backup to Google Drive failed on <strong>${new Date().toISOString().split('T')[0]}</strong>.
-            </p>
-            <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-              <p style="color: #991b1b; font-size: 13px; margin: 0; font-family: monospace; white-space: pre-wrap;">${String(error).slice(0, 500)}</p>
-            </div>
-            <p style="color: #555; font-size: 14px; margin: 0;">
-              Please check the Vercel logs or try triggering a manual backup.
-            </p>
-            <p style="color: #aaa; font-size: 11px; margin-top: 32px;">
-              LoveLab B2B · Automated backup alert
-            </p>
-          </div>
-        `,
+        ...backupFailedEmail({ date: new Date().toISOString().split('T')[0], error }, siteUrl),
       }),
     });
   } catch (emailErr) {

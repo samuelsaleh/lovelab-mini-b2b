@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
+import { signupRequestEmail } from '@/lib/email-templates';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -96,37 +97,10 @@ export async function POST(request) {
           from: getSenderFrom(),
           to: [primaryAdmin],
           ...(ccAdmins.length > 0 ? { cc: ccAdmins } : {}),
-          subject: `Access Request: ${nameTrimmed} (${emailLower})`,
-          html: `
-            <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-              <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-              <h2 style="color: #1a1a1a; margin: 0 0 8px;">New Access Request</h2>
-              <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                Someone is requesting access to LoveLab B2B.
-              </p>
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 32px;">
-                <tr>
-                  <td style="padding: 10px 0; color: #888; font-size: 13px; width: 100px;">Name</td>
-                  <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">${nameTrimmed}</td>
-                </tr>
-                <tr style="border-top: 1px solid #eee;">
-                  <td style="padding: 10px 0; color: #888; font-size: 13px;">Email</td>
-                  <td style="padding: 10px 0; color: #1a1a1a; font-size: 14px; font-weight: 600;">${emailLower}</td>
-                </tr>
-              </table>
-              <div style="display: flex; gap: 12px;">
-                <a href="${approveUrl}" style="display: inline-block; padding: 12px 28px; background: #5D3A5E; color: #fff; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; margin-right: 12px;">
-                  ✓ Approve
-                </a>
-                <a href="${rejectUrl}" style="display: inline-block; padding: 12px 28px; background: #fff; color: #dc2626; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; border: 2px solid #dc2626;">
-                  ✗ Reject
-                </a>
-              </div>
-              <p style="color: #aaa; font-size: 11px; margin-top: 32px;">
-                LoveLab B2B · This email was sent automatically.
-              </p>
-            </div>
-          `,
+          ...signupRequestEmail(
+            { fullName: nameTrimmed, email: emailLower, approveUrl, rejectUrl },
+            siteUrl,
+          ),
         }),
       });
 
