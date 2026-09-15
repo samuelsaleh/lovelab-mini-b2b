@@ -19,7 +19,8 @@ import { recordHealthEvent } from '@/lib/healthEvent'
 
 export const PERPLEXITY_AGENT_URL = 'https://api.perplexity.ai/v1/agent'
 
-// Sonar models still offered on the Agent API (docs, Sept 2026).
+// The short Sonar names the browser may send. They are the old chat-
+// completions names, kept so lib/api.js did not have to change.
 const ALLOWED_MODELS = [
   'sonar',
   'sonar-pro',
@@ -27,13 +28,21 @@ const ALLOWED_MODELS = [
   'sonar-deep-research',
 ]
 
+// The Agent API offers exactly one Perplexity-hosted Sonar model (docs,
+// 15 Sept 2026): perplexity/sonar. Sam, 15 Sept 2026: "Look Up Company"
+// had answered `model "perplexity/sonar-pro" is not supported` on every
+// call since the move to the Agent API. Every Sonar name maps to it.
+const AGENT_SONAR_MODEL = 'perplexity/sonar'
+
 const MAX_TOKENS_LIMIT = 2048
 const SEARCH_CONTEXT_SIZES = new Set(['low', 'medium', 'high'])
 
 // The Agent API addresses models as provider/model. The browser keeps the
 // short Sonar names it always sent; the prefix is added here, once.
 export function toAgentModel(model) {
-  return String(model).includes('/') ? model : `perplexity/${model}`
+  const name = String(model || '')
+  if (name.startsWith('sonar') || name.startsWith('perplexity/sonar')) return AGENT_SONAR_MODEL
+  return name.includes('/') ? name : `perplexity/${name}`
 }
 
 function contentToText(content) {

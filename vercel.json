@@ -1,20 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/igi-stock",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/backup",
-      "schedule": "0 3 * * *"
-    },
-    {
       "path": "/api/cron/health-check",
       "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/email-deliveries",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/igi-stock",
+      "schedule": "0 1 * * *"
     }
   ],
   "redirects": [
