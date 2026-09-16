@@ -87,7 +87,7 @@ export async function PATCH(request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { model_id: modelId, name, pool_min: poolMin } = body || {};
+  const { model_id: modelId, name } = body || {};
 
   if (typeof modelId !== 'string' || !modelId) {
     return NextResponse.json({ error: 'A model is required' }, { status: 400 });
@@ -104,18 +104,6 @@ export async function PATCH(request) {
     patch.name = formatted.slice(0, 200);
   }
 
-  // IGI's alert level on their own stock. LoveLab can seed it before IGI have
-  // logins; once they do, it is theirs to set.
-  if (poolMin !== undefined) {
-    if (poolMin !== null && (!Number.isInteger(poolMin) || poolMin < 0)) {
-      return NextResponse.json(
-        { error: 'The alert level must be a whole number, zero or more' },
-        { status: 400 },
-      );
-    }
-    patch.pool_min = poolMin;
-  }
-
   if (Object.keys(patch).length === 1) {
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
   }
@@ -125,7 +113,7 @@ export async function PATCH(request) {
       .from('igi_models')
       .update(patch)
       .eq('id', modelId)
-      .select('id, serial, name, pool_min')
+      .select('id, serial, name')
       .maybeSingle();
 
     if (error) return fail('IGI/Models PATCH', error, 'Failed to save the model');

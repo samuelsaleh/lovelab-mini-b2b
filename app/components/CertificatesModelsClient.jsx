@@ -120,7 +120,7 @@ export default function CertificatesModelsClient() {
           : m
       )))
       say(orderMin !== undefined
-        ? 'IGI level saved. Stock says "Order at IGI" when they fall below it.'
+        ? 'Saved. IGI see this level on their side; below it, Stock says "Order at IGI" and their To do says "Produce more".'
         : 'Shelf level saved. Stock says "Collect" when we fall below it.')
     } catch (err) {
       setError(err.message)
@@ -234,7 +234,7 @@ export default function CertificatesModelsClient() {
                 <th>Stones</th>
                 <th>Serial</th>
                 <th className="num" title="Below this on our shelf, Stock says Collect">Shelf level</th>
-                <th className="num" title="Below this at IGI, Stock says Order at IGI. Empty means IGI's own level applies.">IGI level</th>
+                <th className="num" title="Below this at IGI, Stock says Order at IGI and IGI's To do says Produce more. Empty means no rule.">IGI must hold</th>
               </tr>
             </thead>
             <tbody>
@@ -268,7 +268,7 @@ export default function CertificatesModelsClient() {
                     <td className="num">
                       <LevelInput
                         value={m.order_min}
-                        placeholder={m.pool_min != null ? `IGI: ${m.pool_min}` : 'none'}
+                        placeholder="none"
                         allowEmpty
                         disabled={savingId === m.id}
                         testId="order-min"
@@ -283,7 +283,7 @@ export default function CertificatesModelsClient() {
         </TableWrap>
         <div className="card-foot">
           <span>
-            A level saves when you leave the box. A model waiting for a serial appears on Stock as soon as IGI give one.
+            A level saves when you leave the box. IGI see "IGI must hold" on their side. A model waiting for a serial appears on Stock as soon as IGI give one.
           </span>
           <Link href="/certificates/matching" className="right" data-testid="go-matching">
             Match stock descriptions to a model →

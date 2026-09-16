@@ -55,8 +55,8 @@ function db(tables, { updateResult } = {}) {
 }
 
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', state: 'in_use', qty_ordered: 12250, shelf_min: 25, pool_min: null, carat: 0.1, shape: 'Round', stones: '1' },
-  { id: 'm2', serial: 'LGAJ6588', name: '—', state: 'reserved', qty_ordered: null, shelf_min: 25, pool_min: null },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', state: 'in_use', qty_ordered: 12250, shelf_min: 25, order_min: null, carat: 0.1, shape: 'Round', stones: '1' },
+  { id: 'm2', serial: 'LGAJ6588', name: '—', state: 'reserved', qty_ordered: null, shelf_min: 25, order_min: null },
 ];
 
 function fullDb() {
@@ -216,8 +216,8 @@ describe('setting the shelf alert level', () => {
     expect((await alerts.PATCH(req({ model_ids: many, shelf_min: 50 }))).status).toBe(400);
   });
 
-  test('does not let LoveLab write IGI\'s own alert level', async () => {
-    // pool_min belongs to IGI. Two alert rules, one owner each.
+  test('ignores the retired pool_min, even if an old client still sends it', async () => {
+    // One level on IGI's stock since 16 Sept 2026: order_min. pool_min is dead.
     global.__db = db({ igi_models: [] });
     await alerts.PATCH(req({ model_ids: ['m1'], shelf_min: 50, pool_min: 999 }));
     expect(global.__db.captured.update).not.toHaveProperty('pool_min');

@@ -19,7 +19,6 @@ jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(.
 
 const todo = require('../igi-portal/todo/route');
 const stock = require('../igi-portal/stock/route');
-const alerts = require('../igi-portal/alerts/route');
 const batches = require('../igi-portal/batches/route');
 
 function req(body, method = 'GET') {
@@ -31,11 +30,11 @@ function req(body, method = 'GET') {
 }
 
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', pool_min: 1000, sort_order: 3 },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', order_min: 1000, sort_order: 3 },
   // Reserved and awaiting-serial models exist in the table. RLS hides them from
   // IGI's own client, and loadIgiWorld filters them out as well so the same
   // guarantee holds for LoveLab's preview of this side, which reads as admin.
-  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd', spec: null, state: 'reserved', pool_min: null, sort_order: 61 },
+  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd', spec: null, state: 'reserved', order_min: null, sort_order: 61 },
 ];
 
 /** A stand-in for the RLS-scoped client. */
@@ -117,22 +116,34 @@ describe('what comes back to IGI', () => {
     expect(body.visits[0].lines[0]).toMatchObject({ carat: 0.1, shape: 'Round', stones: '1' });
   });
 
-  test('never includes a shelf figure or a LoveLab alert level', async () => {
+  test('never includes a shelf figure or LoveLab\'s shelf level', async () => {
     const payloads = await Promise.all([
       (await todo.GET(req())).json(),
       (await stock.GET(req())).json(),
     ]);
     const json = JSON.stringify(payloads).toLowerCase();
-    for (const forbidden of ['shelf', 'shelf_min', 'snapshot', 'consumption']) {
+    for (const forbidden of ['shelf', 'shelf_min', 'snapshot', 'consumption', 'pool_min']) {
       expect(json).not.toContain(forbidden);
     }
+  });
+
+  test('lists the models below the level LoveLab want under produce', async () => {
+    // m1: 1000 made, nothing issued, level 1000 — not below. Lower the level's
+    // partner: a batch of 900 against a level of 1000 is 100 short.
+    global.__sb = sb({
+      profile: { id: 'igi-1', is_igi: true },
+      tables: { ...IGI_TABLES, igi_batches: [{ id: 'b1', model_id: 'm1', qty: 900, batch_date: '2026-08-27', reference: 'x' }] },
+    });
+    const body = await (await todo.GET(req())).json();
+    expect(body.produce).toHaveLength(1);
+    expect(body.produce[0]).toMatchObject({ serial: 'LGAJ6530', pool: 900, level: 1000, short_by: 100 });
   });
 
   test('shows their stock with what LoveLab is asking for right now', async () => {
     const body = await (await stock.GET(req())).json();
     // Being asked for 100 does not reduce the stock — it falls when IGI issue,
     // because that is when the certificate leaves them.
-    expect(body.models[0]).toMatchObject({ pool: 1000, pool_min: 1000, asked_now: 100 });
+    expect(body.models[0]).toMatchObject({ pool: 1000, level: 1000, asked_now: 100 });
   });
 
   test('the stock falls only once they have recorded what they made', async () => {
@@ -145,28 +156,6 @@ describe('what comes back to IGI', () => {
     });
     const body = await (await stock.GET(req())).json();
     expect(body.models[0].pool).toBe(959);
-  });
-});
-
-describe('IGI setting their own alert level', () => {
-  test('saves it', async () => {
-    const res = await alerts.PATCH(req({ model_ids: ['m1'], pool_min: 250 }, 'PATCH'));
-    expect(res.status).toBe(200);
-    expect(global.__sb.captured.updated).toEqual({ pool_min: 250 });
-  });
-
-  test('accepts none, meaning do not warn me', async () => {
-    expect((await alerts.PATCH(req({ model_ids: ['m1'], pool_min: null }, 'PATCH'))).status).toBe(200);
-  });
-
-  test('refuses a level that is not a whole number', async () => {
-    expect((await alerts.PATCH(req({ model_ids: ['m1'], pool_min: 1.5 }, 'PATCH'))).status).toBe(400);
-    expect((await alerts.PATCH(req({ model_ids: ['m1'], pool_min: -1 }, 'PATCH'))).status).toBe(400);
-  });
-
-  test('never writes LoveLab\'s level, even if asked to', async () => {
-    await alerts.PATCH(req({ model_ids: ['m1'], pool_min: 250, shelf_min: 1 }, 'PATCH'));
-    expect(global.__sb.captured.updated).not.toHaveProperty('shelf_min');
   });
 });
 

@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import CertShell from '../certificates/CertShell'
 import { CERTIFICATE_NAV, IGI_NAV_ITEMS } from '@/lib/navItems'
 
-let pathname = '/certificates/stock'
+let pathname = '/certificates'
 jest.mock('next/navigation', () => ({ usePathname: () => pathname }))
 
 const signOut = jest.fn()
@@ -15,7 +15,7 @@ function renderShell(props = {}) {
   return render(
     <CertShell
       nav={CERTIFICATE_NAV}
-      home="/certificates/stock"
+      home="/certificates"
       brand="LoveLab"
       mark="/logo.png"
       title="Certificates"
@@ -28,7 +28,7 @@ function renderShell(props = {}) {
   )
 }
 
-beforeEach(() => { pathname = '/certificates/stock'; jest.clearAllMocks() })
+beforeEach(() => { pathname = '/certificates'; jest.clearAllMocks() })
 
 describe('the certificate application shell', () => {
   it('carries its own chrome rather than the admin panel’s', () => {
@@ -48,14 +48,13 @@ describe('the certificate application shell', () => {
     expect(logo.style.filter).toBe('brightness(0) invert(1)')
   })
 
-  it('shows the four screens as a flat list — four things need no grouping', () => {
+  it('shows the five screens as a flat list — five things need no grouping', () => {
     // Sam, 10 Sept 2026: nine grouped screens became five plain ones.
-    // Sam, 16 Sept 2026: the Dashboard went; Stock is the front page.
+    // Sam, 16 Sept 2026: the Dashboard is two lists, and still the front page.
     const { container } = renderShell()
-    expect(container.querySelectorAll('nav.nav a')).toHaveLength(4)
+    expect(container.querySelectorAll('nav.nav a')).toHaveLength(5)
     expect(container.querySelector('nav.nav .grp')).toBeNull()
-    expect(screen.queryByText('Dashboard')).toBeNull()
-    for (const label of ['Stock', 'Movements', 'Models', 'Invoices']) {
+    for (const label of ['Dashboard', 'Stock', 'Movements', 'Models', 'Invoices']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
   })
@@ -64,7 +63,7 @@ describe('the certificate application shell', () => {
     renderShell()
     const current = screen.getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page')
     expect(current).toHaveLength(1)
-    expect(current[0]).toHaveTextContent('Stock')
+    expect(current[0]).toHaveTextContent('Dashboard')
   })
 
   it('keeps a section lit while you are inside it', () => {
@@ -73,7 +72,7 @@ describe('the certificate application shell', () => {
     pathname = '/certificates/visits/v9'
     renderShell()
     expect(screen.getByTestId('nav-visits')).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByTestId('nav-stock')).not.toHaveAttribute('aria-current')
+    expect(screen.getByTestId('nav-dashboard')).not.toHaveAttribute('aria-current')
   })
 
   it('lets an admin back out to LoveLab, and signs anybody out', () => {

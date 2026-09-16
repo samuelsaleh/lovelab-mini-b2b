@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { formatQty, visitRef, sameDayLabel, POOL_LABELS, poolStatus } from '@/lib/igi/derive'
+import { formatQty, visitRef, sameDayLabel } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import { VISIT_LABELS, VISIT_TONES } from '@/lib/igi/visits'
 import { Serial, Spec } from './igi/SerialSpec'
-import Chip, { POOL_TONE } from './igi/Chip'
+import Chip from './igi/Chip'
 import Link from 'next/link'
 import { PageHead, Card, Loading, Note, Toast, Switch, TableWrap, Empty } from './certificates/ui'
 
@@ -56,8 +56,9 @@ export default function CertificatesIgiSideClient() {
 
   const todo = data?.todo || []
   const models = data?.models || []
+  const produce = data?.produce || []
   const waiting = todo.reduce((t, v) => t + v.lines.reduce((n, l) => n + l.qty_requested, 0), 0)
-  const low = models.filter((m) => poolStatus(m, m.pool) === 'reorder')
+  const low = models.filter(belowLevel)
 
   return (
     <>
@@ -74,9 +75,10 @@ export default function CertificatesIgiSideClient() {
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ flex: 1, minWidth: 320 }}>
             This is <strong>exactly</strong> what IGI Antwerp see when they sign in — same
-            figures, built from their own screens rather than a copy of them. They never see our
-            shelf, our alert levels, how fast anything sells, the reserved serials, or the
-            matching table. Read only: recording what they produced is theirs to do.
+            figures, built from their own screens rather than a copy of them. They see the level we
+            want them to hold, and never our shelf, our shelf level, how fast anything sells, the
+            reserved serials, or the matching table. Read only: recording what they produced is
+            theirs to do.
           </span>
           <Link href="/igi" className="btn primary" data-testid="open-their-portal">
             Open their portal →
@@ -84,16 +86,16 @@ export default function CertificatesIgiSideClient() {
         </div>
       </Note>
 
-      {tab === 'todo' && <TheirTodo visits={todo} />}
+      {tab === 'todo' && <TheirTodo visits={todo} produce={produce} />}
       {tab === 'stock' && <TheirStock models={models} low={low.length} />}
       {tab === 'history' && <TheirHistory visits={data?.visits || []} batches={data?.batches || []} />}
     </>
   )
 }
 
-/** What is on their bench right now. */
-function TheirTodo({ visits }) {
-  if (!visits.length) {
+/** What is on their bench right now: the requests, and what we want produced. */
+function TheirTodo({ visits, produce }) {
+  if (!visits.length && !produce.length) {
     return (
       <Card flush>
         <Empty>
@@ -105,11 +107,59 @@ function TheirTodo({ visits }) {
     )
   }
 
-  return visits.map((visit) => {
-    const short = visit.lines.filter((l) => l.short_by > 0)
-    const asked = visit.lines.reduce((t, l) => t + l.qty_requested, 0)
-    return (
-      <div className="task" key={visit.id} data-testid="their-todo-card">
+  return (
+    <>
+      {produce.length > 0 && <TheirProduce models={produce} />}
+      {visits.map((visit) => <TheirRequest key={visit.id} visit={visit} />)}
+    </>
+  )
+}
+
+/** The models below the level we set — the "Produce more" list on their To do. */
+function TheirProduce({ models }) {
+  return (
+    <Card
+      title="Produce more"
+      sub={`${models.length} model${models.length === 1 ? '' : 's'} below the level we set — they see this list too`}
+      flush
+      testId="their-produce"
+    >
+      <TableWrap>
+        <table>
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Check</th>
+              <th>Serial</th>
+              <th className="num">They hold</th>
+              <th className="num">We want at least</th>
+              <th className="num">Short by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {models.map((m) => (
+              <tr key={m.id} data-testid="their-produce-line">
+                <td style={{ fontWeight: 600 }}>{m.name}</td>
+                <td><Spec model={m} compact /></td>
+                <td><Serial model={m} compact /></td>
+                <td className="num" style={{ color: 'var(--signal)', fontWeight: 600 }}>{formatQty(m.pool)}</td>
+                <td className="num">{formatQty(m.level)}</td>
+                <td className="num" style={{ color: 'var(--signal)' }}>{formatQty(m.short_by)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+    </Card>
+  )
+}
+
+/** One open request, as they see it. */
+function TheirRequest({ visit }) {
+  const short = visit.lines.filter((l) => l.short_by > 0)
+  const asked = visit.lines.reduce((t, l) => t + l.qty_requested, 0)
+  return (
+      <div className="task" data-testid="their-todo-card">
         <div className="task-h">
           <h2>{visitRef(visit)}</h2>
           <span className="when">{formatDate(visit.visit_date)}</span>
@@ -157,16 +207,15 @@ function TheirTodo({ visits }) {
           </table>
         </TableWrap>
       </div>
-    )
-  })
+  )
 }
 
-/** Their stock, their alert levels, and the order book they see. */
+/** Their stock, the level we want them to hold, and the order book they see. */
 function TheirStock({ models, low }) {
   return (
     <Card
       title="What IGI hold"
-      sub={low > 0 ? `${low} below the level they set` : 'Nothing below the level they set'}
+      sub={low > 0 ? `${low} below the level we set` : 'Nothing below the level we set'}
       flush
     >
       <TableWrap>
@@ -177,20 +226,21 @@ function TheirStock({ models, low }) {
               <th>Check</th>
               <th>Serial</th>
               <th className="num">They hold</th>
-              <th className="num">Their level</th>
+              <th className="num">We want at least</th>
               <th className="num">We are asking</th>
             </tr>
           </thead>
           <tbody>
             {models.map((m) => {
-              const status = poolStatus(m, m.pool)
+              const short = belowLevel(m) ? m.level - m.pool : 0
               return (
                 <tr key={m.id} data-testid="their-stock-row">
                   <td>
                     <div style={{ fontWeight: 600 }}>{m.name}</div>
-                    {status === 'reorder' && (
+                    {short > 0 && (
                       <div style={{ marginTop: 3 }}>
-                        <Chip tone={POOL_TONE[status]}>{POOL_LABELS[status]}</Chip>
+                        <Chip tone="now">Produce more</Chip>
+                        <span className="spec" style={{ marginLeft: 6 }}>short by {formatQty(short)}</span>
                       </div>
                     )}
                   </td>
@@ -198,7 +248,7 @@ function TheirStock({ models, low }) {
                   <td><Serial model={m} compact /></td>
                   <td className="num">{formatQty(m.pool)}</td>
                   <td className="num">
-                    {m.pool_min == null ? <span className="spec">not set</span> : formatQty(m.pool_min)}
+                    {m.level == null ? <span className="spec">no level</span> : formatQty(m.level)}
                   </td>
                   <td className="num">
                     {m.asked_now ? <strong>{formatQty(m.asked_now)}</strong> : <span className="spec">—</span>}
@@ -288,4 +338,9 @@ function TheirHistory({ visits, batches }) {
       </Card>
     </>
   )
+}
+
+/** Below the level we want IGI to hold. No level means no rule. */
+function belowLevel(m) {
+  return m.level != null && m.pool != null && m.pool < m.level
 }

@@ -1,6 +1,7 @@
 import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import CertificatesStockClient from '../CertificatesStockClient'
+import CertificatesDashboardClient from '../CertificatesDashboardClient'
 import SerialSpec from '../igi/SerialSpec'
 
 // Numbers are grouped with a narrow no-break space (see THIN_SPACE in
@@ -13,19 +14,19 @@ const MODELS = [
   {
     id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix / Sienna 1 / Moonlight Original',
     stones: '1', carat: 0.1, shape: 'Round', state: 'in_use', qty_ordered: 12250,
-    shelf_min: 25, pool_min: 1800, order_min: null, shelf: 1006, pool: 11020, asked_now: 0,
-    shelf_status: 'fine', pool_status: 'fine', order_status: 'fine',
+    shelf_min: 25, order_min: null, shelf: 1006, pool: 11020, asked_now: 0,
+    shelf_status: 'fine', order_status: 'fine',
   },
   {
     id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine',
     stones: '1', carat: 0.5, shape: 'Heart', state: 'in_use', qty_ordered: 250,
-    shelf_min: 25, pool_min: 100, order_min: null, shelf: 2, pool: 40, asked_now: 12,
-    shelf_status: 'collect', pool_status: 'reorder', order_status: 'fine',
+    shelf_min: 25, order_min: 100, shelf: 2, pool: 40, asked_now: 12,
+    shelf_status: 'collect', order_status: 'order',
   },
   {
     id: 'm3', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd',
-    state: 'reserved', qty_ordered: null, shelf_min: 25, pool_min: null, order_min: null,
-    shelf: null, pool: null, asked_now: 0, shelf_status: 'unmapped', pool_status: 'unknown', order_status: 'unknown',
+    state: 'reserved', qty_ordered: null, shelf_min: 25, order_min: null,
+    shelf: null, pool: null, asked_now: 0, shelf_status: 'unmapped', order_status: 'unknown',
   },
 ]
 
@@ -94,8 +95,8 @@ describe('Stock is the front page — one line per model', () => {
     expect(fine).toHaveTextContent('level 25')
     expect(low).toHaveTextContent('2')
     expect(low.querySelector('.n')).toHaveClass('low')
-    // IGI's own level is the one shown when we hold no opinion of our own.
-    expect(screen.getAllByTestId('igi-cell')[0]).toHaveTextContent('level 1 800')
+    // One level on IGI's stock, ours. None set reads as none.
+    expect(screen.getAllByTestId('igi-cell')[0]).toHaveTextContent('no level yet')
   })
 
   it('says what to do in words: Collect, Order at IGI, and what is already asked', async () => {
@@ -197,8 +198,8 @@ describe('our level on IGI’s stock (10 Sept 2026) still drives Stock', () => {
     await renderStock({
       ...OVERVIEW,
       models: [
-        { ...MODELS[0], order_min: 20000, order_status: 'order', pool_status: 'fine' },
-        { ...MODELS[1], pool_status: 'fine', order_status: 'fine', shelf_status: 'fine' },
+        { ...MODELS[0], order_min: 20000, order_status: 'order' },
+        { ...MODELS[1], order_status: 'fine', shelf_status: 'fine' },
       ],
     })
     const [ours] = screen.getAllByTestId('igi-cell')
@@ -206,5 +207,71 @@ describe('our level on IGI’s stock (10 Sept 2026) still drives Stock', () => {
     expect(ours.querySelector('.n')).toHaveClass('low')
     expect(screen.getAllByTestId('todo-cell')[0]).toHaveTextContent('Order at IGI')
     expect(screen.getByTestId('fact-order')).toHaveTextContent('1 to order')
+  })
+})
+
+describe('the dashboard is two lists, and nothing else', () => {
+  // Sam, 16 Sept 2026: the old front page was useful for exactly these two
+  // lists. Shapy Shine: shelf 2, level 25 → back up to 50 would mean 48, but
+  // IGI only hold 40.
+  async function renderDash(overview = OVERVIEW, extra = {}) {
+    mockFetch(overview, extra)
+    render(<CertificatesDashboardClient />)
+    await waitFor(() => expect(screen.getByTestId('list-collect')).toBeInTheDocument())
+  }
+
+  it('prefills a suggested quantity, capped at what IGI hold', async () => {
+    await renderDash()
+    expect(screen.getAllByTestId('collect-row')).toHaveLength(1)
+    expect(screen.getByTestId('collect-ask')).toHaveValue(40)
+    expect(screen.getByText('all they have')).toBeInTheDocument()
+    expect(screen.getByTestId('collect-send')).toHaveTextContent('Ask IGI for 40')
+  })
+
+  it('sends what is in the boxes and opens the movement', async () => {
+    const push = jest.fn()
+    jest.spyOn(require('next/navigation'), 'useRouter').mockReturnValue({ push })
+    let sent = null
+    await renderDash(OVERVIEW, {
+      onPost: async (body) => { sent = body; return { ok: true, json: async () => ({ visit: { id: 'v9' } }) } },
+    })
+    fireEvent.change(screen.getByTestId('collect-ask'), { target: { value: '30' } })
+    fireEvent.click(screen.getByTestId('collect-send'))
+    await waitFor(() => expect(sent).toEqual({ lines: [{ model_id: 'm2', qty: 30 }] }))
+    expect(push).toHaveBeenCalledWith('/certificates/visits/v9')
+  })
+
+  it('lists a model below our level under Order at IGI, with the shortfall', async () => {
+    await renderDash({
+      ...OVERVIEW,
+      models: [
+        { ...MODELS[0], order_min: 20000, order_status: 'order' },
+        { ...MODELS[1], order_status: 'fine' },
+      ],
+    })
+    const list = screen.getByTestId('list-produce')
+    expect(screen.getAllByTestId('produce-row')).toHaveLength(1)
+    expect(list).toHaveTextContent('Cuty-Cubix')
+    expect(list).toHaveTextContent('20 000')
+    expect(list).toHaveTextContent('short by 8 980')
+    expect(list).not.toHaveTextContent('Shapy Shine')
+  })
+
+  it('carries none of the old furniture', async () => {
+    await renderDash()
+    for (const gone of ['stat-shelf', 'stat-igi', 'gap-card', 'stat-reserved', 'facts', 'go-matching']) {
+      expect(screen.queryByTestId(gone)).toBeNull()
+    }
+    expect(screen.queryByText(/no model attached/)).toBeNull()
+    expect(screen.getByTestId('go-stock')).toBeInTheDocument()
+  })
+
+  it('says so when both lists are empty', async () => {
+    await renderDash({
+      ...OVERVIEW,
+      models: [{ ...MODELS[0] }, { ...MODELS[1], shelf: 60, shelf_status: 'fine', order_status: 'fine' }],
+    })
+    expect(screen.getByText('Every model is above its shelf level.')).toBeInTheDocument()
+    expect(screen.getByText('IGI hold enough of every model, by the level we set.')).toBeInTheDocument()
   })
 })

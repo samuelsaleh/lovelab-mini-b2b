@@ -58,15 +58,21 @@ Running the file twice is safe. It corrects rather than duplicates.
 ## Then open the app
 
 **Admin → Certificates**, which opens the certificate application at
-`/certificates` — its own space, with its own sidebar and its own look. Four
-screens, and it opens on Stock:
+`/certificates` — its own space, with its own sidebar and its own look. Five
+screens:
 
 | | |
 |---|---|
+| **Dashboard** | Two lists and nothing else: what to collect (with the Send button) and what to order at IGI |
 | **Stock** | One line per model: on our shelf, at IGI, what to do (Collect / Order at IGI), and an "ask for" column with one Send to IGI button |
 | **Movements** | All 29 movements, by movement or by day |
-| **Models** | The 76 in use, the ones waiting for a serial, a "New model" button, and the two levels per model that drive Stock. Matching stock descriptions to models is a link at the foot |
+| **Models** | The 76 in use, the ones waiting for a serial, a "New model" button, and the two levels per model: the shelf level and the level IGI must hold. Matching stock descriptions to models is a link at the foot |
 | **Invoices** | What the movements say, beside what IGI billed |
+
+**IGI see the level you set.** "IGI must hold" on Models is the one level on
+their stock. Their stock screen shows it beside what they hold, their To do
+lists every model below it under "Produce more", and once they have an
+account they are emailed the night it happens — the same night you are.
 
 IGI's side — what is on their screen right now — is a link at the foot of the
 sidebar.

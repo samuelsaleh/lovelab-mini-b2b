@@ -1,10 +1,9 @@
-import { redirect } from 'next/navigation'
+import CertificatesDashboardClient from '@/app/components/CertificatesDashboardClient'
 
 /**
- * The certificate application opens on Stock (Sam, 16 Sept 2026: "too much
- * information"). There is no dashboard any more — the one line under the
- * Stock title says what a dashboard used to take a screen to say.
+ * The front page: two lists, what to collect and what to order at IGI, and
+ * nothing else (Sam, 16 Sept 2026).
  */
 export default function CertificatesPage() {
-  redirect('/certificates/stock')
+  return <CertificatesDashboardClient />
 }

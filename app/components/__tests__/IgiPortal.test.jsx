@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import IgiTodoClient from '../IgiTodoClient'
 import IgiStockClient from '../IgiStockClient'
 import IgiAddBatchClient from '../IgiAddBatchClient'
@@ -16,9 +16,12 @@ const LINES = [
 ]
 const VISITS = [{ id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'requested', date_suspect: false, unattributed_total: null, lines: LINES }]
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, pool: 900, pool_min: 1000, asked_now: 100 },
-  { id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine', stones: '1', carat: 0.5, shape: 'Heart', spec: null, pool: 41, pool_min: null, asked_now: 500 },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, pool: 900, level: 1000, asked_now: 100 },
+  { id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine', stones: '1', carat: 0.5, shape: 'Heart', spec: null, pool: 41, level: null, asked_now: 500 },
 ]
+
+// m1 below the level LoveLab want, as the To do lists it.
+const PRODUCE = [{ ...MODELS[0], short_by: 100 }]
 
 function mockFetch(handlers = {}) {
   global.fetch = jest.fn((url, init) => {
@@ -26,7 +29,7 @@ function mockFetch(handlers = {}) {
     for (const [key, fn] of Object.entries(handlers)) {
       if (u.includes(key)) return fn(init)
     }
-    if (u.includes('/todo')) return Promise.resolve({ ok: true, json: async () => ({ visits: VISITS }) })
+    if (u.includes('/todo')) return Promise.resolve({ ok: true, json: async () => ({ visits: VISITS, produce: PRODUCE }) })
     if (u.includes('/stock')) return Promise.resolve({ ok: true, json: async () => ({ models: MODELS }) })
     return Promise.resolve({ ok: true, json: async () => ({}) })
   })
@@ -47,7 +50,7 @@ describe('IGI: to do', () => {
     render(<IgiTodoClient />)
     await waitFor(() => expect(screen.getAllByTestId('todo-line')).toHaveLength(2))
     expect(screen.getAllByText('They asked for')).toHaveLength(2)
-    expect(screen.getAllByText('You hold')).toHaveLength(2)
+    expect(within(screen.getByTestId('todo-card')).getAllByText('You hold')).toHaveLength(2)
   })
 
   it('names the shortage rather than blocking the work', async () => {
@@ -154,45 +157,45 @@ describe('IGI: my stock', () => {
     expect(container.textContent.toLowerCase()).not.toContain('shelf')
   })
 
-  it('flags a model below the level they set', async () => {
+  it('flags a model below the level LoveLab want, and says how short', async () => {
     mockFetch()
     render(<IgiStockClient />)
     // m1 holds 900 against a level of 1000.
     await waitFor(() => expect(screen.getByText('Produce more')).toBeInTheDocument())
+    expect(screen.getByTestId('short-by')).toHaveTextContent('short by 100')
+    expect(screen.getByText('LoveLab want at least')).toBeInTheDocument()
   })
 
-  it('saves their own level, not LoveLab\'s', async () => {
-    let body = null
-    mockFetch({
-      '/alerts': (init) => {
-        body = JSON.parse(init.body)
-        return Promise.resolve({ ok: true, json: async () => ({ updated: [] }) })
-      },
-    })
-    render(<IgiStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('pool-min')).toHaveLength(2))
+  it('shows the level but offers nothing to edit — it is LoveLab\'s to set', async () => {
+    // Sam, 16 Sept 2026: one level, set by the customer. "Warn me below" is gone.
+    mockFetch()
+    const { container } = render(<IgiStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('level')).toHaveLength(2))
+    expect(screen.getAllByTestId('level')[0]).toHaveTextContent('1 000')
+    expect(screen.getAllByTestId('level')[1]).toHaveTextContent('no level')
+    expect(container.querySelector('input[type="number"]')).toBeNull()
+    expect(screen.queryByText(/Warn me below/)).toBeNull()
+  })
+})
 
-    const input = screen.getAllByTestId('pool-min')[1]
-    fireEvent.change(input, { target: { value: '250' } })
-    fireEvent.blur(input)
-
-    await waitFor(() => expect(body).toEqual({ model_ids: ['m2'], pool_min: 250 }))
-    expect(body).not.toHaveProperty('shelf_min')
+describe('IGI: produce more, on the To do', () => {
+  it('lists every model below the level LoveLab want, with the shortfall', async () => {
+    mockFetch()
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getByTestId('produce-more')).toBeInTheDocument())
+    const line = screen.getByTestId('produce-line')
+    expect(line).toHaveTextContent('Cuty-Cubix')
+    expect(line).toHaveTextContent('900')
+    expect(line).toHaveTextContent('1 000')
+    expect(line).toHaveTextContent('100')
+    expect(screen.getByText(/1 model to produce/)).toBeInTheDocument()
   })
 
-  it('treats an empty level as no warning at all', async () => {
-    let body = null
-    mockFetch({
-      '/alerts': (init) => { body = JSON.parse(init.body); return Promise.resolve({ ok: true, json: async () => ({ updated: [] }) }) },
-    })
-    render(<IgiStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('pool-min')).toHaveLength(2))
-
-    const input = screen.getAllByTestId('pool-min')[0]
-    fireEvent.change(input, { target: { value: '' } })
-    fireEvent.blur(input)
-
-    await waitFor(() => expect(body).toEqual({ model_ids: ['m1'], pool_min: null }))
+  it('shows no such list when nothing is below the level', async () => {
+    mockFetch({ '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: VISITS, produce: [] }) }) })
+    render(<IgiTodoClient />)
+    await waitFor(() => expect(screen.getAllByTestId('todo-card')).toHaveLength(1))
+    expect(screen.queryByTestId('produce-more')).toBeNull()
   })
 })
 
@@ -293,22 +296,6 @@ describe('a LoveLab admin driving IGI’s portal', () => {
     preview(<IgiTodoClient />)
     await waitFor(() => expect(screen.getAllByTestId('todo-line')).toHaveLength(2))
     expect(screen.getByText(/recorded against your name/i)).toBeInTheDocument()
-  })
-
-  it('sets IGI’s alert level through the preview', async () => {
-    const calls = []
-    global.fetch = jest.fn((url, init) => {
-      calls.push({ url: String(url), method: init?.method })
-      return Promise.resolve({ ok: true, json: async () => ({ models: MODELS, updated: [] }) })
-    })
-    preview(<IgiStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    fireEvent.change(screen.getByTestId('bulk-value'), { target: { value: '250' } })
-    fireEvent.click(screen.getByTestId('bulk-apply'))
-    await waitFor(() => expect(calls).toContainEqual({
-      url: '/api/igi/preview/alerts', method: 'PATCH',
-    }))
   })
 
   it('records a batch through the preview', async () => {

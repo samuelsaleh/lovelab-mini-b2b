@@ -13,11 +13,16 @@ import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates
  * One card per request. Deliberately not a table, and deliberately not a
  * dashboard: somebody is standing at a bench with three hundred cards, and the
  * only question they need answered is how many of each to make.
+ *
+ * Three lists: the open requests, the new models to number, and — since
+ * 16 Sept 2026 — the models below the level LoveLab want IGI to hold, which
+ * is the one place IGI are told to produce more before being asked.
  */
 export default function IgiTodoClient() {
   const { base, preview } = useIgiPortal()
   const [visits, setVisits] = useState([])
   const [newModels, setNewModels] = useState([])
+  const [produce, setProduce] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -35,6 +40,7 @@ export default function IgiTodoClient() {
       if (!res.ok) throw new Error(body?.error || 'Could not load your list')
       setVisits(body.visits || [])
       setNewModels(body.new_models || [])
+      setProduce(body.produce || [])
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -95,6 +101,7 @@ export default function IgiTodoClient() {
         sub={[
           visits.length === 0 ? null : `${visits.length} request${visits.length === 1 ? '' : 's'} from LoveLab`,
           newModels.length === 0 ? null : `${newModels.length} new model${newModels.length === 1 ? '' : 's'} to number`,
+          produce.length === 0 ? null : `${produce.length} model${produce.length === 1 ? '' : 's'} to produce`,
         ].filter(Boolean).join(' · ') || 'Nothing waiting. LoveLab have not asked for anything.'}
       />
 
@@ -143,7 +150,40 @@ export default function IgiTodoClient() {
         </div>
       )}
 
-      {visits.length === 0 && newModels.length === 0 && !error && (
+      {produce.length > 0 && (
+        <div className="task" data-testid="produce-more">
+          <div className="task-h">
+            <h2>Produce more</h2>
+            <span className="ask">{produce.length} model{produce.length === 1 ? '' : 's'} below the level LoveLab want</span>
+          </div>
+          <div className="nextstep">
+            <b>LoveLab want at least this many of each in your stock. You hold fewer.</b>
+            <span>Production, about a month. LoveLab were told the same. Record what you make under Add a batch.</span>
+          </div>
+          {produce.map((m) => (
+            <div className="task-line short" key={m.id} data-testid="produce-line">
+              <div className="who">
+                <b>{m.name}</b>
+                <SerialSpec model={m} compact />
+              </div>
+              <div className="have">
+                <span>You hold</span>
+                <b style={{ color: 'var(--signal)' }}>{formatQty(m.pool)}</b>
+              </div>
+              <div className="have">
+                <span>LoveLab want</span>
+                <b>{formatQty(m.level)}</b>
+              </div>
+              <div className="have">
+                <span>Short by</span>
+                <b style={{ color: 'var(--signal)' }}>{formatQty(m.short_by)}</b>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {visits.length === 0 && newModels.length === 0 && produce.length === 0 && !error && (
         <Card flush>
           <Empty>
             <span data-testid="empty">When LoveLab ask for certificates, the request appears here.</span>

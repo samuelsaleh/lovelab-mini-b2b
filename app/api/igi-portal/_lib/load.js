@@ -12,7 +12,7 @@ import { poolOf, askedRightNow } from '@/lib/igi/derive';
  * preview is only honest if it shows exactly what IGI would see. Filtering here
  * rather than at the call site means the guarantee holds for whoever calls it.
  */
-const MODEL_COLUMNS = 'id, serial, name, stones, carat, shape, spec, state, pool_min, sort_order';
+const MODEL_COLUMNS = 'id, serial, name, stones, carat, shape, spec, state, order_min, sort_order';
 
 // requested_at arrived with the new-model flow (10 Sept 2026). A database that
 // has the tables but not yet that column — the switch-on file run once before

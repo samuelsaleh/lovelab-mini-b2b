@@ -62,7 +62,7 @@ export default function IgiLayout({ children }) {
           ? 'acting as IGI — their screens, live, recorded against your name'
           : 'what LoveLab are waiting on'}
         status={preview ? 'Viewing as LoveLab' : 'IGI portal'}
-        exit={preview ? { href: '/certificates/stock', label: '← Back to certificates' } : null}
+        exit={preview ? { href: '/certificates', label: '← Back to certificates' } : null}
       >
         {children}
       </CertShell>

@@ -8,13 +8,12 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
  *   shelf_min — on our own shelf. Below it means go collect, because IGI
  *               already hold them.
  *   order_min — on IGI's stock (Sam, 10 Sept 2026). Below it means order
- *               production, whether or not IGI have reacted. Null clears it.
+ *               production. Since 16 Sept 2026 it is the one level on that
+ *               stock: IGI see it as the minimum they must hold, and their
+ *               To do says Produce more below it. Null clears it.
  *
  * Plain numbers only; there is deliberately no "weeks of cover" or any other
- * derived forecast. Accepts one model or a list, which is what the "set for
- * all shown" control on the stock screen sends.
- *
- * IGI's own level (pool_min) is theirs to set and is not writable here.
+ * derived forecast. Accepts one model or a list.
  */
 export async function PATCH(request) {
   const auth = await requireLoveLab(request, 'igi-alerts', 30);

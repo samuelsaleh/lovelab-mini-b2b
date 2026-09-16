@@ -29,9 +29,11 @@ export async function GET(request) {
   try {
     const world = await loadIgiWorld(auth.adminSupabase);
     const history = historyView(world);
+    const todo = todoView(world);
 
     return NextResponse.json({
-      todo: todoView(world).visits,      // their To do
+      todo: todo.visits,                 // their To do: the open requests
+      produce: todo.produce,             // their To do: below the level we set
       models: stockView(world).models,   // their stock and order book
       visits: history.visits,            // their history
       batches: history.batches,          // the production they have recorded

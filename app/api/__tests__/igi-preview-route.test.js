@@ -22,7 +22,6 @@ const previewStock = require('../igi/preview/stock/route');
 const previewHistory = require('../igi/preview/history/route');
 const previewInvoices = require('../igi/preview/invoices/route');
 const previewBatches = require('../igi/preview/batches/route');
-const previewAlerts = require('../igi/preview/alerts/route');
 const previewProduce = require('../igi/preview/todo/[visitId]/produce/route');
 
 const PREVIEW = {
@@ -35,8 +34,8 @@ const portalHistory = require('../igi-portal/history/route');
 const portalInvoices = require('../igi-portal/invoices/route');
 
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', pool_min: 1000, sort_order: 3 },
-  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd', spec: null, state: 'reserved', pool_min: null, sort_order: 61 },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', order_min: 1000, sort_order: 3 },
+  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd', spec: null, state: 'reserved', order_min: null, sort_order: 61 },
 ];
 
 const TABLES = {
@@ -149,17 +148,6 @@ describe('and can drive their half, under his own name', () => {
     const res = await previewBatches.POST(req({ model_id: 'm1', batch_date: '2026-08-29' }, 'POST'));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/how many did you make/i);
-  });
-
-  it('sets IGI’s alert level', async () => {
-    let patched = null;
-    global.__admin = { ...sb({ profile: { id: 'sam', role: 'admin' } }), from: (t) => ({
-      update: (p) => { patched = p; return { in: () => ({ select: async () => ({ data: [], error: null }) }) } },
-      select: () => ({ eq: () => ({ single: async () => ({ data: { id: 'sam', role: 'admin' }, error: null }) }) }),
-    }) };
-    const res = await previewAlerts.PATCH(req({ model_ids: ['m1'], pool_min: 250 }, 'PATCH'));
-    expect(res.status).toBe(200);
-    expect(patched).toEqual({ pool_min: 250 });
   });
 
   it('records production against the admin, and only on a movement waiting on IGI', async () => {

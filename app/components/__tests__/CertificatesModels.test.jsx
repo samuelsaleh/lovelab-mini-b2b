@@ -8,9 +8,9 @@ import CertificatesModelsClient from '../CertificatesModelsClient'
  * (Sam, 16 Sept 2026).
  */
 const MODELS = [
-  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', qty_ordered: 12250, pool: 11020, shelf: 1006, shelf_min: 25, pool_min: 1800, order_min: null },
-  { id: 'm-wait', serial: null, name: 'Full Moonlight', stones: '1', carat: 0.5, shape: 'Round', spec: null, state: 'awaiting_serial', qty_ordered: null, pool: null, shelf: null, shelf_min: null, pool_min: null, order_min: null },
-  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Round', spec: null, state: 'reserved', qty_ordered: null, pool: null, shelf: null, shelf_min: null, pool_min: null, order_min: null },
+  { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null, state: 'in_use', qty_ordered: 12250, pool: 11020, shelf: 1006, shelf_min: 25, order_min: null },
+  { id: 'm-wait', serial: null, name: 'Full Moonlight', stones: '1', carat: 0.5, shape: 'Round', spec: null, state: 'awaiting_serial', qty_ordered: null, pool: null, shelf: null, shelf_min: null, order_min: null },
+  { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Round', spec: null, state: 'reserved', qty_ordered: null, pool: null, shelf: null, shelf_min: null, order_min: null },
 ]
 
 function mockFetch({ onPost, onAlert } = {}) {
@@ -108,12 +108,11 @@ describe('the two levels per model are set here, not on Stock', () => {
     const onAlert = jest.fn()
     await renderModels({ onAlert })
     const input = screen.getAllByTestId('order-min')[0]
-    // IGI's own level shows as the placeholder while we hold no opinion.
-    expect(input).toHaveAttribute('placeholder', 'IGI: 1800')
+    expect(input).toHaveAttribute('placeholder', 'none')
     fireEvent.change(input, { target: { value: '500' } })
     fireEvent.blur(input)
     await waitFor(() => expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m1'], order_min: 500 }))
-    expect(await screen.findByTestId('notice')).toHaveTextContent('Order at IGI')
+    expect(await screen.findByTestId('notice')).toHaveTextContent('IGI see this level')
   })
 
   it('does not save a level that is not a whole number', async () => {

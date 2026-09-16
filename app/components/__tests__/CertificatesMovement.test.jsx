@@ -15,24 +15,24 @@ const MODELS = [
   {
     id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', igi_name: 'Cuty - Cubix',
     stones: '1', carat: 0.1, shape: 'Round', state: 'in_use', qty_ordered: 12250,
-    shelf: 1006, pool: 900, shelf_min: 25, pool_min: null, asked_now: 0,
-    shelf_status: 'fine', pool_status: 'fine',
+    shelf: 1006, pool: 900, shelf_min: 25, asked_now: 0,
+    shelf_status: 'fine',
   },
   {
     id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine',
     stones: '1', carat: 0.5, shape: 'Heart', state: 'in_use', qty_ordered: 250,
-    shelf: 2, pool: 50, shelf_min: 25, pool_min: 100, asked_now: 0,
-    shelf_status: 'collect', pool_status: 'reorder',
+    shelf: 2, pool: 50, shelf_min: 25, asked_now: 0,
+    shelf_status: 'collect',
   },
   {
     id: 'm3', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd',
     state: 'reserved', qty_ordered: null, shelf: null, pool: null, shelf_min: 25,
-    shelf_status: 'unmapped', pool_status: 'unknown',
+    shelf_status: 'unmapped',
   },
   {
     id: 'm4', serial: null, name: 'Full Moonlight', stones: '1', carat: 0.5, shape: 'Round',
     state: 'awaiting_serial', qty_ordered: null, shelf: null, pool: null, shelf_min: 25,
-    shelf_status: 'unmapped', pool_status: 'unknown',
+    shelf_status: 'unmapped',
   },
 ]
 

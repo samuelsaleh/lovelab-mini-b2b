@@ -239,21 +239,18 @@ function needsCollect(m) {
   return m.shelf_status === 'collect'
 }
 
-/**
- * Below a level on IGI's stock — ours if we set one, otherwise IGI's own.
- * Either way the answer is production.
- */
+/** Below the level we want IGI to hold. IGI see the same line on their To do. */
 function needsOrder(m) {
-  return m.order_status === 'order' || m.pool_status === 'reorder'
+  return m.order_status === 'order'
 }
 
 function shelfLevel(m) {
   return m.shelf_min ?? 25
 }
 
-/** The one IGI level shown: ours when we hold an opinion, else theirs. */
+/** The one level on IGI's stock: ours, and IGI see it too. */
 function igiLevel(m) {
-  return m.order_min ?? m.pool_min ?? null
+  return m.order_min ?? null
 }
 
 function ModelCell({ model: m }) {
