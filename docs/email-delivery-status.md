@@ -21,8 +21,16 @@ It covers the three kinds of email the app sends:
 3. **A daily check** (`/api/cron/email-deliveries`, 06:00) asks Resend with the
    API key about anything the webhook hasn't settled, in case a webhook was
    missed.
-4. An admin can also press **Check delivery** (`POST /api/email-deliveries/refresh`)
-   for one order or one lead.
+4. In the Fair Assistant, the **Follow-up** tab of a batch has **Check
+   deliveries now** (`POST /api/fair-assistant/batches/:id/refresh-deliveries`):
+   it asks Resend about every email of the batch and updates the pills. Use
+   it whenever the daily check is not running (see step 5 of the setup).
+   `POST /api/email-deliveries/refresh` does the same for one order or one lead.
+6. **Opens and clicks** (since 15 Sept 2026) are kept per email —
+   `email_deliveries.opened_at / clicked_at / open_count / click_count` — and
+   mirrored to `fair_email_drafts.opened_at / clicked_at`, so the batch
+   Follow-up shows who opened. Needs
+   `supabase/migrations/20260915130000_email_opens.sql`.
 5. A **bounce, complaint or failure** records a health event and emails the
    admins straight away, with the reason and what to do.
 
@@ -32,17 +40,27 @@ It covers the three kinds of email the app sends:
    `supabase/migrations/20260909120000_email_deliveries.sql`.
    Until it runs, emails go out exactly as before and nothing is tracked.
 2. **Create the webhook** in Resend: dashboard → *Webhooks* → *Add webhook*.
-   - Endpoint URL: `https://b2b-lovelab.com/api/webhooks/resend`
+   - Endpoint URL: `https://app.lovelab-antwerp.com/api/webhooks/resend`
+     (since the move to the self-hosted server, Sept 2026 — the old
+     `b2b-lovelab.com` address only redirects and Resend does not follow it)
    - Events: tick `email.sent`, `email.delivered`, `email.delivery_delayed`,
      `email.bounced`, `email.complained`, `email.failed`, `email.suppressed`,
      `email.opened`, `email.clicked`.
    - Resend then shows a **signing secret** starting with `whsec_`.
-3. **Put the secret in Vercel**: Settings → Environment Variables →
-   `RESEND_WEBHOOK_SECRET` = that value, with *Production* ticked.
-   **Then redeploy** — Deployments → ⋯ on the latest → *Redeploy*. Saving a
-   variable does not restart anything; until a new deployment runs, the
+3. **Put the secret in the server's env file** (`RESEND_WEBHOOK_SECRET` =
+   that value) **and restart the app** (`pm2 restart app-lovelab-antwerp`).
+   Saving a variable does not restart anything; until the app restarts, the
    webhook keeps answering 503 "Webhook not configured" (9 Sept 2026: this
-   is exactly what happened on first setup).
+   is exactly what happened on first setup, then on Vercel).
+5. **Daily check on the server.** The 06:00 sweep used to be a Vercel cron
+   (`vercel.json`); on the self-hosted server nothing fires it. Add a
+   cron entry that calls it once a day with the secret header:
+   `0 6 * * * curl -s -H "x-vercel-cron-secret: $CRON_SECRET" https://app.lovelab-antwerp.com/api/cron/email-deliveries`
+   (`CRON_SECRET` must be set in the env file too). Until then, use
+   **Check deliveries now** in the Fair Assistant.
+6. **AI key.** Translating fair emails needs a valid `ANTHROPIC_API_KEY` in
+   the same env file; the Outreach tab shows a red banner and keeps Send off
+   while the key is missing or rejected.
 4. Send yourself a test order confirmation. Within a minute the row in
    Documents should show **✓ email delivered**.
 

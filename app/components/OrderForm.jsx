@@ -9,6 +9,8 @@ import { fmt, today } from '@/lib/utils'
 import { COLLECTIONS, HOUSING, CORD_OPTIONS, CORD_TYPE_LABELS, CERT_LABELS, buildMaterialLabel, cordPaletteFor, getAvailableCarats, getAvailableCerts, getPrice, getDefaultCert, getDefaultCordType, getDefaultThickness, getThicknessOptions, getVisibleCollections, getProductType, necklaceSizeLabel, normalizeCordColorName, parseMaterialLabel, resolvePricelist, PRICELIST_LABELS, DEFAULT_PRICELIST, isBezelOnly, getShapesForCarat, getForcedClosure, getDefaultClosure, closureOptionsFor, resolveClosure, sizeOptionsForClosure } from '@/lib/catalog'
 import { generatePDF, downloadPDF, formatDocumentFilename } from '@/lib/pdf'
 import { validateVAT } from '@/lib/vat'
+import { companyKey, clientRowToFormFields } from '@/lib/clientGatePersistence'
+import { addressMatchesClient, formatClientAddress } from '@/lib/addressMatch'
 import SaveDocumentModal from './SaveDocumentModal'
 import { useI18n } from '@/lib/i18n'
 import { clientAddressPatch } from '@/lib/clientSync'
@@ -632,6 +634,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const printRef = useRef(null)
   const scrollAreaRef = useRef(null)
   const [showSaveModal, setShowSaveModal] = useState(false)
+  // {row, reason} when the address on the order differs from the directory's.
+  const [addressMismatch, setAddressMismatch] = useState(null)
   // Once a save creates a document, remember it so every later Save in this
   // same session UPDATES that row instead of inserting a new one. Without
   // this, "Save as draft" twice produced two identical drafts (Sam, July 2026).
@@ -698,6 +702,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     editingExisting: Boolean(editingDocumentId),
   }))
   const [companyName, setCompanyName] = useState(headerSeed.companyName)
+  const companyNameRef = useRef(headerSeed.companyName)
+  useEffect(() => { companyNameRef.current = companyName }, [companyName])
   const [contactName, setContactName] = useState(headerSeed.contactName)
   const [addressLine1, setAddressLine1] = useState(headerSeed.addressLine1)
   const [addressLine2, setAddressLine2] = useState(headerSeed.addressLine2)
@@ -707,6 +713,16 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   const [shippingAddressLine1, setShippingAddressLine1] = useState(headerSeed.shippingAddressLine1)
   const [shippingAddressLine2, setShippingAddressLine2] = useState(headerSeed.shippingAddressLine2)
   const [shippingCountry, setShippingCountry] = useState(headerSeed.shippingCountry)
+  // Which company the header's details describe. The company field here is
+  // free text with no directory lookup behind it, so changing it used to move
+  // the name and leave the previous boutique's address underneath (Dionne,
+  // 15 Sept 2026). Same ownership rule as the client gate.
+  const [detailsOwner, setDetailsOwner] = useState(headerSeed.companyName)
+  const claimDetails = useCallback((setter, value) => {
+    setter(value)
+    setDetailsOwner(companyNameRef.current)
+  }, [])
+
   const [vatNumber, setVatNumber] = useState(headerSeed.vatNumber)
   const [vatLocalValid, setVatLocalValid] = useState(headerSeed.vatValid)
   const [vatChecking, setVatChecking] = useState(false)
@@ -862,6 +878,8 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
       editingExisting: Boolean(editingDocumentId),
     })
     setCompanyName(header.companyName)
+    // Re-seeding the header hands the details to whoever it was seeded for.
+    setDetailsOwner(header.companyName)
     setContactName(header.contactName)
     setAddressLine1(header.addressLine1)
     setAddressLine2(header.addressLine2)
@@ -1509,12 +1527,44 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setFinalTotalOverride(patch.finalTotalOverride)
   }, [])
 
+  /**
+   * One last look before an order is filed: does this address still belong to
+   * the boutique named on it?
+   *
+   * The leak that put another shop's address on Théâtrophil's order is fixed
+   * upstream, but a stale or mistyped address can arrive by other routes, and
+   * a wrong delivery address is only discovered by the customer. Only a real
+   * difference stops anything — see lib/addressMatch.
+   */
+  const checkAddressAgainstDirectory = useCallback(async () => {
+    const typed = String(companyName || '').trim()
+    if (!typed) return null
+    try {
+      const res = await fetch(`/api/clients?search=${encodeURIComponent(typed)}`)
+      if (!res.ok) return null
+      const data = await res.json().catch(() => ({}))
+      const exact = (data.clients || []).filter((row) => companyKey(row.company) === companyKey(typed))
+      if (exact.length !== 1) return null
+      const verdict = addressMatchesClient({ addressLine1, addressLine2 }, exact[0])
+      if (verdict.match) return null
+      return { row: exact[0], reason: verdict.reason }
+    } catch {
+      // The directory is only a second opinion. If it cannot be reached, the
+      // order is not held up.
+      return null
+    }
+  }, [companyName, addressLine1, addressLine2])
+
   // ─── Prepayment gate logic ───
-  const runAction = useCallback((action) => {
-    if (action === 'save') setShowSaveModal(true)
+  const runAction = useCallback(async (action) => {
+    if (action === 'save') {
+      const mismatch = await checkAddressAgainstDirectory()
+      if (mismatch) { setAddressMismatch(mismatch); return }
+      setShowSaveModal(true)
+    }
     else if (action === 'print') handlePrint()
     else if (action === 'download') handleDownload()
-  }, [handlePrint, handleDownload])
+  }, [handlePrint, handleDownload, checkAddressAgainstDirectory])
 
   const triggerWithPrepaymentCheck = useCallback((action) => {
     // Soft validation: incomplete orders show a warning banner with the
@@ -1545,6 +1595,55 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     setPendingAction(null)
     runAction(action)
   }, [gateHasPrepayment, gatePrepaymentAmount, gatePrepaymentMethod, pendingAction, runAction])
+
+  /**
+   * The company name is committed when the field is left.
+   *
+   * If the header's details were filled in under a different boutique, they
+   * are that boutique's and go — this is the form-side half of the leak that
+   * put another shop's address on Théâtrophil's order. When the new name is
+   * one single boutique in the directory, its own details take their place,
+   * the way picking it in the client gate would have.
+   */
+  const commitCompanyName = useCallback(async (nextCompany) => {
+    const owner = companyKey(detailsOwner)
+    if (!owner || owner === companyKey(nextCompany)) return
+    setAddressLine1(''); setAddressLine2(''); setCountry('')
+    setShippingSameAsBilling(true)
+    setShippingAddressLine1(''); setShippingAddressLine2(''); setShippingCountry('')
+    setVatNumber(''); setVatLocalValid(null)
+    setContactName(''); setEmail(''); setPhone('')
+    setDetailsOwner('')
+
+    const typed = String(nextCompany || '').trim()
+    if (!typed) return
+    try {
+      const res = await fetch(`/api/clients?search=${encodeURIComponent(typed)}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return
+      const exact = (data.clients || []).filter((row) => companyKey(row.company) === companyKey(typed))
+      // Only one match is accepted: two boutiques filed under the same name
+      // is a question for a human, not a field to fill in behind their back.
+      if (exact.length !== 1) return
+      // Still the name they left the field on? They may have typed on.
+      if (companyKey(companyNameRef.current) !== companyKey(typed)) return
+      const fields = clientRowToFormFields(exact[0])
+      setContactName(fields.contactName || '')
+      setEmail(fields.email || ''); setPhone(fields.phone || '')
+      setAddressLine1(fields.addressLine1 || ''); setAddressLine2(fields.addressLine2 || '')
+      setCountry(fields.country || ''); setVatNumber(fields.vatNumber || '')
+      if (fields.shippingSameAsBilling === false) {
+        setShippingSameAsBilling(false)
+        setShippingAddressLine1(fields.shippingAddressLine1 || '')
+        setShippingAddressLine2(fields.shippingAddressLine2 || '')
+        setShippingCountry(fields.shippingCountry || '')
+      }
+      setDetailsOwner(exact[0].company || typed)
+    } catch {
+      // Offline or the directory is down: an empty header is the safe answer,
+      // and the fields are all editable by hand.
+    }
+  }, [detailsOwner])
 
   // ─── Header field style ───
   const hFieldLabel = { fontSize: 9, fontWeight: 600, color: colors.lovelabMuted, marginBottom: 1 }
@@ -1729,6 +1828,75 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                 }}
               >
                 Confirm &amp; Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addressMismatch && (
+        <div
+          onClick={() => setAddressMismatch(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('order.addressCheck.title')}
+            data-testid="address-mismatch-dialog"
+            style={{ background: '#fff', width: 'min(460px, 100%)', borderRadius: 14, padding: 20, fontFamily: fonts.body, boxShadow: '0 16px 48px rgba(0,0,0,0.18)' }}
+          >
+            <h2 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 800, color: colors.inkPlum }}>
+              {t('order.addressCheck.title')}
+            </h2>
+            <p style={{ margin: '0 0 14px', fontSize: 13, lineHeight: 1.5, color: colors.lovelabMuted }}>
+              {t('order.addressCheck.body', { company: companyName })}
+            </p>
+
+            <div style={{ border: `1px solid ${colors.lineGray}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+              <div style={{ padding: '10px 13px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.lovelabMuted, marginBottom: 3 }}>
+                  {t('order.addressCheck.onOrder')}
+                </div>
+                <div data-testid="address-mismatch-typed" style={{ fontSize: 13, color: colors.charcoal }}>
+                  {[addressLine1, addressLine2].filter(Boolean).join(', ') || '—'}
+                </div>
+              </div>
+              <div style={{ padding: '10px 13px', borderTop: `1px solid ${colors.lineGray}`, background: '#faf7fb' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.lovelabMuted, marginBottom: 3 }}>
+                  {t('order.addressCheck.onFile')}
+                </div>
+                <div data-testid="address-mismatch-stored" style={{ fontSize: 13, color: colors.charcoal }}>
+                  {formatClientAddress(addressMismatch.row) || '—'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                data-testid="address-mismatch-keep"
+                onClick={() => { setAddressMismatch(null); setShowSaveModal(true) }}
+                style={{ padding: '10px 14px', borderRadius: 8, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.charcoal, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body }}
+              >
+                {t('order.addressCheck.keep')}
+              </button>
+              <button
+                type="button"
+                data-testid="address-mismatch-use-stored"
+                onClick={() => {
+                  const fields = clientRowToFormFields(addressMismatch.row)
+                  setAddressLine1(fields.addressLine1 || '')
+                  setAddressLine2(fields.addressLine2 || '')
+                  if (fields.country) setCountry(fields.country)
+                  setDetailsOwner(addressMismatch.row.company || companyName)
+                  setAddressMismatch(null)
+                  setShowSaveModal(true)
+                }}
+                style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body }}
+              >
+                {t('order.addressCheck.useStored')}
               </button>
             </div>
           </div>
@@ -2228,21 +2396,21 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <img src="/logo.png" alt="LoveLab" style={{ height: compact ? 40 : 50, width: 'auto', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={hFieldLabel}>Company Name :</div>
-                    <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h1')} />
+                    <PrintableInput value={companyName} onChange={(e) => setCompanyName(e.target.value)} onBlur={(e) => commitCompanyName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h1')} />
                     {/* Contact Person — i18n'd label + hint to prevent the
                         "Cher Oxygene Marie Schultz" bug. The hint is hidden
                         in print mode so the PDF stays clean. */}
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>{t('order.contactName')} :</div>
-                    <PrintableInput value={contactName} onChange={(e) => setContactName(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h2')} />
+                    <PrintableInput value={contactName} onChange={(e) => claimDetails(setContactName, e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h2')} />
                     {!isPrinting && (
                       <div style={{ fontSize: 9, fontStyle: 'italic', color: colors.lovelabMuted, marginTop: 2, lineHeight: 1.3 }}>
                         {t('order.contactNameHint')}
                       </div>
                     )}
                     <div style={{ ...hFieldLabel, marginTop: 4 }}>Billing Address :</div>
-                    <PrintableInput value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h3')} />
-                    <PrintableInput value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h4')} />
-                    <PrintableInput value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h5')} />
+                    <PrintableInput value={addressLine1} onChange={(e) => claimDetails(setAddressLine1, e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h3')} />
+                    <PrintableInput value={addressLine2} onChange={(e) => claimDetails(setAddressLine2, e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h4')} />
+                    <PrintableInput value={country} onChange={(e) => claimDetails(setCountry, e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h5')} />
 
                     {(!isPrinting || !shippingSameAsBilling) && (
                       <div style={{ marginTop: 8 }}>
@@ -2251,7 +2419,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             <input 
                               type="checkbox" 
                               checked={shippingSameAsBilling} 
-                              onChange={(e) => setShippingSameAsBilling(e.target.checked)} 
+                              onChange={(e) => claimDetails(setShippingSameAsBilling, e.target.checked)} 
                               style={{ cursor: 'pointer' }}
                             />
                             Shipping address same as billing
@@ -2260,9 +2428,9 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         {!shippingSameAsBilling && (
                           <div style={{ marginTop: isPrinting ? 0 : 4 }}>
                             <div style={{ ...hFieldLabel }}>Shipping Address :</div>
-                            <PrintableInput value={shippingAddressLine1} onChange={(e) => setShippingAddressLine1(e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h6')} />
-                            <PrintableInput value={shippingAddressLine2} onChange={(e) => setShippingAddressLine2(e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h7')} />
-                            <PrintableInput value={shippingCountry} onChange={(e) => setShippingCountry(e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h8')} />
+                            <PrintableInput value={shippingAddressLine1} onChange={(e) => claimDetails(setShippingAddressLine1, e.target.value)} placeholder="Street address" style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h6')} />
+                            <PrintableInput value={shippingAddressLine2} onChange={(e) => claimDetails(setShippingAddressLine2, e.target.value)} placeholder="Postal code, City" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h7')} />
+                            <PrintableInput value={shippingCountry} onChange={(e) => claimDetails(setShippingCountry, e.target.value)} placeholder="Country" style={{ ...hFieldInput, marginTop: 2 }} isPrinting={isPrinting} {...noAutofill('h8')} />
                           </div>
                         )}
                       </div>
@@ -2274,7 +2442,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
                     <div style={{ flex: 1 }}>
                       <div style={hFieldLabel}>VAT Number :</div>
-                      <PrintableInput value={vatNumber} onChange={(e) => { setVatNumber(e.target.value); setVatLocalValid(null) }} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h9')} />
+                      <PrintableInput value={vatNumber} onChange={(e) => { claimDetails(setVatNumber, e.target.value); setVatLocalValid(null) }} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h9')} />
                     </div>
                     {!isPrinting && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
@@ -2316,11 +2484,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   </div>
                   <div>
                     <div style={hFieldLabel}>E-mail :</div>
-                    <PrintableInput value={email} onChange={(e) => setEmail(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h10')} />
+                    <PrintableInput value={email} onChange={(e) => claimDetails(setEmail, e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h10')} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Phone :</div>
-                    <PrintableInput value={phone} onChange={(e) => setPhone(e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h11')} />
+                    <PrintableInput value={phone} onChange={(e) => claimDetails(setPhone, e.target.value)} style={hFieldInput} isPrinting={isPrinting} {...noAutofill('h11')} />
                   </div>
                   <div>
                     <div style={hFieldLabel}>Event / Fair :</div>

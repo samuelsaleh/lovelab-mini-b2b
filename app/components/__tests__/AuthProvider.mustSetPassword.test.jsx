@@ -64,3 +64,18 @@ test('agents still get the redirect without any mark, and never on /set-password
   await settle();
   expect(replace).not.toHaveBeenCalled();
 });
+
+// Sam, 15 Sep 2026: an admin can also be a commercial (is_agent). That must
+// not turn the agent rule on for them — they sign in with Google.
+test('an admin who is also a commercial is left alone without the mark', async () => {
+  serve({ id: 'raphael', user_metadata: { full_name: 'Raphael' } }, { id: 'raphael', role: 'admin', is_agent: true, agent_status: 'active', has_password_set: false });
+  render(<AuthProvider><div /></AuthProvider>);
+  await settle();
+  expect(replace).not.toHaveBeenCalled();
+});
+
+test('an invited employee who is also a commercial is still asked, because of the mark', async () => {
+  serve({ id: 'new', user_metadata: { must_set_password: true } }, { id: 'new', role: 'admin', is_agent: true, has_password_set: false });
+  render(<AuthProvider><div /></AuthProvider>);
+  await waitFor(() => expect(replace).toHaveBeenCalledWith('/set-password?next=%2Fadmin'));
+});

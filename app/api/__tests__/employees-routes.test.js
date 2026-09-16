@@ -33,12 +33,13 @@ function table(name) {
   const ctx = { table: name, op: 'select', filters: [], head: false };
   const b = {
     select: (cols, opts) => { ctx.cols = cols; ctx.head = !!opts?.head; return b; },
-    update: (payload) => { ctx.op = 'update'; ctx.payload = payload; return b; },
+    update: (payload) => { ctx.op = 'update'; ctx.payload = payload; writes.push(ctx); return b; },
     eq: (c, v) => { ctx.filters.push([c, v]); return b; },
     order: () => b,
     maybeSingle: async () => ({ data: state.byId, error: null }),
+    single: async () => ({ data: ctx.op === 'update' ? { ...state.byId, ...ctx.payload } : state.byId, error: null }),
     then: (resolve) => {
-      if (ctx.op === 'update') { writes.push(ctx); return resolve({ error: null }); }
+      if (ctx.op === 'update') return resolve({ error: null });
       if (ctx.head) return resolve({ count: state.adminCount, error: null });
       return resolve({ data: state.list, error: null });
     },
@@ -150,6 +151,49 @@ describe('PUT /api/employees/[id] { _resend }', () => {
     expect((await one.PUT(req('PUT', { _resend: true }, `/api/employees/${EMP}`), params(EMP))).status).toBe(404);
     expect((await one.PUT(req('PUT', { _resend: true }, '/api/employees/nope'), params('nope'))).status).toBe(400);
     expect(mockResendEmployeeInvite).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /api/employees/[id] { commercial } — Sam, 15 Sep 2026', () => {
+  test('makes an employee a commercial: agent flag, active, rate, since', async () => {
+    state.byId = { id: EMP, email: 'raphael@love-lab.com', full_name: 'Raphael', role: 'admin', is_agent: false, agent_since: null };
+    const res = await one.PUT(req('PUT', { commercial: true, commission_rate: 10 }, `/api/employees/${EMP}`), params(EMP));
+    expect(res.status).toBe(200);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].payload).toMatchObject({ is_agent: true, agent_status: 'active', agent_deleted_at: null, commission_rate: 10 });
+    expect(typeof writes[0].payload.agent_since).toBe('string');
+    expect(writes[0].filters).toEqual([['id', EMP]]);
+    const { employee } = await res.json();
+    expect(employee).toMatchObject({ id: EMP, is_agent: true, commission_rate: 10, you: false });
+  });
+
+  test('keeps the original agent_since when re-marking, and allows your own row', async () => {
+    state.byId = { id: SAM, email: 'sam@love-lab.com', role: 'admin', is_agent: false, agent_since: '2026-01-01T00:00:00Z' };
+    const res = await one.PUT(req('PUT', { commercial: true, commission_rate: 12.5 }, `/api/employees/${SAM}`), params(SAM));
+    expect(res.status).toBe(200);
+    expect(writes[0].payload.agent_since).toBe('2026-01-01T00:00:00Z');
+    expect((await res.json()).employee.you).toBe(true);
+  });
+
+  test('refuses a rate outside 0–100 or missing', async () => {
+    state.byId = { id: EMP, email: 'e@x.com', role: 'admin' };
+    for (const rate of [undefined, 'ten', -1, 101]) {
+      const res = await one.PUT(req('PUT', { commercial: true, commission_rate: rate }, `/api/employees/${EMP}`), params(EMP));
+      expect(res.status).toBe(400);
+    }
+    expect(writes).toEqual([]);
+  });
+
+  test('stops a commercial: flag off, inactive, rate and history kept', async () => {
+    state.byId = { id: EMP, email: 'e@x.com', role: 'admin', is_agent: true, agent_status: 'active', commission_rate: 10 };
+    const res = await one.PUT(req('PUT', { commercial: false }, `/api/employees/${EMP}`), params(EMP));
+    expect(res.status).toBe(200);
+    expect(writes[0].payload).toEqual({ is_agent: false, agent_status: 'inactive' });
+  });
+
+  test('is admin-only', async () => {
+    mockIsAdmin.mockReturnValue(false);
+    expect((await one.PUT(req('PUT', { commercial: true, commission_rate: 5 }, `/api/employees/${EMP}`), params(EMP))).status).toBe(403);
   });
 });
 

@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '../components/AuthProvider'
 import { fonts, colors } from '@/lib/styles'
 import PortalLayout from '../components/PortalLayout'
-import { ADMIN_NAV_ITEMS } from '@/lib/navItems'
+import { getAdminNavItems } from '@/lib/navItems'
 
 export default function AdminLayout({ children }) {
   const router = useRouter()
@@ -31,6 +31,8 @@ export default function AdminLayout({ children }) {
   const activeId =
     pathname === '/admin'                          ? 'dashboard'
     : pathname.startsWith('/admin/agents')         ? 'sales-team'
+    : pathname.startsWith('/admin/commercials')    ? 'sales-team'
+    : pathname.startsWith('/admin/my-sales')       ? 'my-sales'
     : pathname.startsWith('/admin/assistants')     ? 'sales-team'
     : pathname.startsWith('/admin/employees')      ? 'sales-team'
     : pathname.startsWith('/admin/organizations')  ? 'sales-team'
@@ -45,7 +47,7 @@ export default function AdminLayout({ children }) {
 
   return (
     <PortalLayout
-      navItems={ADMIN_NAV_ITEMS}
+      navItems={getAdminNavItems(profile)}
       activeId={activeId}
       portalLabel="Admin"
       rootPath="/admin"

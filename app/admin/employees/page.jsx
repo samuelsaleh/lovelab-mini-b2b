@@ -152,6 +152,11 @@ export default function AdminEmployeesPage() {
   const [showForm, setShowForm] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  // Sam, 15 Sep 2026: an employee can also be a commercial — their orders are
+  // credited to them and earn commission, like an agent's. rateEditId is the
+  // row whose rate field is open; rateDraft its value.
+  const [rateEditId, setRateEditId] = useState(null);
+  const [rateDraft, setRateDraft] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -185,6 +190,33 @@ export default function AdminEmployeesPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to re-send the invite');
       setNotice(data.message || `A new temporary password was sent to ${employee.email}.`);
+      fetchData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const saveCommercial = async (employee, commercial) => {
+    setBusyId(employee.id);
+    setNotice('');
+    setError('');
+    try {
+      const body = commercial ? { commercial: true, commission_rate: Number(rateDraft) } : { commercial: false };
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to update');
+      setRateEditId(null);
+      setRateDraft('');
+      const who = employee.full_name || employee.email;
+      setNotice(commercial
+        ? `${who} is now a commercial at ${Number(rateDraft)} %. Their orders are credited to them and appear under Sales Team → Commercials.`
+        : `${who} is no longer a commercial. Past orders and commissions are kept.`);
       fetchData();
     } catch (err) {
       setError(err.message);
@@ -231,7 +263,7 @@ export default function AdminEmployeesPage() {
           </button>
         </div>
         <p style={{ fontSize: 13, color: '#999', margin: '0 0 24px' }}>
-          Colleagues with the same access as you. They get an email with a temporary password and choose their own on first sign-in. Remove access here any time.
+          Colleagues with the same access as you. They get an email with a temporary password and choose their own on first sign-in. Remove access here any time. Mark someone as commercial when they take orders themselves: those orders are credited to them and earn commission, and they appear under Sales Team → Commercials, not among the agents.
         </p>
 
         {error && (
@@ -300,14 +332,85 @@ export default function AdminEmployeesPage() {
                           {invited ? 'Invited' : 'Active'}
                         </span>
                       )}
-                      {e.is_agent && (
-                        <span style={{ fontSize: 11, color: '#999' }}>also an agent</span>
+                      {e.is_agent && e.agent_status !== 'inactive' && (
+                        <span data-testid="employee-commercial-badge" style={{
+                          padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700,
+                          textTransform: 'uppercase', background: '#fdf7fa', color: colors.inkPlum,
+                          border: `1px solid ${colors.lovelabBorder}`,
+                        }}>
+                          Commercial{e.commission_rate != null ? ` · ${e.commission_rate} %` : ''}
+                        </span>
                       )}
                       {e.is_assistant && (
                         <span style={{ fontSize: 11, color: '#999' }}>also an assistant</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{e.email}</div>
+                    {(() => {
+                      const isCommercial = e.is_agent && e.agent_status !== 'inactive';
+                      const editing = rateEditId === e.id;
+                      if (editing) {
+                        return (
+                          <form
+                            onSubmit={(ev) => { ev.preventDefault(); saveCommercial(e, true); }}
+                            style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}
+                          >
+                            <label style={{ fontSize: 12, color: '#666' }}>Commission rate</label>
+                            <input
+                              data-testid="employee-rate"
+                              type="number" min="0" max="100" step="0.5"
+                              value={rateDraft}
+                              onChange={(ev) => setRateDraft(ev.target.value)}
+                              style={{ width: 70, padding: '6px 8px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, fontSize: 12, fontFamily: fonts.body }}
+                              autoFocus
+                            />
+                            <span style={{ fontSize: 12, color: '#666' }}>%</span>
+                            <button
+                              type="submit"
+                              data-testid="employee-commercial-save"
+                              disabled={busyId === e.id || rateDraft === ''}
+                              style={{
+                                padding: '6px 12px', borderRadius: 6, border: 'none',
+                                background: colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 600,
+                                cursor: 'pointer', fontFamily: fonts.body, opacity: busyId === e.id || rateDraft === '' ? 0.6 : 1,
+                              }}
+                            >
+                              {busyId === e.id ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setRateEditId(null); setRateDraft(''); }}
+                              style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, background: '#fff', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: fonts.body }}
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        );
+                      }
+                      return (
+                        <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            data-testid={isCommercial ? 'employee-commercial-edit' : 'employee-commercial-on'}
+                            onClick={() => { setRateEditId(e.id); setRateDraft(e.commission_rate != null ? String(e.commission_rate) : ''); }}
+                            style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: colors.inkPlum, cursor: 'pointer', fontFamily: fonts.body, textDecoration: 'underline' }}
+                          >
+                            {isCommercial ? 'Edit rate' : 'Make commercial'}
+                          </button>
+                          {isCommercial && (
+                            <button
+                              type="button"
+                              data-testid="employee-commercial-off"
+                              onClick={() => saveCommercial(e, false)}
+                              disabled={busyId === e.id}
+                              style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#999', cursor: 'pointer', fontFamily: fonts.body, textDecoration: 'underline' }}
+                            >
+                              Stop commercial
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {!e.you && (

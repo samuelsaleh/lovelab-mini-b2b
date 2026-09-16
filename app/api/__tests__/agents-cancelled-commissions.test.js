@@ -124,6 +124,27 @@ beforeEach(() => {
   commRowsToReturn = [];
 });
 
+describe('/api/agents GET — commercials are flagged (Sam, 15 Sep 2026)', () => {
+  test('an admin with the agent flag comes back as is_commercial; an agent does not', async () => {
+    profilesQueryResults.active = [
+      ...profilesQueryResults.active,
+      { id: 'raphael-id', email: 'raphael@love-lab.com', full_name: 'Raphael', role: 'admin', is_agent: true, agent_status: 'active', commission_rate: 10 },
+    ];
+    try {
+      const res = await GET(makeRequest());
+      const json = await res.json();
+      const byId = Object.fromEntries(json.agents.map((a) => [a.id, a]));
+      expect(byId['raphael-id'].is_commercial).toBe(true);
+      expect(byId['marc-id'].is_commercial).toBe(false);
+      // Still in the list: analytics, the Save dialog and commission reports
+      // read it and must keep the commercial's name on their orders.
+      expect(json.agents).toHaveLength(2);
+    } finally {
+      profilesQueryResults.active = profilesQueryResults.active.filter((a) => a.id !== 'raphael-id');
+    }
+  });
+});
+
 describe('/api/agents GET — cancelled commissions are not counted', () => {
   test('a cancelled row does NOT inflate effective_orders or effective_revenue', async () => {
     // Marc has exactly one commission row, and its status is cancelled

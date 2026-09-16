@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getSenderFrom } from '@/lib/email';
+import { rejectedSignupEmail } from '@/lib/email-templates';
 
 function confirmationPage(action, token, siteUrl) {
   const color = action === 'approve' ? '#27ae60' : '#dc2626';
@@ -74,22 +75,7 @@ export async function GET(request) {
           body: JSON.stringify({
             from: getSenderFrom(),
             to: [signup.email],
-            subject: 'Your LoveLab B2B access request',
-            html: `
-              <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #fff;">
-                <img src="${siteUrl}/logo.png" alt="LoveLab" style="height: 48px; margin-bottom: 24px;" />
-                <h2 style="color: #1a1a1a; margin: 0 0 8px;">Hi ${signup.full_name},</h2>
-                <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                  Unfortunately your request to access LoveLab B2B could not be approved at this time.
-                </p>
-                <p style="color: #555; font-size: 15px; margin: 0 0 24px;">
-                  If you think this is a mistake, please contact the LoveLab team directly.
-                </p>
-                <p style="color: #aaa; font-size: 11px; margin-top: 32px;">
-                  LoveLab B2B · This email was sent automatically.
-                </p>
-              </div>
-            `,
+            ...rejectedSignupEmail(signup.full_name, siteUrl),
           }),
         });
       } catch (err) {

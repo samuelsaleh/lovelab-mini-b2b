@@ -18,6 +18,7 @@ import TopNav from './components/TopNav'
 import Sidebar from './components/Sidebar'
 import DocumentsPanel from './components/DocumentsPanel'
 import HomeTab from './components/HomeTab'
+import NewOrderClientModal from './components/NewOrderClientModal'
 import PackshotGallery from './components/PackshotGallery'
 import { findPackshot } from '@/lib/packshot-lookup'
 import {
@@ -25,6 +26,8 @@ import {
   shouldAdminBypassClientGate,
   restoreClientFromStorage,
   formStateForRestock,
+  formStateForNewClient,
+  blankClientDetails,
 } from '@/lib/clientGatePersistence'
 import { clientFromOrderFormState } from '@/lib/orderFormHeader'
 import { finalizeTransition, editingOrderLabel } from '@/lib/editFlow'
@@ -77,6 +80,8 @@ export default function App() {
   const [builderBudget, setBuilderBudget] = useState('')
   const [budgetRecommendations, setBudgetRecommendations] = useState(null)
   const [showRecommendations, setShowRecommendations] = useState(false)
+  // The order type waiting on "same boutique or another?" — null when nothing asked.
+  const [pendingNewOrder, setPendingNewOrder] = useState(null)
 
   // Active price list (2025 vs 2026). Defaults to DEFAULT_PRICELIST ('2026').
   // Lives at App-level so the same value flows into Builder, OrderForm,
@@ -280,7 +285,7 @@ export default function App() {
   // beginning of the flow, not on the OrderForm "review" page. The selected
   // channel (b2b/internal/consignment/delete_from_stock) is remembered so
   // the SaveDocumentModal pre-selects it later.
-  const handleCreateOrder = useCallback((type = 'b2b') => {
+  const startOrder = useCallback((type = 'b2b') => {
     // Sample orders were merged into Draft — always start a normal B2B order.
     const channel = type === 'sample' ? 'b2b' : (type || 'b2b')
     setOrderFormQuote(null)
@@ -292,6 +297,20 @@ export default function App() {
     pendingOrderChannel.current = channel
     setActiveTab('builder')
   }, [])
+
+  /**
+   * A new order used to keep whoever was loaded, silently — convenient for a
+   * second order for the same boutique, and the reason a fair day's worth of
+   * orders could all inherit the first shop's address. Ask instead, and only
+   * when there is somebody to inherit.
+   */
+  const handleCreateOrder = useCallback((type = 'b2b') => {
+    if (client?.company?.trim()) {
+      setPendingNewOrder(type === 'sample' ? 'b2b' : (type || 'b2b'))
+      return
+    }
+    startOrder(type)
+  }, [client, startOrder])
 
   // ─── Re-edit a saved document ───
   // We sync pricelistYear into App-level state BEFORE showing OrderForm so the
@@ -406,15 +425,24 @@ export default function App() {
     }
   }, [authLoading, user, handleReEdit, setPricelistYear])
 
-  // ─── Duplicate / restock a saved document as a NEW order ───
-  // Keeps product rows AND client contact fields (company, email, phone, VAT,
-  // shipping, DZB, groupement) so Copy = same-boutique restock. Clears only
-  // editingDocumentId so save creates a new document.
-  const handleDuplicate = useCallback((doc) => {
+  // ─── Duplicate a saved document as a NEW order ───
+  // The dialog (DuplicateOrderModal) asks who it is for first, so this runs
+  // in one of two modes (Sam, 15 Sep 2026):
+  //   same → keeps the boutique's contact fields: a restock, the old Copy.
+  //   new  → keeps only the cart and takes the new client's fields, because
+  //          the old shop's address, VAT, delivery and discounts would be
+  //          wrong on someone else's order.
+  // Either way editingDocumentId is cleared, so saving writes a new document,
+  // and the fair is carried over when the dialog asked to keep it — otherwise
+  // the copy files itself outside the fair it belongs to.
+  const handleDuplicate = useCallback((doc, choice = {}) => {
     const formState = doc?.metadata?.formState
     if (!formState) return
-    const rest = formStateForRestock(formState)
+    const rest = choice.mode === 'new'
+      ? formStateForNewClient(formState, choice.clientFields || {})
+      : formStateForRestock(formState)
     if (!rest) return
+    if (choice.keepFair && formState.eventName) rest.eventName = formState.eventName
     const docYear = formState.pricelistYear ?? doc?.metadata?.pricelistYear
     if (docYear != null) setPricelistYear(docYear)
     // Sync App-level client so ClientGate / builder also see the boutique.
@@ -681,15 +709,26 @@ export default function App() {
 
   const handleNewClient = () => {
     explicitClientGateRef.current = true
-    setClient({
-      name: '', phone: '', email: '', company: '', country: '', address: '', city: '', zip: '',
-      vat: '', vatValid: null, vatValidating: false, vatStatus: null, vatErrorCode: null, vatMessageKey: null,
-      savedClientId: null, dzb_client_number: '', jeweler_group: null,
-      shipping_same_as_billing: true, shipping_address: '', shipping_address_line2: '', shipping_country: '',
-    })
+    setClient({ ...blankClientDetails(), company: '', detailsOwner: '' })
     setClientReady(false)
     handleReset()
   }
+
+  // ─── "New order": same boutique, or another one ───
+  const confirmNewOrderSameClient = useCallback(() => {
+    const type = pendingNewOrder
+    setPendingNewOrder(null)
+    if (type) startOrder(type)
+  }, [pendingNewOrder, startOrder])
+
+  const confirmNewOrderOtherClient = useCallback(() => {
+    const type = pendingNewOrder
+    setPendingNewOrder(null)
+    explicitClientGateRef.current = true
+    setClient({ ...blankClientDetails(), company: '', detailsOwner: '' })
+    setClientReady(false)
+    if (type) startOrder(type)
+  }, [pendingNewOrder, startOrder])
 
   // ─── localStorage persistence ───
   useEffect(() => {
@@ -868,6 +907,14 @@ export default function App() {
 
   return (
     <div className="app-shell" style={{ fontFamily: fonts.body, background: '#f8f8f8', display: 'flex', flexDirection: 'column', color: '#333' }}>
+      {pendingNewOrder && (
+        <NewOrderClientModal
+          company={client?.company || ''}
+          onSameClient={confirmNewOrderSameClient}
+          onOtherClient={confirmNewOrderOtherClient}
+          onCancel={() => setPendingNewOrder(null)}
+        />
+      )}
       {showQuote && <QuoteModal quote={curQuote} client={client} onClose={() => setShowQuote(false)} onFinalize={handleFinalize} />}
       {showOrderForm && <OrderForm quote={orderFormQuote} client={client} onClose={() => { setShowOrderForm(false); setSavedFormState(null); setEditingDocumentId(null); setInitialOrderChannel('b2b'); setDocsRefreshKey(k => k + 1) }} currentUser={profile} savedFormState={savedFormState} editingDocumentId={editingDocumentId} editingDocStatus={editingDocStatus} editingDocDraftKind={editingDocDraftKind} onEditInBuilder={handleEditInBuilder} onDocumentReissued={(doc) => { setEditingDocumentId(doc.id); setEditingDocStatus(doc.status || 'sent'); setEditingDocDraftKind(doc.draft_kind || null) }} initialOrderChannel={initialOrderChannel} pricelistYear={pricelistYear} setPricelistYear={setPricelistYear} />}
 

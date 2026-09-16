@@ -59,7 +59,7 @@ export default function AdminAgentsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to load agents');
       setAgents(data.agents || []);
-      setTrashedAgents(data.trashedAgents || []);
+      setTrashedAgents((data.trashedAgents || []).filter((a) => !a.is_commercial));
     } catch (err) {
       setError(err.message || 'Failed to load agents');
       setAgents([]);
@@ -73,7 +73,9 @@ export default function AdminAgentsPage() {
     fetchAgents();
   }, []);
 
-  const activeAgents = agents;
+  // Commercials (admins who take orders) live under Sales Team → Commercials,
+  // not here — Raphael is not an agent (Sam, 15 Sep 2026).
+  const activeAgents = agents.filter((a) => !a.is_commercial);
 
   const filteredAgents = activeAgents.filter((a) => {
     const q = search.toLowerCase();
@@ -91,7 +93,7 @@ export default function AdminAgentsPage() {
   const { soloAgents, sharedOrganizations } = useMemo(() => {
     const visibleIds = new Set(filteredAgents.map((agent) => agent.id));
     const groups = new Map();
-    for (const agent of agents) {
+    for (const agent of activeAgents) {
       const key = agent.organization_id || `solo_${agent.id}`;
       if (!groups.has(key)) {
         groups.set(key, {
@@ -115,7 +117,7 @@ export default function AdminAgentsPage() {
         .map((group) => group.visibleAgents[0]),
       sharedOrganizations: visibleGroups.filter((group) => group.agents.length >= 2),
     };
-  }, [agents, filteredAgents]);
+  }, [activeAgents, filteredAgents]);
 
   const handleDelete = async (agent) => {
     try {

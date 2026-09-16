@@ -122,6 +122,34 @@ describe('AdminAgentsPage redesigned list', () => {
     expect(actions.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
+  it('hides commercials — admins who take orders are not agents (Sam, 15 Sep 2026)', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        agents: [
+          ...agents,
+          {
+            id: 'raphael-id',
+            full_name: 'Raphael Commercial',
+            email: 'raphael@love-lab.com',
+            role: 'admin',
+            is_commercial: true,
+            agent_status: 'active',
+            commission_rate: 10,
+            organization_id: null,
+            stats: { effective_pending_commission: 99 },
+          },
+        ],
+        trashedAgents: [{ id: 'old-commercial', full_name: 'Old Commercial', is_commercial: true, agent_deleted_at: '2026-01-01' }],
+      }),
+    })
+    render(<AdminAgentsPage />)
+    await screen.findByText('Dana Independent')
+    expect(screen.queryByText('Raphael Commercial')).not.toBeInTheDocument()
+    expect(screen.queryByText('€99')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Trash \(/)).not.toBeInTheDocument()
+  })
+
   it('fetches the full agent and trash payload', async () => {
     render(<AdminAgentsPage />)
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/agents?include_trashed=true'))

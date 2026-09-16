@@ -23,6 +23,9 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
   const [showGallery, setShowGallery] = useState(false)
 
   const isAdmin = profile?.role === 'admin'
+  // A commercial admin (Sam, 15 Sep 2026): takes orders, earns commission.
+  // Their own orders, commissions and payments live at /admin/my-sales.
+  const isCommercial = isAdmin && Boolean(profile?.is_agent) && profile?.agent_status !== 'inactive'
   const name = profile?.full_name || user?.email?.split('@')[0] || 'there'
 
   const handleNewOrderClick = () => {
@@ -95,6 +98,41 @@ export default function HomeTab({ onSwitchTab, onCreateOrder }) {
           >
             {t('home.newOrder')}
           </button>
+
+          {isCommercial && (
+            <Link
+              href="/admin/my-sales"
+              data-testid="my-sales-button"
+              style={{
+                flex: '1 1 160px',
+                maxWidth: 240,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '14px 20px',
+                borderRadius: 12,
+                border: 'none',
+                background: colors.inkPlum,
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: fonts.body,
+                textDecoration: 'none',
+                transition: 'opacity .15s, transform .1s',
+                boxShadow: '0 4px 14px rgba(93,58,94,0.25)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.92'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 3v18h18"/>
+                <path d="M7 14l4-4 4 4 5-6"/>
+              </svg>
+              My Sales
+            </Link>
+          )}
 
           <button
             onClick={() => setShowGallery(true)}

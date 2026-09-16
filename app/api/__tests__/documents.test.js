@@ -72,6 +72,20 @@ beforeEach(() => {
   mockAdminSupabase.from.mockReturnValue(mockQuery)
 })
 
+describe('GET /api/documents — an admin asking for their own orders (Sam, 15 Sep 2026)', () => {
+  test('scope=mine narrows an admin to the orders they saved or were credited with', async () => {
+    await GET(makeRequest({ scope: 'mine' }))
+    const orCalls = mockQuery.or.mock.calls.map((c) => c[0])
+    expect(orCalls.some((f) => /created_by\.in\.\(admin-user\)/.test(f))).toBe(true)
+  })
+
+  test('without scope=mine an admin still sees everything', async () => {
+    await GET(makeRequest())
+    const orCalls = mockQuery.or.mock.calls.map((c) => c[0])
+    expect(orCalls.some((f) => /created_by\.in\.\(admin-user\)/.test(f))).toBe(false)
+  })
+})
+
 describe('GET /api/documents', () => {
   test('excludes internal, consignment, and delete_from_stock by default (not called with in clause)', async () => {
     await GET(makeRequest())

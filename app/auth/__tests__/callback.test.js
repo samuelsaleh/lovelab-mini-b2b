@@ -116,6 +116,31 @@ describe('Auth callback — set-password redirect', () => {
     expect(res.headers.get('location')).toContain('/set-password');
   });
 
+  // Sam, 15 Sep 2026: an admin who is also a commercial (is_agent) is not an
+  // invited agent. Only the temp-password mark sends an admin to set-password.
+  it('does NOT redirect an admin who is also a commercial, on a magic link, without the mark', async () => {
+    const user = { id: 'u1', email: 'raphael@love-lab.com', user_metadata: { full_name: 'Raphael' } };
+    mockSupabaseClient.auth.verifyOtp.mockResolvedValue({ data: { user }, error: null });
+    mockFromResults['profiles'] = {
+      maybeSingle: { id: 'u1', role: 'admin', is_agent: true, agent_status: 'active', agent_deleted_at: null, has_password_set: false },
+    };
+    mockFromResults['allowed_emails'] = { maybeSingle: { email: 'raphael@love-lab.com' } };
+    const res = await GET(makeRequest({ token_hash: 'abc', type: 'magiclink' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).not.toContain('/set-password');
+  });
+
+  it('DOES redirect an admin who carries the temp-password mark', async () => {
+    const user = { id: 'u1', email: 'new@love-lab.com', user_metadata: { must_set_password: true } };
+    mockSupabaseClient.auth.verifyOtp.mockResolvedValue({ data: { user }, error: null });
+    mockFromResults['profiles'] = {
+      maybeSingle: { id: 'u1', role: 'admin', is_agent: true, agent_status: 'active', agent_deleted_at: null, has_password_set: false },
+    };
+    mockFromResults['allowed_emails'] = { maybeSingle: { email: 'new@love-lab.com' } };
+    const res = await GET(makeRequest({ token_hash: 'abc', type: 'magiclink' }));
+    expect(res.headers.get('location')).toContain('/set-password');
+  });
+
   it('does NOT redirect to /set-password for OAuth sign-ins', async () => {
     const user = { id: 'u1', email: 'agent@test.com', user_metadata: {} };
     mockSupabaseClient.auth.exchangeCodeForSession.mockResolvedValue({ data: { user }, error: null });

@@ -22,7 +22,7 @@ export async function GET(request) {
 
     const adminSupabase = createAdminClient();
 
-    const AGENT_SELECT_BASE = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
+    const AGENT_SELECT_BASE = 'id, email, full_name, avatar_url, role, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
     let AGENT_SELECT = `${AGENT_SELECT_BASE}, new_client_bonus_mode`;
 
     // Use OR so agents whose is_agent flag was lost (NULL after a profile migration
@@ -232,10 +232,18 @@ export async function GET(request) {
       }
     }
 
+    // A commercial (Sam, 15 Sep 2026) is an employee — an admin — who takes
+    // orders and earns commission on them. Same tracking as an agent, but not
+    // an agent: the Agents list hides them and Sales Team → Commercials shows
+    // them. Everyone else who reads this list (analytics, the Save dialog,
+    // commission reports) still sees them, so their orders keep their name.
+    const isCommercial = (a) => a.role === 'admin';
+
     const agentsWithStats = agents.map(a => {
       const org = orgMap[a.organization_id] || null;
       return {
         ...a,
+        is_commercial: isCommercial(a),
         organization_name: org?.name || null,
         organization_territory: org?.territory || null,
         organization_rate: org?.commission_rate ?? null,
@@ -248,6 +256,7 @@ export async function GET(request) {
     if (trashedAgents.length > 0) {
       response.trashedAgents = trashedAgents.map(a => ({
         ...a,
+        is_commercial: isCommercial(a),
         stats: makeStats(a.id, a.commission_rate),
       }));
     }

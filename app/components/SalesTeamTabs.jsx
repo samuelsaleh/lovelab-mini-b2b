@@ -11,6 +11,12 @@ const TABS = [
     description: 'Independent salespeople who place orders and earn commission.',
   },
   {
+    id: 'commercials',
+    label: 'Commercials',
+    href: '/admin/commercials',
+    description: 'Colleagues who take orders themselves and earn commission on them. Not agents.',
+  },
+  {
     id: 'assistants',
     label: 'Assistants',
     href: '/admin/assistants',
