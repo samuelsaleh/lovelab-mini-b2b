@@ -1,6 +1,5 @@
 import React from 'react'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import CertificatesDashboardClient from '../CertificatesDashboardClient'
 import CertificatesStockClient from '../CertificatesStockClient'
 import SerialSpec from '../igi/SerialSpec'
 
@@ -14,19 +13,19 @@ const MODELS = [
   {
     id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix / Sienna 1 / Moonlight Original',
     stones: '1', carat: 0.1, shape: 'Round', state: 'in_use', qty_ordered: 12250,
-    shelf_min: 25, pool_min: 1800, shelf: 1006, pool: 11020, asked_now: 0,
-    shelf_status: 'fine', pool_status: 'fine',
+    shelf_min: 25, pool_min: 1800, order_min: null, shelf: 1006, pool: 11020, asked_now: 0,
+    shelf_status: 'fine', pool_status: 'fine', order_status: 'fine',
   },
   {
     id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine',
     stones: '1', carat: 0.5, shape: 'Heart', state: 'in_use', qty_ordered: 250,
-    shelf_min: 25, pool_min: 100, shelf: 2, pool: 40, asked_now: 12,
-    shelf_status: 'collect', pool_status: 'reorder',
+    shelf_min: 25, pool_min: 100, order_min: null, shelf: 2, pool: 40, asked_now: 12,
+    shelf_status: 'collect', pool_status: 'reorder', order_status: 'fine',
   },
   {
     id: 'm3', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Rd',
-    state: 'reserved', qty_ordered: null, shelf_min: 25, pool_min: null,
-    shelf: null, pool: null, asked_now: 0, shelf_status: 'unmapped', pool_status: 'unknown',
+    state: 'reserved', qty_ordered: null, shelf_min: 25, pool_min: null, order_min: null,
+    shelf: null, pool: null, asked_now: 0, shelf_status: 'unmapped', pool_status: 'unknown', order_status: 'unknown',
   },
 ]
 
@@ -43,166 +42,134 @@ const OVERVIEW = {
 
 function mockFetch(overview = OVERVIEW, extra = {}) {
   global.fetch = jest.fn((url, init) => {
-    if (String(url).includes('/api/igi/overview')) {
+    const u = String(url)
+    if (u.includes('/api/igi/overview')) {
       return Promise.resolve({ ok: true, json: async () => overview })
     }
-    if (String(url).includes('/api/igi/alerts')) {
-      extra.onAlert?.(JSON.parse(init.body))
-      return Promise.resolve({ ok: true, json: async () => ({ updated: [] }) })
+    if (u.includes('/api/igi/visits') && init?.method === 'POST') {
+      return extra.onPost
+        ? extra.onPost(JSON.parse(init.body))
+        : Promise.resolve({ ok: true, json: async () => ({ visit: { id: 'v9' } }) })
     }
-    return Promise.resolve({ ok: true, json: async () => ({ descriptions: [] }) })
+    return Promise.resolve({ ok: true, json: async () => ({}) })
   })
+}
+
+async function renderStock(overview, extra) {
+  mockFetch(overview, extra)
+  render(<CertificatesStockClient />)
+  await waitFor(() => expect(screen.getByTestId('facts')).toBeInTheDocument())
 }
 
 beforeEach(() => { jest.clearAllMocks() })
 
-describe('the certificates dashboard', () => {
-  it('leads with the two figures the module exists to answer', async () => {
-    mockFetch()
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('stat-shelf')).toBeInTheDocument())
-
-    expect(screen.getByTestId('stat-shelf')).toHaveTextContent('3 504')
-    expect(screen.getByTestId('stat-igi')).toHaveTextContent('59 221')
+describe('Stock is the front page — one line per model', () => {
+  // Sam, 16 Sept 2026: "too much information". No dashboard; the line under
+  // the title says what the dashboard used to say.
+  it('says what there is to do in one line', async () => {
+    await renderStock()
+    expect(screen.getByTestId('fact-collect')).toHaveTextContent('1 to collect')
+    expect(screen.getByTestId('fact-order')).toHaveTextContent('1 to order')
+    expect(screen.getByTestId('fact-shelf')).toHaveTextContent('shelf read on 28/08/2026')
   })
 
-  it('shows the unattributed certificates as their own unresolved figure', async () => {
-    mockFetch()
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('gap-card')).toBeInTheDocument())
-
-    const gap = screen.getByTestId('gap-card')
-    expect(gap).toHaveTextContent('3 245')
-    expect(gap).toHaveTextContent(/no model attached/i)
-    expect(gap).toHaveTextContent(/16 June and 28 July/)
-    expect(gap).toHaveTextContent(/Unresolved/)
+  it('keeps reserved serials off an operational screen', async () => {
+    await renderStock()
+    expect(screen.getAllByTestId('stock-row')).toHaveLength(2)
+    expect(screen.queryByText(/LGAJ6588/)).not.toBeInTheDocument()
   })
 
-  it('hides the gap card once nothing is unattributed', async () => {
-    mockFetch({ ...OVERVIEW, totals: { ...OVERVIEW.totals, unattributed: 0 } })
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('stat-shelf')).toBeInTheDocument())
-    expect(screen.queryByTestId('gap-card')).not.toBeInTheDocument()
+  it('has five columns and no level to edit — levels live on Models', async () => {
+    await renderStock()
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers).toEqual(['Model', 'On our shelf', 'At IGI', 'What to do', 'Ask for'])
+    expect(screen.queryByTestId('shelf-min')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('order-min')).not.toBeInTheDocument()
   })
 
-  it('separates what to collect from what to produce', async () => {
-    mockFetch()
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('list-collect')).toBeInTheDocument())
-
-    expect(screen.getByTestId('list-collect')).toHaveTextContent('Shapy Shine')
-    expect(screen.getByTestId('list-produce')).toHaveTextContent('Shapy Shine')
-    expect(screen.getByTestId('list-collect')).not.toHaveTextContent('Cuty-Cubix')
+  it('shows each figure with its level underneath', async () => {
+    await renderStock()
+    const [fine, low] = screen.getAllByTestId('shelf-cell')
+    expect(fine).toHaveTextContent('1 006')
+    expect(fine).toHaveTextContent('level 25')
+    expect(low).toHaveTextContent('2')
+    expect(low.querySelector('.n')).toHaveClass('low')
+    // IGI's own level is the one shown when we hold no opinion of our own.
+    expect(screen.getAllByTestId('igi-cell')[0]).toHaveTextContent('level 1 800')
   })
 
-  it('offers the matching screen when a description is unlinked', async () => {
-    mockFetch({ ...OVERVIEW, shelf: { ...OVERVIEW.shelf, unlinked: 4 } })
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('go-matching')).toBeInTheDocument())
-    expect(screen.getByText(/4 stock descriptions are not linked/)).toBeInTheDocument()
+  it('says what to do in words: Collect, Order at IGI, and what is already asked', async () => {
+    await renderStock()
+    const [nothing, todo] = screen.getAllByTestId('todo-cell')
+    expect(nothing).toHaveTextContent('—')
+    expect(todo).toHaveTextContent('Collect')
+    expect(todo).toHaveTextContent('Order at IGI')
+    expect(todo).toHaveTextContent('Asked · 12')
+  })
+
+  it('says "no shelf figure" rather than zero when no snapshot carries the model', async () => {
+    await renderStock({
+      ...OVERVIEW,
+      models: [{ ...MODELS[0], shelf: null, shelf_status: 'unmapped' }],
+    })
+    expect(screen.getByTestId('shelf-cell')).toHaveTextContent('no shelf figure')
+    expect(screen.getByTestId('fact-unmapped')).toHaveTextContent('1 without a shelf figure')
+    expect(screen.getByText('match them')).toHaveAttribute('href', '/certificates/matching')
+  })
+
+  it('calls a model IGI never named "Unnamed model", with a way to name it', async () => {
+    await renderStock({ ...OVERVIEW, models: [{ ...MODELS[2], state: 'in_use', pool: 500 }] })
+    expect(screen.getByTestId('model-name')).toHaveTextContent('Unnamed model')
+    expect(screen.getByTestId('name-it')).toHaveAttribute('href', '/certificates/models')
+  })
+
+  it('filters down to what needs collecting, and to what needs ordering', async () => {
+    await renderStock()
+    fireEvent.click(screen.getByTestId('filter-collect'))
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(1))
+    expect(screen.getByText('Shapy Shine')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('filter-order'))
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(1))
+
+    fireEvent.click(screen.getByTestId('filter-all'))
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
   })
 
   it('reports a failure instead of showing an empty page', async () => {
     global.fetch = jest.fn(() => Promise.resolve({
       ok: false, json: async () => ({ error: 'Failed to load the certificate stock' }),
     }))
-    render(<CertificatesDashboardClient />)
+    render(<CertificatesStockClient />)
     await waitFor(() => {
       expect(screen.getByText('Failed to load the certificate stock')).toBeInTheDocument()
     })
   })
 })
 
-describe('the stock and alerts screen', () => {
-  it('keeps reserved serials off an operational screen', async () => {
-    mockFetch()
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-    expect(screen.queryByText('LGAJ6588')).not.toBeInTheDocument()
-  })
-
-  it("shows IGI's alert level but does not offer to edit it", async () => {
-    // Two alert rules, one owner each.
-    mockFetch()
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    // One editable field per row — ours.
-    expect(screen.getAllByTestId('shelf-min')).toHaveLength(2)
-    expect(screen.getByText('1 800')).toBeInTheDocument()
-  })
-
-  it('says "not mapped" rather than zero when no snapshot carries the model', async () => {
-    mockFetch({
-      ...OVERVIEW,
-      models: [{ ...MODELS[0], shelf: null, shelf_status: 'unmapped' }],
+describe('the request is a column on Stock, and one button sends it', () => {
+  it('sends what is in the boxes and opens the movement', async () => {
+    const push = jest.fn()
+    jest.spyOn(require('next/navigation'), 'useRouter').mockReturnValue({ push })
+    let sent = null
+    await renderStock(OVERVIEW, {
+      onPost: async (body) => { sent = body; return { ok: true, json: async () => ({ visit: { id: 'v9' } }) } },
     })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getByText('not mapped')).toBeInTheDocument())
+
+    expect(screen.getByTestId('send-request')).toBeDisabled()
+    fireEvent.change(screen.getAllByTestId('ask-qty')[1], { target: { value: '30' } })
+    expect(screen.getByTestId('send-request')).toHaveTextContent('Send to IGI · 30 on 1 line')
+
+    fireEvent.click(screen.getByTestId('send-request'))
+    await waitFor(() => expect(sent).toEqual({ lines: [{ model_id: 'm2', qty: 30 }] }))
+    expect(push).toHaveBeenCalledWith('/certificates/visits/v9')
   })
 
-  it('filters down to what needs collecting', async () => {
-    mockFetch()
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    fireEvent.click(screen.getByTestId('filter-collect'))
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(1))
-    expect(screen.getByText('Shapy Shine')).toBeInTheDocument()
-  })
-
-  it('sets one level across every model shown', async () => {
-    const onAlert = jest.fn()
-    mockFetch(OVERVIEW, { onAlert })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    fireEvent.change(screen.getByTestId('bulk-value'), { target: { value: '100' } })
-    fireEvent.click(screen.getByTestId('bulk-apply'))
-
-    await waitFor(() => expect(onAlert).toHaveBeenCalled())
-    expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m1', 'm2'], shelf_min: 100 })
-  })
-
-  it('only applies the bulk level to the filtered rows', async () => {
-    const onAlert = jest.fn()
-    mockFetch(OVERVIEW, { onAlert })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    fireEvent.click(screen.getByTestId('filter-collect'))
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(1))
-    fireEvent.change(screen.getByTestId('bulk-value'), { target: { value: '50' } })
-    fireEvent.click(screen.getByTestId('bulk-apply'))
-
-    await waitFor(() => expect(onAlert).toHaveBeenCalled())
-    expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m2'], shelf_min: 50 })
-  })
-
-  it('saves one model when its own level loses focus', async () => {
-    const onAlert = jest.fn()
-    mockFetch(OVERVIEW, { onAlert })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    const input = screen.getAllByTestId('shelf-min')[0]
-    fireEvent.change(input, { target: { value: '75' } })
-    fireEvent.blur(input)
-
-    await waitFor(() => expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m1'], shelf_min: 75 }))
-  })
-
-  it('does not save an alert level that is not a whole number', async () => {
-    const onAlert = jest.fn()
-    mockFetch(OVERVIEW, { onAlert })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
-
-    const input = screen.getAllByTestId('shelf-min')[0]
-    fireEvent.change(input, { target: { value: '-5' } })
-    fireEvent.blur(input)
-
-    expect(onAlert).not.toHaveBeenCalled()
+  it('warns on the row when asking for more than IGI hold', async () => {
+    // Nobody should walk across the road expecting 500 and come back with 40.
+    await renderStock()
+    fireEvent.change(screen.getAllByTestId('ask-qty')[1], { target: { value: '500' } })
+    expect(screen.getAllByTestId('todo-cell')[1]).toHaveTextContent('Short by 460')
   })
 })
 
@@ -225,76 +192,19 @@ describe('a serial never appears without its carat and shape', () => {
   })
 })
 
-describe('the dashboard proposes the request and sends it', () => {
-  // Sam, 10 Sept 2026: the dashboard already said what to collect; now it says
-  // how many and has the button. Shapy Shine: shelf 2, level 25 → back up to
-  // 50 would mean 48, but IGI only hold 40.
-  function mockWithVisits(onPost) {
-    global.fetch = jest.fn((url, init) => {
-      const u = String(url)
-      if (u.includes('/api/igi/overview')) return Promise.resolve({ ok: true, json: async () => OVERVIEW })
-      if (u.includes('/api/igi/visits') && init?.method === 'POST') return onPost(JSON.parse(init.body))
-      return Promise.resolve({ ok: true, json: async () => ({}) })
-    })
-  }
-
-  it('prefills a suggested quantity, capped at what IGI hold', async () => {
-    mockWithVisits()
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getAllByTestId('collect-row')).toHaveLength(1))
-    expect(screen.getByTestId('collect-ask')).toHaveValue(40)
-    expect(screen.getByText('all they have')).toBeInTheDocument()
-    expect(screen.getByTestId('collect-send')).toHaveTextContent('Ask IGI for 40')
-  })
-
-  it('sends what is in the boxes and opens the movement', async () => {
-    const push = jest.fn()
-    jest.spyOn(require('next/navigation'), 'useRouter').mockReturnValue({ push })
-    let sent = null
-    mockWithVisits(async (body) => { sent = body; return { ok: true, json: async () => ({ visit: { id: 'v9' } }) } })
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('collect-ask')).toBeInTheDocument())
-    fireEvent.change(screen.getByTestId('collect-ask'), { target: { value: '30' } })
-    fireEvent.click(screen.getByTestId('collect-send'))
-    await waitFor(() => expect(sent).toEqual({ lines: [{ model_id: 'm2', qty: 30 }] }))
-    expect(push).toHaveBeenCalledWith('/certificates/visits/v9')
-  })
-
-  it('shows the four remaining figures as one line, not four boxes', async () => {
-    mockWithVisits()
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('facts')).toBeInTheDocument())
-    expect(screen.getByTestId('stat-models')).toHaveTextContent('2 models in use')
-    expect(screen.getByTestId('stat-reserved')).toHaveTextContent('1 reserved serial')
-  })
-})
-
-describe('our level on IGI’s stock (10 Sept 2026)', () => {
-  it('is editable per model on Stock, and empty means none', async () => {
-    const onAlert = jest.fn()
-    mockFetch(OVERVIEW, { onAlert })
-    render(<CertificatesStockClient />)
-    await waitFor(() => expect(screen.getAllByTestId('order-min')).toHaveLength(2))
-    const input = screen.getAllByTestId('order-min')[0]
-    fireEvent.change(input, { target: { value: '500' } })
-    fireEvent.blur(input)
-    await waitFor(() => expect(onAlert).toHaveBeenCalledWith({ model_ids: ['m1'], order_min: 500 }))
-  })
-
-  it('lists a model below our level under Produce more, saying whose level', async () => {
-    mockFetch({
+describe('our level on IGI’s stock (10 Sept 2026) still drives Stock', () => {
+  it('shows our level rather than IGI’s once we hold one, and says Order at IGI below it', async () => {
+    await renderStock({
       ...OVERVIEW,
       models: [
         { ...MODELS[0], order_min: 20000, order_status: 'order', pool_status: 'fine' },
-        { ...MODELS[1], order_status: 'fine' },
+        { ...MODELS[1], pool_status: 'fine', order_status: 'fine', shelf_status: 'fine' },
       ],
     })
-    render(<CertificatesDashboardClient />)
-    await waitFor(() => expect(screen.getByTestId('list-produce')).toBeInTheDocument())
-    const list = screen.getByTestId('list-produce')
-    expect(list).toHaveTextContent('Cuty-Cubix')
-    expect(list).toHaveTextContent('Below our level (20 000)')
-    expect(list).toHaveTextContent('Shapy Shine')
-    expect(list).toHaveTextContent("Below IGI's level (100)")
+    const [ours] = screen.getAllByTestId('igi-cell')
+    expect(ours).toHaveTextContent('level 20 000')
+    expect(ours.querySelector('.n')).toHaveClass('low')
+    expect(screen.getAllByTestId('todo-cell')[0]).toHaveTextContent('Order at IGI')
+    expect(screen.getByTestId('fact-order')).toHaveTextContent('1 to order')
   })
 })

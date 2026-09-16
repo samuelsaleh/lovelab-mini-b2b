@@ -33,7 +33,7 @@ export default function CertificatesLayout({ children }) {
   return (
     <CertShell
       nav={CERTIFICATE_NAV}
-      home="/certificates"
+      home="/certificates/stock"
       brand="LoveLab"
       mark="/logo.png"
       title="Certificates"

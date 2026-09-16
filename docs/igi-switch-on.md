@@ -58,15 +58,14 @@ Running the file twice is safe. It corrects rather than duplicates.
 ## Then open the app
 
 **Admin → Certificates**, which opens the certificate application at
-`/certificates` — its own space, with its own sidebar and its own look. Five
-screens:
+`/certificates` — its own space, with its own sidebar and its own look. Four
+screens, and it opens on Stock:
 
 | | |
 |---|---|
-| **Dashboard** | 3 504 on the shelf, 64 979 still at IGI, and the 3 245 gap |
-| **Stock** | Every model, both sides, both alert levels — and an "ask for" column with one Send to IGI button |
+| **Stock** | One line per model: on our shelf, at IGI, what to do (Collect / Order at IGI), and an "ask for" column with one Send to IGI button |
 | **Movements** | All 29 movements, by movement or by day |
-| **Models** | The 61 in use, 15 reserved serials, the ones waiting for a serial, a "New model" form, and which stock description belongs to which model |
+| **Models** | The 76 in use, the ones waiting for a serial, a "New model" button, and the two levels per model that drive Stock. Matching stock descriptions to models is a link at the foot |
 | **Invoices** | What the movements say, beside what IGI billed |
 
 IGI's side — what is on their screen right now — is a link at the foot of the
@@ -106,7 +105,7 @@ fresh database needs nothing extra.
 
 ## The shelf figure
 
-The dashboard opens with a reading of LoveLab's shelf taken on 28 August 2026, so
+Stock opens with a reading of LoveLab's shelf taken on 28 August 2026, so
 there is something there from the first minute. After that the app reads
 `software.love-lab.com` by itself every night at 01:00 and the figure updates
 without anyone typing.
@@ -157,10 +156,11 @@ true per-model remainder yet. The figures come from Michael's file as of 27
 August. When the count happens it goes in as new rows rather than overwriting
 anything, so nothing is lost.
 
-**The 3 245 stays on the dashboard.** Those are the certificates issued between
-16 June and 28 July with no model recorded. Every per-model figure is short by
-some part of that number. It stays visible until those movements are
-reconstructed, at which point the balances correct themselves.
+**The 3 245 stays on Movements.** Those are the certificates issued between
+16 June and 28 July with no model recorded, shown on those days as a total with
+no model detail. Every per-model figure is short by some part of that number.
+It stays visible there until those movements are reconstructed, at which point
+the balances correct themselves.
 
 ---
 

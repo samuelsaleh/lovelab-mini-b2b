@@ -71,9 +71,9 @@ describe('asking IGI for certificates', () => {
     fireEvent.change(inputs[0], { target: { value: '50' } })
     fireEvent.change(inputs[1], { target: { value: '12' } })
 
+    // The total lives on the one button that sends it (16 Sept 2026).
     await waitFor(() => {
-      expect(screen.getByTestId('request-total')).toHaveTextContent('62')
-      expect(screen.getByTestId('request-total')).toHaveTextContent('across 2 models')
+      expect(screen.getByTestId('send-request')).toHaveTextContent('Send to IGI · 62 on 2 lines')
     })
   })
 
@@ -85,8 +85,8 @@ describe('asking IGI for certificates', () => {
     // m2: asking 500, IGI hold 50.
     fireEvent.change(screen.getAllByTestId('ask-qty')[1], { target: { value: '500' } })
 
-    await waitFor(() => expect(screen.getByTestId('shortage-warning')).toBeInTheDocument())
-    expect(screen.getByTestId('shortage-warning')).toHaveTextContent('short by 450')
+    // The warning sits on the row itself, in the "what to do" column.
+    await waitFor(() => expect(screen.getAllByTestId('todo-cell')[1]).toHaveTextContent('Short by 450'))
     // Still sendable — the point is to warn, not to prevent.
     expect(screen.getByTestId('send-request')).not.toBeDisabled()
   })
@@ -298,22 +298,21 @@ describe('clearing out a test movement', () => {
 })
 
 describe('the model register', () => {
-  it('keeps reserved serials collapsed until asked for', async () => {
+  it('does not show reserved serials at all — nothing can be done with them', async () => {
+    // Sam, 16 Sept 2026: the collapsed "reserved serials" section was one more
+    // thing to wonder about. IGI produced the last fifteen; the state is empty.
     mockFetch()
     render(<CertificatesModelsClient />)
     await waitFor(() => expect(screen.getAllByTestId('model-row')).toHaveLength(2))
-
-    expect(screen.queryByTestId('reserved-row')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('toggle-reserved'))
-    await waitFor(() => expect(screen.getAllByTestId('reserved-row')).toHaveLength(1))
+    expect(screen.queryByText('LGAJ6588')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('toggle-reserved')).not.toBeInTheDocument()
   })
 
-  it('lists the models still waiting for a serial', async () => {
+  it('lists a model still waiting for a serial on the same list, with a chip', async () => {
     mockFetch()
     render(<CertificatesModelsClient />)
-    await waitFor(() => expect(screen.getByTestId('awaiting-serial')).toBeInTheDocument())
-    expect(screen.getByTestId('awaiting-serial')).toHaveTextContent('Full Moonlight')
-    expect(screen.getByTestId('awaiting-serial')).toHaveTextContent(/cannot be requested/)
+    await waitFor(() => expect(screen.getByTestId('awaiting-row')).toBeInTheDocument())
+    expect(screen.getByTestId('awaiting-row')).toHaveTextContent('Waiting for IGI’s serial')
   })
 
   it('renames a model and says the history did not move', async () => {
@@ -325,7 +324,7 @@ describe('the model register', () => {
       },
     })
     render(<CertificatesModelsClient />)
-    await waitFor(() => expect(screen.getAllByTestId('model-name')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByTestId('model-name')).toHaveLength(3))
 
     const input = screen.getAllByTestId('model-name')[0]
     fireEvent.change(input, { target: { value: 'Moonlight Original' } })
@@ -339,18 +338,12 @@ describe('the model register', () => {
     let called = false
     mockFetch({ '/api/igi/models': () => { called = true; return Promise.resolve({ ok: true, json: async () => ({}) }) } })
     render(<CertificatesModelsClient />)
-    await waitFor(() => expect(screen.getAllByTestId('model-name')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByTestId('model-name')).toHaveLength(3))
 
     const input = screen.getAllByTestId('model-name')[0]
     fireEvent.change(input, { target: { value: '   ' } })
     fireEvent.blur(input)
 
     expect(called).toBe(false)
-  })
-
-  it('shows what IGI called a model when it differs from ours', async () => {
-    mockFetch()
-    render(<CertificatesModelsClient />)
-    await waitFor(() => expect(screen.getByText(/IGI’s file called it Cuty - Cubix/)).toBeInTheDocument())
   })
 })

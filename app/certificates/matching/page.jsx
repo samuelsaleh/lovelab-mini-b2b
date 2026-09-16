@@ -1,6 +1,10 @@
-import { redirect } from 'next/navigation'
+import CertificatesMatchingClient from '@/app/components/CertificatesMatchingClient'
 
-/** Matching sits under Models now (10 Sept 2026). */
+/**
+ * Which stock description belongs to which model. A one-time clean-up rather
+ * than daily work, so it is a link at the foot of Models, not a section of it
+ * (Sam, 16 Sept 2026).
+ */
 export default function CertificatesMatchingPage() {
-  redirect('/certificates/models')
+  return <CertificatesMatchingClient />
 }

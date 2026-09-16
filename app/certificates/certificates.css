@@ -122,6 +122,17 @@
 .certapp .kpi .n.g{color:var(--good)}
 .certapp .kpi .l{font-size:.8rem;color:var(--ink-soft);line-height:1.35}
 
+.certapp .facts{display:flex;flex-wrap:wrap;gap:6px 0;align-items:center;font-size:.87rem;
+  color:var(--ink-soft);margin:-8px 0 18px}
+.certapp .facts b{color:var(--ink);font-weight:600}
+.certapp .facts .dot{margin:0 9px;color:var(--ink-faint)}
+.certapp .facts a{color:var(--accent);text-decoration:none}
+.certapp .card-foot{padding:11px 18px;border-top:1px solid var(--rule);background:var(--chrome);
+  font-size:.83rem;color:var(--ink-soft);display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.certapp .card-foot b{color:var(--ink);font-weight:600}
+.certapp .card-foot a{color:var(--accent);text-decoration:none}
+.certapp .card-foot a.right{margin-left:auto}
+
 /* ── tables ──────────────────────────────────────────────────────────── */
 .certapp .tblwrap{overflow-x:auto}
 .certapp table{border-collapse:collapse;width:100%;font-size:.855rem;min-width:600px}
@@ -143,6 +154,16 @@
   border-bottom:1px solid var(--rule)}
 .certapp tr.mrow td span{float:right;text-transform:none;letter-spacing:0;color:var(--ink-faint)}
 .certapp .empty{padding:28px 18px;text-align:center;color:var(--ink-faint);font-size:.87rem}
+
+.certapp td.num .n{font-family:var(--font-num);font-size:.9rem;font-weight:500;color:var(--ink)}
+.certapp td.num .n.low{color:var(--signal)}
+.certapp td.num .n.zero{color:var(--ink-faint);font-weight:400}
+.certapp td.num .lvl{display:block;font-family:var(--font-num);font-size:.7rem;color:var(--ink-faint);line-height:1.3}
+.certapp .mname{font-weight:500;color:var(--ink);line-height:1.3}
+.certapp .mname.unnamed{color:var(--ink-faint);font-weight:400;font-style:italic}
+.certapp td .spec{display:block;margin-top:1px}
+.certapp .spec a{color:var(--accent);text-decoration:none;font-family:var(--font-body);font-size:.78rem}
+.certapp .quiet{color:var(--ink-faint)}
 
 /* ── chips ───────────────────────────────────────────────────────────── */
 .certapp .chip{display:inline-block;font-family:var(--font-label);font-size:9.5px;letter-spacing:.07em;
