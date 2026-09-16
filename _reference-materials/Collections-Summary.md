@@ -66,7 +66,7 @@
 | **Carats** | 0.25 / 0.50 |
 | **2nd Biggest Carat** | 0.25 ct |
 | **Cord** | Nylon |
-| **Sizes** | XS, S, M, L, XL |
+| **Sizes** | XS, S, M, L, XL — always, also with a non-braided closure (no S/M or L/XL SKU exists) |
 
 **Colors (7):** Bordeaux, Red, Gold, Silver Grey, Black, Navy Blue, Royal Blue
 
