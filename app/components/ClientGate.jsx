@@ -8,6 +8,7 @@ import { useI18n } from '@/lib/i18n'
 import { validateVAT, EU_COUNTRIES, guessCountryCode } from '@/lib/vat'
 import { lookupCompany } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
+import { clientForCompany, withDetailsOwner } from '@/lib/clientGatePersistence'
 import LoadingDots from './LoadingDots'
 import UserMenu from './UserMenu'
 import { useAuth } from './AuthProvider'
@@ -53,6 +54,16 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
 
   const canLookup = client.company.trim() && client.country.trim()
   const canStart = client.company.trim()
+
+  /**
+   * Edit one of the boutique's own details (contact, address, VAT, delivery).
+   * Anything typed here belongs to the company currently in the box, so that
+   * changing the name later takes it away with it instead of leaving it on
+   * the next boutique's order.
+   */
+  const setDetail = useCallback((patch) => {
+    setClient((c) => withDetailsOwner({ ...c, ...patch }, c.company))
+  }, [setClient])
 
   // Fetch saved clients on mount
   useEffect(() => {
@@ -119,6 +130,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       vatMessageKey: null,
       vatValidating: false,
       savedClientId: savedClient.id,
+      // These details are this boutique's. If the company name later moves to
+      // another one, that is what tells us to let them go.
+      detailsOwner: savedClient.company || '',
       dzb_client_number: savedClient.dzb_client_number || '',
       jeweler_group: savedClient.jeweler_group || null,
       shipping_same_as_billing: savedClient.shipping_same_as_billing !== false,
@@ -185,6 +199,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       vatMessageKey: null,
       vatValidating: false,
       savedClientId: null,
+      detailsOwner: party.name || '',
       dzb_client_number: '',
       jeweler_group: null,
       shipping_same_as_billing: !hasShipping,
@@ -231,16 +246,30 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       })
       const data = await res.json()
       if (data.client) {
-        setClient(prev => ({
+        // Take what came back, and nothing else. This used to fall back to
+        // `prev` when the saved row carried no delivery address, so the
+        // previous boutique's depot address was handed straight back and
+        // followed the session from client to client.
+        //
+        // The one case where `prev` is still right is a server whose clients
+        // table predates the shipping columns: the API drops those fields
+        // rather than failing the save, and the response comes back without
+        // the keys at all. Then what the user typed is all there is, and it
+        // is this boutique's — the ownership rule takes it away if the name
+        // moves on.
+        const storesShipping = Object.prototype.hasOwnProperty.call(data.client, 'shipping_address')
+        setClient(prev => withDetailsOwner({
           ...prev,
           savedClientId: data.client.id,
-          dzb_client_number: data.client.dzb_client_number || prev.dzb_client_number || '',
-          jeweler_group: data.client.jeweler_group || prev.jeweler_group || null,
-          shipping_same_as_billing: data.client.shipping_same_as_billing !== false,
-          shipping_address: data.client.shipping_address || prev.shipping_address || '',
-          shipping_address_line2: data.client.shipping_address_line2 || prev.shipping_address_line2 || '',
-          shipping_country: data.client.shipping_country || prev.shipping_country || '',
-        }))
+          dzb_client_number: data.client.dzb_client_number || '',
+          jeweler_group: data.client.jeweler_group || null,
+          ...(storesShipping ? {
+            shipping_same_as_billing: data.client.shipping_same_as_billing !== false,
+            shipping_address: data.client.shipping_address || '',
+            shipping_address_line2: data.client.shipping_address_line2 || '',
+            shipping_country: data.client.shipping_country || '',
+          } : {}),
+        }, data.client.company || prev.company))
       }
       return data.contact_warnings || []
     } catch (err) {
@@ -292,6 +321,8 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
         city: perplexityRes.city || prev.city,
         zip: perplexityRes.zip || prev.zip,
         vat: hasVat ? prev.vat : (foundVat || prev.vat),
+        // What the lookup found belongs to the company it was asked about.
+        detailsOwner: prev.company || '',
       }))
       setPerplexityDone(true)
       setLoading(false)
@@ -316,6 +347,19 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       onComplete()
       return
     }
+    // Starting commits the name, the same as leaving the field. Clicking the
+    // button normally blurs the input first, so this rarely fires — but when
+    // it does we must stop here rather than carry on, because saveClient is
+    // about to write these fields to the shared directory and they are still
+    // the previous boutique's.
+    const committed = clientForCompany(client, client.company)
+    if (committed !== client) {
+      setClient(committed)
+      setError(t('client.detailsClearedForNewCompany')
+        || 'The address and VAT belonged to the previous client and have been cleared. Fill them in for this one, then start.')
+      return
+    }
+    setError('')
     // Auto-save client to DB before starting. The API refuses to replace an
     // existing contact name/email/phone on its own, so a conflict pauses here
     // instead of quietly rewriting the shared client record.
@@ -327,7 +371,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
       return
     }
     onComplete()
-  }, [onComplete, client])
+  }, [onComplete, client, setClient, t])
 
   const handleKeepStoredContact = useCallback(() => {
     setContactConflict(null)
@@ -558,7 +602,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           <div style={lbl}>{t('client.contactName')}</div>
           <input
             value={client.name}
-            onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
+            onChange={(e) => setDetail({ name: e.target.value })}
             placeholder={t('client.namePlaceholder')}
             style={{ ...inp, width: '100%' }}
             {...noAutofill('f1')}
@@ -571,7 +615,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             <div style={lbl}>{t('client.phone')}</div>
             <input
               value={client.phone}
-              onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))}
+              onChange={(e) => setDetail({ phone: e.target.value })}
               placeholder={t('client.phonePlaceholder')}
               type="tel"
               style={{ ...inp, width: '100%' }}
@@ -582,7 +626,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             <div style={lbl}>{t('client.email')}</div>
             <input
               value={client.email}
-              onChange={(e) => setClient((c) => ({ ...c, email: e.target.value }))}
+              onChange={(e) => setDetail({ email: e.target.value })}
               placeholder={t('client.emailPlaceholder')}
               type="email"
               style={{ ...inp, width: '100%' }}
@@ -596,27 +640,21 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
           <div style={lbl}>{t('client.companyName')}</div>
           <input
             value={client.company}
+            onBlur={(e) => {
+              // Leaving the field is where a name is committed, and where the
+              // previous boutique's address stops being anybody's. Clearing on
+              // keystrokes instead made the form feel like it "deleted
+              // everything" while you typed — hence the ownership rule, which
+              // keeps an address typed before the name and drops one typed
+              // under a different name. See clientForCompany.
+              setClient((c) => clientForCompany(c, e.target.value))
+            }}
             onChange={(e) => {
-              // Never wipe manually typed address on every keystroke — that made
-              // the New Client form feel like it "deleted everything". Only clear
-              // lookup-derived address/VAT after a completed lookup, when the
-              // company name actually changes.
+              // Typing only moves the name. What the fields say about the old
+              // boutique is settled on blur, or by the exact-match pick below.
               const nextCompany = e.target.value
               setClient((c) => {
                 const companyChanged = nextCompany.trim() !== (c.company || '').trim()
-                if (perplexityDone && companyChanged) {
-                  return {
-                    ...c,
-                    company: nextCompany,
-                    address: '',
-                    city: '',
-                    zip: '',
-                    vat: '',
-                    vatValid: null,
-                    vatStatus: null,
-                    savedClientId: null,
-                  }
-                }
                 return {
                   ...c,
                   company: nextCompany,
@@ -661,7 +699,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               onFocus={() => { setCountryOpen(true); setCountryHi(0); requestAnimationFrame(() => scrollCountryIntoView(0)) }}
               onBlur={() => { setTimeout(() => setCountryOpen(false), 120) }}
               onChange={(e) => {
-                setClient((c) => ({ ...c, country: e.target.value }))
+                setDetail({ country: e.target.value })
                 setCountryOpen(true)
                 setCountryHi(0)
                 requestAnimationFrame(() => scrollCountryIntoView(0))
@@ -733,7 +771,7 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             <input
               value={client.vat}
               onChange={(e) => {
-                setClient((c) => ({ ...c, vat: e.target.value, vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null }))
+                setDetail({ vat: e.target.value, vatValid: null, vatStatus: null, vatErrorCode: null, vatMessageKey: null })
                 setViesResult(null)
               }}
               placeholder={t('client.vatPlaceholder')}
@@ -814,21 +852,21 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
               <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input 
                   value={client.address} 
-                  onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} 
+                  onChange={(e) => setDetail({ address: e.target.value })} 
                   placeholder={t('client.address')} 
                   style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '8px 10px' }} 
                   {...noAutofill('f7')}
                 />
                 <input 
                   value={client.city} 
-                  onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} 
+                  onChange={(e) => setDetail({ city: e.target.value })} 
                   placeholder={t('client.city')} 
                   style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '8px 10px' }} 
                   {...noAutofill('f8')}
                 />
                 <input 
                   value={client.zip} 
-                  onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} 
+                  onChange={(e) => setDetail({ zip: e.target.value })} 
                   placeholder={t('client.zip')} 
                   style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '8px 10px' }} 
                   {...noAutofill('f9')}
@@ -868,7 +906,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
                   onChange={(e) => {
                     setLookupIncorrect(e.target.checked)
                     if (e.target.checked) {
-                      setClient((c) => ({ ...c, address: '', city: '', zip: '', vat: '' }))
+                      // Emptied on purpose: nobody owns these until they are
+                      // typed again, so the name can still move freely.
+                      setClient((c) => ({ ...c, address: '', city: '', zip: '', vat: '', detailsOwner: '' }))
                       setViesResult(null)
                     }
                   }}
@@ -879,9 +919,9 @@ export default function ClientGate({ client, setClient, onComplete, onGoHome }) 
             </div>
             {!lookupIncorrect && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                <input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f10')} />
-                <input value={client.city} onChange={(e) => setClient((c) => ({ ...c, city: e.target.value }))} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f11')} />
-                <input value={client.zip} onChange={(e) => setClient((c) => ({ ...c, zip: e.target.value }))} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f12')} />
+                <input value={client.address} onChange={(e) => setDetail({ address: e.target.value })} placeholder={t('client.address')} style={{ ...inp, flex: '2 1 120px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f10')} />
+                <input value={client.city} onChange={(e) => setDetail({ city: e.target.value })} placeholder={t('client.city')} style={{ ...inp, flex: '1 1 80px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f11')} />
+                <input value={client.zip} onChange={(e) => setDetail({ zip: e.target.value })} placeholder={t('client.zip')} style={{ ...inp, flex: '0 1 60px', fontSize: 11, padding: '6px 8px' }} {...noAutofill('f12')} />
               </div>
             )}
             {lookupIncorrect && (
