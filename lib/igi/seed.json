@@ -1,6 +1,6 @@
 {
-  "_comment": "Opening balances for the LoveLab x IGI certificate module, taken from IGI's file as of 2026-08-27. Regenerate figures only from a newer source file — do not hand-edit them. Model names are LoveLab's own (Sam, 11 Sept 2026: digits not words, each word capitalised, products separated by \" / \", shape in the name for Shapy Shine and Matchy Fancy); igi_name keeps what IGI's file called it. A regeneration must keep the names — see lib/igi/modelRenames.json.",
-  "as_of": "2026-08-27",
+  "_comment": "Opening balances for the LoveLab x IGI certificate module, taken from IGI's file defd392f-models_2.xlsx as of 2026-09-15. Regenerate with scripts/build-igi-seed.mjs from a newer source file — do not hand-edit the figures. Model names are LoveLab's own (Sam, 11 Sept 2026: digits not words, each word capitalised, products separated by \" / \", shape in the name for Shapy Shine and Matchy Fancy); igi_name keeps what IGI's file called it. Names, specs, states and the models awaiting a serial are carried over from the previous seed by serial.",
+  "as_of": "2026-09-15",
   "fee_eur": 1.2,
   "models": [
     {
@@ -624,7 +624,7 @@
       "shape": "Round",
       "spec": "Fancy Vivid Yellow",
       "state": "in_use",
-      "qty_ordered": 833,
+      "qty_ordered": 700,
       "sort_order": 49
     },
     {
@@ -637,7 +637,7 @@
       "shape": "Round",
       "spec": "Fancy Vivid Blue",
       "state": "in_use",
-      "qty_ordered": 833,
+      "qty_ordered": 700,
       "sort_order": 50
     },
     {
@@ -650,7 +650,7 @@
       "shape": "Round",
       "spec": "Fancy Vivid Pink",
       "state": "in_use",
-      "qty_ordered": 833,
+      "qty_ordered": 700,
       "sort_order": 51
     },
     {
@@ -779,8 +779,8 @@
       "carat": 0.8,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 61
     },
     {
@@ -792,8 +792,8 @@
       "carat": 1.2,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 62
     },
     {
@@ -805,8 +805,8 @@
       "carat": 1,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 63
     },
     {
@@ -818,8 +818,8 @@
       "carat": 1.5,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 64
     },
     {
@@ -831,8 +831,8 @@
       "carat": 0.3,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 65
     },
     {
@@ -844,8 +844,8 @@
       "carat": 0.6,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 66
     },
     {
@@ -857,8 +857,8 @@
       "carat": 1.2,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 67
     },
     {
@@ -870,8 +870,8 @@
       "carat": 0.6,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 68
     },
     {
@@ -883,8 +883,8 @@
       "carat": 1.2,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 69
     },
     {
@@ -896,8 +896,8 @@
       "carat": 1.5,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 70
     },
     {
@@ -909,8 +909,8 @@
       "carat": 0.8,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 71
     },
     {
@@ -922,8 +922,8 @@
       "carat": 0.65,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 72
     },
     {
@@ -935,8 +935,8 @@
       "carat": 1.3,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 73
     },
     {
@@ -948,8 +948,8 @@
       "carat": 0.8,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 74
     },
     {
@@ -961,8 +961,8 @@
       "carat": 0.4,
       "shape": "Rd",
       "spec": null,
-      "state": "reserved",
-      "qty_ordered": null,
+      "state": "in_use",
+      "qty_ordered": 500,
       "sort_order": 75
     },
     {
@@ -2251,7 +2251,7 @@
         },
         {
           "serial": "LGAJ6535",
-          "qty": 7
+          "qty": 14
         },
         {
           "serial": "LGAJ6536",
@@ -2280,6 +2280,312 @@
       "lines": [
         {
           "serial": "LGAJ6564",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "visit_no": 24,
+      "visit_date": "2026-09-07",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6533",
+          "qty": 140
+        }
+      ]
+    },
+    {
+      "visit_no": 25,
+      "visit_date": "2026-09-08",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6533",
+          "qty": 140
+        }
+      ]
+    },
+    {
+      "visit_no": 26,
+      "visit_date": "2026-09-08",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 55
+        },
+        {
+          "serial": "LGAJ6531",
+          "qty": 20
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 14
+        },
+        {
+          "serial": "LGAJ6535",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6559",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6564",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "visit_no": 27,
+      "visit_date": "2026-09-09",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6529",
+          "qty": 124
+        },
+        {
+          "serial": "LGAJ6531",
+          "qty": 38
+        },
+        {
+          "serial": "LGAJ6532",
+          "qty": 14
+        },
+        {
+          "serial": "LGAJ6533",
+          "qty": 140
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6541",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6545",
+          "qty": 23
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6547",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6550",
+          "qty": 81
+        },
+        {
+          "serial": "LGAJ6555",
+          "qty": 24
+        },
+        {
+          "serial": "LGAJ6557",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6558",
+          "qty": 24
+        },
+        {
+          "serial": "LGAJ6559",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6560",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6561",
+          "qty": 9
+        },
+        {
+          "serial": "LGAJ6563",
+          "qty": 5
+        },
+        {
+          "serial": "LGAJ6564",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6566",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6567",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6568",
+          "qty": 17
+        },
+        {
+          "serial": "LGAJ6569",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6571",
+          "qty": 8
+        },
+        {
+          "serial": "LGAJ6572",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6573",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6574",
+          "qty": 2
+        }
+      ]
+    },
+    {
+      "visit_no": 28,
+      "visit_date": "2026-09-10",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6535",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6536",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 28
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 39
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 16
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6551",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6553",
+          "qty": 1
+        },
+        {
+          "serial": "LGAJ6564",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "visit_no": 29,
+      "visit_date": "2026-09-15",
+      "status": "closed",
+      "date_suspect": false,
+      "unattributed_total": null,
+      "lines": [
+        {
+          "serial": "LGAJ6531",
+          "qty": 30
+        },
+        {
+          "serial": "LGAJ6534",
+          "qty": 57
+        },
+        {
+          "serial": "LGAJ6537",
+          "qty": 22
+        },
+        {
+          "serial": "LGAJ6538",
+          "qty": 36
+        },
+        {
+          "serial": "LGAJ6539",
+          "qty": 21
+        },
+        {
+          "serial": "LGAJ6540",
+          "qty": 8
+        },
+        {
+          "serial": "LGAJ6546",
+          "qty": 6
+        },
+        {
+          "serial": "LGAJ6551",
+          "qty": 2
+        },
+        {
+          "serial": "LGAJ6562",
+          "qty": 18
+        },
+        {
+          "serial": "LGAJ6566",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6567",
+          "qty": 15
+        },
+        {
+          "serial": "LGAJ6568",
+          "qty": 17
+        },
+        {
+          "serial": "LGAJ6571",
+          "qty": 12
+        },
+        {
+          "serial": "LGAJ6572",
+          "qty": 3
+        },
+        {
+          "serial": "LGAJ6573",
           "qty": 1
         }
       ]
@@ -2570,19 +2876,19 @@
     },
     {
       "serial": "LGAJ6576",
-      "qty": 833,
+      "qty": 700,
       "batch_date": "2026-08-27",
       "reference": "initial order"
     },
     {
       "serial": "LGAJ6577",
-      "qty": 833,
+      "qty": 700,
       "batch_date": "2026-08-27",
       "reference": "initial order"
     },
     {
       "serial": "LGAJ6578",
-      "qty": 833,
+      "qty": 700,
       "batch_date": "2026-08-27",
       "reference": "initial order"
     },
@@ -2638,6 +2944,96 @@
       "serial": "LGAJ6587",
       "qty": 500,
       "batch_date": "2026-08-27",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6588",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6589",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6590",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6591",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6592",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6593",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6594",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6595",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6596",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6597",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6598",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6599",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6600",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6601",
+      "qty": 500,
+      "batch_date": "2026-09-15",
+      "reference": "initial order"
+    },
+    {
+      "serial": "LGAJ6602",
+      "qty": 500,
+      "batch_date": "2026-09-15",
       "reference": "initial order"
     },
     {

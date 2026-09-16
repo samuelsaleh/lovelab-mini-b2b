@@ -40,7 +40,7 @@ Above it you will see each figure checked off against Michael's file:
 ```
 ok  models in use                      = 61
 ok  reserved serials                   = 15
-ok  certificates ordered               = 62999
+ok  certificates ordered               = 70100
 ok  issued with a model                = 3778
 ok  issued with no model               = 3245
 ok  unissued at IGI                    = 59221
@@ -63,9 +63,9 @@ screens:
 
 | | |
 |---|---|
-| **Dashboard** | 3 504 on the shelf, 59 221 still at IGI, and the 3 245 gap |
+| **Dashboard** | 3 504 on the shelf, 64 979 still at IGI, and the 3 245 gap |
 | **Stock** | Every model, both sides, both alert levels — and an "ask for" column with one Send to IGI button |
-| **Movements** | All 23 movements, by movement or by day |
+| **Movements** | All 29 movements, by movement or by day |
 | **Models** | The 61 in use, 15 reserved serials, the ones waiting for a serial, a "New model" form, and which stock description belongs to which model |
 | **Invoices** | What the movements say, beside what IGI billed |
 

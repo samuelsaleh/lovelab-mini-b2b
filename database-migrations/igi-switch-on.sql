@@ -571,6 +571,49 @@ COMMENT ON COLUMN public.igi_models.shelf_alerted_at IS
 COMMENT ON COLUMN public.igi_models.order_alerted_at IS
   'Set when IGI''s stock fell below order_min and LoveLab were emailed; cleared once it is back above.';
 
+-- A reserved serial can be produced.
+--
+-- Sam, 16 Sept 2026, on IGI's September file: the fifteen serials IGI had
+-- numbered in advance (LGAJ6588–6602) now carry 500 each — IGI have printed
+-- them. Until now the guard knew one state change only, awaiting a serial →
+-- in use, because a reserved serial was defined as one never produced. That
+-- definition was true for three months and is not any more.
+--
+-- The rule becomes: a model goes into use either by being numbered (it was
+-- waiting for a serial) or by being produced (it was reserved). Everything
+-- else the guard says stays as it was: a serial, once set, is permanent, and
+-- no other state change exists.
+
+CREATE OR REPLACE FUNCTION public.igi_models_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  -- A serial, once set, is permanent.
+  IF OLD.serial IS NOT NULL AND NEW.serial IS DISTINCT FROM OLD.serial THEN
+    RAISE EXCEPTION 'The serial % is set once and cannot be changed', OLD.serial
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.serial_full IS NOT NULL AND NEW.serial_full IS DISTINCT FROM OLD.serial_full THEN
+    RAISE EXCEPTION 'The full serial % is set once and cannot be changed', OLD.serial_full
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Two ways into use, and no other state change: numbered (it was waiting
+  -- for a serial) or produced (IGI had reserved the serial in advance).
+  IF NEW.state IS DISTINCT FROM OLD.state
+     AND NOT (OLD.state IN ('awaiting_serial', 'reserved') AND NEW.state = 'in_use') THEN
+    RAISE EXCEPTION 'A model only goes into use, from awaiting a serial or from reserved (was %, asked for %)', OLD.state, NEW.state
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Numbering stamps when it happened, whoever forgot to.
+  IF OLD.state = 'awaiting_serial' AND NEW.state = 'in_use' THEN
+    NEW.numbered_at := coalesce(NEW.numbered_at, now());
+  END IF;
+
+  NEW.updated_at := now();
+  RETURN NEW;
+END $$;
+
 -- ─── 2 of 3 · The opening balances ─────────────────────────────────────
 --
 -- IGI's file as of 27 August 2026. Keyed on the serial, the movement number
@@ -627,9 +670,9 @@ VALUES
   ('LGAJ6573', 'LGAJ65732607', 'Sienna 2', 'SIENNA', '2', 0.2, 'Pear', 'D/E', 'in_use', 500, 46),
   ('LGAJ6574', 'LGAJ65742607', 'Riviera 8', 'RIVIERA', '8', 0.8, 'Round', 'D/E', 'in_use', 500, 47),
   ('LGAJ6575', 'LGAJ65752607', 'Riviera 8', 'RIVIERA', '8', 0.4, 'Round', 'D/E', 'in_use', 500, 48),
-  ('LGAJ6576', 'LGAJ65762607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Yellow', 'in_use', 833, 49),
-  ('LGAJ6577', 'LGAJ65772607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Blue', 'in_use', 833, 50),
-  ('LGAJ6578', 'LGAJ65782607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Pink', 'in_use', 833, 51),
+  ('LGAJ6576', 'LGAJ65762607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Yellow', 'in_use', 700, 49),
+  ('LGAJ6577', 'LGAJ65772607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Blue', 'in_use', 700, 50),
+  ('LGAJ6578', 'LGAJ65782607', 'Cuty Fancy Color', 'CUTY FANCY COLOR', '1', 0.05, 'Round', 'Fancy Vivid Pink', 'in_use', 700, 51),
   ('LGAJ6579', 'LGAJ65792607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 52),
   ('LGAJ6580', 'LGAJ65802607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 53),
   ('LGAJ6581', 'LGAJ65812607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.15, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 54),
@@ -639,21 +682,21 @@ VALUES
   ('LGAJ6585', 'LGAJ65852607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Yellow', 'in_use', 500, 58),
   ('LGAJ6586', 'LGAJ65862607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Blue', 'in_use', 500, 59),
   ('LGAJ6587', 'LGAJ65872607', 'Multi 3 Fancy Color', 'THREE FANCY COLOR', '3', 0.3, 'Round', 'Fancy Vivid Pink', 'in_use', 500, 60),
-  ('LGAJ6588', 'LGAJ65882607', '—', '—', '4', 0.8, 'Rd', NULL, 'reserved', NULL, 61),
-  ('LGAJ6589', 'LGAJ65892607', '—', '—', '4', 1.2, 'Rd', NULL, 'reserved', NULL, 62),
-  ('LGAJ6590', 'LGAJ65902607', '—', '—', '5', 1, 'Rd', NULL, 'reserved', NULL, 63),
-  ('LGAJ6591', 'LGAJ65912607', '—', '—', '5', 1.5, 'Rd', NULL, 'reserved', NULL, 64),
-  ('LGAJ6592', 'LGAJ65922607', '—', '—', '6', 0.3, 'Rd', NULL, 'reserved', NULL, 65),
-  ('LGAJ6593', 'LGAJ65932607', '—', '—', '6', 0.6, 'Rd', NULL, 'reserved', NULL, 66),
-  ('LGAJ6594', 'LGAJ65942607', '—', '—', '6', 1.2, 'Rd', NULL, 'reserved', NULL, 67),
-  ('LGAJ6595', 'LGAJ65952607', '—', '—', '12', 0.6, 'Rd', NULL, 'reserved', NULL, 68),
-  ('LGAJ6596', 'LGAJ65962607', '—', '—', '12', 1.2, 'Rd', NULL, 'reserved', NULL, 69),
-  ('LGAJ6597', 'LGAJ65972607', 'A', 'A', '6+1', 1.5, 'Rd', NULL, 'reserved', NULL, 70),
-  ('LGAJ6598', 'LGAJ65982607', 'B', 'B', '6+1', 0.8, 'Rd', NULL, 'reserved', NULL, 71),
-  ('LGAJ6599', 'LGAJ65992607', 'C', 'C', '6+1', 0.65, 'Rd', NULL, 'reserved', NULL, 72),
-  ('LGAJ6600', 'LGAJ66002607', 'D', 'D', '3+2', 1.3, 'Rd', NULL, 'reserved', NULL, 73),
-  ('LGAJ6601', 'LGAJ66012607', 'E', 'E', '3+2', 0.8, 'Rd', NULL, 'reserved', NULL, 74),
-  ('LGAJ6602', 'LGAJ66022607', 'F', 'F', '3+2', 0.4, 'Rd', NULL, 'reserved', NULL, 75),
+  ('LGAJ6588', 'LGAJ65882607', '—', '—', '4', 0.8, 'Rd', NULL, 'in_use', 500, 61),
+  ('LGAJ6589', 'LGAJ65892607', '—', '—', '4', 1.2, 'Rd', NULL, 'in_use', 500, 62),
+  ('LGAJ6590', 'LGAJ65902607', '—', '—', '5', 1, 'Rd', NULL, 'in_use', 500, 63),
+  ('LGAJ6591', 'LGAJ65912607', '—', '—', '5', 1.5, 'Rd', NULL, 'in_use', 500, 64),
+  ('LGAJ6592', 'LGAJ65922607', '—', '—', '6', 0.3, 'Rd', NULL, 'in_use', 500, 65),
+  ('LGAJ6593', 'LGAJ65932607', '—', '—', '6', 0.6, 'Rd', NULL, 'in_use', 500, 66),
+  ('LGAJ6594', 'LGAJ65942607', '—', '—', '6', 1.2, 'Rd', NULL, 'in_use', 500, 67),
+  ('LGAJ6595', 'LGAJ65952607', '—', '—', '12', 0.6, 'Rd', NULL, 'in_use', 500, 68),
+  ('LGAJ6596', 'LGAJ65962607', '—', '—', '12', 1.2, 'Rd', NULL, 'in_use', 500, 69),
+  ('LGAJ6597', 'LGAJ65972607', 'A', 'A', '6+1', 1.5, 'Rd', NULL, 'in_use', 500, 70),
+  ('LGAJ6598', 'LGAJ65982607', 'B', 'B', '6+1', 0.8, 'Rd', NULL, 'in_use', 500, 71),
+  ('LGAJ6599', 'LGAJ65992607', 'C', 'C', '6+1', 0.65, 'Rd', NULL, 'in_use', 500, 72),
+  ('LGAJ6600', 'LGAJ66002607', 'D', 'D', '3+2', 1.3, 'Rd', NULL, 'in_use', 500, 73),
+  ('LGAJ6601', 'LGAJ66012607', 'E', 'E', '3+2', 0.8, 'Rd', NULL, 'in_use', 500, 74),
+  ('LGAJ6602', 'LGAJ66022607', 'F', 'F', '3+2', 0.4, 'Rd', NULL, 'in_use', 500, 75),
   ('LGAJ6603', 'LGAJ66032607', 'Long Multi Moonlight', 'LONG MULTI ML', '5', 0.3, 'Rd', '4 X 0,05 1 X 0,10', 'in_use', 500, 76),
   ('LGAJ6604', 'LGAJ66042607', 'Long Multi Moonlight', 'LONG MULTI ML', '7', 0.4, 'Rd', '6 X 0,05 1 X 0,10', 'in_use', 500, 77)
 ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING;
@@ -1053,15 +1096,15 @@ SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6575'), 500, '2026-
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6575') AND reference = 'initial order');
 INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
-SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6576'), 833, '2026-08-27', 'initial order'
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6576'), 700, '2026-08-27', 'initial order'
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6576') AND reference = 'initial order');
 INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
-SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6577'), 833, '2026-08-27', 'initial order'
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6577'), 700, '2026-08-27', 'initial order'
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6577') AND reference = 'initial order');
 INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
-SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6578'), 833, '2026-08-27', 'initial order'
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6578'), 700, '2026-08-27', 'initial order'
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6578') AND reference = 'initial order');
 INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
@@ -1101,6 +1144,66 @@ SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6587'), 500, '2026-
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6587') AND reference = 'initial order');
 INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6588'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6588') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6589'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6589') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6590'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6590') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6591'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6591') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6592'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6592') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6593'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6593') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6594'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6594') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6595'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6595') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6596'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6596') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6597'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6597') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6598'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6598') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6599'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6599') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6600'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6600') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6601'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6601') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
+SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6602'), 500, '2026-09-15', 'initial order'
+WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
+   WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6602') AND reference = 'initial order');
+INSERT INTO public.igi_batches (model_id, qty, batch_date, reference)
 SELECT (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6603'), 500, '2026-08-27', 'initial order'
 WHERE NOT EXISTS (SELECT 1 FROM public.igi_batches
    WHERE model_id = (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6603') AND reference = 'initial order');
@@ -1136,7 +1239,13 @@ VALUES
   (20, '2026-08-25', 'closed', false, NULL, '2026-08-25'::date + time '12:00'),
   (21, '2026-08-25', 'closed', false, NULL, '2026-08-25'::date + time '12:00'),
   (22, '2026-08-26', 'closed', false, NULL, '2026-08-26'::date + time '12:00'),
-  (23, '2026-08-27', 'closed', false, NULL, '2026-08-27'::date + time '12:00')
+  (23, '2026-08-27', 'closed', false, NULL, '2026-08-27'::date + time '12:00'),
+  (24, '2026-09-07', 'closed', false, NULL, '2026-09-07'::date + time '12:00'),
+  (25, '2026-09-08', 'closed', false, NULL, '2026-09-08'::date + time '12:00'),
+  (26, '2026-09-08', 'closed', false, NULL, '2026-09-08'::date + time '12:00'),
+  (27, '2026-09-09', 'closed', false, NULL, '2026-09-09'::date + time '12:00'),
+  (28, '2026-09-10', 'closed', false, NULL, '2026-09-10'::date + time '12:00'),
+  (29, '2026-09-15', 'closed', false, NULL, '2026-09-15'::date + time '12:00')
 ON CONFLICT (visit_no) DO NOTHING;
 
 -- What each movement carried, model by model.
@@ -1254,12 +1363,75 @@ VALUES
   ((SELECT id FROM public.igi_visits WHERE visit_no = 21), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6563'), 2, 2, 2),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6530'), 294, 294, 294),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6533'), 22, 22, 22),
-  ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6535'), 7, 7, 7),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6535'), 14, 14, 14),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6536'), 3, 3, 3),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6537'), 11, 11, 11),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6538'), 13, 13, 13),
   ((SELECT id FROM public.igi_visits WHERE visit_no = 22), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6539'), 11, 11, 11),
-  ((SELECT id FROM public.igi_visits WHERE visit_no = 23), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6564'), 1, 1, 1)
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 23), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6564'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 24), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6533'), 140, 140, 140),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 25), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6533'), 140, 140, 140),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6529'), 55, 55, 55),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6531'), 20, 20, 20),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6532'), 14, 14, 14),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6535'), 5, 5, 5),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6539'), 5, 5, 5),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6540'), 2, 2, 2),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6546'), 6, 6, 6),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6559'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 26), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6564'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6529'), 124, 124, 124),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6531'), 38, 38, 38),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6532'), 14, 14, 14),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6533'), 140, 140, 140),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6536'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6539'), 5, 5, 5),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6540'), 2, 2, 2),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6541'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6545'), 23, 23, 23),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6546'), 5, 5, 5),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6547'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6550'), 81, 81, 81),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6555'), 24, 24, 24),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6557'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6558'), 24, 24, 24),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6559'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6560'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6561'), 9, 9, 9),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6563'), 5, 5, 5),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6564'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6566'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6567'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6568'), 17, 17, 17),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6569'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6571'), 8, 8, 8),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6572'), 3, 3, 3),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6573'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 27), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6574'), 2, 2, 2),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6535'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6536'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6537'), 28, 28, 28),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6538'), 39, 39, 39),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6539'), 16, 16, 16),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6540'), 3, 3, 3),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6551'), 3, 3, 3),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6553'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 28), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6564'), 1, 1, 1),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6531'), 30, 30, 30),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6534'), 57, 57, 57),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6537'), 22, 22, 22),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6538'), 36, 36, 36),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6539'), 21, 21, 21),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6540'), 8, 8, 8),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6546'), 6, 6, 6),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6551'), 2, 2, 2),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6562'), 18, 18, 18),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6566'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6567'), 15, 15, 15),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6568'), 17, 17, 17),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6571'), 12, 12, 12),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6572'), 3, 3, 3),
+  ((SELECT id FROM public.igi_visits WHERE visit_no = 29), (SELECT id FROM public.igi_models WHERE serial = 'LGAJ6573'), 1, 1, 1)
 ON CONFLICT (visit_id, model_id) DO NOTHING;
 
 -- One reading of LoveLab's shelf, taken from the packing-stock endpoint on
@@ -1417,27 +1589,27 @@ BEGIN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'certificates ordered', v_actual, 62999;
   END IF;
   RAISE NOTICE '  ok  % = %', rpad('certificates ordered', 44), v_actual;
-  SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 23 INTO v_actual;
+  SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 29 INTO v_actual;
   IF v_actual <> 3778 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'issued with a model', v_actual, 3778;
   END IF;
   RAISE NOTICE '  ok  % = %', rpad('issued with a model', 44), v_actual;
-  SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits WHERE visit_no <= 23 INTO v_actual;
+  SELECT coalesce(sum(unattributed_total), 0) FROM public.igi_visits WHERE visit_no <= 29 INTO v_actual;
   IF v_actual <> 3245 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'issued with no model', v_actual, 3245;
   END IF;
   RAISE NOTICE '  ok  % = %', rpad('issued with no model', 44), v_actual;
-  SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN ('initial order')) - (SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 23) INTO v_actual;
+  SELECT (SELECT coalesce(sum(qty), 0) FROM public.igi_batches WHERE reference IN ('initial order')) - (SELECT coalesce(sum(l.qty_issued), 0) FROM public.igi_visit_lines l JOIN public.igi_visits v ON v.id = l.visit_id WHERE v.visit_no <= 29) INTO v_actual;
   IF v_actual <> 59221 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'unissued at IGI', v_actual, 59221;
   END IF;
   RAISE NOTICE '  ok  % = %', rpad('unissued at IGI', 44), v_actual;
-  SELECT count(*) FROM public.igi_visits WHERE visit_no <= 23 INTO v_actual;
+  SELECT count(*) FROM public.igi_visits WHERE visit_no <= 29 INTO v_actual;
   IF v_actual <> 23 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'movements', v_actual, 23;
   END IF;
   RAISE NOTICE '  ok  % = %', rpad('movements', 44), v_actual;
-  SELECT count(*) FROM public.igi_visits WHERE date_suspect AND visit_no <= 23 INTO v_actual;
+  SELECT count(*) FROM public.igi_visits WHERE date_suspect AND visit_no <= 29 INTO v_actual;
   IF v_actual <> 4 THEN
     RAISE EXCEPTION '% is %, expected % — nothing has been saved', 'movements with a mistyped date', v_actual, 4;
   END IF;

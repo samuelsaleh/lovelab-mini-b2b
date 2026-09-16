@@ -2,8 +2,8 @@
 /**
  * Loads the opening balances for the LoveLab x IGI certificate module.
  *
- * Source is lib/igi/seed.json, taken from IGI's file as of 27 August 2026 and
- * from the live packing-stock endpoint. Run it once after applying
+ * Source is lib/igi/seed.json, rebuilt from IGI's file by scripts/build-igi-seed.mjs
+ * (as of 15 September 2026), plus the live packing-stock endpoint. Run it once after applying
  * supabase/migrations/20260828120000_igi_certificates.sql.
  *
  * Idempotent: keyed on serial, visit_no and description, so a re-run corrects
@@ -63,15 +63,15 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: fal
 
 /** The figures in IGI's file. If the import does not land on these, it is wrong. */
 const EXPECTED = {
-  'models in use': 61,
-  'reserved serials': 15,
+  'models in use': 76,
+  'reserved serials': 0,
   'models awaiting a serial': 3,
-  'certificates ordered': 62999,
-  'issued with a model': 3778,
+  'certificates ordered': 70100,
+  'issued with a model': 5121,
   'issued with no model': 3245,
-  'issued in total': 7023,
-  'unissued at IGI': 59221,
-  movements: 23,
+  'issued in total': 8366,
+  'unissued at IGI': 64979,
+  movements: 29,
   'descriptions classified': 116,
   'descriptions linked to a model': 26,
 };
@@ -142,19 +142,31 @@ async function importSeed() {
   console.log(`  ${seed.descriptions.length} descriptions classified`);
 
   // ── Batches: the original commissioned run, one per model ─────────────────
-  // No natural key, so an existing 'initial order' batch is left alone rather
-  // than added a second time.
+  // No natural key. An existing 'initial order' batch is matched on its model:
+  // added when missing, corrected when IGI's file now says a different size
+  // (Sept 2026: the three Cuty Fancy Color runs went from 833 to 700 each),
+  // and otherwise left alone. Batches IGI record later, with their own
+  // reference, are never touched here.
   const { data: existingBatches } = await db
-    .from('igi_batches').select('model_id').eq('reference', 'initial order');
-  const haveBatch = new Set((existingBatches || []).map((b) => b.model_id));
-  const newBatches = seed.batches
+    .from('igi_batches').select('id, model_id, qty').eq('reference', 'initial order');
+  const haveBatch = new Map((existingBatches || []).map((b) => [b.model_id, b]));
+  const wanted = seed.batches
     .map((b) => ({ model_id: idOf.get(b.serial), qty: b.qty, batch_date: b.batch_date, reference: b.reference }))
-    .filter((b) => b.model_id && !haveBatch.has(b.model_id));
+    .filter((b) => b.model_id);
+  const newBatches = wanted.filter((b) => !haveBatch.has(b.model_id));
   if (newBatches.length) {
     const { error } = await db.from('igi_batches').insert(newBatches);
     if (error) die('could not write the opening batches', error);
   }
-  console.log(`  ${seed.batches.length} opening batches`);
+  let corrected = 0;
+  for (const b of wanted) {
+    const have = haveBatch.get(b.model_id);
+    if (!have || Number(have.qty) === Number(b.qty)) continue;
+    const { error } = await db.from('igi_batches').update({ qty: b.qty }).eq('id', have.id);
+    if (error) die('could not correct an opening batch', error);
+    corrected += 1;
+  }
+  console.log(`  ${seed.batches.length} opening batches (${newBatches.length} added, ${corrected} corrected)`);
 
   // ── Visits and their lines ────────────────────────────────────────────────
   await upsert('igi_visits', seed.visits.map((v) => ({
