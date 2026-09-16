@@ -93,7 +93,12 @@
   padding:6px 0;display:block}
 .certapp .side-foot a:hover{color:#fff}
 
-.certapp main{padding:26px 30px 80px;min-width:0;overflow:auto}
+.certapp main{padding:26px 30px 80px;min-width:0}
+/* main and .tblwrap must not clip: a table header is sticky against the
+   nearest scrolling ancestor, and the page is what scrolls. Sam, 16 Sept
+   2026: "the titles above the model, check, serial always stick". A table
+   wider than the screen scrolls the page sideways instead, which is rarer
+   than scrolling down a long list. */
 
 /* ── page furniture ──────────────────────────────────────────────────── */
 .certapp .page-head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
@@ -104,7 +109,9 @@
 .certapp .page-head .right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
 .certapp .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--card-radius);
-  box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px}
+  box-shadow:var(--shadow);overflow:clip;margin-bottom:20px}
+/* clip, not hidden: hidden makes the card a scroll container, which is what
+   keeps a sticky table header from following the page. */
 .certapp .card-head{padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;align-items:center;
   gap:12px;flex-wrap:wrap;background:var(--chrome)}
 .certapp .card-head h3{margin:0;font-size:.95rem;font-weight:600}
@@ -134,7 +141,7 @@
 .certapp .card-foot a.right{margin-left:auto}
 
 /* ── tables ──────────────────────────────────────────────────────────── */
-.certapp .tblwrap{overflow-x:auto}
+.certapp .tblwrap{overflow:visible}
 .certapp table{border-collapse:collapse;width:100%;font-size:.855rem;min-width:600px}
 .certapp th{text-align:left;font-family:var(--font-label);font-size:9.5px;letter-spacing:.09em;
   text-transform:uppercase;color:var(--ink-faint);font-weight:400;padding:10px 14px;
