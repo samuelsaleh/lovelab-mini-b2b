@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { isUnnamed } from '@/lib/igi/derive'
+import { canDeleteModel } from '@/lib/igi/models'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import { PageHead, Card, Loading, Toast, Btn, TableWrap } from './certificates/ui'
@@ -35,6 +36,7 @@ export default function CertificatesModelsClient() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [formOpen, setFormOpen] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [confirmingId, setConfirmingId] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -97,6 +99,29 @@ export default function CertificatesModelsClient() {
       setError(err.message)
     } finally {
       setSavingId(null)
+    }
+  }
+
+  // A model still waiting for its serial can be taken back; a numbered one
+  // never can (lib/igi/models.js). Two clicks, no browser dialog.
+  async function remove(model) {
+    setSavingId(model.id)
+    try {
+      const res = await fetch('/api/igi/models', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: model.id }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Failed to remove the model')
+      setModels((prev) => prev.filter((m) => m.id !== model.id))
+      say(`${model.name} removed. It was never numbered, so nothing else changes.`)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingId(null)
+      setConfirmingId(null)
     }
   }
 
@@ -253,7 +278,22 @@ export default function CertificatesModelsClient() {
                     <td><Spec model={m} /></td>
                     <td>
                       {waiting
-                        ? <Chip tone="watch">Waiting for IGI’s serial</Chip>
+                        ? (
+                          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <Chip tone="watch">Waiting for IGI’s serial</Chip>
+                            {canDeleteModel(m) && (confirmingId === m.id
+                              ? (
+                                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '.8rem', color: 'var(--ink-soft)' }}>
+                                  Remove this model?
+                                  <Btn kind="danger" onClick={() => remove(m)} disabled={savingId === m.id} testId="delete-model-confirm">
+                                    {savingId === m.id ? 'Removing…' : 'Yes, remove'}
+                                  </Btn>
+                                  <Btn onClick={() => setConfirmingId(null)} testId="delete-model-keep">Keep</Btn>
+                                </span>
+                              )
+                              : <Btn onClick={() => setConfirmingId(m.id)} testId="delete-model">Remove</Btn>)}
+                          </span>
+                        )
                         : <Serial model={m} />}
                     </td>
                     <td className="num">
@@ -283,7 +323,7 @@ export default function CertificatesModelsClient() {
         </TableWrap>
         <div className="card-foot">
           <span>
-            A level saves when you leave the box. IGI see "IGI must hold" on their side. A model waiting for a serial appears on Stock as soon as IGI give one.
+            A level saves when you leave the box. IGI see "IGI must hold" on their side. A model waiting for a serial appears on Stock as soon as IGI give one, and can be removed until then; a numbered one never can.
           </span>
           <Link href="/certificates/matching" className="right" data-testid="go-matching">
             Match stock descriptions to a model →

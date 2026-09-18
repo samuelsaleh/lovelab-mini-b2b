@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { formatModelName } from '@/lib/igi/modelName';
+import { whyNotDeletableModel } from '@/lib/igi/models';
 
 const SHAPES = ['Round', 'Oval', 'Pear', 'Marquise', 'Cushion', 'Long Cushion', 'Emerald', 'Heart', 'Princess', 'Radiant', 'Asscher', 'Baguette'];
 
@@ -122,5 +123,48 @@ export async function PATCH(request) {
     return NextResponse.json({ model: data });
   } catch (err) {
     return fail('IGI/Models PATCH', err, 'Internal server error');
+  }
+}
+
+/**
+ * DELETE /api/igi/models — remove a model that is still waiting for a serial.
+ *
+ * Sam, 18 Sept 2026: a test model added to try the form had no way back. The
+ * rule lives in lib/igi/models.js: unnumbered goes, numbered never does.
+ */
+export async function DELETE(request) {
+  const auth = await requireLoveLab(request, 'igi-models-write', 30);
+  if (auth.error) return auth.error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const modelId = body?.model_id;
+  if (typeof modelId !== 'string' || !modelId) {
+    return NextResponse.json({ error: 'A model is required' }, { status: 400 });
+  }
+
+  try {
+    const { data: model, error: readErr } = await auth.adminSupabase
+      .from('igi_models')
+      .select('id, name, serial, state')
+      .eq('id', modelId)
+      .maybeSingle();
+    if (readErr) return fail('IGI/Models DELETE', readErr, 'Failed to read the model');
+    if (!model) return NextResponse.json({ error: 'Model not found' }, { status: 404 });
+
+    const reason = whyNotDeletableModel(model);
+    if (reason) return NextResponse.json({ error: reason }, { status: 409 });
+
+    const { error } = await auth.adminSupabase.from('igi_models').delete().eq('id', modelId);
+    if (error) return fail('IGI/Models DELETE', error, 'Failed to remove the model');
+
+    return NextResponse.json({ deleted: { id: model.id, name: model.name } });
+  } catch (err) {
+    return fail('IGI/Models DELETE', err, 'Internal server error');
   }
 }

@@ -31,16 +31,27 @@ function req(body, method = 'POST') {
 
 /** One igi_models table, shared by whichever client reaches it. */
 function table(rows) {
-  const state = { rows: rows.map((r) => ({ ...r })), inserted: null, updates: [] };
+  const state = { rows: rows.map((r) => ({ ...r })), inserted: null, updates: [], deleted: [] };
   const from = (name) => {
     if (name === 'profiles') {
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.profile, error: null }) }) }) };
     }
     let filter = () => true;
     let patch = null;
+    let deleting = false;
     const chain = {
       select: () => chain,
-      eq: (col, val) => { const prev = filter; filter = (r) => prev(r) && r[col] === val; return chain; },
+      eq: (col, val) => {
+        const prev = filter; filter = (r) => prev(r) && r[col] === val;
+        if (deleting) {
+          const gone = state.rows.filter(filter);
+          state.deleted.push(...gone.map((r) => r.id));
+          state.rows = state.rows.filter((r) => !filter(r));
+          return { error: null };
+        }
+        return chain;
+      },
+      delete: () => { deleting = true; return chain; },
       maybeSingle: async () => ({ data: state.rows.find(filter) ?? null, error: null }),
       single: async () => {
         if (state.inserted && !patch) return { data: { id: 'new-id', ...state.inserted }, error: null };
@@ -100,6 +111,40 @@ describe('LoveLab add a model', () => {
     expect((await models.POST(req({ name: 'X', stones: '1', carat: 1, shape: 'Oval' }))).status).toBe(403);
     getUserContext.mockResolvedValue({ user: null, isAdmin: false });
     expect((await models.POST(req({ name: 'X', stones: '1', carat: 1, shape: 'Oval' }))).status).toBe(401);
+  });
+});
+
+describe('LoveLab remove a model that is still waiting for its serial', () => {
+  // Sam, 18 Sept 2026: "how can I delete some there manually?" — a test model
+  // added to try the form had no way back.
+  const IN_USE = { id: 'm1', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', state: 'in_use', serial: 'LGAJ6530' };
+
+  test('removes it and says so', async () => {
+    const res = await models.DELETE(req({ model_id: 'm-new' }, 'DELETE'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: { id: 'm-new', name: 'Full Moonlight' } });
+    expect(global.__admin.state.deleted).toEqual(['m-new']);
+    expect(global.__admin.state.rows).toEqual([]);
+  });
+
+  test('never removes a numbered model, and says why', async () => {
+    global.__admin = table([IN_USE]);
+    const res = await models.DELETE(req({ model_id: 'm1' }, 'DELETE'));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/LGAJ6530 is in use/);
+    expect(global.__admin.state.deleted).toEqual([]);
+    expect(global.__admin.state.rows).toHaveLength(1);
+  });
+
+  test('says when the model is not there, and when none was named', async () => {
+    expect((await models.DELETE(req({ model_id: 'nope' }, 'DELETE'))).status).toBe(404);
+    expect((await models.DELETE(req({}, 'DELETE'))).status).toBe(400);
+  });
+
+  test('is LoveLab-admin only', async () => {
+    getUserContext.mockResolvedValue({ user: { id: 'x' }, isAdmin: false });
+    expect((await models.DELETE(req({ model_id: 'm-new' }, 'DELETE'))).status).toBe(403);
+    expect(global.__admin.state.rows).toHaveLength(1);
   });
 });
 

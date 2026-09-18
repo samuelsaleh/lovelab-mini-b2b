@@ -66,7 +66,7 @@ screens:
 | **Dashboard** | Two lists and nothing else: what to collect (with the Send button) and what to order at IGI |
 | **Stock** | One line per model: on our shelf, at IGI, what to do (Collect / Order at IGI), and an "ask for" column with one Send to IGI button |
 | **Movements** | All 29 movements, by movement or by day |
-| **Models** | The 76 in use, the ones waiting for a serial, a "New model" button, and the two levels per model: the shelf level and the level IGI must hold. Matching stock descriptions to models is a link at the foot |
+| **Models** | The 76 in use, the ones waiting for a serial, a "New model" button (a model still waiting for its serial can be removed again), and the two levels per model: the shelf level and the level IGI must hold. Matching stock descriptions to models is a link at the foot |
 | **Invoices** | What the movements say, beside what IGI billed |
 
 **IGI see the level you set.** "IGI must hold" on Models is the one level on

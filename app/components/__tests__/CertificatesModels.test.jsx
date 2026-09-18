@@ -13,10 +13,15 @@ const MODELS = [
   { id: 'm9', serial: 'LGAJ6588', name: '—', stones: '4', carat: 0.8, shape: 'Round', spec: null, state: 'reserved', qty_ordered: null, pool: null, shelf: null, shelf_min: null, order_min: null },
 ]
 
-function mockFetch({ onPost, onAlert } = {}) {
+function mockFetch({ onPost, onAlert, onDelete } = {}) {
   global.fetch = jest.fn((url, init) => {
     const u = String(url)
     if (init?.method === 'POST') return onPost(JSON.parse(init.body))
+    if (init?.method === 'DELETE') {
+      return onDelete
+        ? onDelete(JSON.parse(init.body))
+        : Promise.resolve({ ok: true, json: async () => ({ deleted: { id: 'm-wait', name: 'Full Moonlight' } }) })
+    }
     if (u.includes('/api/igi/alerts')) {
       onAlert?.(JSON.parse(init.body))
       return Promise.resolve({ ok: true, json: async () => ({ updated: [] }) })
@@ -123,5 +128,47 @@ describe('the two levels per model are set here, not on Stock', () => {
     fireEvent.blur(input)
     expect(onAlert).not.toHaveBeenCalled()
     expect(input).toHaveValue(25)
+  })
+})
+
+describe('a model still waiting for its serial can be removed (Sam, 18 Sept 2026)', () => {
+  it('offers Remove on the waiting row only', async () => {
+    await renderModels()
+    expect(within(screen.getByTestId('awaiting-row')).getByTestId('delete-model')).toBeInTheDocument()
+    expect(within(screen.getByTestId('model-row')).queryByTestId('delete-model')).toBeNull()
+  })
+
+  it('asks once, then removes the row and says nothing else changed', async () => {
+    let sent = null
+    await renderModels({
+      onDelete: async (body) => { sent = body; return { ok: true, json: async () => ({ deleted: { id: 'm-wait', name: 'Full Moonlight' } }) } },
+    })
+    fireEvent.click(screen.getByTestId('delete-model'))
+    expect(sent).toBeNull()
+    expect(screen.getByText('Remove this model?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('delete-model-confirm'))
+    await waitFor(() => expect(sent).toEqual({ model_id: 'm-wait' }))
+    await waitFor(() => expect(screen.queryByTestId('awaiting-row')).toBeNull())
+    expect(screen.getByTestId('notice')).toHaveTextContent('Full Moonlight removed')
+    expect(screen.getAllByTestId('model-row')).toHaveLength(1)
+  })
+
+  it('can be kept after all', async () => {
+    await renderModels()
+    fireEvent.click(screen.getByTestId('delete-model'))
+    fireEvent.click(screen.getByTestId('delete-model-keep'))
+    expect(screen.queryByText('Remove this model?')).toBeNull()
+    expect(screen.getByTestId('awaiting-row')).toBeInTheDocument()
+  })
+
+  it('shows the server’s reason when it refuses, and keeps the row', async () => {
+    await renderModels({
+      onDelete: async () => ({ ok: false, json: async () => ({ error: 'LGAJ6530 is in use. A numbered model is never deleted.' }) }),
+    })
+    fireEvent.click(screen.getByTestId('delete-model'))
+    fireEvent.click(screen.getByTestId('delete-model-confirm'))
+    await waitFor(() => expect(screen.getByText(/never deleted/)).toBeInTheDocument())
+    expect(screen.getByTestId('awaiting-row')).toBeInTheDocument()
   })
 })
