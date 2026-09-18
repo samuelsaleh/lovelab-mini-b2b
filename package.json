@@ -9,7 +9,9 @@
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "check:schema": "node scripts/check-schema-drift.mjs"
+    "check:schema": "node scripts/check-schema-drift.mjs",
+    "igi:import": "node scripts/import-igi-seed.mjs",
+    "igi:check": "node scripts/import-igi-seed.mjs --check"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",

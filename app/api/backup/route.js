@@ -19,6 +19,18 @@ const TABLES = [
   'agent_payments',
   'saved_reports',
   'email_deliveries',
+  // LoveLab x IGI certificate module. The movements are the only record of what
+  // crossed the road, so they belong in the nightly backup.
+  'igi_models',
+  'igi_batches',
+  'igi_counts',
+  'igi_visits',
+  'igi_visit_lines',
+  'igi_descriptions',
+  'igi_shelf_snapshots',
+  'igi_receipts',
+  'igi_certificate_out_sync',
+  'igi_invoices',
 ];
 
 const MAX_ROWS_PER_TABLE = 50_000;

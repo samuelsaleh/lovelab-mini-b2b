@@ -1,0 +1,41 @@
+import { NextResponse } from 'next/server';
+import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
+import { recordProduction } from '@/lib/igi/portalActions';
+import { notifyLovelabOfIssue, siteUrlFor } from '@/lib/igi/notify';
+
+/**
+ * PATCH /api/igi/preview/todo/[visitId]/produce — record what was made.
+ *
+ * Sam has to be able to drive IGI's half of the loop before IGI have a login —
+ * a portal whose buttons do nothing cannot be tested. So the preview writes for
+ * real, through the same action IGI's own route calls.
+ *
+ * Attribution needs no special case: the row records whoever acted. Recorded
+ * here, it says Sam did it, which is the truth and is what you want to find
+ * later when somebody asks where a figure came from.
+ */
+export async function PATCH(request, { params }) {
+  const auth = await requireLoveLab(request, 'igi-preview-produce', 30);
+  if (auth.error) return auth.error;
+
+  const { visitId } = await params;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  try {
+    const result = await recordProduction(auth.adminSupabase, auth.user.id, visitId, body);
+    if (result.error) return fail('IGI/Preview produce', result.error, result.message);
+    if (result.status !== 200) return NextResponse.json(result.body, { status: result.status });
+
+    // LoveLab are told what was made, with any line fewer than asked in red.
+    const email = await notifyLovelabOfIssue(auth.adminSupabase, { visitId, siteUrl: siteUrlFor(request) });
+    return NextResponse.json({ ...result.body, email }, { status: 200 });
+  } catch (err) {
+    return fail('IGI/Preview produce', err, 'Internal server error');
+  }
+}

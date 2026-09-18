@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/email-deliveries",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/igi-stock",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/igi-certificate-outs",
+      "schedule": "15 * * * *"
     }
   ],
   "redirects": [

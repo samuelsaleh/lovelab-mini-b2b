@@ -1,0 +1,301 @@
+{
+  "_comment": "Names as LoveLab wrote them until 11 Sept 2026, beside the name that replaced them. Used by scripts/build-igi-model-names.mjs to rename a database that already holds the old ones; a fresh switch-on uses the new names directly.",
+  "as_of": "2026-09-11",
+  "renames": [
+    {
+      "serial": "LGAJ6529",
+      "from": "Cuty-Cubix / Moonlight Long",
+      "to": "Cuty / Cubix / Long Moonlight"
+    },
+    {
+      "serial": "LGAJ6530",
+      "from": "Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long",
+      "to": "Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight"
+    },
+    {
+      "serial": "LGAJ6531",
+      "from": "Cuty-Cubix / Sienna 1 / Moonlight Original",
+      "to": "Cuty / Cubix / Sienna 1 / Original Moonlight"
+    },
+    {
+      "serial": "LGAJ6532",
+      "from": "Cuty-Cubix / Sienna 1 / Moonlight Original / Moonlight Long",
+      "to": "Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight"
+    },
+    {
+      "serial": "LGAJ6533",
+      "from": "Multi Three",
+      "to": "Multi 3"
+    },
+    {
+      "serial": "LGAJ6534",
+      "from": "Multi Three",
+      "to": "Multi 3"
+    },
+    {
+      "serial": "LGAJ6535",
+      "from": "Multi Three",
+      "to": "Multi 3"
+    },
+    {
+      "serial": "LGAJ6536",
+      "from": "Multi Three",
+      "to": "Multi 3"
+    },
+    {
+      "serial": "LGAJ6537",
+      "from": "Multi Four / Sienna 4",
+      "to": "Multi 4 / Sienna 4 / Riviera 4"
+    },
+    {
+      "serial": "LGAJ6538",
+      "from": "Multi Four / Sienna 4",
+      "to": "Multi 4 / Sienna 4 / Riviera 4"
+    },
+    {
+      "serial": "LGAJ6539",
+      "from": "Multi Five / Sienna 5",
+      "to": "Multi 5 / Sienna 5"
+    },
+    {
+      "serial": "LGAJ6540",
+      "from": "Multi Five / Sienna 5",
+      "to": "Multi 5 / Sienna 5"
+    },
+    {
+      "serial": "LGAJ6541",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Cushion"
+    },
+    {
+      "serial": "LGAJ6542",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Cushion"
+    },
+    {
+      "serial": "LGAJ6543",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Long Cushion"
+    },
+    {
+      "serial": "LGAJ6544",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Long Cushion"
+    },
+    {
+      "serial": "LGAJ6545",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Emerald"
+    },
+    {
+      "serial": "LGAJ6546",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Emerald"
+    },
+    {
+      "serial": "LGAJ6547",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Emerald"
+    },
+    {
+      "serial": "LGAJ6548",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Emerald"
+    },
+    {
+      "serial": "LGAJ6549",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Emerald"
+    },
+    {
+      "serial": "LGAJ6550",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Heart"
+    },
+    {
+      "serial": "LGAJ6551",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Heart"
+    },
+    {
+      "serial": "LGAJ6552",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Heart"
+    },
+    {
+      "serial": "LGAJ6553",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Heart"
+    },
+    {
+      "serial": "LGAJ6554",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Heart"
+    },
+    {
+      "serial": "LGAJ6555",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Marquise"
+    },
+    {
+      "serial": "LGAJ6556",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Marquise"
+    },
+    {
+      "serial": "LGAJ6557",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Marquise"
+    },
+    {
+      "serial": "LGAJ6558",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Oval"
+    },
+    {
+      "serial": "LGAJ6559",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Oval"
+    },
+    {
+      "serial": "LGAJ6560",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Oval"
+    },
+    {
+      "serial": "LGAJ6561",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Pear"
+    },
+    {
+      "serial": "LGAJ6562",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Pear"
+    },
+    {
+      "serial": "LGAJ6563",
+      "from": "Shapy Shine",
+      "to": "Shapy Shine Pear"
+    },
+    {
+      "serial": "LGAJ6564",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Pear"
+    },
+    {
+      "serial": "LGAJ6565",
+      "from": "Matchy Fancy",
+      "to": "Matchy Fancy Pear"
+    },
+    {
+      "serial": "LGAJ6568",
+      "from": "ZAHA",
+      "to": "Zaha"
+    },
+    {
+      "serial": "LGAJ6569",
+      "from": "FLOWER MARQ",
+      "to": "Flower Marquise"
+    },
+    {
+      "serial": "LGAJ6570",
+      "from": "FLOWER HEART",
+      "to": "Flower Heart"
+    },
+    {
+      "serial": "LGAJ6571",
+      "from": "LINEA",
+      "to": "Linea 3"
+    },
+    {
+      "serial": "LGAJ6572",
+      "from": "LINEA",
+      "to": "Linea 5"
+    },
+    {
+      "serial": "LGAJ6573",
+      "from": "SIENNA",
+      "to": "Sienna 2"
+    },
+    {
+      "serial": "LGAJ6574",
+      "from": "RIVIERA",
+      "to": "Riviera 8"
+    },
+    {
+      "serial": "LGAJ6575",
+      "from": "RIVIERA",
+      "to": "Riviera 8"
+    },
+    {
+      "serial": "LGAJ6576",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6577",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6578",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6579",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6580",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6581",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6582",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6583",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6584",
+      "from": "CUTY FANCY COLOR",
+      "to": "Cuty Fancy Color"
+    },
+    {
+      "serial": "LGAJ6585",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6586",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6587",
+      "from": "THREE FANCY COLOR",
+      "to": "Multi 3 Fancy Color"
+    },
+    {
+      "serial": "LGAJ6603",
+      "from": "LONG MULTI ML",
+      "to": "Long Multi Moonlight"
+    },
+    {
+      "serial": "LGAJ6604",
+      "from": "LONG MULTI ML",
+      "to": "Long Multi Moonlight"
+    }
+  ]
+}
