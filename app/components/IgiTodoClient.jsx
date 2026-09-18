@@ -168,7 +168,7 @@ export default function IgiTodoClient() {
               </div>
               <div className="have">
                 <span>You hold</span>
-                <b style={{ color: 'var(--signal)' }}>{formatQty(m.pool)}</b>
+                <b style={{ color: 'var(--signal)' }}>{formatQty(Math.max(0, m.pool ?? 0))}</b>
               </div>
               <div className="have">
                 <span>LoveLab want</span>

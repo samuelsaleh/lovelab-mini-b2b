@@ -158,13 +158,51 @@ describe('IGI: my stock', () => {
     expect(container.textContent.toLowerCase()).not.toContain('shelf')
   })
 
-  it('flags a model below the level LoveLab want, and says how short', async () => {
+  it('flags a model below the level LoveLab want, and says how short beside their level', async () => {
     mockFetch()
     render(<IgiStockClient />)
     // m1 holds 900 against a level of 1000.
     await waitFor(() => expect(screen.getByText('Produce more')).toBeInTheDocument())
-    expect(screen.getByTestId('short-by')).toHaveTextContent('short by 100')
+    const row = screen.getByText('Produce more').closest('tr')
+    expect(row).toHaveClass('low')
+    // Sam, 18 Sept 2026: he scanned the level column and saw nothing there.
+    expect(within(within(row).getByTestId('level')).getByTestId('short-by')).toHaveTextContent('short by 100')
+    expect(screen.getByTestId('low-count')).toHaveTextContent('1 below the level LoveLab want')
     expect(screen.getByText('LoveLab want at least')).toBeInTheDocument()
+  })
+
+  it('sorts the models below the level to the top', async () => {
+    mockFetch({
+      '/stock': () => Promise.resolve({ ok: true, json: async () => ({ models: [MODELS[1], MODELS[0]] }) }),
+    })
+    render(<IgiStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('stock-row')).toHaveLength(2))
+    const rows = screen.getAllByTestId('stock-row')
+    expect(rows[0]).toHaveTextContent('Cuty-Cubix')
+    expect(rows[0]).toHaveClass('low')
+    expect(rows[1]).not.toHaveClass('low')
+  })
+
+  it('never shows a figure below zero — it says what was over-issued instead, and cannot be corrected', async () => {
+    // More certificates issued than batches recorded: 250 made, 252 issued.
+    mockFetch({
+      '/stock': () => Promise.resolve({ ok: true, json: async () => ({ models: [{ ...MODELS[0], pool: -2, level: 100 }] }) }),
+      '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: [], produce: [{ ...MODELS[0], pool: -2, level: 100, short_by: 102 }] }) }),
+    })
+    render(<IgiStockClient />)
+    await waitFor(() => expect(screen.getByTestId('you-hold')).toBeInTheDocument())
+    expect(screen.getByTestId('you-hold')).toHaveTextContent(/^0/)
+    expect(screen.getByTestId('you-hold')).not.toHaveTextContent('-2')
+    expect(screen.getByTestId('over-issued')).toHaveTextContent('2 more issued than you recorded making')
+    expect(screen.queryByTestId('correct')).toBeNull()
+    // The shortfall is still the real gap: 100 wanted, 2 in the hole.
+    expect(screen.getByTestId('short-by')).toHaveTextContent('short by 102')
+
+    render(<IgiTodoClient />)
+    const line = await screen.findByTestId('produce-line')
+    expect(line).toHaveTextContent('You hold0')
+    expect(line).not.toHaveTextContent('-2')
+    expect(line).toHaveTextContent('Short by102')
   })
 
   it('shows the level but offers nothing to edit — it is LoveLab\'s to set', async () => {

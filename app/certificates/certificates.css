@@ -164,6 +164,7 @@
 
 .certapp td.num .n{font-family:var(--font-num);font-size:.9rem;font-weight:500;color:var(--ink)}
 .certapp td.num .n.low{color:var(--signal)}
+.certapp tr.low td{background:var(--signal-tint)}
 .certapp td.num .n.zero{color:var(--ink-faint);font-weight:400}
 .certapp td.num .lvl{display:block;font-family:var(--font-num);font-size:.7rem;color:var(--ink-faint);line-height:1.3}
 .certapp .mname{font-weight:500;color:var(--ink);line-height:1.3}

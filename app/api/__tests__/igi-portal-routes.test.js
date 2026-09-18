@@ -184,6 +184,22 @@ describe('IGI correcting their count (Sam, 18 Sept 2026)', () => {
     expect(global.__sb.captured.inserted).toBeNull();
   });
 
+  test('refuses a count from below zero — the missing batch is the fix, not a count', async () => {
+    // 1000 made, 1002 issued: more certificates than IGI ever recorded making.
+    global.__sb = sb({
+      profile: { id: 'igi-1', is_igi: true },
+      tables: {
+        ...IGI_TABLES,
+        igi_visits: [{ id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'closed', date_suspect: false, unattributed_total: null }],
+        igi_visit_lines: [{ id: 'l1', visit_id: 'v1', model_id: 'm1', qty_requested: 1002, qty_issued: 1002 }],
+      },
+    });
+    const res = await counts.POST(req({ model_id: 'm1', counted: 0 }, 'POST'));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/2 below zero.*Add a batch/);
+    expect(global.__sb.captured.inserted).toBeNull();
+  });
+
   test('has nothing to count on a model that is not in use', async () => {
     global.__sb = sb({ profile: { id: 'igi-1', is_igi: true }, tables: { ...IGI_TABLES, igi_models: [MODELS[1]] } });
     expect((await counts.POST(req({ model_id: 'm9', counted: 5 }, 'POST'))).status).toBe(409);

@@ -20,6 +20,16 @@ import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certifi
  * order book. Together with the level it is all of LoveLab's side this page
  * shows: nothing about the shelf, nothing about how fast anything sells.
  *
+ * Below the level the whole row is tinted, sorted to the top, and the
+ * shortfall sits beside LoveLab's figure — the column anyone scanning "am I
+ * under what they want?" actually looks at (Sam, 18 Sept 2026: the chip was
+ * five columns to the left and he did not see it). The figure IGI hold is
+ * never shown negative: issued past zero is a recording error, shown as 0
+ * with a note, while the shortfall still counts the real gap. Such a row
+ * cannot be "corrected" (a count from below zero is meaningless and the
+ * table refuses it): the missing batch is recorded, or LoveLab fix the
+ * movement.
+ *
  * "You hold" can be corrected (Sam, 18 Sept 2026). IGI's figure is
  * arithmetic and nothing on their side feeds it, so when it drifts from the
  * shelf they type what they actually hold. The correction is kept as a count
@@ -80,8 +90,11 @@ export default function IgiStockClient() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return models
-    return models.filter((m) => `${m.name} ${m.serial} ${m.shape}`.toLowerCase().includes(q))
+    const list = q
+      ? models.filter((m) => `${m.name} ${m.serial} ${m.shape}`.toLowerCase().includes(q))
+      : models
+    // Below the level first, each group in its own order.
+    return [...list.filter(belowLevel), ...list.filter((m) => !belowLevel(m))]
   }, [models, query])
 
   const low = models.filter(belowLevel)
@@ -92,9 +105,9 @@ export default function IgiStockClient() {
     <>
       <PageHead
         title="My stock"
-        sub={`${models.length} models. ${low.length > 0
-          ? `${low.length} below the level LoveLab want — worth producing more.`
-          : 'Nothing below the level LoveLab want.'}`}
+        sub={low.length > 0
+          ? <>{models.length} models. <strong style={{ color: 'var(--signal)' }} data-testid="low-count">{low.length} below the level LoveLab want</strong> — produce more.</>
+          : `${models.length} models. Nothing below the level LoveLab want.`}
       >
         <input
           type="search"
@@ -125,16 +138,12 @@ export default function IgiStockClient() {
             <tbody>
               {shown.map((m) => {
                 const short = belowLevel(m) ? m.level - m.pool : 0
+                const overIssued = m.pool != null && m.pool < 0 ? -m.pool : 0
                 return (
-                  <tr key={m.id} data-testid="stock-row">
+                  <tr key={m.id} data-testid="stock-row" className={short > 0 ? 'low' : undefined}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{m.name}</div>
-                      {short > 0 && (
-                        <div style={{ marginTop: 3, display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <Chip tone="now">Produce more</Chip>
-                          <span className="spec" data-testid="short-by">short by {formatQty(short)}</span>
-                        </div>
-                      )}
+                      {short > 0 && <div style={{ marginTop: 3 }}><Chip tone="now">Produce more</Chip></div>}
                     </td>
                     <td><Spec model={m} compact /></td>
                     <td><Serial model={m} compact /></td>
@@ -157,13 +166,24 @@ export default function IgiStockClient() {
                         </span>
                       ) : (
                         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                          <span style={short > 0 ? { color: 'var(--signal)', fontWeight: 600 } : undefined}>{formatQty(m.pool)}</span>
-                          <Btn onClick={() => setEditing({ id: m.id, value: String(m.pool ?? 0) })} testId="correct">Correct</Btn>
+                          <span style={short > 0 ? { color: 'var(--signal)', fontWeight: 600 } : undefined}>{formatQty(Math.max(0, m.pool ?? 0))}</span>
+                          {overIssued > 0 ? (
+                            <span className="spec" data-testid="over-issued" style={{ textAlign: 'left', maxWidth: 220 }}>
+                              {formatQty(overIssued)} more issued than you recorded making — add the batch under Add a batch, or tell LoveLab
+                            </span>
+                          ) : (
+                            <Btn onClick={() => setEditing({ id: m.id, value: String(m.pool ?? 0) })} testId="correct">Correct</Btn>
+                          )}
                         </span>
                       )}
                     </td>
                     <td className="num" data-testid="level">
                       {m.level == null ? <span className="spec">no level</span> : formatQty(m.level)}
+                      {short > 0 && (
+                        <div style={{ color: 'var(--signal)', fontWeight: 600, fontSize: '.8rem' }} data-testid="short-by">
+                          short by {formatQty(short)}
+                        </div>
+                      )}
                     </td>
                     <td className="num">
                       {m.asked_now

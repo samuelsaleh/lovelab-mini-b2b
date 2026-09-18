@@ -77,7 +77,9 @@ Until Michael has a login, you can do it for him from "IGI's side → Open their
 portal", under your own name.
 
 **IGI see the level you set.** "IGI must hold" on Models is the one level on
-their stock. Their stock screen shows it beside what they hold, their To do
+their stock. Their stock screen shows it beside what they hold — a model
+below it is tinted red, sorted to the top, and says how short beside your
+level — their To do
 lists every model below it under "Produce more", and once they have an
 account they are emailed the night it happens — the same night you are.
 
