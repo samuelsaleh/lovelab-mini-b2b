@@ -14,6 +14,8 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { canAdvance } from '@/lib/igi/visits';
 import { pushVisitReceiptToLovelab } from '@/lib/igi/pushReceipt';
 import { recordHealthEvent } from '@/lib/healthEvent';
+import { shortOnReturn } from '@/lib/igi/shortfall';
+import { notifyIgiOfShortReturn, siteUrlFor } from '@/lib/igi/notify';
 
 export async function PATCH(request, { params }) {
   const auth = await requireLoveLab(request, 'igi-visit-received', 30);
@@ -123,7 +125,13 @@ export async function PATCH(request, { params }) {
       }
     }
 
-    return NextResponse.json({ visit: updated, received: total, erp });
+    // Fewer came back than IGI made: tell IGI the same day (Sam, 18 Sept 2026).
+    const missing = shortOnReturn(receivedLines);
+    const email = missing > 0
+      ? await notifyIgiOfShortReturn(db, { visitId: id, siteUrl: siteUrlFor(request) })
+      : null;
+
+    return NextResponse.json({ visit: updated, received: total, missing, email, erp });
   } catch (err) {
     return fail('IGI/VisitReceived PATCH', err, 'Internal server error');
   }

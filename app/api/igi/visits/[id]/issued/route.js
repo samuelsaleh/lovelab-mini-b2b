@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { canAdvance, readIssuedQuantities } from '@/lib/igi/visits';
+import { notifyLovelabOfIssue, siteUrlFor } from '@/lib/igi/notify';
 
 /**
  * PATCH /api/igi/visits/[id]/issued
@@ -71,7 +72,10 @@ export async function PATCH(request, { params }) {
 
     if (statusErr) return fail('IGI/VisitIssued PATCH', statusErr, 'Failed to record what was made');
 
-    return NextResponse.json({ visit: updated });
+    // The "come and collect" email, with any line fewer than asked in red.
+    const email = await notifyLovelabOfIssue(db, { visitId: id, siteUrl: siteUrlFor(request) });
+
+    return NextResponse.json({ visit: updated, email });
   } catch (err) {
     return fail('IGI/VisitIssued PATCH', err, 'Internal server error');
   }

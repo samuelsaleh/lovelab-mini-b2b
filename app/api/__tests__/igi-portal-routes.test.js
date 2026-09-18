@@ -16,11 +16,17 @@ jest.mock('@/lib/supabase/server', () => ({
   createAdminClient: jest.fn(() => { throw new Error('the IGI portal must not use the service role') }),
 }));
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(...a) }));
+const notifyLovelabOfIssue = jest.fn(async () => ({ sent: true, recipients: ['alberto@love-lab.com'] }));
+jest.mock('@/lib/igi/notify', () => ({
+  notifyLovelabOfIssue: (...a) => notifyLovelabOfIssue(...a),
+  siteUrlFor: () => 'https://app.test',
+}));
 
 const todo = require('../igi-portal/todo/route');
 const stock = require('../igi-portal/stock/route');
 const batches = require('../igi-portal/batches/route');
 const counts = require('../igi-portal/counts/route');
+const produce = require('../igi-portal/todo/[visitId]/produce/route');
 
 function req(body, method = 'GET') {
   return new global.Request('http://localhost/api/igi-portal', {
@@ -225,5 +231,23 @@ describe('IGI adding a batch', () => {
 
   test('refuses a negative batch', async () => {
     expect((await batches.POST(req({ model_id: 'm1', qty: -5, batch_date: '2026-09-01' }, 'POST'))).status).toBe(400);
+  });
+});
+
+describe('IGI recording what they made tells LoveLab (Sam, 18 Sept 2026)', () => {
+  test('the "come and collect" email goes out with the movement, through their own client', async () => {
+    notifyLovelabOfIssue.mockClear();
+    const res = await produce.PATCH(req({ made: { m1: 60 } }, 'PATCH'), { params: Promise.resolve({ visitId: 'v1' }) });
+    expect(res.status).toBe(200);
+    expect(notifyLovelabOfIssue).toHaveBeenCalledWith(global.__sb, { visitId: 'v1', siteUrl: 'https://app.test' });
+    expect(await res.json()).toMatchObject({ visit_no: 24, made: 60, email: { sent: true } });
+  });
+
+  test('nothing is sent when the movement was already recorded', async () => {
+    notifyLovelabOfIssue.mockClear();
+    global.__sb = sb({ profile: { id: 'igi-1', is_igi: true }, tables: { ...IGI_TABLES, igi_visits: [{ ...IGI_TABLES.igi_visits[0], status: 'issued' }] } });
+    const res = await produce.PATCH(req({ made: {} }, 'PATCH'), { params: Promise.resolve({ visitId: 'v1' }) });
+    expect(res.status).toBe(409);
+    expect(notifyLovelabOfIssue).not.toHaveBeenCalled();
   });
 });

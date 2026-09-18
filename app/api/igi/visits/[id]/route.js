@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
 
     const { data: visit, error: visitErr } = await db
       .from('igi_visits')
-      .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, correction, note, requested_at, issued_at, closed_at, created_by, issued_by, received_by')
+      .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, correction, note, requested_at, issued_at, closed_at, created_by, issued_by, received_by, notified_at, notify_error')
       .eq('id', id)
       .maybeSingle();
 

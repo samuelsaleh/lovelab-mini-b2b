@@ -193,7 +193,8 @@ describe('IGI: my stock', () => {
     await waitFor(() => expect(screen.getByTestId('you-hold')).toBeInTheDocument())
     expect(screen.getByTestId('you-hold')).toHaveTextContent(/^0/)
     expect(screen.getByTestId('you-hold')).not.toHaveTextContent('-2')
-    expect(screen.getByTestId('over-issued')).toHaveTextContent('2 more issued than you recorded making')
+    expect(screen.getByTestId('over-issued')).toHaveTextContent('2 over-issued')
+    expect(screen.getByTestId('over-issued')).toHaveAttribute('title', expect.stringContaining('Add a batch'))
     expect(screen.queryByTestId('correct')).toBeNull()
     // The shortfall is still the real gap: 100 wanted, 2 in the hole.
     expect(screen.getByTestId('short-by')).toHaveTextContent('short by 102')

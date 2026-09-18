@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireIgi, fail } from '@/app/api/igi-portal/_lib/access';
 import { recordProduction } from '@/lib/igi/portalActions';
+import { notifyLovelabOfIssue, siteUrlFor } from '@/lib/igi/notify';
 
 /**
  * PATCH /api/igi-portal/todo/[visitId]/produce — IGI record what they made.
@@ -26,7 +27,11 @@ export async function PATCH(request, { params }) {
   try {
     const result = await recordProduction(auth.supabase, auth.user.id, visitId, body);
     if (result.error) return fail('IGI-Portal/Produce', result.error, result.message);
-    return NextResponse.json(result.body, { status: result.status });
+    if (result.status !== 200) return NextResponse.json(result.body, { status: result.status });
+
+    // LoveLab are told what was made, with any line fewer than asked in red.
+    const email = await notifyLovelabOfIssue(auth.supabase, { visitId, siteUrl: siteUrlFor(request) });
+    return NextResponse.json({ ...result.body, email }, { status: 200 });
   } catch (err) {
     return fail('IGI-Portal/Produce', err, 'Internal server error');
   }

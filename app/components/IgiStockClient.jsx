@@ -167,14 +167,20 @@ export default function IgiStockClient() {
                       ) : (
                         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                           <span style={short > 0 ? { color: 'var(--signal)', fontWeight: 600 } : undefined}>{formatQty(Math.max(0, m.pool ?? 0))}</span>
-                          {overIssued > 0 ? (
-                            <span className="spec" data-testid="over-issued" style={{ textAlign: 'left', maxWidth: 220 }}>
-                              {formatQty(overIssued)} more issued than you recorded making — add the batch under Add a batch, or tell LoveLab
-                            </span>
-                          ) : (
+                          {overIssued === 0 && (
                             <Btn onClick={() => setEditing({ id: m.id, value: String(m.pool ?? 0) })} testId="correct">Correct</Btn>
                           )}
                         </span>
+                      )}
+                      {overIssued > 0 && (
+                        <div
+                          className="spec"
+                          data-testid="over-issued"
+                          title={`${formatQty(overIssued)} more certificates were issued than you recorded making. Add the missing batch under Add a batch, or tell LoveLab.`}
+                          style={{ color: 'var(--signal)' }}
+                        >
+                          {formatQty(overIssued)} over-issued
+                        </div>
                       )}
                     </td>
                     <td className="num" data-testid="level">
@@ -202,7 +208,8 @@ export default function IgiStockClient() {
       <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.6 }}>
         Correct a figure when what you hold is not what the screen says. The correction is kept —
         what it was, what you counted, when — and nothing is overwritten. LoveLab see the new figure
-        at once.
+        at once. A figure at 0 marked <em>over-issued</em> means more certificates were issued than
+        you recorded making: add the missing batch under Add a batch, or tell LoveLab.
       </p>
     </>
   )

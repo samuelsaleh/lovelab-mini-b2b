@@ -83,6 +83,7 @@ say(
   read('supabase/migrations/20260918120000_igi_visit_correction.sql').trimEnd(),
   '',
   read('supabase/migrations/20260918140000_igi_counts.sql').trimEnd(),
+  read('supabase/migrations/20260919120000_igi_visit_notified.sql').trimEnd(),
   '',
 );
 

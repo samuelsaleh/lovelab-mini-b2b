@@ -76,6 +76,18 @@ who, when), never an overwrite, and you see the new figure the same minute.
 Until Michael has a login, you can do it for him from "IGI's side → Open their
 portal", under your own name.
 
+**IGI are emailed when you ask, you are emailed when they make it.** Pressing
+"Send to IGI" (Stock) or "Ask IGI for N" (Dashboard) emails the request to every
+IGI login and every address in `IGI_EMAILS` — so Michael gets it before he has a
+login. The movement page shows "IGI were emailed" in green; if the email failed
+it shows why, in red, with a **Send the email again** button, and the admins get
+a notice. The request itself is always saved. When IGI record what they made,
+you get "IGI made V-0xx: N certificates", with any line fewer than asked in red.
+When you confirm a return with something missing, IGI get "V-0xx came back
+short" the same minute. Nothing is carried over: the shelf still reads low, so
+the Dashboard asks again on its own. The Movements list shows "N fewer than
+asked" and "N missing on return" on such movements.
+
 **IGI see the level you set.** "IGI must hold" on Models is the one level on
 their stock. Their stock screen shows it beside what they hold — a model
 below it is tinted red, sorted to the top, and says how short beside your

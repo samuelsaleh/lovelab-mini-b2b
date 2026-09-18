@@ -3,6 +3,8 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { poolOf, visitTotal } from '@/lib/igi/derive';
 import { brusselsToday } from '@/lib/igi/dates';
 import { readRequestLines, whyNotRequestable } from '@/lib/igi/visits';
+import { shortOnIssue, shortOnReturn } from '@/lib/igi/shortfall';
+import { notifyIgiOfRequest, siteUrlFor } from '@/lib/igi/notify';
 
 /**
  * GET /api/igi/visits — every movement, newest first.
@@ -14,7 +16,7 @@ export async function GET(request) {
   try {
     const [visits, lines] = await Promise.all([
       auth.adminSupabase.from('igi_visits')
-        .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, correction, requested_at, issued_at, closed_at, note')
+        .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, correction, requested_at, issued_at, closed_at, note, notified_at, notify_error')
         .order('visit_no', { ascending: false }),
       auth.adminSupabase.from('igi_visit_lines')
         .select('visit_id, model_id, qty_requested, qty_issued, qty_received'),
@@ -24,11 +26,17 @@ export async function GET(request) {
     if (lines.error) return fail('IGI/Visits GET', lines.error, 'Failed to load the movements');
 
     return NextResponse.json({
-      visits: visits.data.map((v) => ({
-        ...v,
-        total: visitTotal(v, lines.data),
-        line_count: lines.data.filter((l) => l.visit_id === v.id).length,
-      })),
+      visits: visits.data.map((v) => {
+        const own = lines.data.filter((l) => l.visit_id === v.id);
+        return {
+          ...v,
+          total: visitTotal(v, lines.data),
+          line_count: own.length,
+          // What went missing, so the list can flag it (Sam, 18 Sept 2026).
+          short_issue: shortOnIssue(own),
+          short_return: shortOnReturn(own),
+        };
+      }),
     });
   } catch (err) {
     return fail('IGI/Visits GET', err, 'Internal server error');
@@ -41,6 +49,11 @@ export async function GET(request) {
  * A request asking for more than IGI holds is accepted deliberately: the
  * shortage comes back in the response so both sides see it straight away.
  * Nobody should walk across the road expecting 500 and return with 41.
+ *
+ * IGI are emailed the moment the request is saved (Sam, 18 Sept 2026). The
+ * email can fail without the request failing: the result rides along in the
+ * response as `email`, is stamped on the movement, and the movement page
+ * offers "Send the email again".
  */
 export async function POST(request) {
   const auth = await requireLoveLab(request, 'igi-visits-write', 30);
@@ -127,7 +140,9 @@ export async function POST(request) {
       })
       .filter(Boolean);
 
-    return NextResponse.json({ visit, short }, { status: 201 });
+    const email = await notifyIgiOfRequest(db, { visitId: visit.id, siteUrl: siteUrlFor(request) });
+
+    return NextResponse.json({ visit, short, email }, { status: 201 });
   } catch (err) {
     return fail('IGI/Visits POST', err, 'Internal server error');
   }

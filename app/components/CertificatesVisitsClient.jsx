@@ -104,7 +104,15 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
                           </div>
                         )}
                       </td>
-                      <td><Chip tone={VISIT_TONES[v.status]}>{VISIT_LABELS[v.status]}</Chip></td>
+                      <td>
+                        <Chip tone={VISIT_TONES[v.status]}>{VISIT_LABELS[v.status]}</Chip>
+                        {(v.short_issue > 0 || v.short_return > 0) && (
+                          <div style={{ marginTop: 3, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {v.short_issue > 0 && <Chip tone="watch" testId="short-issue">{formatQty(v.short_issue)} fewer than asked</Chip>}
+                            {v.short_return > 0 && <Chip tone="now" testId="short-return">{formatQty(v.short_return)} missing on return</Chip>}
+                          </div>
+                        )}
+                      </td>
                       <td className="num">
                         {v.unattributed_total != null
                           ? <span className="spec">no breakdown</span>

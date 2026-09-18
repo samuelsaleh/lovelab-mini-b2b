@@ -20,11 +20,23 @@ jest.mock('@/lib/igi/pushReceipt', () => ({
 jest.mock('@/lib/healthEvent', () => ({
   recordHealthEvent: jest.fn(async () => {}),
 }));
+// The emails are tested in lib/__tests__/igi-notify.test.js; here only that
+// the routes call them at the right moment and pass the answer through.
+const notifyIgiOfRequest = jest.fn(async () => ({ sent: true, recipients: ['michael@igi.org'], notified_at: '2026-09-18T10:00:00.000Z' }));
+const notifyLovelabOfIssue = jest.fn(async () => ({ sent: true, recipients: ['alberto@love-lab.com'] }));
+const notifyIgiOfShortReturn = jest.fn(async () => ({ sent: true, recipients: ['michael@igi.org'], missing: 2 }));
+jest.mock('@/lib/igi/notify', () => ({
+  notifyIgiOfRequest: (...a) => notifyIgiOfRequest(...a),
+  notifyLovelabOfIssue: (...a) => notifyLovelabOfIssue(...a),
+  notifyIgiOfShortReturn: (...a) => notifyIgiOfShortReturn(...a),
+  siteUrlFor: () => 'https://app.test',
+}));
 
 const visits = require('../igi/visits/route');
 const visitDetail = require('../igi/visits/[id]/route');
 const issued = require('../igi/visits/[id]/issued/route');
 const received = require('../igi/visits/[id]/received/route');
+const notify = require('../igi/visits/[id]/notify/route');
 
 function req(body, method = 'POST') {
   return new global.Request('http://localhost/api/igi/visits', {
@@ -98,7 +110,53 @@ function baseTables(overrides = {}) {
 beforeEach(() => {
   checkRateLimit.mockReset().mockReturnValue(null);
   getUserContext.mockReset().mockResolvedValue({ user: { id: 'u1' }, isAdmin: true });
+  notifyIgiOfRequest.mockClear();
+  notifyLovelabOfIssue.mockClear();
+  notifyIgiOfShortReturn.mockClear();
   global.__db = db(baseTables());
+});
+
+describe('IGI are emailed when LoveLab ask (Sam, 18 Sept 2026)', () => {
+  test('sends the request email once the movement is saved, and says so in the answer', async () => {
+    const res = await visits.POST(req({ lines: [{ model_id: 'm1', qty: 50 }] }));
+    expect(res.status).toBe(201);
+    expect(notifyIgiOfRequest).toHaveBeenCalledWith(global.__db, { visitId: 'new-0', siteUrl: 'https://app.test' });
+    expect((await res.json()).email).toMatchObject({ sent: true, recipients: ['michael@igi.org'] });
+  });
+
+  test('a failed email never fails the request — the movement is saved and the answer carries the reason', async () => {
+    notifyIgiOfRequest.mockResolvedValueOnce({ sent: false, reason: 'no_api_key', error: 'Email is not configured on this server (no RESEND_API_KEY)', recipients: [] });
+    const res = await visits.POST(req({ lines: [{ model_id: 'm1', qty: 50 }] }));
+    expect(res.status).toBe(201);
+    expect(global.__db.writes.inserted.igi_visits).toHaveLength(1);
+    expect((await res.json()).email).toMatchObject({ sent: false, reason: 'no_api_key' });
+  });
+
+  test('"Send the email again" works while the movement is waiting on IGI', async () => {
+    const res = await notify.POST(req(undefined, 'POST'), params);
+    expect(res.status).toBe(200);
+    expect(notifyIgiOfRequest).toHaveBeenCalledWith(global.__db, { visitId: 'v1', siteUrl: 'https://app.test' });
+    expect((await res.json()).email.sent).toBe(true);
+  });
+
+  test('and is refused once IGI have recorded what they made', async () => {
+    global.__db = db(baseTables({ igi_visits: [{ id: 'v1', visit_no: 23, status: 'issued' }] }));
+    const res = await notify.POST(req(undefined, 'POST'), params);
+    expect(res.status).toBe(409);
+    expect(notifyIgiOfRequest).not.toHaveBeenCalled();
+  });
+
+  test('the list says what went missing on each movement', async () => {
+    global.__db = db(baseTables({
+      igi_visits: [{ id: 'v1', visit_no: 23, visit_date: '2026-08-27', status: 'closed' }],
+      igi_visit_lines: [
+        { visit_id: 'v1', model_id: 'm1', qty_requested: 100, qty_issued: 60, qty_received: 58 },
+        { visit_id: 'v1', model_id: 'm2', qty_requested: 40, qty_issued: 40, qty_received: 40 },
+      ],
+    }));
+    const body = await (await visits.GET(req(undefined, 'GET'))).json();
+    expect(body.visits[0]).toMatchObject({ short_issue: 40, short_return: 2 });
+  });
 });
 
 describe('sending a request to IGI', () => {
@@ -241,6 +299,15 @@ describe('recording what IGI made', () => {
   });
 });
 
+describe('LoveLab are emailed when IGI made it (Sam, 18 Sept 2026)', () => {
+  test('recording what IGI made sends the "come and collect" email', async () => {
+    const res = await issued.PATCH(req({ issued: { m1: 41 } }, 'PATCH'), params);
+    expect(res.status).toBe(200);
+    expect(notifyLovelabOfIssue).toHaveBeenCalledWith(global.__db, { visitId: 'v1', siteUrl: 'https://app.test' });
+    expect((await res.json()).email).toMatchObject({ sent: true });
+  });
+});
+
 describe('confirming the return', () => {
   const withIssued = () => db(baseTables({
     igi_visits: [{ id: 'v1', visit_no: 23, status: 'issued' }],
@@ -282,6 +349,20 @@ describe('confirming the return', () => {
     const res = await received.PATCH(req({}, 'PATCH'), params);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/already been received/);
+  });
+
+  test('tells IGI only when fewer came back than they made', async () => {
+    global.__db = withIssued();
+    const whole = await (await received.PATCH(req({}, 'PATCH'), params)).json();
+    expect(whole.missing).toBe(0);
+    expect(whole.email).toBeNull();
+    expect(notifyIgiOfShortReturn).not.toHaveBeenCalled();
+
+    global.__db = withIssued();
+    const short = await (await received.PATCH(req({ received: { m1: 48 } }, 'PATCH'), params)).json();
+    expect(short.missing).toBe(2);
+    expect(notifyIgiOfShortReturn).toHaveBeenCalledWith(global.__db, { visitId: 'v1', siteUrl: 'https://app.test' });
+    expect(short.email).toMatchObject({ sent: true, missing: 2 });
   });
 
   test('stamps who confirmed it', async () => {

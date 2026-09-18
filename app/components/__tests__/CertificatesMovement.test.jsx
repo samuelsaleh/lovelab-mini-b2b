@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import CertificatesStockClient from '../CertificatesStockClient'
 import CertificatesVisitDetail from '../CertificatesVisitDetail'
 import CertificatesModelsClient from '../CertificatesModelsClient'
+import CertificatesVisitsClient from '../CertificatesVisitsClient'
 
 // Numbers are grouped with a narrow no-break space (THIN_SPACE in
 // lib/igi/derive.js). Testing Library normalises whitespace before matching, so
@@ -230,6 +231,61 @@ describe('one movement', () => {
     expect(screen.getByTestId('correction-note')).toHaveTextContent('110 attributed')
   })
 
+  it('says IGI were emailed about the request, when they were', async () => {
+    mockVisit({ ...MINE, notified_at: '2026-09-18T08:32:00Z', notify_error: null })
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('email-sent')).toBeInTheDocument())
+    expect(screen.getByTestId('email-sent')).toHaveTextContent(/IGI were emailed on 18 Sept 2026 at \d\d:\d\d/)
+    expect(screen.queryByTestId('email-failed')).toBeNull()
+  })
+
+  it('says why the email failed and lets you send it again (Sam, 18 Sept 2026)', async () => {
+    const posts = []
+    global.fetch = jest.fn((url, init) => {
+      const u = String(url)
+      if (init?.method === 'POST') {
+        posts.push(u)
+        return Promise.resolve({ ok: true, json: async () => ({ email: { sent: true, recipients: ['michael@igi.org'] } }) })
+      }
+      const visit = posts.length
+        ? { ...MINE, notified_at: '2026-09-18T09:00:00Z', notify_error: null }
+        : { ...MINE, notified_at: null, notify_error: 'Email is not configured on this server (no RESEND_API_KEY)' }
+      return Promise.resolve({ ok: true, json: async () => ({ visit, lines: LINES }) })
+    })
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('email-failed')).toBeInTheDocument())
+    expect(screen.getByTestId('email-failed')).toHaveTextContent('IGI have not been emailed')
+    expect(screen.getByTestId('email-failed')).toHaveTextContent('no RESEND_API_KEY')
+
+    fireEvent.click(screen.getByTestId('email-retry'))
+    await waitFor(() => expect(posts).toEqual(['/api/igi/visits/v1/notify']))
+    await waitFor(() => expect(screen.getByTestId('email-sent')).toBeInTheDocument())
+    expect(screen.getByTestId('notice')).toHaveTextContent('IGI emailed: michael@igi.org')
+  })
+
+  it('says nothing about email once IGI have recorded what they made', async () => {
+    const issuedLines = LINES.map((l) => ({ ...l, qty_issued: 50 }))
+    mockVisit({ ...MINE, status: 'issued', notified_at: null }, issuedLines)
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('confirm-return')).toBeInTheDocument())
+    expect(screen.queryByTestId('email-failed')).toBeNull()
+    expect(screen.queryByTestId('email-sent')).toBeNull()
+  })
+
+  it('tells you IGI were told when a return comes back short', async () => {
+    const issuedLines = LINES.map((l) => ({ ...l, qty_issued: 50 }))
+    global.fetch = jest.fn((url, init) => {
+      if (init?.method === 'PATCH') {
+        return Promise.resolve({ ok: true, json: async () => ({ visit: { ...MINE, status: 'closed' }, received: 98, missing: 2, email: { sent: true, missing: 2 } }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visit: { ...MINE, status: 'issued' }, lines: issuedLines }) })
+    })
+    render(<CertificatesVisitDetail visitId="v1" />)
+    await waitFor(() => expect(screen.getByTestId('confirm-return')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('confirm-return'))
+    await waitFor(() => expect(screen.getByTestId('notice')).toHaveTextContent('Received — 98 certificates. 2 missing — IGI were told.'))
+  })
+
   it('offers no action once the movement is closed', async () => {
     mockVisit({ id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'closed', unattributed_total: null })
     render(<CertificatesVisitDetail visitId="v1" />)
@@ -359,5 +415,20 @@ describe('the model register', () => {
     fireEvent.blur(input)
 
     expect(called).toBe(false)
+  })
+})
+
+describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () => {
+  it('shows fewer-than-asked and missing-on-return on the movement they belong to', async () => {
+    const VISITS = [
+      { id: 'v20', visit_no: 20, visit_date: '2026-08-25', status: 'closed', date_suspect: false, unattributed_total: null, line_count: 4, total: 250, short_issue: 40, short_return: 2 },
+      { id: 'v21', visit_no: 21, visit_date: '2026-08-25', status: 'closed', date_suspect: false, unattributed_total: null, line_count: 1, total: 77, short_issue: 0, short_return: 0 },
+    ]
+    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ visits: VISITS }) }))
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getAllByTestId('visit-row')).toHaveLength(2))
+    expect(screen.getByTestId('short-issue')).toHaveTextContent('40 fewer than asked')
+    expect(screen.getByTestId('short-return')).toHaveTextContent('2 missing on return')
+    expect(screen.getAllByTestId('short-issue')).toHaveLength(1)
   })
 })

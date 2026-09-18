@@ -28,6 +28,7 @@ export default function CertificatesVisitDetail({ visitId }) {
   const [made, setMade] = useState({})
   const [shortReturn, setShortReturn] = useState(false)
   const [back, setBack] = useState({})
+  const [emailing, setEmailing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -68,6 +69,27 @@ export default function CertificatesVisitDetail({ visitId }) {
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // "Send the email again" — the request email to IGI failed the first time.
+  async function resendEmail() {
+    setEmailing(true)
+    try {
+      const res = await fetch(`/api/igi/visits/${visitId}/notify`, { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not send the email')
+      if (body.email?.sent) {
+        setNotice(`IGI emailed: ${body.email.recipients.join(', ')}.`)
+        setTimeout(() => setNotice(null), 6000)
+      } else {
+        setError(`Still not sent: ${body.email?.error || body.email?.reason || 'unknown reason'}`)
+      }
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setEmailing(false)
     }
   }
 
@@ -128,6 +150,26 @@ export default function CertificatesVisitDetail({ visitId }) {
             correct themselves.
           </div>
         </Note>
+      )}
+
+      {visit.status === 'requested' && (
+        visit.notified_at ? (
+          <p data-testid="email-sent" style={{ fontSize: '.83rem', color: 'var(--good)', margin: '0 0 12px' }}>
+            IGI were emailed {formatWhen(visit.notified_at)}.
+          </p>
+        ) : (
+          <Note warn testId="email-failed">
+            <strong>IGI have not been emailed about this request.</strong>
+            <div style={{ marginTop: 6 }}>
+              {visit.notify_error || 'No email was sent for this movement.'} They will still see it on their To do.
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Btn onClick={resendEmail} disabled={emailing} testId="email-retry">
+                {emailing ? 'Sending…' : 'Send the email again'}
+              </Btn>
+            </div>
+          </Note>
+        )
       )}
 
       {short.length > 0 && visit.status === 'requested' && (
@@ -248,7 +290,7 @@ export default function CertificatesVisitDetail({ visitId }) {
               onClick={() => post(
                 'received',
                 { received: shortReturn ? back : {} },
-                (body) => `Received — ${formatQty(body.received)} certificates.`,
+                (body) => `Received — ${formatQty(body.received)} certificates.${receivedNote(body)}`,
               )}
               disabled={saving}
               testId="confirm-return"
@@ -269,9 +311,9 @@ export default function CertificatesVisitDetail({ visitId }) {
       {visit.status === 'closed' && (
         <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', maxWidth: 720, lineHeight: 1.6 }}>
           This movement is closed. A correction goes in as a new movement rather than a change
-          here, so the history stays honest. The certificates are not yet written into LoveLab&rsquo;s
-          own software automatically — until that endpoint exists, the shelf figure still comes
-          from the nightly read alone.
+          here, so the history stays honest. What came back was written into LoveLab&rsquo;s own
+          software (Certificate In) when the return was confirmed; the shelf figure here follows
+          on the nightly read.
         </p>
       )}
 
@@ -354,4 +396,22 @@ function DeleteMovement({ visit, returning, confirming, deleting, onAsk, onCance
       )}
     </div>
   )
+}
+
+/** "on 18 Sept 2026 at 10:32", Antwerp time. */
+function formatWhen(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const day = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Brussels' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' })
+  return `on ${day} at ${time}`
+}
+
+/** What the return notice adds when something was missing. */
+function receivedNote(body) {
+  if (!body?.missing) return ''
+  const n = formatQty(body.missing)
+  if (body.email?.sent) return ` ${n} missing — IGI were told.`
+  if (body.email?.reason === 'no_recipients') return ` ${n} missing — no IGI address to tell.`
+  return ` ${n} missing — IGI could not be emailed.`
 }

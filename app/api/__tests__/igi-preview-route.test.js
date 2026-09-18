@@ -16,6 +16,11 @@ jest.mock('@/lib/supabase/server', () => ({
   createAdminClient: jest.fn(() => global.__admin),
 }));
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(...a) }));
+const notifyLovelabOfIssue = jest.fn(async () => ({ sent: true, recipients: ['alberto@love-lab.com'] }));
+jest.mock('@/lib/igi/notify', () => ({
+  notifyLovelabOfIssue: (...a) => notifyLovelabOfIssue(...a),
+  siteUrlFor: () => 'https://app.test',
+}));
 
 const previewTodo = require('../igi/preview/todo/route');
 const previewStock = require('../igi/preview/stock/route');
@@ -180,7 +185,9 @@ describe('and can drive their half, under his own name', () => {
       req({ made: { m1: 60 } }, 'PATCH'),
       { params: Promise.resolve({ visitId: 'v1' }) });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ visit_no: 24, made: expect.any(Number) });
+    expect(await res.json()).toMatchObject({ visit_no: 24, made: expect.any(Number), email: { sent: true } });
+    // Sam driving IGI's half still tells LoveLab, so the loop reads the same either way.
+    expect(notifyLovelabOfIssue).toHaveBeenCalledWith(global.__admin, { visitId: 'v1', siteUrl: 'https://app.test' });
   });
 
   it('refuses to write for anyone who is not a LoveLab admin', async () => {

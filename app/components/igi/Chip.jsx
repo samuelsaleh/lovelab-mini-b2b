@@ -11,9 +11,9 @@
  * The colours live in app/certificates/certificates.css so they move with the
  * rest of the application's palette.
  */
-export default function Chip({ tone = 'flat', children }) {
+export default function Chip({ tone = 'flat', children, testId }) {
   const cls = tone === 'flat' ? 'nomove' : tone
-  return <span className={`chip ${cls}`}>{children}</span>
+  return <span className={`chip ${cls}`} data-testid={testId}>{children}</span>
 }
 
 /** The tone each alert status is shown in. */
