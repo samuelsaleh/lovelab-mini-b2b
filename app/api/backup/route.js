@@ -30,6 +30,7 @@ const TABLES = [
   'igi_shelf_snapshots',
   'igi_receipts',
   'igi_certificate_out_sync',
+  'igi_certificate_in_sync',
   'igi_invoices',
 ];
 

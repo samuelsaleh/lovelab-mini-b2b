@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/igi-certificate-outs",
-      "schedule": "15 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ],
   "redirects": [

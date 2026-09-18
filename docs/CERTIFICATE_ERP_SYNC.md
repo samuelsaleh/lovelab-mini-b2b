@@ -1,74 +1,59 @@
-# LoveLab Certificate ERP sync (B2B → lovelab)
+# LoveLab Certificate ERP sync (both directions)
 
 Uses `LOVELAB_API_URL` (same as packing-stock).
 
 ## Flows
 
-### Certificate In (receive)
-When a movement is confirmed received (`PATCH /api/igi/visits/[id]/received`):
+| Direction | Trigger | What |
+|-----------|---------|------|
+| **B2B → ERP In** | IGI visit **received** | Immediate `POST /api/certificate-in` (`external_ref=visit:…`) |
+| **ERP → B2B In** | Cron every **10 min** | Poll `GET /api/certificate-in?since_id=` → `igi_certificate_in_sync` |
+| **ERP → B2B Out** | Cron every **10 min** | Poll `GET /api/certificate-out?since_id=` → `igi_certificate_out_sync` |
+| **B2B → ERP Out** | When B2B originates an out | `POST /api/certificate-out` (`postCertificateOut`) |
 
-1. Visit closes locally as before.
-2. B2B builds stock labels (`name · serial · stones × carat shape`) matching LoveLab `certificate_master`.
-3. Posts `POST {LOVELAB_API_URL}/certificate-in` with `external_ref = visit:{id}`.
-4. Records idempotency in `igi_receipts` (`pending` → `applied` / `failed`).
+Failed B2B→ERP In receipts are retried on the same cron.
 
-A failed ERP push does **not** reopen the visit. Cron retries failed receipts.
+### Certificate In (B2B receive → ERP)
+1. Visit closes locally.
+2. Stock labels match LoveLab `certificate_master` (`name · serial · stones × carat shape`).
+3. Posts with `external_ref = visit:{id}`.
+4. Idempotency in `igi_receipts`.
 
-### Certificate Out (poll)
-Hourly cron `GET /api/cron/igi-certificate-outs` (header `x-vercel-cron-secret: $CRON_SECRET`):
+### Certificate In/Out (ERP → B2B poll)
+Cron `GET /api/cron/igi-certificate-outs` every 10 minutes:
 
-1. Polls `GET /api/certificate-out?since_id=…`
-2. Upserts into `igi_certificate_out_sync`, matching models by `LGAJ…` serial in the description.
-3. Retries failed `igi_receipts`.
+1. Polls new Certificate **In** rows → `igi_certificate_in_sync`
+2. Polls new Certificate **Out** rows → `igi_certificate_out_sync`
+3. Matches models by `LGAJ…` serial in the description
+4. Retries failed `igi_receipts`
 
-## DigitalOcean crontab (Option B — preferred)
+## DigitalOcean crontab (every 10 minutes)
 
-Production is self-hosted on DigitalOcean, not Vercel. `vercel.json` crons do nothing there.
+```cron
+*/10 * * * * /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1
+```
 
-**Option B** keeps `CRON_SECRET` out of crontab: `scripts/run-cron.sh` reads it from the app `.env`.
-
-### One-shot install from your laptop
+Re-install from laptop:
 
 ```bash
-export DEPLOY_SSH_PASSWORD='…'   # server root password
+export DEPLOY_SSH_PASSWORD='…'
 ./scripts/install-server-cron.sh
 ```
 
-That uploads `run-cron.sh` to `/var/www/app.lovelab-antwerp.com/scripts/` and installs:
+## Apply DB migrations (Supabase)
 
-```cron
-0 4 * * * …/run-cron.sh /api/cron/health-check
-0 6 * * * …/run-cron.sh /api/cron/email-deliveries
-0 1 * * * …/run-cron.sh /api/cron/igi-stock
-15 * * * * …/run-cron.sh /api/cron/igi-certificate-outs
+```sql
+-- igi_certificate_out_sync
+-- see supabase/migrations/20260918120000_igi_certificate_out_sync.sql
+
+-- igi_certificate_in_sync
+-- see supabase/migrations/20260918140000_igi_certificate_in_sync.sql
 ```
 
-### Manual install on the server
-
-```bash
-# copy run-cron.sh to /var/www/app.lovelab-antwerp.com/scripts/ && chmod 750 …
-crontab -e
-# then add:
-15 * * * * /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1
-```
-
-### Manual cron test
-
-On the server (no secret in the command line history beyond what `.env` already has):
+## Manual test
 
 ```bash
 /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs
 ```
 
-Or from anywhere if you already exported the secret:
-
-```bash
-curl -H "x-vercel-cron-secret: $CRON_SECRET" \
-  https://app.lovelab-antwerp.com/api/cron/igi-certificate-outs
-```
-
-## Apply DB migration
-
-```sql
--- see supabase/migrations/20260918120000_igi_certificate_out_sync.sql
-```
+Expect JSON with `ins`, `outs`, and `receipts` keys.

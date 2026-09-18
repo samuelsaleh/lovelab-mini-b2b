@@ -1,13 +1,15 @@
 /**
- * Sync LoveLab Certificate Out → B2B + retry failed Certificate In receipts.
+ * Sync LoveLab Certificate In/Out ↔ B2B + retry failed Certificate In receipts.
  *
- * Auth: x-vercel-cron-secret === CRON_SECRET (same as igi-stock).
+ * Every 10 minutes on DigitalOcean (crontab → run-cron.sh).
+ * Auth: x-vercel-cron-secret === CRON_SECRET
  */
 
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { syncCertificateOuts } from '@/lib/igi/syncCertificateOuts';
+import { syncCertificateIns } from '@/lib/igi/syncCertificateIns';
 import { retryFailedReceipts } from '@/lib/igi/pushReceipt';
 
 function verifyCronAuth(request) {
@@ -25,10 +27,31 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const summary = { outs: null, receipts: null };
+  const summary = { ins: null, outs: null, receipts: null };
 
   try {
     const adminSupabase = createAdminClient();
+
+    try {
+      summary.ins = await syncCertificateIns(adminSupabase);
+      if (summary.ins.unmatched?.length) {
+        await recordHealthEvent({
+          source: 'cron_igi_certificate_outs',
+          severity: 'warn',
+          message:
+            `${summary.ins.unmatched.length} LoveLab certificate in line(s) `
+            + 'could not be matched to an IGI serial.',
+          context: { unmatched: summary.ins.unmatched },
+        });
+      }
+    } catch (err) {
+      summary.ins = { error: err?.message || 'in sync failed' };
+      await recordHealthEvent({
+        source: 'cron_igi_certificate_outs',
+        severity: 'error',
+        message: `Certificate in sync failed: ${err?.message || 'unknown'}`,
+      });
+    }
 
     try {
       summary.outs = await syncCertificateOuts(adminSupabase);
@@ -62,7 +85,7 @@ export async function GET(request) {
       });
     }
 
-    const failed = summary.outs?.error || summary.receipts?.error;
+    const failed = summary.ins?.error || summary.outs?.error || summary.receipts?.error;
     return NextResponse.json(summary, { status: failed ? 500 : 200 });
   } catch (err) {
     await recordHealthEvent({

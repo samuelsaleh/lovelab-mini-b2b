@@ -1,0 +1,74 @@
+-- Force-set igi_models.name from seed.json (canonical LoveLab labels).
+-- Fixes leftovers like "Cuty-Cubix / Moonlight Original / Moonlight Long".
+-- Then re-run: /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs
+
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Long Moonlight', updated_at = now() WHERE serial = 'LGAJ6529' AND name IS DISTINCT FROM 'Cuty / Cubix / Long Moonlight';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight', updated_at = now() WHERE serial = 'LGAJ6530' AND name IS DISTINCT FROM 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight', updated_at = now() WHERE serial = 'LGAJ6531' AND name IS DISTINCT FROM 'Cuty / Cubix / Sienna 1 / Original Moonlight';
+UPDATE public.igi_models SET name = 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight', updated_at = now() WHERE serial = 'LGAJ6532' AND name IS DISTINCT FROM 'Cuty / Cubix / Sienna 1 / Original Moonlight / Long Moonlight';
+UPDATE public.igi_models SET name = 'Multi 3', updated_at = now() WHERE serial = 'LGAJ6533' AND name IS DISTINCT FROM 'Multi 3';
+UPDATE public.igi_models SET name = 'Multi 3', updated_at = now() WHERE serial = 'LGAJ6534' AND name IS DISTINCT FROM 'Multi 3';
+UPDATE public.igi_models SET name = 'Multi 3', updated_at = now() WHERE serial = 'LGAJ6535' AND name IS DISTINCT FROM 'Multi 3';
+UPDATE public.igi_models SET name = 'Multi 3', updated_at = now() WHERE serial = 'LGAJ6536' AND name IS DISTINCT FROM 'Multi 3';
+UPDATE public.igi_models SET name = 'Multi 4 / Sienna 4 / Riviera 4', updated_at = now() WHERE serial = 'LGAJ6537' AND name IS DISTINCT FROM 'Multi 4 / Sienna 4 / Riviera 4';
+UPDATE public.igi_models SET name = 'Multi 4 / Sienna 4 / Riviera 4', updated_at = now() WHERE serial = 'LGAJ6538' AND name IS DISTINCT FROM 'Multi 4 / Sienna 4 / Riviera 4';
+UPDATE public.igi_models SET name = 'Multi 5 / Sienna 5', updated_at = now() WHERE serial = 'LGAJ6539' AND name IS DISTINCT FROM 'Multi 5 / Sienna 5';
+UPDATE public.igi_models SET name = 'Multi 5 / Sienna 5', updated_at = now() WHERE serial = 'LGAJ6540' AND name IS DISTINCT FROM 'Multi 5 / Sienna 5';
+UPDATE public.igi_models SET name = 'Shapy Shine Cushion', updated_at = now() WHERE serial = 'LGAJ6541' AND name IS DISTINCT FROM 'Shapy Shine Cushion';
+UPDATE public.igi_models SET name = 'Shapy Shine Cushion', updated_at = now() WHERE serial = 'LGAJ6542' AND name IS DISTINCT FROM 'Shapy Shine Cushion';
+UPDATE public.igi_models SET name = 'Shapy Shine Long Cushion', updated_at = now() WHERE serial = 'LGAJ6543' AND name IS DISTINCT FROM 'Shapy Shine Long Cushion';
+UPDATE public.igi_models SET name = 'Shapy Shine Long Cushion', updated_at = now() WHERE serial = 'LGAJ6544' AND name IS DISTINCT FROM 'Shapy Shine Long Cushion';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald', updated_at = now() WHERE serial = 'LGAJ6545' AND name IS DISTINCT FROM 'Shapy Shine Emerald';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald', updated_at = now() WHERE serial = 'LGAJ6546' AND name IS DISTINCT FROM 'Shapy Shine Emerald';
+UPDATE public.igi_models SET name = 'Shapy Shine Emerald', updated_at = now() WHERE serial = 'LGAJ6547' AND name IS DISTINCT FROM 'Shapy Shine Emerald';
+UPDATE public.igi_models SET name = 'Matchy Fancy Emerald', updated_at = now() WHERE serial = 'LGAJ6548' AND name IS DISTINCT FROM 'Matchy Fancy Emerald';
+UPDATE public.igi_models SET name = 'Matchy Fancy Emerald', updated_at = now() WHERE serial = 'LGAJ6549' AND name IS DISTINCT FROM 'Matchy Fancy Emerald';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart', updated_at = now() WHERE serial = 'LGAJ6550' AND name IS DISTINCT FROM 'Shapy Shine Heart';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart', updated_at = now() WHERE serial = 'LGAJ6551' AND name IS DISTINCT FROM 'Shapy Shine Heart';
+UPDATE public.igi_models SET name = 'Shapy Shine Heart', updated_at = now() WHERE serial = 'LGAJ6552' AND name IS DISTINCT FROM 'Shapy Shine Heart';
+UPDATE public.igi_models SET name = 'Matchy Fancy Heart', updated_at = now() WHERE serial = 'LGAJ6553' AND name IS DISTINCT FROM 'Matchy Fancy Heart';
+UPDATE public.igi_models SET name = 'Matchy Fancy Heart', updated_at = now() WHERE serial = 'LGAJ6554' AND name IS DISTINCT FROM 'Matchy Fancy Heart';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise', updated_at = now() WHERE serial = 'LGAJ6555' AND name IS DISTINCT FROM 'Shapy Shine Marquise';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise', updated_at = now() WHERE serial = 'LGAJ6556' AND name IS DISTINCT FROM 'Shapy Shine Marquise';
+UPDATE public.igi_models SET name = 'Shapy Shine Marquise', updated_at = now() WHERE serial = 'LGAJ6557' AND name IS DISTINCT FROM 'Shapy Shine Marquise';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval', updated_at = now() WHERE serial = 'LGAJ6558' AND name IS DISTINCT FROM 'Shapy Shine Oval';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval', updated_at = now() WHERE serial = 'LGAJ6559' AND name IS DISTINCT FROM 'Shapy Shine Oval';
+UPDATE public.igi_models SET name = 'Shapy Shine Oval', updated_at = now() WHERE serial = 'LGAJ6560' AND name IS DISTINCT FROM 'Shapy Shine Oval';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear', updated_at = now() WHERE serial = 'LGAJ6561' AND name IS DISTINCT FROM 'Shapy Shine Pear';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear', updated_at = now() WHERE serial = 'LGAJ6562' AND name IS DISTINCT FROM 'Shapy Shine Pear';
+UPDATE public.igi_models SET name = 'Shapy Shine Pear', updated_at = now() WHERE serial = 'LGAJ6563' AND name IS DISTINCT FROM 'Shapy Shine Pear';
+UPDATE public.igi_models SET name = 'Matchy Fancy Pear', updated_at = now() WHERE serial = 'LGAJ6564' AND name IS DISTINCT FROM 'Matchy Fancy Pear';
+UPDATE public.igi_models SET name = 'Matchy Fancy Pear', updated_at = now() WHERE serial = 'LGAJ6565' AND name IS DISTINCT FROM 'Matchy Fancy Pear';
+UPDATE public.igi_models SET name = 'Multi Moonlight', updated_at = now() WHERE serial = 'LGAJ6566' AND name IS DISTINCT FROM 'Multi Moonlight';
+UPDATE public.igi_models SET name = 'Multi Moonlight', updated_at = now() WHERE serial = 'LGAJ6567' AND name IS DISTINCT FROM 'Multi Moonlight';
+UPDATE public.igi_models SET name = 'Zaha', updated_at = now() WHERE serial = 'LGAJ6568' AND name IS DISTINCT FROM 'Zaha';
+UPDATE public.igi_models SET name = 'Flower Marquise', updated_at = now() WHERE serial = 'LGAJ6569' AND name IS DISTINCT FROM 'Flower Marquise';
+UPDATE public.igi_models SET name = 'Flower Heart', updated_at = now() WHERE serial = 'LGAJ6570' AND name IS DISTINCT FROM 'Flower Heart';
+UPDATE public.igi_models SET name = 'Linea 3', updated_at = now() WHERE serial = 'LGAJ6571' AND name IS DISTINCT FROM 'Linea 3';
+UPDATE public.igi_models SET name = 'Linea 5', updated_at = now() WHERE serial = 'LGAJ6572' AND name IS DISTINCT FROM 'Linea 5';
+UPDATE public.igi_models SET name = 'Sienna 2', updated_at = now() WHERE serial = 'LGAJ6573' AND name IS DISTINCT FROM 'Sienna 2';
+UPDATE public.igi_models SET name = 'Riviera 8', updated_at = now() WHERE serial = 'LGAJ6574' AND name IS DISTINCT FROM 'Riviera 8';
+UPDATE public.igi_models SET name = 'Riviera 8', updated_at = now() WHERE serial = 'LGAJ6575' AND name IS DISTINCT FROM 'Riviera 8';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6576' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6577' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6578' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6579' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6580' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6581' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6582' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6583' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Cuty Fancy Color', updated_at = now() WHERE serial = 'LGAJ6584' AND name IS DISTINCT FROM 'Cuty Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6585' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6586' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'Multi 3 Fancy Color', updated_at = now() WHERE serial = 'LGAJ6587' AND name IS DISTINCT FROM 'Multi 3 Fancy Color';
+UPDATE public.igi_models SET name = 'A', updated_at = now() WHERE serial = 'LGAJ6597' AND name IS DISTINCT FROM 'A';
+UPDATE public.igi_models SET name = 'B', updated_at = now() WHERE serial = 'LGAJ6598' AND name IS DISTINCT FROM 'B';
+UPDATE public.igi_models SET name = 'C', updated_at = now() WHERE serial = 'LGAJ6599' AND name IS DISTINCT FROM 'C';
+UPDATE public.igi_models SET name = 'D', updated_at = now() WHERE serial = 'LGAJ6600' AND name IS DISTINCT FROM 'D';
+UPDATE public.igi_models SET name = 'E', updated_at = now() WHERE serial = 'LGAJ6601' AND name IS DISTINCT FROM 'E';
+UPDATE public.igi_models SET name = 'F', updated_at = now() WHERE serial = 'LGAJ6602' AND name IS DISTINCT FROM 'F';
+UPDATE public.igi_models SET name = 'Long Multi Moonlight', updated_at = now() WHERE serial = 'LGAJ6603' AND name IS DISTINCT FROM 'Long Multi Moonlight';
+UPDATE public.igi_models SET name = 'Long Multi Moonlight', updated_at = now() WHERE serial = 'LGAJ6604' AND name IS DISTINCT FROM 'Long Multi Moonlight';
+
+-- leftover old wordings (expect 0 rows):
+SELECT serial, name FROM public.igi_models WHERE name ~ 'Cuty-Cubix|Moonlight Long|Moonlight Original' ORDER BY serial;
