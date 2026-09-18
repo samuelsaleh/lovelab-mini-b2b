@@ -462,4 +462,47 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     expect(screen.getByTestId('erp-out-row')).toHaveTextContent('104')
     expect(screen.getByTestId('erp-out-row')).toHaveTextContent('ALBERT SALEH')
   })
+
+  it('lists LoveLab ERP ins on the LoveLab in switch', async () => {
+    const INS = [
+      {
+        id: 'i5',
+        erp_in_id: 5,
+        invoice_no: '2',
+        in_date: '2026-09-18',
+        party: 'IGI',
+        description: 'Cuty / Cubix / Long Moonlight · LGAJ6529 · 1 × 0,05 Round',
+        pcs: 2,
+        serial: 'LGAJ6529',
+        external_ref: 'visit:0fbe7a0b-787b-4dda-892a-f13e5a6282b7',
+        synced_at: '2026-09-18T11:24:25Z',
+      },
+      {
+        id: 'i1',
+        erp_in_id: 1,
+        invoice_no: '1',
+        in_date: '2026-09-18',
+        party: 'ALBERT SALEH',
+        description: 'Cuty / Cubix / Long Moonlight · LGAJ6529 · 1 × 0,05 Round',
+        pcs: 500,
+        serial: 'LGAJ6529',
+        external_ref: null,
+        synced_at: '2026-09-18T11:24:25Z',
+      },
+    ]
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      if (u.includes('/api/igi/certificate-erp-ins')) {
+        return Promise.resolve({ ok: true, json: async () => ({ ins: INS, count: 2 }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visits: [] }) })
+    })
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getByTestId('view')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('view-erp-in'))
+    await waitFor(() => expect(screen.getAllByTestId('erp-in-row')).toHaveLength(2))
+    expect(screen.getByText('IGI receive')).toBeInTheDocument()
+    expect(screen.getByText('ERP manual')).toBeInTheDocument()
+  })
 })

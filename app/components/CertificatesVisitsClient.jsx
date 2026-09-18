@@ -12,23 +12,20 @@ import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty, Switch } from '.
 const VIEWS = [
   { value: 'visit', label: 'By movement' },
   { value: 'day', label: 'By day' },
+  { value: 'erp-in', label: 'LoveLab in' },
   { value: 'erp-out', label: 'LoveLab out' },
 ]
 
 /**
- * Movements — everything that crossed the road, seen either way,
- * plus LoveLab ERP Certificate Outs synced from the stock software.
- *
- * "What happened on movement 22" and "what went across on the 25th" are the
- * same history read two ways, so they are one screen with a switch, not two
- * screens (Sam, 10 Sept 2026). LoveLab outs are a third read of the same
- * certificates once they leave LoveLab's shelf in the ERP.
+ * Movements — IGI road crossings, plus LoveLab ERP Certificate In/Out
+ * mirrored from the stock software every 10 minutes.
  */
 export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   const router = useRouter()
   const [view, setView] = useState(initialView)
   const [visits, setVisits] = useState([])
-  const [erpOuts, setErpOuts] = useState([])
+  const [erpIns, setErpIns] = useState(null)
+  const [erpOuts, setErpOuts] = useState(null)
   const [loading, setLoading] = useState(true)
   const [erpLoading, setErpLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -36,9 +33,8 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   useEffect(() => { load() }, [])
 
   useEffect(() => {
-    if (view === 'erp-out' && erpOuts.length === 0 && !erpLoading) {
-      loadErpOuts()
-    }
+    if (view === 'erp-in' && erpIns == null && !erpLoading) loadErpIns()
+    if (view === 'erp-out' && erpOuts == null && !erpLoading) loadErpOuts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view])
 
@@ -54,6 +50,21 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadErpIns() {
+    setErpLoading(true)
+    try {
+      const res = await fetch('/api/igi/certificate-erp-ins')
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Failed to load LoveLab ins')
+      setErpIns(body.ins || [])
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setErpLoading(false)
     }
   }
 
@@ -75,11 +86,16 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   if (loading) return <Loading />
 
   const open = visits.filter((v) => v.status !== 'closed')
-  const sub = view === 'erp-out'
-    ? (erpLoading
+  let sub = `${visits.length} movement${visits.length === 1 ? '' : 's'}${open.length ? `, ${open.length} still open` : ', all closed'}`
+  if (view === 'erp-in') {
+    sub = erpLoading || erpIns == null
+      ? 'Loading LoveLab ins…'
+      : `${erpIns.length} in line${erpIns.length === 1 ? '' : 's'} from the stock software`
+  } else if (view === 'erp-out') {
+    sub = erpLoading || erpOuts == null
       ? 'Loading LoveLab outs…'
-      : `${erpOuts.length} out line${erpOuts.length === 1 ? '' : 's'} from the stock software`)
-    : `${visits.length} movement${visits.length === 1 ? '' : 's'}${open.length ? `, ${open.length} still open` : ', all closed'}`
+      : `${erpOuts.length} out line${erpOuts.length === 1 ? '' : 's'} from the stock software`
+  }
 
   return (
     <>
@@ -94,8 +110,20 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
 
       {view === 'day' ? (
         <CertificatesDailyClient embedded />
+      ) : view === 'erp-in' ? (
+        <ErpLedgerPanel
+          kind="in"
+          rows={erpIns || []}
+          loading={erpLoading || erpIns == null}
+          onReload={loadErpIns}
+        />
       ) : view === 'erp-out' ? (
-        <ErpOutsPanel outs={erpOuts} loading={erpLoading} onReload={loadErpOuts} />
+        <ErpLedgerPanel
+          kind="out"
+          rows={erpOuts || []}
+          loading={erpLoading || erpOuts == null}
+          onReload={loadErpOuts}
+        />
       ) : (
         <>
           <Card flush>
@@ -170,23 +198,34 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   )
 }
 
-function ErpOutsPanel({ outs, loading, onReload }) {
+function ErpLedgerPanel({ kind, rows, loading, onReload }) {
   if (loading) return <Loading />
+
+  const isIn = kind === 'in'
+  const title = isIn ? 'LoveLab Certificate In' : 'LoveLab Certificate Out'
+  const sub = isIn
+    ? 'Copied from the stock software every 10 minutes (manual ins and IGI receives).'
+    : 'Copied from the stock software every 10 minutes when LoveLab outs certificates.'
+  const empty = isIn
+    ? 'No LoveLab ins synced yet. Create a Certificate In in the stock software, or receive an IGI movement; it appears here within about 10 minutes.'
+    : 'No LoveLab outs synced yet. Create a Certificate Out in the stock software; it appears here within about 10 minutes.'
+  const note = isIn
+    ? 'These rows are LoveLab Certificate In from the ERP. Rows with a visit:… reference came from an IGI receive push; others were entered in the stock software.'
+    : 'These rows are LoveLab Certificate Out from the ERP. They do not change the IGI pool on Stock — that drops when IGI issues. They record certificates leaving LoveLab\'s own shelf.'
+  const rowTestId = isIn ? 'erp-in-row' : 'erp-out-row'
+  const tableTestId = isIn ? 'erp-ins-table' : 'erp-outs-table'
+  const reloadTestId = isIn ? 'reload-erp-ins' : 'reload-erp-outs'
 
   return (
     <>
       <Card
-        title="LoveLab Certificate Out"
-        sub="Copied from the stock software every 10 minutes when LoveLab outs certificates."
-        head={
-          <Btn onClick={onReload} testId="reload-erp-outs">
-            Refresh
-          </Btn>
-        }
+        title={title}
+        sub={sub}
+        head={<Btn onClick={onReload} testId={reloadTestId}>Refresh</Btn>}
         flush
       >
         <TableWrap>
-          <table style={{ minWidth: 820 }} data-testid="erp-outs-table">
+          <table style={{ minWidth: 820 }} data-testid={tableTestId}>
             <thead>
               <tr>
                 <th>Date</th>
@@ -194,42 +233,50 @@ function ErpOutsPanel({ outs, loading, onReload }) {
                 <th>Party</th>
                 <th>Model</th>
                 <th className="num">Pcs</th>
+                {isIn && <th>Source</th>}
                 <th>Synced</th>
               </tr>
             </thead>
             <tbody>
-              {outs.map((row) => (
-                <tr key={row.id || row.erp_out_id} data-testid="erp-out-row">
-                  <td>{row.out_date ? formatDate(row.out_date) : '—'}</td>
-                  <td className="mono">{row.invoice_no ?? '—'}</td>
-                  <td>{row.party || '—'}</td>
-                  <td>
-                    <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                      {row.serial || '—'}
-                    </div>
-                    <div className="spec" style={{ marginTop: 2, maxWidth: 420 }}>
-                      {row.description || '—'}
-                    </div>
-                  </td>
-                  <td className="num">{formatQty(row.pcs)}</td>
-                  <td className="spec">
-                    {row.synced_at ? formatDate(String(row.synced_at).slice(0, 10)) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const date = isIn ? row.in_date : row.out_date
+                const key = row.id || (isIn ? row.erp_in_id : row.erp_out_id)
+                const fromVisit = isIn && row.external_ref && /^visit:/i.test(String(row.external_ref))
+                return (
+                  <tr key={key} data-testid={rowTestId}>
+                    <td>{date ? formatDate(date) : '—'}</td>
+                    <td className="mono">{row.invoice_no ?? '—'}</td>
+                    <td>{row.party || '—'}</td>
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                        {row.serial || '—'}
+                      </div>
+                      <div className="spec" style={{ marginTop: 2, maxWidth: 420 }}>
+                        {row.description || '—'}
+                      </div>
+                    </td>
+                    <td className="num">{formatQty(row.pcs)}</td>
+                    {isIn && (
+                      <td>
+                        {fromVisit
+                          ? <Chip tone="fine">IGI receive</Chip>
+                          : <Chip tone="watch">ERP manual</Chip>}
+                      </td>
+                    )}
+                    <td className="spec">
+                      {row.synced_at ? formatDate(String(row.synced_at).slice(0, 10)) : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </TableWrap>
-        {outs.length === 0 && (
-          <Empty>
-            No LoveLab outs synced yet. Create a Certificate Out in the stock software; it appears here within about 10 minutes.
-          </Empty>
-        )}
+        {rows.length === 0 && <Empty>{empty}</Empty>}
       </Card>
 
       <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', maxWidth: 720, lineHeight: 1.6 }}>
-        These rows are LoveLab <em>Certificate Out</em> from the ERP. They do not change the IGI pool
-        on Stock — that drops when IGI issues. They record certificates leaving LoveLab&apos;s own shelf.
+        {note}
       </p>
     </>
   )
