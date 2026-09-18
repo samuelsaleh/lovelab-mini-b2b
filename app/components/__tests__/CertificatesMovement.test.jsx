@@ -431,4 +431,35 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     expect(screen.getByTestId('short-return')).toHaveTextContent('2 missing on return')
     expect(screen.getAllByTestId('short-issue')).toHaveLength(1)
   })
+
+  it('lists LoveLab ERP outs on the LoveLab out switch', async () => {
+    const OUTS = [
+      {
+        id: 'o8',
+        erp_out_id: 8,
+        invoice_no: '2',
+        out_date: '2026-09-18',
+        party: 'ALBERT SALEH',
+        description: 'Cuty / Cubix / Long Moonlight · LGAJ6529 · 1 × 0,05 Round',
+        pcs: 104,
+        serial: 'LGAJ6529',
+        synced_at: '2026-09-18T11:10:02Z',
+      },
+    ]
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      if (u.includes('/api/igi/certificate-erp-outs')) {
+        return Promise.resolve({ ok: true, json: async () => ({ outs: OUTS, count: 1 }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visits: [] }) })
+    })
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getByTestId('view')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('view-erp-out'))
+    await waitFor(() => expect(screen.getByTestId('erp-out-row')).toBeInTheDocument())
+    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('LGAJ6529')
+    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('104')
+    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('ALBERT SALEH')
+  })
 })
