@@ -71,6 +71,7 @@ REMOTE
 
 echo
 echo "Smoke-testing certificate-outs cron once…"
-ssh_cmd "${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs" | head -c 500
+# Prefer /usr/bin/head — some Mac setups shadow `head` with an HTTP HEAD helper.
+ssh_cmd "${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs" | /usr/bin/head -c 500
 echo
 echo "Done. Hourly job runs at :15 past each hour."
