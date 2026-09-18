@@ -28,6 +28,7 @@ const TABLES = [
   'igi_descriptions',
   'igi_shelf_snapshots',
   'igi_receipts',
+  'igi_certificate_out_sync',
   'igi_invoices',
 ];
 

@@ -14,6 +14,12 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(...a) }));
 jest.mock('@/app/api/_lib/access', () => ({ getUserContext: (...a) => getUserContext(...a) }));
+jest.mock('@/lib/igi/pushReceipt', () => ({
+  pushVisitReceiptToLovelab: jest.fn(async () => ({ ok: true, skipped: false, invoice_no: '99' })),
+}));
+jest.mock('@/lib/healthEvent', () => ({
+  recordHealthEvent: jest.fn(async () => {}),
+}));
 
 const visits = require('../igi/visits/route');
 const visitDetail = require('../igi/visits/[id]/route');
