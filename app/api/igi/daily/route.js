@@ -18,7 +18,7 @@ export async function GET(request) {
 
     const [visits, lines, models] = await Promise.all([
       db.from('igi_visits')
-        .select('id, visit_no, visit_date, status, date_suspect, unattributed_total')
+        .select('id, visit_no, visit_date, status, date_suspect, correction, unattributed_total')
         .order('visit_no', { ascending: true }),
       db.from('igi_visit_lines')
         .select('visit_id, model_id, qty_requested, qty_issued, qty_received'),

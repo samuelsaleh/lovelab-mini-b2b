@@ -33,7 +33,7 @@ export async function loadIgiWorld(supabase) {
     supabase.from('igi_batches').select('id, model_id, qty, batch_date, reference, created_at'),
     supabase.from('igi_visit_lines').select('id, visit_id, model_id, qty_requested, qty_issued'),
     supabase.from('igi_visits')
-      .select('id, visit_no, visit_date, status, date_suspect, unattributed_total, issued_at, closed_at')
+      .select('id, visit_no, visit_date, status, date_suspect, correction, unattributed_total, issued_at, closed_at')
       .order('visit_no', { ascending: false }),
   ]);
 

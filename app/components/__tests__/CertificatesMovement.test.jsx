@@ -216,6 +216,20 @@ describe('one movement', () => {
     expect(screen.getByText('Date mistyped in the file')).toBeInTheDocument()
   })
 
+  it('says when a movement is a correction, not a walk across the road', async () => {
+    // Sam, 18 Sept 2026: "what is V-030?" — the attribution of 110 of the
+    // June–July gap read like any other movement. Now it says so.
+    mockVisit(
+      { id: 'v30', visit_no: 30, visit_date: '2026-07-28', status: 'closed', unattributed_total: null, correction: true, note: 'Correction, 16 Sept 2026: 110 attributed.' },
+      LINES,
+    )
+    render(<CertificatesVisitDetail visitId="v30" />)
+    await waitFor(() => expect(screen.getByTestId('correction-note')).toBeInTheDocument())
+    expect(screen.getByText('Correction')).toBeInTheDocument()
+    expect(screen.getByTestId('correction-note')).toHaveTextContent('nothing crossed the road')
+    expect(screen.getByTestId('correction-note')).toHaveTextContent('110 attributed')
+  })
+
   it('offers no action once the movement is closed', async () => {
     mockVisit({ id: 'v1', visit_no: 24, visit_date: '2026-08-28', status: 'closed', unattributed_total: null })
     render(<CertificatesVisitDetail visitId="v1" />)

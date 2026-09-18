@@ -292,8 +292,11 @@ function TheirHistory({ visits, batches }) {
                   </td>
                   <td>
                     {formatDate(v.visit_date)}
-                    {v.date_suspect && (
-                      <div style={{ marginTop: 3 }}><Chip tone="a">Date mistyped</Chip></div>
+                    {(v.date_suspect || v.correction) && (
+                      <div style={{ marginTop: 3, display: 'flex', gap: 5 }}>
+                        {v.correction && <Chip tone="a">Correction</Chip>}
+                        {v.date_suspect && <Chip tone="a">Date mistyped</Chip>}
+                      </div>
                     )}
                   </td>
                   <td><Chip tone={VISIT_TONES[v.status]}>{VISIT_LABELS[v.status]}</Chip></td>

@@ -103,8 +103,16 @@ export default function CertificatesVisitDetail({ visitId }) {
           : formatDate(visit.visit_date)}
       >
         <Chip tone={VISIT_TONES[visit.status]}>{VISIT_LABELS[visit.status]}</Chip>
+        {visit.correction && <Chip tone="a">Correction</Chip>}
         {visit.date_suspect && <Chip tone="a">Date mistyped in the file</Chip>}
       </PageHead>
+
+      {visit.correction && (
+        <Note testId="correction-note">
+          <strong>This movement corrects the record; nothing crossed the road.</strong>
+          {visit.note && <div style={{ marginTop: 6 }}>{visit.note}</div>}
+        </Note>
+      )}
 
       <Pipeline active={stepForStatus(visit.status)} title="Where this movement is" />
 

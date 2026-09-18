@@ -80,6 +80,8 @@ say(
   '',
   read('supabase/migrations/20260917120000_igi_one_level.sql').trimEnd(),
   '',
+  read('supabase/migrations/20260918120000_igi_visit_correction.sql').trimEnd(),
+  '',
 );
 
 // ── 2. The opening balances ─────────────────────────────────────────────────

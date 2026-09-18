@@ -97,9 +97,10 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
                       </td>
                       <td>
                         {formatDate(v.visit_date)}
-                        {v.date_suspect && (
-                          <div style={{ marginTop: 3 }}>
-                            <Chip tone="a">Date mistyped in the file</Chip>
+                        {(v.date_suspect || v.correction) && (
+                          <div style={{ marginTop: 3, display: 'flex', gap: 5 }}>
+                            {v.correction && <Chip tone="a">Correction</Chip>}
+                            {v.date_suspect && <Chip tone="a">Date mistyped in the file</Chip>}
                           </div>
                         )}
                       </td>

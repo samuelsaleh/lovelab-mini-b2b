@@ -14,7 +14,7 @@ export async function GET(request) {
   try {
     const [visits, lines] = await Promise.all([
       auth.adminSupabase.from('igi_visits')
-        .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, requested_at, issued_at, closed_at, note')
+        .select('id, visit_no, visit_date, status, unattributed_total, date_suspect, correction, requested_at, issued_at, closed_at, note')
         .order('visit_no', { ascending: false }),
       auth.adminSupabase.from('igi_visit_lines')
         .select('visit_id, model_id, qty_requested, qty_issued, qty_received'),
