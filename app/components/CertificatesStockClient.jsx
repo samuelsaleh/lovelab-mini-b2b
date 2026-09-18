@@ -43,6 +43,8 @@ export default function CertificatesStockClient() {
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [draft, setDraft] = useState({})
+  const [shelfHistory, setShelfHistory] = useState(null)
+  const [shelfLoading, setShelfLoading] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -58,6 +60,23 @@ export default function CertificatesStockClient() {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function openShelfHistory(model) {
+    setShelfLoading(true)
+    setShelfHistory({ model, loading: true })
+    try {
+      const res = await fetch(`/api/igi/models/${model.id}/shelf-history`)
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Failed to load shelf history')
+      setShelfHistory(body)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+      setShelfHistory(null)
+    } finally {
+      setShelfLoading(false)
     }
   }
 
@@ -186,10 +205,17 @@ export default function CertificatesStockClient() {
                           <span className="lvl">no shelf figure</span>
                         </>
                       ) : (
-                        <>
+                        <button
+                          type="button"
+                          className="shelf-link"
+                          data-testid="shelf-open"
+                          title="See how this shelf figure was built"
+                          onClick={() => openShelfHistory(m)}
+                          disabled={shelfLoading}
+                        >
                           <span className={needsCollect(m) ? 'n low' : 'n'}>{formatQty(m.shelf)}</span>
-                          <span className="lvl">level {formatQty(shelfLevel(m))}</span>
-                        </>
+                          <span className="lvl">level {formatQty(shelfLevel(m))} · history</span>
+                        </button>
                       )}
                     </td>
                     <td className="num" data-testid="igi-cell">
@@ -224,10 +250,19 @@ export default function CertificatesStockClient() {
           <span>
             Shelf below its level: <b>Collect</b> from IGI. IGI pool below its level: <b>Order at IGI</b>.
             Levels are set on <Link href="/certificates/models">Models</Link>.
+            Click a shelf number for In / Out history.
           </span>
           <Link href="/certificates/visits" className="right">Movements →</Link>
         </div>
       </Card>
+
+      {shelfHistory && (
+        <ShelfHistoryModal
+          data={shelfHistory}
+          loading={shelfLoading || shelfHistory.loading}
+          onClose={() => setShelfHistory(null)}
+        />
+      )}
     </>
   )
 }
@@ -279,4 +314,155 @@ function ToDo({ model: m, short }) {
   if (short > 0) chips.push(<Chip key="s" tone="watch">Short by {formatQty(short)}</Chip>)
   if (!chips.length) return <span className="quiet">—</span>
   return <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap' }}>{chips}</span>
+}
+
+function ShelfHistoryModal({ data, loading, onClose }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const model = data.model || {}
+  const shelf = data.shelf || {}
+  const ledger = data.certificate_ledger || {}
+  const title = model.name && model.name !== '—' ? model.name : (model.serial || 'Model')
+
+  return (
+    <div
+      className="shelf-overlay"
+      data-testid="shelf-history"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="shelf-panel" role="dialog" aria-modal="true" aria-labelledby="shelf-history-title">
+        <div className="ph">
+          <div>
+            <h2 id="shelf-history-title">{title}</h2>
+            <span className="sub">
+              {[model.serial, model.shape].filter(Boolean).join(' · ')}
+              {shelf.as_of ? ` · shelf as of ${formatDate(shelf.as_of)}` : ''}
+            </span>
+          </div>
+          <span className="close">
+            <Btn onClick={onClose} testId="shelf-history-close">Close</Btn>
+          </span>
+        </div>
+
+        <div className="body">
+          {loading ? (
+            <Loading />
+          ) : (
+            <>
+              <div className="sum" data-testid="shelf-summary">
+                <div className="pill">
+                  <b>{shelf.current == null ? '—' : formatQty(shelf.current)}</b>
+                  <span>On our shelf</span>
+                </div>
+                <div className="pill in">
+                  <b>{formatQty(ledger.total_in || 0)}</b>
+                  <span>Certificate In</span>
+                </div>
+                <div className="pill out">
+                  <b>{formatQty(ledger.total_out || 0)}</b>
+                  <span>Certificate Out</span>
+                </div>
+                <div className="pill">
+                  <b>{formatQty(ledger.net || 0)}</b>
+                  <span>In − Out</span>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.55, margin: '0 0 18px' }}>
+                <b>On our shelf</b> comes from the nightly packing-stock read
+                {shelf.descriptions?.length ? (
+                  <> (mapped description{shelf.descriptions.length === 1 ? '' : 's'}:{' '}
+                    {shelf.descriptions.map((d, i) => (
+                      <span key={d}><code>{d}</code>{i < shelf.descriptions.length - 1 ? ', ' : ''}</span>
+                    ))})
+                  </>
+                ) : null}
+                . <b>In − Out</b> is the Certificate ledger from the stock software. If the two
+                numbers differ, Matching or packing vs certificate stock is out of step.
+              </p>
+
+              <Card title="Certificate In / Out" sub={ledger.source || ''} flush>
+                <TableWrap>
+                  <table data-testid="shelf-ledger-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Invoice</th>
+                        <th>Party</th>
+                        <th className="num">Pcs</th>
+                        <th className="num">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(ledger.entries || []).map((e) => (
+                        <tr key={e.id} data-testid="shelf-ledger-row">
+                          <td>{e.date ? formatDate(e.date) : '—'}</td>
+                          <td>
+                            {e.kind === 'in'
+                              ? <Chip tone="fine">In</Chip>
+                              : <Chip tone="now">Out</Chip>}
+                            {e.external_ref && /^visit:/i.test(String(e.external_ref)) && (
+                              <span className="spec" style={{ marginLeft: 6 }}>IGI receive</span>
+                            )}
+                          </td>
+                          <td className="mono">{e.invoice_no ?? '—'}</td>
+                          <td>{e.party || '—'}</td>
+                          <td className={`num ${e.kind === 'in' ? 'delta-pos' : 'delta-neg'}`}>
+                            {e.kind === 'in' ? '+' : '−'}{formatQty(e.pcs)}
+                          </td>
+                          <td className="num">{formatQty(e.balance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
+                {!(ledger.entries || []).length && (
+                  <Empty>No Certificate In/Out lines synced for this model yet.</Empty>
+                )}
+              </Card>
+
+              <div style={{ height: 16 }} />
+
+              <Card title="Nightly shelf snapshots" sub={shelf.source || ''} flush>
+                <TableWrap>
+                  <table data-testid="shelf-snapshot-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th className="num">On shelf</th>
+                        <th className="num">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(shelf.history || []).map((h) => (
+                        <tr key={h.date} data-testid="shelf-snapshot-row">
+                          <td>{formatDate(h.date)}</td>
+                          <td className="num">{formatQty(h.pcs)}</td>
+                          <td className={`num ${h.change == null ? '' : h.change >= 0 ? 'delta-pos' : 'delta-neg'}`}>
+                            {h.change == null
+                              ? '—'
+                              : `${h.change >= 0 ? '+' : '−'}${formatQty(Math.abs(h.change))}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
+                {!(shelf.history || []).length && (
+                  <Empty>No shelf snapshots for this model yet. Matching must link a packing description first.</Empty>
+                )}
+              </Card>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }

@@ -47,6 +47,39 @@ function mockFetch(overview = OVERVIEW, extra = {}) {
     if (u.includes('/api/igi/overview')) {
       return Promise.resolve({ ok: true, json: async () => overview })
     }
+    if (u.includes('/shelf-history')) {
+      return extra.onShelfHistory
+        ? extra.onShelfHistory(u)
+        : Promise.resolve({
+          ok: true,
+          json: async () => ({
+            model: { id: 'm1', name: 'Cuty-Cubix', serial: 'LGAJ6530' },
+            shelf: {
+              current: 1006,
+              as_of: '2026-09-18',
+              descriptions: ['Cuty pack'],
+              history: [{ date: '2026-09-18', pcs: 1006, change: null }],
+              source: 'Nightly packing-stock',
+            },
+            certificate_ledger: {
+              total_in: 1200,
+              total_out: 194,
+              net: 1006,
+              source: 'Certificate ledger',
+              entries: [
+                {
+                  id: 'in-1', kind: 'in', date: '2026-09-01', invoice_no: '1',
+                  party: 'IGI', pcs: 1200, balance: 1200, external_ref: 'visit:abc',
+                },
+                {
+                  id: 'out-1', kind: 'out', date: '2026-09-10', invoice_no: '2',
+                  party: 'SHOP', pcs: 194, balance: 1006,
+                },
+              ],
+            },
+          }),
+        })
+    }
     if (u.includes('/api/igi/visits') && init?.method === 'POST') {
       return extra.onPost
         ? extra.onPost(JSON.parse(init.body))
@@ -93,10 +126,21 @@ describe('Stock is the front page — one line per model', () => {
     const [fine, low] = screen.getAllByTestId('shelf-cell')
     expect(fine).toHaveTextContent('1 006')
     expect(fine).toHaveTextContent('level 25')
+    expect(fine).toHaveTextContent('history')
     expect(low).toHaveTextContent('2')
     expect(low.querySelector('.n')).toHaveClass('low')
     // One level on IGI's stock, ours. None set reads as none.
     expect(screen.getAllByTestId('igi-cell')[0]).toHaveTextContent('no level yet')
+  })
+
+  it('opens In/Out history when a shelf figure is clicked', async () => {
+    await renderStock()
+    fireEvent.click(screen.getAllByTestId('shelf-open')[0])
+    await waitFor(() => expect(screen.getByTestId('shelf-summary')).toBeInTheDocument())
+    expect(screen.getByTestId('shelf-summary')).toHaveTextContent('Certificate In')
+    expect(screen.getByTestId('shelf-ledger-table')).toHaveTextContent('IGI')
+    expect(screen.getByTestId('shelf-ledger-table')).toHaveTextContent('SHOP')
+    expect(screen.getByTestId('shelf-snapshot-table')).toHaveTextContent('18/09/2026')
   })
 
   it('says what to do in words: Collect, Order at IGI, and what is already asked', async () => {

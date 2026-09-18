@@ -345,6 +345,28 @@
 @media(max-width:640px){.certapp .pipe{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.certapp *{transition:none!important}}
 
-/* Inline code — description strings, spellings, serials quoted in prose. */
-.certapp code{background:var(--surface-2);padding:1px 5px;border-radius:3px;
-  font-family:var(--font-num);font-size:.78em;color:var(--ink-soft)}
+/* ── shelf history overlay (click "On our shelf") ────────────────────── */
+.certapp .shelf-overlay{position:fixed;inset:0;background:rgba(20,16,14,.45);z-index:80;
+  display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}
+.certapp .shelf-panel{background:var(--surface);border-radius:10px;box-shadow:var(--shadow);
+  width:min(720px,100%);max-height:calc(100vh - 80px);overflow:auto;outline:none}
+.certapp .shelf-panel .ph{display:flex;align-items:flex-start;gap:12px;padding:18px 20px;
+  border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--surface);z-index:1}
+.certapp .shelf-panel .ph h2{margin:0;font-family:var(--font-display);font-size:1.25rem;font-weight:600}
+.certapp .shelf-panel .ph .sub{display:block;color:var(--ink-faint);font-size:.82rem;margin-top:4px}
+.certapp .shelf-panel .ph .close{margin-left:auto}
+.certapp .shelf-panel .body{padding:16px 20px 24px}
+.certapp .shelf-panel .sum{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+.certapp .shelf-panel .sum .pill{border:1px solid var(--rule);border-radius:6px;padding:10px 14px;
+  min-width:110px;background:var(--chrome)}
+.certapp .shelf-panel .sum .pill b{display:block;font-family:var(--font-num);font-size:1.2rem;font-weight:600}
+.certapp .shelf-panel .sum .pill span{font-family:var(--font-label);font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.certapp .shelf-panel .sum .pill.in b{color:var(--good)}
+.certapp .shelf-panel .sum .pill.out b{color:var(--signal)}
+.certapp button.shelf-link{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;
+  text-align:right}
+.certapp button.shelf-link:hover .n{text-decoration:underline;text-underline-offset:3px}
+.certapp button.shelf-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.certapp .delta-pos{color:var(--good)}
+.certapp .delta-neg{color:var(--signal)}
