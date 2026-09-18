@@ -37,6 +37,7 @@ export async function GET(request) {
       models: stockView(world).models,   // their stock and order book
       visits: history.visits,            // their history
       batches: history.batches,          // the production they have recorded
+      counts: history.counts,            // the counts they corrected
     });
   } catch (err) {
     return fail('IGI/TheirSide GET', err, 'Failed to load IGI’s side');

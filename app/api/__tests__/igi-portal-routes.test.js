@@ -20,6 +20,7 @@ jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(.
 const todo = require('../igi-portal/todo/route');
 const stock = require('../igi-portal/stock/route');
 const batches = require('../igi-portal/batches/route');
+const counts = require('../igi-portal/counts/route');
 
 function req(body, method = 'GET') {
   return new global.Request('http://localhost/api/igi-portal', {
@@ -156,6 +157,38 @@ describe('what comes back to IGI', () => {
     });
     const body = await (await stock.GET(req())).json();
     expect(body.models[0].pool).toBe(959);
+  });
+});
+
+describe('IGI correcting their count (Sam, 18 Sept 2026)', () => {
+  // m1: 1000 made, nothing issued, no corrections → the screen says 1000.
+  test('records what they hold as a signed difference against what the app said', async () => {
+    const res = await counts.POST(req({ model_id: 'm1', counted: 950 }, 'POST'));
+    expect(res.status).toBe(201);
+    expect(global.__sb.captured.inserted).toMatchObject({ model_id: 'm1', was: 1000, counted: 950, delta: -50, created_by: 'igi-1' });
+    expect(await res.json()).toMatchObject({ pool: 950, name: 'Cuty-Cubix' });
+  });
+
+  test('writes nothing when the count matches the figure', async () => {
+    const res = await counts.POST(req({ model_id: 'm1', counted: 1000 }, 'POST'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ unchanged: true, pool: 1000 });
+    expect(global.__sb.captured.inserted).toBeNull();
+  });
+
+  test('refuses a count that is not a whole number, zero or more', async () => {
+    expect((await counts.POST(req({ model_id: 'm1', counted: -1 }, 'POST'))).status).toBe(400);
+    expect((await counts.POST(req({ model_id: 'm1', counted: 1.5 }, 'POST'))).status).toBe(400);
+    expect((await counts.POST(req({ model_id: 'm1' }, 'POST'))).status).toBe(400);
+    expect((await counts.POST(req({ counted: 5 }, 'POST'))).status).toBe(400);
+    expect(global.__sb.captured.inserted).toBeNull();
+  });
+
+  test('has nothing to count on a model that is not in use', async () => {
+    global.__sb = sb({ profile: { id: 'igi-1', is_igi: true }, tables: { ...IGI_TABLES, igi_models: [MODELS[1]] } });
+    expect((await counts.POST(req({ model_id: 'm9', counted: 5 }, 'POST'))).status).toBe(409);
+    global.__sb = sb({ profile: { id: 'igi-1', is_igi: true }, tables: { ...IGI_TABLES, igi_models: [] } });
+    expect((await counts.POST(req({ model_id: 'nope', counted: 5 }, 'POST'))).status).toBe(404);
   });
 });
 

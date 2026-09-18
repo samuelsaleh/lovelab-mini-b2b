@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import IgiTodoClient from '../IgiTodoClient'
 import IgiStockClient from '../IgiStockClient'
 import IgiAddBatchClient from '../IgiAddBatchClient'
+import IgiHistoryClient from '../IgiHistoryClient'
 import { IgiPortalProvider } from '../certificates/IgiPortalContext'
 
 // Numbers group with a narrow no-break space; Testing Library normalises
@@ -175,6 +176,62 @@ describe('IGI: my stock', () => {
     expect(screen.getAllByTestId('level')[1]).toHaveTextContent('no level')
     expect(container.querySelector('input[type="number"]')).toBeNull()
     expect(screen.queryByText(/Warn me below/)).toBeNull()
+  })
+})
+
+describe('IGI: correcting what they hold (Sam, 18 Sept 2026)', () => {
+  it('turns the figure into a box, sends the count, and says what changed', async () => {
+    let body = null
+    mockFetch({
+      '/counts': (init) => { body = JSON.parse(init.body); return Promise.resolve({ ok: true, json: async () => ({ count: { id: 'c1' }, pool: 850 }) }) },
+    })
+    render(<IgiStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('correct')).toHaveLength(2))
+
+    fireEvent.click(screen.getAllByTestId('correct')[0])
+    const box = screen.getByTestId('counted')
+    expect(box).toHaveValue(900)
+    fireEvent.change(box, { target: { value: '850' } })
+    fireEvent.click(screen.getByTestId('counted-save'))
+
+    await waitFor(() => expect(body).toEqual({ model_id: 'm1', counted: 850 }))
+    expect(await screen.findByTestId('notice')).toHaveTextContent('Corrected: Cuty-Cubix now 850 (was 900)')
+    expect(screen.queryByTestId('counted')).toBeNull()
+  })
+
+  it('sends nothing when the number is unchanged or the box is cancelled', async () => {
+    const calls = []
+    mockFetch({ '/counts': (init) => { calls.push(init); return Promise.resolve({ ok: true, json: async () => ({}) }) } })
+    render(<IgiStockClient />)
+    await waitFor(() => expect(screen.getAllByTestId('correct')).toHaveLength(2))
+    fireEvent.click(screen.getAllByTestId('correct')[0])
+    fireEvent.click(screen.getByTestId('counted-save'))
+    expect(calls).toHaveLength(0)
+    expect(screen.queryByTestId('counted')).toBeNull()
+
+    fireEvent.click(screen.getAllByTestId('correct')[1])
+    fireEvent.change(screen.getByTestId('counted'), { target: { value: '3' } })
+    fireEvent.click(screen.getByTestId('counted-cancel'))
+    expect(calls).toHaveLength(0)
+    expect(screen.queryByTestId('counted')).toBeNull()
+  })
+
+  it('shows a count on History beside the batches, with the difference', async () => {
+    mockFetch({
+      '/history': () => Promise.resolve({ ok: true, json: async () => ({
+        visits: [],
+        batches: [{ id: 'b1', model_id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', qty: 1000, batch_date: '2026-08-27', reference: 'initial order' }],
+        counts: [{ id: 'c1', model_id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', was: 1000, counted: 950, delta: -50, note: null, counted_at: '2026-09-18T10:00:00Z' }],
+      }) }),
+    })
+    render(<IgiHistoryClient />)
+    await waitFor(() => expect(screen.getByTestId('tab-batches')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tab-batches'))
+    const row = await screen.findByTestId('history-count')
+    expect(row).toHaveTextContent('Count')
+    expect(row).toHaveTextContent('1 000 → 950')
+    expect(row).toHaveTextContent('-50')
+    expect(screen.getByTestId('history-batch')).toBeInTheDocument()
   })
 })
 

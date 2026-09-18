@@ -5,7 +5,7 @@ import { formatQty } from '@/lib/igi/derive'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import { useIgiPortal } from './certificates/IgiPortalContext'
-import { PageHead, Card, Loading, Toast, TableWrap, Empty } from './certificates/ui'
+import { PageHead, Card, Loading, Toast, Btn, TableWrap, Empty } from './certificates/ui'
 
 /**
  * What IGI hold, beside the level LoveLab want them to hold.
@@ -19,15 +19,49 @@ import { PageHead, Card, Loading, Toast, TableWrap, Empty } from './certificates
  * "Asked right now" is what LoveLab are requesting in open movements — IGI's
  * order book. Together with the level it is all of LoveLab's side this page
  * shows: nothing about the shelf, nothing about how fast anything sells.
+ *
+ * "You hold" can be corrected (Sam, 18 Sept 2026). IGI's figure is
+ * arithmetic and nothing on their side feeds it, so when it drifts from the
+ * shelf they type what they actually hold. The correction is kept as a count
+ * — what it was, what they said, the difference — never an overwrite.
  */
 export default function IgiStockClient() {
   const { base } = useIgiPortal()
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [notice, setNotice] = useState(null)
   const [query, setQuery] = useState('')
+  const [editing, setEditing] = useState(null)   // { id, value }
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => { load() }, [])
+
+  async function correct(model) {
+    const counted = Number(editing?.value)
+    if (!Number.isInteger(counted) || counted < 0) return
+    if (counted === model.pool) { setEditing(null); return }
+    setSaving(true)
+    try {
+      const res = await fetch(`${base}/counts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: model.id, counted }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not save the count')
+      setEditing(null)
+      if (!body.unchanged) {
+        setNotice(`Corrected: ${model.name} now ${formatQty(counted)} (was ${formatQty(model.pool)}). LoveLab see the new figure.`)
+        setTimeout(() => setNotice(null), 6000)
+      }
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function load() {
     setLoading(true)
@@ -73,6 +107,7 @@ export default function IgiStockClient() {
       </PageHead>
 
       {error && <Toast bad onDismiss={() => setError(null)}>{error}</Toast>}
+      {notice && <Toast testId="notice">{notice}</Toast>}
 
       <Card flush>
         <TableWrap>
@@ -103,8 +138,29 @@ export default function IgiStockClient() {
                     </td>
                     <td><Spec model={m} compact /></td>
                     <td><Serial model={m} compact /></td>
-                    <td className="num" style={short > 0 ? { color: 'var(--signal)', fontWeight: 600 } : undefined}>
-                      {formatQty(m.pool)}
+                    <td className="num" data-testid="you-hold">
+                      {editing?.id === m.id ? (
+                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            value={editing.value}
+                            onChange={(e) => setEditing({ id: m.id, value: e.target.value })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') correct(m); if (e.key === 'Escape') setEditing(null) }}
+                            data-testid="counted"
+                            autoFocus
+                          />
+                          <Btn kind="primary" onClick={() => correct(m)} disabled={saving} testId="counted-save">
+                            {saving ? 'Saving…' : 'Save'}
+                          </Btn>
+                          <Btn onClick={() => setEditing(null)} testId="counted-cancel">Cancel</Btn>
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                          <span style={short > 0 ? { color: 'var(--signal)', fontWeight: 600 } : undefined}>{formatQty(m.pool)}</span>
+                          <Btn onClick={() => setEditing({ id: m.id, value: String(m.pool ?? 0) })} testId="correct">Correct</Btn>
+                        </span>
+                      )}
                     </td>
                     <td className="num" data-testid="level">
                       {m.level == null ? <span className="spec">no level</span> : formatQty(m.level)}
@@ -122,6 +178,12 @@ export default function IgiStockClient() {
         </TableWrap>
         {shown.length === 0 && <Empty>No model matches that search.</Empty>}
       </Card>
+
+      <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.6 }}>
+        Correct a figure when what you hold is not what the screen says. The correction is kept —
+        what it was, what you counted, when — and nothing is overwritten. LoveLab see the new figure
+        at once.
+      </p>
     </>
   )
 }

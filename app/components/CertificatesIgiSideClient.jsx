@@ -76,9 +76,9 @@ export default function CertificatesIgiSideClient() {
           <span style={{ flex: 1, minWidth: 320 }}>
             This is <strong>exactly</strong> what IGI Antwerp see when they sign in — same
             figures, built from their own screens rather than a copy of them. They see the level we
-            want them to hold, and never our shelf, our shelf level, how fast anything sells, the
-            reserved serials, or the matching table. Read only: recording what they produced is
-            theirs to do.
+            want them to hold and can correct their own count; they never see our shelf, our shelf
+            level, how fast anything sells, the reserved serials, or the matching table. Read only:
+            recording what they produced or hold is theirs to do.
           </span>
           <Link href="/igi" className="btn primary" data-testid="open-their-portal">
             Open their portal →
@@ -88,7 +88,7 @@ export default function CertificatesIgiSideClient() {
 
       {tab === 'todo' && <TheirTodo visits={todo} produce={produce} />}
       {tab === 'stock' && <TheirStock models={models} low={low.length} />}
-      {tab === 'history' && <TheirHistory visits={data?.visits || []} batches={data?.batches || []} />}
+      {tab === 'history' && <TheirHistory visits={data?.visits || []} batches={data?.batches || []} counts={data?.counts || []} />}
     </>
   )
 }
@@ -264,8 +264,8 @@ function TheirStock({ models, low }) {
   )
 }
 
-/** Movements and the production batches IGI have recorded. */
-function TheirHistory({ visits, batches }) {
+/** Movements, the production batches IGI have recorded, and the counts they corrected. */
+function TheirHistory({ visits, batches, counts = [] }) {
   return (
     <>
       <Card title="Movements" sub={`${visits.length}`} flush>
@@ -338,6 +338,38 @@ function TheirHistory({ visits, batches }) {
           </table>
         </TableWrap>
         {batches.length === 0 && <Empty>IGI have not recorded any production yet.</Empty>}
+      </Card>
+
+      <Card title="Stock corrections" sub={`${counts.length}`} flush testId="their-counts">
+        <TableWrap>
+          <table>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Serial</th>
+                <th>When</th>
+                <th className="num">App said</th>
+                <th className="num">They counted</th>
+                <th className="num">Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {counts.map((c) => (
+                <tr key={c.id} data-testid="their-history-count">
+                  <td style={{ fontWeight: 600 }}>{c.name}</td>
+                  <td className="mono">{c.serial}</td>
+                  <td>{formatDate(String(c.counted_at).slice(0, 10))}</td>
+                  <td className="num">{formatQty(c.was)}</td>
+                  <td className="num">{formatQty(c.counted)}</td>
+                  <td className="num" style={{ color: c.delta < 0 ? 'var(--signal)' : 'var(--good)' }}>
+                    {c.delta > 0 ? '+' : ''}{formatQty(c.delta)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+        {counts.length === 0 && <Empty>IGI have not corrected a count yet.</Empty>}
       </Card>
     </>
   )

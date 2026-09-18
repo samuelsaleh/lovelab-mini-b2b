@@ -69,6 +69,13 @@ screens:
 | **Models** | The 76 in use, the ones waiting for a serial, a "New model" button (a model still waiting for its serial can be removed again), and the two levels per model: the shelf level and the level IGI must hold. Matching stock descriptions to models is a link at the foot |
 | **Invoices** | What the movements say, beside what IGI billed |
 
+**IGI can correct their own count.** On their My stock screen every "You hold"
+figure has a Correct button. They type what they actually hold; the app keeps
+the correction as a count (what it said, what they counted, the difference,
+who, when), never an overwrite, and you see the new figure the same minute.
+Until Michael has a login, you can do it for him from "IGI's side → Open their
+portal", under your own name.
+
 **IGI see the level you set.** "IGI must hold" on Models is the one level on
 their stock. Their stock screen shows it beside what they hold, their To do
 lists every model below it under "Produce more", and once they have an

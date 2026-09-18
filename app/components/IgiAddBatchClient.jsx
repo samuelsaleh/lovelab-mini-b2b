@@ -158,8 +158,8 @@ export default function IgiAddBatchClient() {
       </Card>
 
       <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.6 }}>
-        Batches are never edited or removed, so it stays clear what arrived when. If you get one
-        wrong, add another that corrects it.
+        Batches are never edited or removed, so it stays clear what arrived when. If the figure on
+        My stock is wrong, correct it there.
       </p>
     </div>
   )

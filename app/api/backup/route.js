@@ -23,6 +23,7 @@ const TABLES = [
   // crossed the road, so they belong in the nightly backup.
   'igi_models',
   'igi_batches',
+  'igi_counts',
   'igi_visits',
   'igi_visit_lines',
   'igi_descriptions',

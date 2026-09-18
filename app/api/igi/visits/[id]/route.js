@@ -27,7 +27,7 @@ export async function GET(request, { params }) {
     if (visitErr) return fail('IGI/Visit GET', visitErr, 'Failed to load the movement');
     if (!visit) return NextResponse.json({ error: 'Movement not found' }, { status: 404 });
 
-    const [lines, models, batches, allLines, sameDay] = await Promise.all([
+    const [lines, models, batches, allLines, sameDay, counts] = await Promise.all([
       db.from('igi_visit_lines')
         .select('id, model_id, qty_requested, qty_issued, qty_received')
         .eq('visit_id', id),
@@ -35,9 +35,10 @@ export async function GET(request, { params }) {
       db.from('igi_batches').select('model_id, qty'),
       db.from('igi_visit_lines').select('model_id, qty_issued'),
       db.from('igi_visits').select('visit_no').eq('visit_date', visit.visit_date).order('visit_no'),
+      db.from('igi_counts').select('model_id, delta'),
     ]);
 
-    for (const r of [lines, models, batches, allLines, sameDay]) {
+    for (const r of [lines, models, batches, allLines, sameDay, counts]) {
       if (r.error) return fail('IGI/Visit GET', r.error, 'Failed to load the movement');
     }
 
@@ -54,7 +55,7 @@ export async function GET(request, { params }) {
       },
       lines: lines.data.map((l) => {
         const model = byId.get(l.model_id) || {};
-        const held = poolOf(l.model_id, batches.data, allLines.data);
+        const held = poolOf(l.model_id, batches.data, allLines.data, counts.data);
         return {
           ...l,
           serial: model.serial ?? null,
@@ -77,7 +78,7 @@ export async function GET(request, { params }) {
  *
  * There is no separate "put the stock back" step, and there should not be: no
  * stock figure is stored anywhere. IGI's pool is derived as batches minus
- * issued lines (poolOf in lib/igi/derive.js), so when the lines go the pool
+ * issued lines plus IGI's own corrections (poolOf in lib/igi/derive.js), so when the lines go the pool
  * corrects itself by arithmetic. LoveLab's shelf never depended on movements at
  * all — it is the last nightly reading of their own software. Deleting the row
  * *is* the revert, which is why this is safe to offer and would not have been

@@ -28,16 +28,18 @@ async function loadModels(supabase) {
 }
 
 export async function loadIgiWorld(supabase) {
-  const [models, batches, lines, visits] = await Promise.all([
+  const [models, batches, counts, lines, visits] = await Promise.all([
     loadModels(supabase),
     supabase.from('igi_batches').select('id, model_id, qty, batch_date, reference, created_at'),
+    supabase.from('igi_counts').select('id, model_id, was, counted, delta, note, counted_at, created_by')
+      .order('counted_at', { ascending: false }),
     supabase.from('igi_visit_lines').select('id, visit_id, model_id, qty_requested, qty_issued'),
     supabase.from('igi_visits')
       .select('id, visit_no, visit_date, status, date_suspect, correction, unattributed_total, issued_at, closed_at')
       .order('visit_no', { ascending: false }),
   ]);
 
-  const firstError = [models, batches, lines, visits].find((r) => r.error)?.error;
+  const firstError = [models, batches, lines, visits, counts].find((r) => r.error)?.error;
   if (firstError) throw new Error(firstError.message);
 
   // Reserved serials were numbered and never ordered; they belong on no IGI
@@ -53,9 +55,10 @@ export async function loadIgiWorld(supabase) {
     models: inUse,
     awaiting,
     batches: batches.data,
+    counts: counts.data,
     lines: lines.data,
     visits: visits.data,
-    poolFor: (modelId) => poolOf(modelId, batches.data, lines.data),
+    poolFor: (modelId) => poolOf(modelId, batches.data, lines.data, counts.data),
     askedFor: (modelId) => askedRightNow(modelId, lines.data, visits.data),
     modelById: new Map(inUse.map((m) => [m.id, m])),
   };

@@ -22,6 +22,7 @@ const previewStock = require('../igi/preview/stock/route');
 const previewHistory = require('../igi/preview/history/route');
 const previewInvoices = require('../igi/preview/invoices/route');
 const previewBatches = require('../igi/preview/batches/route');
+const previewCounts = require('../igi/preview/counts/route');
 const previewProduce = require('../igi/preview/todo/[visitId]/produce/route');
 
 const PREVIEW = {
@@ -148,6 +149,30 @@ describe('and can drive their half, under his own name', () => {
     const res = await previewBatches.POST(req({ model_id: 'm1', batch_date: '2026-08-29' }, 'POST'));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/how many did you make/i);
+  });
+
+  it('corrects IGI’s count from the preview, stamped with the admin', async () => {
+    // Sam, 18 Sept 2026: until IGI have a login, "they told me on the phone
+    // they hold none" goes in through here, under Sam's own name.
+    let inserted = null;
+    global.__admin = { ...sb({ profile: { id: 'sam', role: 'admin' } }), from: (t) => {
+      const rows = TABLES[t] ?? [];
+      const chain = {
+        select: () => chain,
+        order: () => chain,
+        eq: () => chain,
+        maybeSingle: async () => ({ data: t === 'igi_models' ? MODELS[0] : rows[0] ?? null, error: null }),
+        single: async () => ({ data: t === 'profiles' ? { id: 'sam', role: 'admin' } : rows[0] ?? null, error: null }),
+        insert: (payload) => { inserted = payload; return {
+          select: () => ({ single: async () => ({ data: { id: 'c9', ...payload }, error: null }) }) } },
+        then: (resolve) => resolve({ data: rows, error: null }),
+      };
+      return chain;
+    } };
+    // m1: 1000 made, 40 issued → 960 on screen.
+    const res = await previewCounts.POST(req({ model_id: 'm1', counted: 900 }, 'POST'));
+    expect(res.status).toBe(201);
+    expect(inserted).toMatchObject({ model_id: 'm1', was: 960, counted: 900, delta: -60, created_by: 'sam' });
   });
 
   it('records production against the admin, and only on a movement waiting on IGI', async () => {

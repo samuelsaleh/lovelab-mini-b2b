@@ -59,14 +59,15 @@ export async function POST(request) {
   try {
     const db = auth.adminSupabase;
 
-    const [models, batches, allLines, lastVisit] = await Promise.all([
+    const [models, batches, allLines, lastVisit, counts] = await Promise.all([
       db.from('igi_models').select('id, serial, name, state').in('id', lines.map((l) => l.model_id)),
       db.from('igi_batches').select('model_id, qty'),
       db.from('igi_visit_lines').select('model_id, qty_issued'),
       db.from('igi_visits').select('visit_no').order('visit_no', { ascending: false }).limit(1),
+      db.from('igi_counts').select('model_id, delta'),
     ]);
 
-    for (const r of [models, batches, allLines, lastVisit]) {
+    for (const r of [models, batches, allLines, lastVisit, counts]) {
       if (r.error) return fail('IGI/Visits POST', r.error, 'Failed to create the movement');
     }
 
@@ -112,7 +113,7 @@ export async function POST(request) {
     // What IGI holds right now, so the shortage is reported at the moment of asking.
     const short = lines
       .map((l) => {
-        const held = poolOf(l.model_id, batches.data, allLines.data);
+        const held = poolOf(l.model_id, batches.data, allLines.data, counts.data);
         if (l.qty <= held) return null;
         const model = byId.get(l.model_id);
         return {
