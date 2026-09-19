@@ -7,13 +7,14 @@ Uses `LOVELAB_API_URL` (same as packing-stock / certificate-stock).
 | Direction | Trigger | What |
 |-----------|---------|------|
 | **B2B → ERP In** | IGI visit **received** | Immediate `POST /api/certificate-in` |
-| **ERP → B2B In** | Cron every **10 min** | Poll certificate-in → `igi_certificate_in_sync` |
-| **ERP → B2B Out** | Cron every **10 min** | Poll certificate-out → `igi_certificate_out_sync` |
-| **Shelf** | Cron every **10 min** (+ nightly) | `GET certificate-stock` → snapshots (matched by LGAJ serial) |
+| **ERP → B2B In** | Cron every **10 min** | Full reconcile of certificate-in (add / update / **delete**) |
+| **ERP → B2B Out** | Cron every **10 min** | Full reconcile of certificate-out (add / update / **delete**) |
+| **Shelf** | Cron every **10 min** (+ nightly) | `GET certificate-stock` → snapshots (secondary) |
 | **Models → ERP masters** | Model rename / serial assign + cron | `POST /api/certificate-master` with stock labels |
 | **B2B → ERP Out** | When B2B originates an out | `POST /api/certificate-out` |
 
-**On our shelf** = certificate-stock (In − Out), not packing-stock.
+**On our shelf** (Models list + history modal) = synced Certificate **In − Out** for that LGAJ.
+Deletes in ERP remove the matching B2B sync rows on the next cron run.
 
 Failed B2B→ERP In receipts are retried on the same cron.
 
@@ -37,4 +38,4 @@ Failed B2B→ERP In receipts are retried on the same cron.
 /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs
 ```
 
-Expect JSON with `ins`, `outs`, `shelf`, `masters`, and `receipts`.
+Expect JSON with `ins` / `outs` including `mode: "full"` and a `deleted` count when ERP rows were removed.

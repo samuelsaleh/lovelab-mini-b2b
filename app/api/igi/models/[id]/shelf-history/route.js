@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
+import { shelfOf } from '@/lib/igi/derive';
 
 /**
  * GET /api/igi/models/[id]/shelf-history
  *
  * Explains "On our shelf" for one model:
- *   1. Certificate-stock snapshot (In − Out, matched by LGAJ serial)
- *   2. Certificate In / Out ledger from ERP sync (why stock moved)
+ *   1. Certificate In − Out ledger (same figure as the Models column)
+ *   2. Optional certificate-stock snapshots (secondary history)
  */
 export async function GET(request, { params }) {
   const auth = await requireLoveLab(request, 'igi-shelf-history');
@@ -39,12 +40,12 @@ export async function GET(request, { params }) {
         .select('description, kind, last_seen_at')
         .eq('model_id', modelId),
       db.from('igi_certificate_in_sync')
-        .select('erp_in_id, invoice_no, in_date, party, description, pcs, source, external_ref, serial, synced_at')
+        .select('erp_in_id, invoice_no, in_date, party, description, pcs, source, external_ref, serial, synced_at, model_id')
         .eq('model_id', modelId)
         .order('erp_in_id', { ascending: true })
         .limit(500),
       db.from('igi_certificate_out_sync')
-        .select('erp_out_id, invoice_no, out_date, party, description, pcs, source, external_ref, serial, synced_at')
+        .select('erp_out_id, invoice_no, out_date, party, description, pcs, source, external_ref, serial, synced_at, model_id')
         .eq('model_id', modelId)
         .order('erp_out_id', { ascending: true })
         .limit(500),
@@ -54,22 +55,32 @@ export async function GET(request, { params }) {
       if (r.error) return fail('IGI/shelf-history', r.error, 'Failed to load shelf history');
     }
 
-    // Group snapshots by day (sum if several packing descriptions map to one model).
+    // Group snapshots by day; prefer LGAJ lines so packing leftovers are ignored.
     const byDate = new Map();
     for (const s of snaps.data || []) {
       const day = s.snapshot_date;
-      if (!byDate.has(day)) byDate.set(day, { date: day, pcs: 0, lines: [] });
-      const row = byDate.get(day);
-      row.pcs += Number(s.total_pcs) || 0;
-      row.lines.push({ description: s.description, pcs: Number(s.total_pcs) || 0 });
+      if (!byDate.has(day)) byDate.set(day, { date: day, lines: [] });
+      byDate.get(day).lines.push({
+        description: s.description,
+        pcs: Number(s.total_pcs) || 0,
+        lgaj: /\bLGAJ\d+\b/i.test(String(s.description || '')),
+      });
     }
-    const history = [...byDate.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+    const history = [...byDate.values()]
+      .map((day) => {
+        const preferred = day.lines.filter((l) => l.lgaj);
+        const use = preferred.length ? preferred : day.lines;
+        return {
+          date: day.date,
+          pcs: use.reduce((t, l) => t + l.pcs, 0),
+          lines: use,
+        };
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
     for (let i = 0; i < history.length; i += 1) {
       const older = history[i + 1];
       history[i].change = older ? history[i].pcs - older.pcs : null;
     }
-
-    const current = history[0] || null;
 
     const entries = [
       ...(ins.data || []).map((r) => ({
@@ -106,24 +117,28 @@ export async function GET(request, { params }) {
 
     const totalIn = entries.filter((e) => e.kind === 'in').reduce((t, e) => t + e.pcs, 0);
     const totalOut = entries.filter((e) => e.kind === 'out').reduce((t, e) => t + e.pcs, 0);
+    const net = totalIn - totalOut;
+
+    // Same number as Models → "On our shelf"
+    const current = shelfOf(modelId, snaps.data || [], ins.data || [], outs.data || []);
 
     return NextResponse.json({
       model,
       shelf: {
-        current: current ? current.pcs : null,
-        as_of: current?.date || null,
+        current,
+        as_of: history[0]?.date || null,
         source:
-          'Certificate-stock read from LoveLab ERP (In − Out), matched to models by LGAJ serial.',
+          'Certificate In − Out ledger synced from LoveLab ERP (deletes and edits included).',
         descriptions: (descriptions.data || []).map((d) => d.description),
         history,
       },
       certificate_ledger: {
         total_in: totalIn,
         total_out: totalOut,
-        net: totalIn - totalOut,
+        net,
         source:
-          'Certificate In − Certificate Out from the stock software (synced every 10 minutes).',
-        entries: ledger.reverse(), // newest first for the UI
+          'Certificate In − Certificate Out from the stock software (full reconcile every 10 minutes).',
+        entries: ledger.reverse(),
       },
     });
   } catch (err) {

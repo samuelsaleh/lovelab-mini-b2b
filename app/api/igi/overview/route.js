@@ -20,7 +20,7 @@ export async function GET(request) {
   const { adminSupabase } = auth;
 
   try {
-    const [models, batches, lines, visits, snapshots, descriptions, counts] = await Promise.all([
+    const [models, batches, lines, visits, snapshots, descriptions, counts, certIns, certOuts] = await Promise.all([
       adminSupabase.from('igi_models')
         .select('id, serial, serial_full, name, stones, carat, shape, spec, state, qty_ordered, shelf_min, order_min, sort_order')
         .order('sort_order', { ascending: true }),
@@ -36,15 +36,17 @@ export async function GET(request) {
         .limit(400),
       adminSupabase.from('igi_descriptions').select('description, model_id, kind, last_seen_at'),
       adminSupabase.from('igi_counts').select('model_id, delta'),
+      adminSupabase.from('igi_certificate_in_sync').select('model_id, pcs'),
+      adminSupabase.from('igi_certificate_out_sync').select('model_id, pcs'),
     ]);
 
-    for (const r of [models, batches, lines, visits, snapshots, descriptions, counts]) {
+    for (const r of [models, batches, lines, visits, snapshots, descriptions, counts, certIns, certOuts]) {
       if (r.error) return fail('IGI/Overview GET', r.error, 'Failed to load certificate stock');
     }
 
     const rows = models.data.map((m) => {
       const pool = m.state === 'in_use' ? poolOf(m.id, batches.data, lines.data, counts.data) : null;
-      const shelf = shelfOf(m.id, snapshots.data);
+      const shelf = shelfOf(m.id, snapshots.data, certIns.data || [], certOuts.data || []);
       return {
         ...m,
         pool,

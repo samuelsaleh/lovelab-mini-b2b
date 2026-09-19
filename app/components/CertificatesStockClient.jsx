@@ -375,7 +375,8 @@ function ShelfHistoryModal({ data, loading, onClose }) {
               </div>
 
               <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.55, margin: '0 0 18px' }}>
-                <b>On our shelf</b> comes from LoveLab <b>certificate-stock</b> (In − Out), matched by LGAJ serial
+                <b>On our shelf</b> is Certificate <b>In − Out</b> for this LGAJ serial — the same number as
+                the Models list
                 {shelf.descriptions?.length ? (
                   <> (label{shelf.descriptions.length === 1 ? '' : 's'}:{' '}
                     {shelf.descriptions.map((d, i) => (
@@ -383,7 +384,7 @@ function ShelfHistoryModal({ data, loading, onClose }) {
                     ))})
                   </>
                 ) : null}
-                . <b>In − Out</b> is the same Certificate ledger synced every 10 minutes — the two figures should match.
+                . When you add, edit, or delete Certificate In/Out in ERP, the next 10‑minute sync updates both.
               </p>
 
               <Card title="Certificate In / Out" sub={ledger.source || ''} flush>
