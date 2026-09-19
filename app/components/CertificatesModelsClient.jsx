@@ -125,13 +125,14 @@ export default function CertificatesModelsClient() {
     }
   }
 
-  // ── The two levels: ours on our shelf, ours on IGI's stock ─────────────
-  async function saveLevel(modelId, shelfMin, orderMin) {
+  // ── Levels + opening shelf (base for In/Out) ───────────────────────────
+  async function saveLevel(modelId, shelfMin, orderMin, shelfOpening) {
     setSavingId(modelId)
     try {
       const payload = { model_ids: [modelId] }
       if (shelfMin !== undefined) payload.shelf_min = shelfMin
       if (orderMin !== undefined) payload.order_min = orderMin
+      if (shelfOpening !== undefined) payload.shelf_opening = shelfOpening
       const res = await fetch('/api/igi/alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -141,12 +142,19 @@ export default function CertificatesModelsClient() {
       if (!res.ok) throw new Error(body?.error || 'Failed to save the level')
       setModels((prev) => prev.map((m) => (
         m.id === modelId
-          ? { ...m, ...(shelfMin !== undefined ? { shelf_min: shelfMin } : {}), ...(orderMin !== undefined ? { order_min: orderMin } : {}) }
+          ? {
+            ...m,
+            ...(shelfMin !== undefined ? { shelf_min: shelfMin } : {}),
+            ...(orderMin !== undefined ? { order_min: orderMin } : {}),
+            ...(shelfOpening !== undefined ? { shelf_opening: shelfOpening } : {}),
+          }
           : m
       )))
-      say(orderMin !== undefined
-        ? 'Saved. IGI see this level on their side; below it, Stock says "Order at IGI" and their To do says "Produce more".'
-        : 'Shelf level saved. Stock says "Collect" when we fall below it.')
+      say(shelfOpening !== undefined
+        ? 'Opening shelf saved. On our shelf = opening + Certificate In − Certificate Out.'
+        : orderMin !== undefined
+          ? 'Saved. IGI see this level on their side; below it, Stock says "Order at IGI" and their To do says "Produce more".'
+          : 'Shelf level saved. Stock says "Collect" when we fall below it.')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -258,6 +266,7 @@ export default function CertificatesModelsClient() {
                 <th style={{ width: '40%' }}>Model</th>
                 <th>Stones</th>
                 <th>Serial</th>
+                <th className="num" title="Starting stock before Certificate In/Out. On our shelf = opening + In − Out">Opening shelf</th>
                 <th className="num" title="Below this on our shelf, Stock says Collect">Shelf level</th>
                 <th className="num" title="Below this at IGI, Stock says Order at IGI and IGI's To do says Produce more. Empty means no rule.">IGI must hold</th>
               </tr>
@@ -298,6 +307,16 @@ export default function CertificatesModelsClient() {
                     </td>
                     <td className="num">
                       <LevelInput
+                        value={m.shelf_opening}
+                        placeholder="0"
+                        allowEmpty
+                        disabled={savingId === m.id || waiting}
+                        testId="shelf-opening"
+                        onCommit={(v) => v !== (m.shelf_opening ?? null) && saveLevel(m.id, undefined, undefined, v)}
+                      />
+                    </td>
+                    <td className="num">
+                      <LevelInput
                         value={m.shelf_min}
                         placeholder="25"
                         disabled={savingId === m.id}
@@ -323,7 +342,9 @@ export default function CertificatesModelsClient() {
         </TableWrap>
         <div className="card-foot">
           <span>
-            A level saves when you leave the box. IGI see "IGI must hold" on their side. A model waiting for a serial appears on Stock as soon as IGI give one, and can be removed until then; a numbered one never can.
+            A level saves when you leave the box. <b>Opening shelf</b> is the starting stock;
+            On our shelf = opening + Certificate In − Certificate Out. IGI see "IGI must hold" on their side.
+            A model waiting for a serial appears on Stock as soon as IGI give one, and can be removed until then; a numbered one never can.
           </span>
           <Link href="/certificates/matching" className="right" data-testid="go-matching">
             Match stock descriptions to a model →

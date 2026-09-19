@@ -5,6 +5,8 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
  * PATCH /api/igi/alerts
  *
  * Sets LoveLab's alert levels. Two of them, both LoveLab's:
+ *   shelf_opening — starting pcs before Certificate In/Out.
+ *                   On our shelf = shelf_opening + In − Out.
  *   shelf_min — on our own shelf. Below it means go collect, because IGI
  *               already hold them.
  *   order_min — on IGI's stock (Sam, 10 Sept 2026). Below it means order
@@ -26,7 +28,12 @@ export async function PATCH(request) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { model_ids: modelIds, shelf_min: shelfMin, order_min: orderMin } = body || {};
+  const {
+    model_ids: modelIds,
+    shelf_min: shelfMin,
+    order_min: orderMin,
+    shelf_opening: shelfOpening,
+  } = body || {};
 
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
     return NextResponse.json({ error: 'At least one model is required' }, { status: 400 });
@@ -53,6 +60,12 @@ export async function PATCH(request) {
     // A new level is a new question; the next nightly check answers it fresh.
     patch.order_alerted_at = null;
   }
+  if (shelfOpening !== undefined) {
+    if (shelfOpening !== null && (!Number.isInteger(shelfOpening) || shelfOpening < 0)) {
+      return NextResponse.json({ error: 'Opening shelf must be a whole number, zero or more, or empty' }, { status: 400 });
+    }
+    patch.shelf_opening = shelfOpening;
+  }
   if (Object.keys(patch).length === 1) {
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 });
   }
@@ -62,7 +75,7 @@ export async function PATCH(request) {
       .from('igi_models')
       .update(patch)
       .in('id', modelIds)
-      .select('id, shelf_min, order_min');
+      .select('id, shelf_min, order_min, shelf_opening');
 
     if (error) return fail('IGI/Alerts PATCH', error, 'Failed to save the alert level');
 

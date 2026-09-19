@@ -357,34 +357,35 @@ function ShelfHistoryModal({ data, loading, onClose }) {
             <>
               <div className="sum" data-testid="shelf-summary">
                 <div className="pill">
-                  <b>{shelf.current == null ? '—' : formatQty(shelf.current)}</b>
-                  <span>On our shelf</span>
+                  <b>{shelf.opening == null ? '—' : formatQty(shelf.opening)}</b>
+                  <span>Opening shelf</span>
                 </div>
                 <div className="pill in">
-                  <b>{formatQty(ledger.total_in || 0)}</b>
+                  <b>+{formatQty(ledger.total_in || 0)}</b>
                   <span>Certificate In</span>
                 </div>
                 <div className="pill out">
-                  <b>{formatQty(ledger.total_out || 0)}</b>
+                  <b>−{formatQty(ledger.total_out || 0)}</b>
                   <span>Certificate Out</span>
                 </div>
                 <div className="pill">
-                  <b>{formatQty(ledger.net || 0)}</b>
-                  <span>In − Out</span>
+                  <b>{shelf.current == null ? '—' : formatQty(shelf.current)}</b>
+                  <span>On our shelf</span>
                 </div>
               </div>
 
               <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.55, margin: '0 0 18px' }}>
-                <b>On our shelf</b> is Certificate <b>In − Out</b> for this LGAJ serial — the same number as
-                the Models list
-                {shelf.descriptions?.length ? (
-                  <> (label{shelf.descriptions.length === 1 ? '' : 's'}:{' '}
-                    {shelf.descriptions.map((d, i) => (
-                      <span key={d}><code>{d}</code>{i < shelf.descriptions.length - 1 ? ', ' : ''}</span>
-                    ))})
+                <b>On our shelf</b> = opening
+                {shelf.opening != null ? <> ({formatQty(shelf.opening)})</> : null}
+                {' '}+ Certificate In − Certificate Out
+                {shelf.opening != null || ledger.total_in || ledger.total_out ? (
+                  <>
+                    {' '}→ {formatQty(shelf.opening || 0)} + {formatQty(ledger.total_in || 0)} − {formatQty(ledger.total_out || 0)}
+                    {' '}= <b>{shelf.current == null ? '—' : formatQty(shelf.current)}</b>
                   </>
                 ) : null}
-                . When you add, edit, or delete Certificate In/Out in ERP, the next 10‑minute sync updates both.
+                . Set opening on <Link href="/certificates/models">Models</Link>.
+                ERP In/Out adds and deletes sync every 10 minutes.
               </p>
 
               <Card title="Certificate In / Out" sub={ledger.source || ''} flush>

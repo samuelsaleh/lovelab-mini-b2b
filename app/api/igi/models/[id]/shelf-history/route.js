@@ -5,9 +5,8 @@ import { shelfOf } from '@/lib/igi/derive';
 /**
  * GET /api/igi/models/[id]/shelf-history
  *
- * Explains "On our shelf" for one model:
- *   1. Certificate In − Out ledger (same figure as the Models column)
- *   2. Optional certificate-stock snapshots (secondary history)
+ * On our shelf = shelf_opening + Certificate In − Certificate Out
+ * (same figure as the Models / Stock column).
  */
 export async function GET(request, { params }) {
   const auth = await requireLoveLab(request, 'igi-shelf-history');
@@ -23,7 +22,7 @@ export async function GET(request, { params }) {
 
     const { data: model, error: modelErr } = await db
       .from('igi_models')
-      .select('id, serial, name, stones, carat, shape, spec, state')
+      .select('id, serial, name, stones, carat, shape, spec, state, shelf_opening')
       .eq('id', modelId)
       .maybeSingle();
 
@@ -55,7 +54,6 @@ export async function GET(request, { params }) {
       if (r.error) return fail('IGI/shelf-history', r.error, 'Failed to load shelf history');
     }
 
-    // Group snapshots by day; prefer LGAJ lines so packing leftovers are ignored.
     const byDate = new Map();
     for (const s of snaps.data || []) {
       const day = s.snapshot_date;
@@ -81,6 +79,8 @@ export async function GET(request, { params }) {
       const older = history[i + 1];
       history[i].change = older ? history[i].pcs - older.pcs : null;
     }
+
+    const opening = model.shelf_opening != null ? Number(model.shelf_opening) : null;
 
     const entries = [
       ...(ins.data || []).map((r) => ({
@@ -109,7 +109,8 @@ export async function GET(request, { params }) {
       })),
     ].sort((a, b) => (a.sort_key < b.sort_key ? -1 : 1));
 
-    let running = 0;
+    // Running balance starts from opening shelf, then +In −Out
+    let running = opening || 0;
     const ledger = entries.map((e) => {
       running += e.kind === 'in' ? e.pcs : -e.pcs;
       return { ...e, balance: running };
@@ -118,17 +119,15 @@ export async function GET(request, { params }) {
     const totalIn = entries.filter((e) => e.kind === 'in').reduce((t, e) => t + e.pcs, 0);
     const totalOut = entries.filter((e) => e.kind === 'out').reduce((t, e) => t + e.pcs, 0);
     const net = totalIn - totalOut;
-
-    // Same number as Models → "On our shelf"
-    const current = shelfOf(modelId, snaps.data || [], ins.data || [], outs.data || []);
+    const current = shelfOf(modelId, snaps.data || [], ins.data || [], outs.data || [], opening);
 
     return NextResponse.json({
       model,
       shelf: {
         current,
-        as_of: history[0]?.date || null,
-        source:
-          'Certificate In − Out ledger synced from LoveLab ERP (deletes and edits included).',
+        opening,
+        as_of: null,
+        source: 'On our shelf = opening + Certificate In − Certificate Out.',
         descriptions: (descriptions.data || []).map((d) => d.description),
         history,
       },
@@ -136,8 +135,9 @@ export async function GET(request, { params }) {
         total_in: totalIn,
         total_out: totalOut,
         net,
+        opening,
         source:
-          'Certificate In − Certificate Out from the stock software (full reconcile every 10 minutes).',
+          'Certificate In / Out from ERP (full reconcile every 10 minutes), applied on top of opening shelf.',
         entries: ledger.reverse(),
       },
     });

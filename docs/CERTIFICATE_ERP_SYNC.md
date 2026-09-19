@@ -13,8 +13,10 @@ Uses `LOVELAB_API_URL` (same as packing-stock / certificate-stock).
 | **Models → ERP masters** | Model rename / serial assign + cron | `POST /api/certificate-master` with stock labels |
 | **B2B → ERP Out** | When B2B originates an out | `POST /api/certificate-out` |
 
-**On our shelf** (Models list + history modal) = synced Certificate **In − Out** for that LGAJ.
-Deletes in ERP remove the matching B2B sync rows on the next cron run.
+**On our shelf** = **opening shelf** + Certificate In − Certificate Out  
+Example: opening 755, In 5, Out 2 → **758**.
+
+Opening shelf is set on Models (seeded once from packing snapshots). Deletes in ERP remove matching B2B sync rows on the next cron run.
 
 Failed B2B→ERP In receipts are retried on the same cron.
 

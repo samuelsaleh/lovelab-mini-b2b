@@ -22,7 +22,7 @@ export async function GET(request) {
   try {
     const [models, batches, lines, visits, snapshots, descriptions, counts, certIns, certOuts] = await Promise.all([
       adminSupabase.from('igi_models')
-        .select('id, serial, serial_full, name, stones, carat, shape, spec, state, qty_ordered, shelf_min, order_min, sort_order')
+        .select('id, serial, serial_full, name, stones, carat, shape, spec, state, qty_ordered, shelf_min, shelf_opening, order_min, sort_order')
         .order('sort_order', { ascending: true }),
       adminSupabase.from('igi_batches').select('model_id, qty'),
       adminSupabase.from('igi_visit_lines').select('visit_id, model_id, qty_requested, qty_issued, qty_received'),
@@ -46,7 +46,7 @@ export async function GET(request) {
 
     const rows = models.data.map((m) => {
       const pool = m.state === 'in_use' ? poolOf(m.id, batches.data, lines.data, counts.data) : null;
-      const shelf = shelfOf(m.id, snapshots.data, certIns.data || [], certOuts.data || []);
+      const shelf = shelfOf(m.id, snapshots.data, certIns.data || [], certOuts.data || [], m.shelf_opening);
       return {
         ...m,
         pool,
