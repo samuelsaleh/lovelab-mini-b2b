@@ -120,7 +120,23 @@ export async function PATCH(request) {
     if (error) return fail('IGI/Models PATCH', error, 'Failed to save the model');
     if (!data) return NextResponse.json({ error: 'Model not found' }, { status: 404 });
 
-    return NextResponse.json({ model: data });
+    // Keep LoveLab certificate_master in step when a numbered model is renamed.
+    let erpMaster = null;
+    if (data.serial) {
+      try {
+        const { data: full } = await auth.adminSupabase
+          .from('igi_models')
+          .select('id, serial, name, stones, carat, shape, spec')
+          .eq('id', data.id)
+          .maybeSingle();
+        const { pushModelsToCertificateMaster } = await import('@/lib/igi/syncCertificateMasters');
+        erpMaster = await pushModelsToCertificateMaster(full || data);
+      } catch (err) {
+        erpMaster = { error: err?.message || 'ERP master sync failed' };
+      }
+    }
+
+    return NextResponse.json({ model: data, erp_master: erpMaster });
   } catch (err) {
     return fail('IGI/Models PATCH', err, 'Internal server error');
   }

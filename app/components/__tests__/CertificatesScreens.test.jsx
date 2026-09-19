@@ -59,7 +59,7 @@ function mockFetch(overview = OVERVIEW, extra = {}) {
               as_of: '2026-09-18',
               descriptions: ['Cuty pack'],
               history: [{ date: '2026-09-18', pcs: 1006, change: null }],
-              source: 'Nightly packing-stock',
+              source: 'certificate-stock',
             },
             certificate_ledger: {
               total_in: 1200,

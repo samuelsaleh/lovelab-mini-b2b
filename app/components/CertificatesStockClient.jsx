@@ -375,16 +375,15 @@ function ShelfHistoryModal({ data, loading, onClose }) {
               </div>
 
               <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', lineHeight: 1.55, margin: '0 0 18px' }}>
-                <b>On our shelf</b> comes from the nightly packing-stock read
+                <b>On our shelf</b> comes from LoveLab <b>certificate-stock</b> (In − Out), matched by LGAJ serial
                 {shelf.descriptions?.length ? (
-                  <> (mapped description{shelf.descriptions.length === 1 ? '' : 's'}:{' '}
+                  <> (label{shelf.descriptions.length === 1 ? '' : 's'}:{' '}
                     {shelf.descriptions.map((d, i) => (
                       <span key={d}><code>{d}</code>{i < shelf.descriptions.length - 1 ? ', ' : ''}</span>
                     ))})
                   </>
                 ) : null}
-                . <b>In − Out</b> is the Certificate ledger from the stock software. If the two
-                numbers differ, Matching or packing vs certificate stock is out of step.
+                . <b>In − Out</b> is the same Certificate ledger synced every 10 minutes — the two figures should match.
               </p>
 
               <Card title="Certificate In / Out" sub={ledger.source || ''} flush>
@@ -430,7 +429,7 @@ function ShelfHistoryModal({ data, loading, onClose }) {
 
               <div style={{ height: 16 }} />
 
-              <Card title="Nightly shelf snapshots" sub={shelf.source || ''} flush>
+              <Card title="Shelf snapshots" sub={shelf.source || ''} flush>
                 <TableWrap>
                   <table data-testid="shelf-snapshot-table">
                     <thead>

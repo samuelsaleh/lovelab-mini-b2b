@@ -1,10 +1,9 @@
 /**
  * Nightly certificate-shelf read.
  *
- * Reads LoveLab's packing stock once a night (configured in vercel.json) and
- * stores a dated snapshot per description, so each model's shelf figure arrives
- * without anyone typing it. Authenticates via the same x-vercel-cron-secret
- * header as /api/backup and /api/cron/health-check.
+ * Reads LoveLab's **certificate-stock** (In − Out) and stores a dated snapshot
+ * per description, matched to models by LGAJ serial. Authenticates via the same
+ * x-vercel-cron-secret header as /api/backup and /api/cron/health-check.
  *
  * Responses:
  *   200 { snapshot_date, lines_read, matched, ... }  on success
@@ -52,7 +51,7 @@ export async function GET(request) {
         severity: 'warn',
         message:
           `${summary.vanished_descriptions.length} mapped certificate description(s) `
-          + 'no longer appear in packing-stock — likely renamed upstream. '
+          + 'no longer appear in certificate-stock — likely renamed upstream. '
           + 'Those models keep their last known shelf figure until this is fixed.',
         context: { descriptions: summary.vanished_descriptions.slice(0, 20) },
       });
@@ -62,7 +61,7 @@ export async function GET(request) {
       await recordHealthEvent({
         source: 'cron_igi_stock',
         severity: 'warn',
-        message: 'packing-stock reported a different line count than it returned.',
+        message: 'certificate-stock reported a different line count than it returned.',
         context: { reported: summary.reported_count, received: summary.lines_read },
       });
     }

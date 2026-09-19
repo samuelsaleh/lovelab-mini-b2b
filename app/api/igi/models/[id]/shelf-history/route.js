@@ -5,7 +5,7 @@ import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
  * GET /api/igi/models/[id]/shelf-history
  *
  * Explains "On our shelf" for one model:
- *   1. Nightly packing-stock snapshot (what the Stock column shows)
+ *   1. Certificate-stock snapshot (In − Out, matched by LGAJ serial)
  *   2. Certificate In / Out ledger from ERP sync (why stock moved)
  */
 export async function GET(request, { params }) {
@@ -113,7 +113,7 @@ export async function GET(request, { params }) {
         current: current ? current.pcs : null,
         as_of: current?.date || null,
         source:
-          'Nightly packing-stock read from LoveLab ERP. Descriptions are linked to this model on Matching.',
+          'Certificate-stock read from LoveLab ERP (In − Out), matched to models by LGAJ serial.',
         descriptions: (descriptions.data || []).map((d) => d.description),
         history,
       },

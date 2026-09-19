@@ -1,5 +1,5 @@
 /**
- * Sync LoveLab Certificate In/Out ↔ B2B + retry failed Certificate In receipts.
+ * Sync LoveLab Certificate In/Out ↔ B2B + shelf + masters + receipt retries.
  *
  * Every 10 minutes on DigitalOcean (crontab → run-cron.sh).
  * Auth: x-vercel-cron-secret === CRON_SECRET
@@ -11,6 +11,8 @@ import { recordHealthEvent } from '@/lib/healthEvent';
 import { syncCertificateOuts } from '@/lib/igi/syncCertificateOuts';
 import { syncCertificateIns } from '@/lib/igi/syncCertificateIns';
 import { retryFailedReceipts } from '@/lib/igi/pushReceipt';
+import { syncShelfSnapshot } from '@/lib/igi/syncShelf';
+import { syncAllModelsToCertificateMaster } from '@/lib/igi/syncCertificateMasters';
 
 function verifyCronAuth(request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -27,7 +29,7 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const summary = { ins: null, outs: null, receipts: null };
+  const summary = { ins: null, outs: null, shelf: null, masters: null, receipts: null };
 
   try {
     const adminSupabase = createAdminClient();
@@ -71,6 +73,28 @@ export async function GET(request) {
         source: 'cron_igi_certificate_outs',
         severity: 'error',
         message: `Certificate out sync failed: ${err?.message || 'unknown'}`,
+      });
+    }
+
+    try {
+      summary.shelf = await syncShelfSnapshot(adminSupabase);
+    } catch (err) {
+      summary.shelf = { error: err?.message || 'shelf sync failed' };
+      await recordHealthEvent({
+        source: 'cron_igi_certificate_outs',
+        severity: 'warn',
+        message: `Certificate shelf sync failed: ${err?.message || 'unknown'}`,
+      });
+    }
+
+    try {
+      summary.masters = await syncAllModelsToCertificateMaster(adminSupabase);
+    } catch (err) {
+      summary.masters = { error: err?.message || 'master sync failed' };
+      await recordHealthEvent({
+        source: 'cron_igi_certificate_outs',
+        severity: 'warn',
+        message: `Certificate master sync failed: ${err?.message || 'unknown'}`,
       });
     }
 
