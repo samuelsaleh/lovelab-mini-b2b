@@ -60,7 +60,7 @@ async function sendAlertEmail(error) {
   const toAddress = primaryAdmin || getSenderEmail();
   if (!toAddress) return;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.lovelab-antwerp.com';
 
   try {
     await fetch('https://api.resend.com/emails', {

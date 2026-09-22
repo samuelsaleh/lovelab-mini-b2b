@@ -661,10 +661,21 @@ function ComposeStep({
 }
 
 function RecipientsEditor({ t, mobile, allByLanguage, excluded, toggleRecipient, setLanguageIncluded, saveAgentLanguage, savingLangFor, langError }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const matches = (r) => !q || String(r.name || '').toLowerCase().includes(q) || String(r.email || '').toLowerCase().includes(q)
   return (
     <div style={{ marginTop: 10, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 8 }} data-testid="recipients-editor">
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t('announce.searchAgents')}
+        aria-label={t('announce.searchAgents')}
+        style={{ ...inputStyle, padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
+      />
       {langError && <div style={{ fontSize: 11, color: colors.danger, marginBottom: 6 }}>{langError}</div>}
-      {AGENT_LANGUAGES.filter((l) => (allByLanguage[l] || []).length > 0).map((lang) => {
+      {AGENT_LANGUAGES.filter((l) => (allByLanguage[l] || []).some(matches)).map((lang) => {
         const list = allByLanguage[lang]
         const on = list.filter((r) => !excluded.has(r.id)).length
         return (
@@ -679,7 +690,7 @@ function RecipientsEditor({ t, mobile, allByLanguage, excluded, toggleRecipient,
                 <button type="button" onClick={() => setLanguageIncluded(lang, false)} style={linkBtn}>{t('announce.excludeAll')}</button>
               </span>
             </div>
-            {list.map((r) => {
+            {list.filter(matches).map((r) => {
               const included = !excluded.has(r.id)
               return (
                 <div key={r.id} style={{

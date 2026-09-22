@@ -264,12 +264,12 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
               </svg>
               Open Google Drive
             </LinkButton>
-            <LinkButton href="https://www.lovelab.be" variant="outline">
+            <LinkButton href="https://www.lovelab-antwerp.com" variant="outline">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <circle cx="12" cy="12" r="10"/>
                 <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/>
               </svg>
-              lovelab.be
+              lovelab-antwerp.com
             </LinkButton>
             <LinkButton href="https://www.instagram.com/lovelab_antwerp" variant="outline">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

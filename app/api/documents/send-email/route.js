@@ -234,7 +234,7 @@ export async function POST(request) {
       });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://lovelab-b2b.vercel.app';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.lovelab-antwerp.com';
     // Defensive: if the user typed the company name into the contact
     // field too (e.g. contact="Oxygene Marie Schultz" with company="Oxygene"),
     // strip the company prefix so the greeting reads "Cher Marie Schultz,"

@@ -25,8 +25,8 @@ Style:
 Editable elements (the user can tweak any of these via the Outreach tab):
 - Headline (large serif title) — keep generic; the fair name shows as a gold subtitle automatically
 - Paragraph 1 and Paragraph 2 (body text)
-- Button 1: label + URL (filled purple pill, defaults to "Visit Our Website" → lovelab.be)
-- Button 2: label + URL (outline pill, defaults to "B2B Login" → lovelab.be/b2b-signup; leave blank to hide)
+- Button 1: label + URL (filled purple pill, defaults to "Visit Our Website" → lovelab-antwerp.com)
+- Button 2: label + URL (outline pill, defaults to "B2B Login" → app.lovelab-antwerp.com; leave blank to hide)
 - CTA line (optional sentence under paragraph 2)
 - Signoff
 - Contact card and the 2×2 product grid are FIXED — they're part of the brand shell and not editable per fair.
