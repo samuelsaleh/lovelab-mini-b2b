@@ -123,6 +123,10 @@ export async function GET(request) {
       }
 
       query = query.or(orParts.join(','));
+      // An order an admin explicitly took away from the agent ("No agent" in
+      // the save dialog, metadata.no_agent) is not theirs any more, even if
+      // they typed it. A second .or() is ANDed with the first by PostgREST.
+      query = query.or('metadata->>no_agent.is.null,metadata->>no_agent.neq.true');
     } else if (!isAdmin && nonAdminOrgScope) {
       // Explicit team view: only the requested org's documents.
       const orFilter = buildTeamScopeOrFilter(nonAdminOrgScope);

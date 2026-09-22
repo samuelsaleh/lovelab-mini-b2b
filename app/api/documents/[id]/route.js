@@ -5,13 +5,29 @@ import { canAccessDocument, getUserContext, resolveAgentFolderEventId } from '@/
 import { syncConsignmentToLovelab } from '@/lib/lovelab-sync';
 import { notifyOrderEvent } from '@/lib/orderNotices';
 import { recordHealthEvent } from '@/lib/healthEvent';
-import { resolveCommissionAgent, upsertCommissionForDocument } from '@/lib/commissionAttribution';
+import { resolveCommissionAgent, upsertCommissionForDocument, removePendingOrderCommissions } from '@/lib/commissionAttribution';
 import { documentsHaveAgentIdColumn, normalizeAgentId } from '@/lib/agentIdColumn';
 import { documentsHaveActivityAtColumn } from '@/lib/activityAtColumn';
 import { maybeCreateBonusForOrder } from '@/lib/newClientBonus';
 
 // UUID format validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The explicit "no agent" choice lives in metadata.no_agent (Sam, 22 Sep
+ * 2026). A null agent_id alone still means "fall back to the creator / the
+ * folder" for rows saved before agent_id existed, so the choice needs its own
+ * marker, and the commission attribution + the agent's order list honour it.
+ *
+ * @param {object|null|undefined} metadata  the metadata about to be written
+ * @param {boolean|null} noAgent  true = set the flag, false = clear it, null = leave as is
+ */
+function withNoAgentFlag(metadata, noAgent) {
+  const base = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+  if (noAgent === true) base.no_agent = true;
+  else if (noAgent === false) delete base.no_agent;
+  return base;
+}
 
 // GET - Fetch a single document by ID
 export async function GET(request, { params }) {
@@ -170,6 +186,17 @@ export async function PUT(request, { params }) {
       updatePayload.agent_id = await normalizeAgentId(adminSupabase, body.agent_id, {
         creatorId: oldDoc.created_by,
       });
+      // An explicit null from an admin is "no agent, on purpose"; an agent id
+      // clears that choice. Non-admins cannot detach an order.
+      const explicitNoAgent = isAdmin && body.agent_id === null && updatePayload.agent_id === null;
+      updatePayload.metadata = withNoAgentFlag(
+        updatePayload.metadata ?? oldDoc.metadata,
+        explicitNoAgent ? true : (updatePayload.agent_id ? false : null),
+      );
+    } else if (oldDoc.metadata?.no_agent === true && updatePayload.metadata && typeof updatePayload.metadata === 'object') {
+      // "Keep current agent" re-save: the fresh metadata from the form must
+      // not drop the choice made earlier.
+      updatePayload.metadata = withNoAgentFlag(updatePayload.metadata, true);
     }
     // Float this order to the top of lists. Only this user save bumps it —
     // not rename, bulk-file, or email-status writes (those use PATCH / other
@@ -198,6 +225,11 @@ export async function PUT(request, { params }) {
     try {
       if (doc?.total_amount > 0 && doc?.status !== 'draft' && doc?.order_channel !== 'internal' && doc?.order_channel !== 'consignment') {
         const attribution = await resolveCommissionAgent(adminSupabase, doc);
+        if (!attribution && doc?.metadata?.no_agent === true) {
+          // The order was taken away from its agent: their pending
+          // commission goes with it. Paid rows stay.
+          await removePendingOrderCommissions(adminSupabase, doc.id);
+        }
         if (attribution) {
           await upsertCommissionForDocument(adminSupabase, {
             document: doc,
@@ -425,6 +457,11 @@ export async function PATCH(request, { params }) {
       patchPayload.agent_id = await normalizeAgentId(adminSupabase, body.agent_id, {
         creatorId: doc.created_by,
       });
+      const explicitNoAgent = isAdmin && body.agent_id === null && patchPayload.agent_id === null;
+      patchPayload.metadata = withNoAgentFlag(
+        patchPayload.metadata ?? doc.metadata,
+        explicitNoAgent ? true : (patchPayload.agent_id ? false : null),
+      );
     }
 
     const { data: updated, error: updateError } = await adminSupabase
@@ -447,6 +484,9 @@ export async function PATCH(request, { params }) {
         updated?.order_channel !== 'internal' && updated?.order_channel !== 'consignment') {
       try {
         const attribution = await resolveCommissionAgent(adminSupabase, updated);
+        if (!attribution && updated?.metadata?.no_agent === true) {
+          await removePendingOrderCommissions(adminSupabase, updated.id);
+        }
         if (attribution) {
           await upsertCommissionForDocument(adminSupabase, {
             document: updated,
