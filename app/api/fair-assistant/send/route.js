@@ -6,29 +6,18 @@ import { findB2BFileByPath } from '@/lib/b2b-files';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 import { publicAssetUrl } from '@/lib/publicAssetHref';
 import { recordSend } from '@/lib/emailDeliveries';
+import { mapPoolWithDeadline } from '@/lib/mapPoolWithDeadline';
 
 // Vercel Hobby functions have a ~10s wall-clock limit. Instead of capping
 // the batch size, we time-box the loop: each worker checks an 8.5s deadline
 // before picking up another draft, and the response returns `remaining` so
 // the client can auto-loop until the queue is drained. This lets the user
 // press Send once even with hundreds of drafts queued.
+// (The pool itself lives in lib/mapPoolWithDeadline.js, shared with the
+// price list announcement.)
 const CONCURRENCY = 8;
 const TIME_BUDGET_MS = 8500;
 const HARD_LIMIT = 500; // safety: never load more than 500 drafts per request
-
-async function mapPoolWithDeadline(items, limit, deadlineAt, fn) {
-  const results = new Array(items.length);
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      if (Date.now() >= deadlineAt) return;
-      const i = index++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
 
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 10, prefix: 'fair-send' });

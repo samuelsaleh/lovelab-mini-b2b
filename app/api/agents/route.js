@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { isAdmin, requireSession } from '@/lib/organizations/authz';
 import { inviteAgent, InviteError } from '@/lib/agents/invite';
+import { isAgentLanguage } from '@/lib/agents/language';
 import { isValidEmail, normalizeEmail } from '@/lib/auth/validation';
 import { ensureAgentDriveFolder } from '@/lib/agentDriveFolder';
 import { NextResponse } from 'next/server';
@@ -23,7 +24,7 @@ export async function GET(request) {
     const adminSupabase = createAdminClient();
 
     const AGENT_SELECT_BASE = 'id, email, full_name, avatar_url, role, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id, new_client_bonus_enabled, new_client_bonus_amount';
-    let AGENT_SELECT = `${AGENT_SELECT_BASE}, new_client_bonus_mode`;
+    let AGENT_SELECT = `${AGENT_SELECT_BASE}, new_client_bonus_mode, agent_language`;
 
     // Use OR so agents whose is_agent flag was lost (NULL after a profile migration
     // race or partial upsert) are still visible as long as agent_status is set.
@@ -37,9 +38,10 @@ export async function GET(request) {
 
     let { data: agents, error } = await listAgents(AGENT_SELECT);
     if (error) {
-      // Most likely the new_client_bonus_mode migration hasn't been applied
-      // yet. Retry without it rather than 500 the whole agent list; the UI
-      // falls back to the legacy boolean when the mode is absent.
+      // Most likely the new_client_bonus_mode or agent_language migration
+      // hasn't been applied yet. Retry without the optional columns rather
+      // than 500 the whole agent list; the UI falls back to the legacy
+      // boolean when the mode is absent and to the country for the language.
       AGENT_SELECT = AGENT_SELECT_BASE;
       ({ data: agents, error } = await listAgents(AGENT_SELECT));
     }
@@ -295,6 +297,7 @@ export async function POST(request) {
       agent_specialty,
       agent_conditions,
       agent_notes,
+      agent_language,
       organization_id: requestedOrgId,
       send_invite = true,
     } = body;
@@ -311,6 +314,11 @@ export async function POST(request) {
     const rate = Number(commission_rate);
     if (isNaN(rate) || rate < 0 || rate > 100) {
       return NextResponse.json({ error: 'Commission rate must be between 0 and 100' }, { status: 400 });
+    }
+
+    const languageValue = typeof agent_language === 'string' && agent_language.trim() ? agent_language.trim() : null;
+    if (languageValue && !isAgentLanguage(languageValue)) {
+      return NextResponse.json({ error: 'Invalid agent language' }, { status: 400 });
     }
 
     const adminSupabase = createAdminClient();
@@ -334,6 +342,9 @@ export async function POST(request) {
           agent_specialty: agent_specialty?.trim() || null,
           agent_conditions: agent_conditions?.trim() || null,
           agent_notes: agent_notes?.trim() || null,
+          // Only sent when set, so a create still works before the
+          // agent_language migration is applied.
+          ...(languageValue ? { agent_language: languageValue } : {}),
         },
         organizationId: requestedOrgId || null,
         membershipRole: 'member',

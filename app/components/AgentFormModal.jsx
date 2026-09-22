@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { colors, fonts, btn, inp, lbl } from '@/lib/styles';
+import { AGENT_LANGUAGES, AGENT_LANGUAGE_LABELS, suggestAgentLanguage } from '@/lib/agents/language';
 
 export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   const [email, setEmail] = useState('');
@@ -11,6 +12,8 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
   const [agentPhone, setAgentPhone] = useState('');
   const [agentCompany, setAgentCompany] = useState('');
   const [agentCountry, setAgentCountry] = useState('');
+  // '' = not set: the country decides (lib/agents/language.js).
+  const [agentLanguage, setAgentLanguage] = useState('');
   const [agentCity, setAgentCity] = useState('');
   const [agentRegion, setAgentRegion] = useState('');
   const [agentTerritory, setAgentTerritory] = useState('');
@@ -53,6 +56,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         setAgentPhone(agent.agent_phone || '');
         setAgentCompany(agent.agent_company || '');
         setAgentCountry(agent.agent_country || '');
+        setAgentLanguage(agent.agent_language || '');
         setAgentCity(agent.agent_city || '');
         setAgentRegion(agent.agent_region || '');
         setAgentTerritory(agent.agent_territory || '');
@@ -67,6 +71,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         setAgentPhone('');
         setAgentCompany('');
         setAgentCountry('');
+        setAgentLanguage('');
         setAgentCity('');
         setAgentRegion('');
         setAgentTerritory('');
@@ -144,6 +149,7 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
         agent_phone: agentPhone.trim() || null,
         agent_company: agentCompany.trim() || null,
         agent_country: agentCountry.trim() || null,
+        agent_language: agentLanguage || null,
         agent_city: agentCity.trim() || null,
         agent_region: agentRegion.trim() || null,
         agent_territory: agentTerritory.trim() || null,
@@ -463,6 +469,25 @@ export default function AgentFormModal({ isOpen, onClose, agent, onSaved }) {
                 style={{ ...inp, width: '100%' }}
                 placeholder="Country"
               />
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Email language</label>
+            <select
+              value={agentLanguage}
+              onChange={(e) => setAgentLanguage(e.target.value)}
+              style={{ ...inp, width: '100%', cursor: 'pointer' }}
+              aria-label="Email language"
+            >
+              <option value="">
+                Auto — from country ({AGENT_LANGUAGE_LABELS[suggestAgentLanguage(agentCountry)]})
+              </option>
+              {AGENT_LANGUAGES.map((code) => (
+                <option key={code} value={code}>{AGENT_LANGUAGE_LABELS[code]}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: colors.textLight, marginTop: 4 }}>
+              The language LoveLab writes to this agent in (price list announcements). Belgium defaults to French — pick Nederlands for a Flemish agent.
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
