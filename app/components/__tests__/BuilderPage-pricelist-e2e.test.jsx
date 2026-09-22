@@ -159,10 +159,10 @@ describe('BuilderPage e2e — toggling the October list', () => {
     fireEvent.click(screen.getByTestId('pricelist-switch-confirm'))
 
     expect(caratOptionLabels()).toEqual([
-      '0.20 ct - €90',
-      '0.40 ct - €150',
+      '0.20 ct - €100',
+      '0.40 ct - €165',
       '0.70 ct - €200',
-      '1.10 ct - €320',
+      '1.01 ct - €320',
     ])
   })
 

@@ -121,9 +121,8 @@ describe('BuilderPage — Pricelist toggle', () => {
     expect(setPricelistYear).toHaveBeenCalledWith('2026')
   })
 
-  // The October list only reprices Moonlight / Sienna / Za-Ha, which most
-  // agents cannot sell — for them it is identical to 2026, so Sam asked that
-  // only admins and Piotr be offered it.
+  // The October list also reprices Iconix, which every agent can sell — so
+  // every logged-in agent is offered it.
   describe('who is offered the October list', () => {
     it('an admin is offered it', () => {
       renderToggle({ lines: [makeFilledLine()], profile: ADMIN })
@@ -143,9 +142,9 @@ describe('BuilderPage — Pricelist toggle', () => {
       expect(screen.getByTestId('pricelist-toggle-2026-10')).toBeInTheDocument()
     })
 
-    it('any other agent is not, and still gets 2025 and 2026', () => {
+    it('any other agent is offered it too (Iconix is on the October list)', () => {
       renderToggle({ lines: [makeFilledLine()], profile: PLAIN_AGENT })
-      expect(screen.queryByTestId('pricelist-toggle-2026-10')).not.toBeInTheDocument()
+      expect(screen.getByTestId('pricelist-toggle-2026-10')).toBeInTheDocument()
       expect(screen.getByTestId('pricelist-toggle-2025')).toBeInTheDocument()
       expect(screen.getByTestId('pricelist-toggle-2026')).toBeInTheDocument()
     })
@@ -155,7 +154,7 @@ describe('BuilderPage — Pricelist toggle', () => {
       expect(screen.queryByTestId('pricelist-toggle-2026-10')).not.toBeInTheDocument()
     })
 
-    it('mentions October in the tooltip only for those who can pick it', () => {
+    it('mentions October in the tooltip for logged-in agents who can pick it', () => {
       const { unmount } = renderToggle({ lines: [makeFilledLine()], profile: ADMIN })
       expect(screen.getByTestId('pricelist-toggle')).toHaveAttribute(
         'title', expect.stringContaining('October'),
@@ -163,21 +162,22 @@ describe('BuilderPage — Pricelist toggle', () => {
       unmount()
 
       renderToggle({ lines: [makeFilledLine()], profile: PLAIN_AGENT })
-      expect(screen.getByTestId('pricelist-toggle').getAttribute('title'))
-        .not.toContain('October')
+      expect(screen.getByTestId('pricelist-toggle')).toHaveAttribute(
+        'title', expect.stringContaining('October'),
+      )
     })
 
     // A document priced in October may be reopened by anyone. Dropping the
     // button would leave no list highlighted while October prices are on
     // screen, so the active list is always shown even when it is off-limits.
-    it('still shows the October button to an agent already on that list', () => {
+    it('still shows the October button when already on that list', () => {
       renderToggle({ lines: [makeFilledLine()], profile: PLAIN_AGENT, pricelistYear: '2026-10' })
       const btn = screen.getByTestId('pricelist-toggle-2026-10')
       expect(btn).toBeInTheDocument()
       expect(btn).toHaveAttribute('aria-checked', 'true')
     })
 
-    it('lets that agent move off October, but not back onto it', () => {
+    it('lets an agent move off October and back onto it', () => {
       const setPricelistYear = jest.fn()
       const { unmount } = renderToggle({
         lines: [makeFilledLine()], profile: PLAIN_AGENT, pricelistYear: '2026-10', setPricelistYear,
@@ -188,7 +188,7 @@ describe('BuilderPage — Pricelist toggle', () => {
       unmount()
 
       renderToggle({ lines: [makeFilledLine()], profile: PLAIN_AGENT, pricelistYear: '2026' })
-      expect(screen.queryByTestId('pricelist-toggle-2026-10')).not.toBeInTheDocument()
+      expect(screen.getByTestId('pricelist-toggle-2026-10')).toBeInTheDocument()
     })
   })
 

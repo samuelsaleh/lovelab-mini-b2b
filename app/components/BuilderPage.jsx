@@ -67,7 +67,7 @@ export function cardsForFamilyEntry(entry) {
 // Cheapest and dearest piece across a set of collections, on one price list.
 //
 // Reads the sizes each collection actually SELLS on that list rather than
-// walking col.carats end to end: Multi Moonlight lists 0.70 and 1.10 but prices
+// walking col.carats end to end: Multi Moonlight lists 0.70 and 1.01 but prices
 // them null before October, and getPrice answers 0 there — so the old
 // first-to-last card range rendered "€75 – €0". Returns null when nothing in
 // the set is priced, which the caller renders as no range at all.
@@ -692,10 +692,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Resolve once per render so every downstream getter / calculator sees the
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
-  // The October list is preview-only (it reprices Moonlight / Sienna / Za-Ha,
-  // which most agents cannot sell), so the toggle offers it to admins and the
-  // granted agents only. The active list is always offered so the button state
-  // keeps matching the prices in the builder.
+  // The October list is offered to anyone who can sell a collection it
+  // reprices (Iconix for every agent; Moonlight / Sienna / Za-Ha for admins
+  // and Piotr). See canSeePricelist in collectionAccess.js. The active list is
+  // always offered so the button state keeps matching the prices in the builder.
   const offeredPricelists = useMemo(
     () => getVisiblePricelists(isAdmin ? { ...profile, role: 'admin' } : profile, activePricelist),
     [isAdmin, profile, activePricelist],
@@ -3045,7 +3045,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                       title={
                         'Choose 2025 for legacy clients still on the old pricing during the 6-month transition. 2026 is the current list.'
                         + (offeredPricelists.includes('2026-10')
-                          ? ' The October revision reprices Moonlight, Sienna and Za-Ha.'
+                          ? ' The October revision reprices Moonlight, Sienna, Za-Ha and Iconix.'
                           : '')
                       }
                       style={{

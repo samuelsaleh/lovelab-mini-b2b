@@ -369,7 +369,7 @@ describe('priceRangeFor', () => {
   const SI2P = COLLECTIONS.find(c => c.id === 'SI2P')
 
   it('ignores sizes a price list does not sell', () => {
-    // Multi Moonlight lists 0.70 and 1.10 but prices them null before October.
+    // Multi Moonlight lists 0.70 and 1.01 but prices them null before October.
     // Walking col.carats end to end used to render the card as "€75 – €0".
     expect(priceRangeFor([MNH], '2026')).toEqual({ min: 75, max: 130 })
     expect(priceRangeFor([MNH], '2026-10')).toEqual({ min: 90, max: 320 })

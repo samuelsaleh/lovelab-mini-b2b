@@ -136,7 +136,7 @@ describe('CollectionConfig — carat dropdown reflects pricelistYear', () => {
 })
 
 // The October list is the first one whose SIZES differ, not just its prices.
-// Moonlight Multi sells 0.20 / 0.40 on 2026 and gains 0.70 / 1.10 in October,
+// Moonlight Multi sells 0.20 / 0.40 on 2026 and gains 0.70 / 1.01 in October,
 // so the dropdown must grow — and must never offer a size at €0.
 describe('CollectionConfig — carat dropdown per-pricelist sizes', () => {
   it('2026 offers only the two sizes Moonlight Multi sells on that list', () => {
@@ -151,10 +151,10 @@ describe('CollectionConfig — carat dropdown per-pricelist sizes', () => {
     renderCarat({ pricelistYear: '2026-10', certType: 'igi', col: MNH })
     const labels = caratOptionLabels()
     expect(labels).toHaveLength(4)
-    expect(labels[0]).toContain('0.20 ct - €90')
-    expect(labels[1]).toContain('0.40 ct - €150')
+    expect(labels[0]).toContain('0.20 ct - €100')
+    expect(labels[1]).toContain('0.40 ct - €165')
     expect(labels[2]).toContain('0.70 ct - €200')
-    expect(labels[3]).toContain('1.10 ct - €320')
+    expect(labels[3]).toContain('1.01 ct - €320')
   })
 
   it('never offers a carat at €0 on any pricelist', () => {

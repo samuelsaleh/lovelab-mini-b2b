@@ -143,7 +143,7 @@ describe('OrderForm — a carat retired from the catalog', () => {
     const labels = Array.from(carat.options).map((o) => o.text)
     expect(labels).toContain('0.20 ct')
     expect(labels).not.toContain('0.70 ct')
-    expect(labels).not.toContain('1.10 ct')
+    expect(labels).not.toContain('1.01 ct')
   })
 
   // The badge sits in the printed page header, so whatever it says lands on the
@@ -180,6 +180,6 @@ describe('OrderForm — a carat retired from the catalog', () => {
     const carat = caratSelects().find((s) => s.value === '0.40')
     const labels = Array.from(carat.options).map((o) => o.text)
     expect(labels).toContain('0.70 ct')
-    expect(labels).toContain('1.10 ct')
+    expect(labels).toContain('1.01 ct')
   })
 })
