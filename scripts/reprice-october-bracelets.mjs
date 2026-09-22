@@ -2,16 +2,20 @@
  * Apply the Sep 2026 bracelet reprice to Pricelist_LoveLab_2026_October.pdf.
  *
  * Page 2 is a full-page DeviceRGB raster (SHAPY overlay was already redrawn
- * by reprice-shapy-pricelist.mjs). Moonlight + the trailing Sienna One 0.10 row
- * live in that raster — erase those bands and redraw. SHAPY overlay text is
- * redrawn too so rebuilding the page does not drop it.
+ * by reprice-shapy-pricelist.mjs). Moonlight lives in that raster — erase those
+ * bands and redraw. The trailing Sienna One 0.10 band is erased and left blank
+ * (SI1 is kept in the app catalog but omitted from this PDF). SHAPY overlay
+ * text is redrawn too so rebuilding the page does not drop it.
  *
  * Page 3 (Sienna Two–Five + Iconix) is vector text — rewrite B2B/B2C glyph
  * runs in place, same technique as the necklace cells in the Shapy script.
+ * Sienna One 0.30 is removed from the content stream (empty TJ).
  *
  * Necklaces and classic bracelet pages are left alone.
  *
  * Run: node scripts/reprice-october-bracelets.mjs
+ * Prefers *.pre-bracelet-reprice.pdf as input when present so re-runs stay
+ * idempotent after the list has already been patched once.
  */
 import { PDFDocument, PDFName, StandardFonts, decodePDFRawStream, rgb } from 'pdf-lib'
 import { execFileSync } from 'node:child_process'
@@ -57,7 +61,7 @@ const SHAPY = {
   eraseW: 552,
 }
 
-// Moonlight data rows + trailing Sienna One 0.10 on the same raster page.
+// Moonlight data rows on the page-2 raster.
 // Baselines measured from the extracted page-2 PNG (top-of-page points).
 const MOONLIGHT_ROWS = [
   { name: 'MOONLIGHT LONG',     carat: '0,05', b2b: '€67',  b2c: '€255' },
@@ -73,7 +77,6 @@ const MOONLIGHT_ROWS = [
   { name: 'MOONLIGHT ORIGINAL', carat: '0,5',  b2b: '€250', b2c: '€750' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,7',  b2b: '€300', b2c: '€900' },
   { name: 'MOONLIGHT ORIGINAL', carat: '1,01', b2b: '€460', b2c: '€1.380' },
-  { name: 'SIENNA ONE',         carat: '0,1',  b2b: '€121', b2c: '€475' },
 ]
 
 const MOONLIGHT = {
@@ -83,13 +86,19 @@ const MOONLIGHT = {
   baselinePitch: 25.0,
   bandTop: 388.4,
   bandPitch: 25.0,
-  // Sienna One sits after a section header gap — override its band index.
-  // Rows 0..12 are contiguous; row 13 (SI1) uses an absolute baseline.
-  siennaOneBaselineTop: 748.9,
+  // Sienna One 0.10 sat after a section header gap — erase only, do not redraw.
   siennaOneBandTop: 734.4,
 }
 
-// Page 3 vector cells — B2B/B2C only (SI1 0.30 kept; necklaces untouched).
+// Page 3: remove SI1 0.30 entirely (name + carat + prices) from the text layer.
+const PAGE3_ERASE = [
+  { y: 96.78, x: 52.52, from: 'SIENNA ONE' },
+  { y: 97.08, x: 306.89, from: '0,3' },
+  { y: 97.08, x: 387.29, from: '€172' },
+  { y: 97.08, x: 521.62, from: '€675' },
+]
+
+// Page 3 vector cells — B2B/B2C only (necklaces untouched).
 const PAGE3_CELLS = [
   // SIENNA TWO
   { y: 122.05, x: 387.29, from: '€138', to: '€160' },
@@ -287,10 +296,56 @@ function rewriteCells(doc, pageIndex, cells) {
   return edits.length
 }
 
+/** Blank matching TJ runs (empty array) so the row disappears from the text layer too. */
+function eraseCells(doc, pageIndex, cells) {
+  const page = doc.getPages()[pageIndex]
+  const maps = glyphMaps(doc, page)
+  const { stream, contentsRef, multi } = readStream(doc, page)
+  if (multi && multi.length !== 1) {
+    throw new Error(`page ${pageIndex + 1}: multi-stream contents not supported for erase`)
+  }
+  const SCALE = 0.75
+  const token = /\/(\w+)\s+[\d.]+\s+Tf|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm|\[([^\]]*)\]\s*TJ/g
+  const edits = []
+  let font = null
+  let tx = 0
+  let ty = 0
+  let m
+  while ((m = token.exec(stream))) {
+    if (m[1]) { font = m[1]; continue }
+    if (m[6] !== undefined) { tx = Number(m[6]); ty = Number(m[7]); continue }
+    const { toChar } = maps[font] || {}
+    if (!toChar) continue
+    const text = [...m[8].matchAll(/<([0-9a-fA-F]+)>/g)]
+      .map((g) => toChar[g[1].toLowerCase()] ?? '�')
+      .join('')
+    const cell = cells.find((c) => (
+      c.from === text
+      && Math.abs(tx * SCALE - c.x) < 0.5
+      && Math.abs(ty * SCALE - c.y) < 0.5
+    ))
+    if (!cell) continue
+    edits.push({ cell, start: m.index, end: m.index + m[0].length, body: '[] TJ' })
+  }
+
+  for (const cell of cells) {
+    const hits = edits.filter((e) => e.cell === cell)
+    if (hits.length !== 1) {
+      throw new Error(`erase ${cell.from} at (${cell.x}, ${cell.y}): expected 1 match, found ${hits.length}`)
+    }
+  }
+
+  let patched = stream
+  for (const e of edits.sort((a, b) => b.start - a.start)) {
+    patched = patched.slice(0, e.start) + e.body + patched.slice(e.end)
+  }
+  doc.context.assign(contentsRef, doc.context.flateStream(Buffer.from(patched, 'latin1')))
+  return edits.length
+}
+
 function moonlightBands() {
   const bands = []
-  // Contiguous Moonlight data rows 0..12
-  for (let k = 0; k < MOONLIGHT_ROWS.length - 1; k++) {
+  for (let k = 0; k < MOONLIGHT_ROWS.length; k++) {
     bands.push([
       MOONLIGHT.eraseX,
       MOONLIGHT.bandTop + k * MOONLIGHT.bandPitch + ROW_INSET,
@@ -298,7 +353,7 @@ function moonlightBands() {
       MOONLIGHT.bandTop + (k + 1) * MOONLIGHT.bandPitch - ROW_INSET,
     ])
   }
-  // Sienna One 0.10 at the bottom of page 2
+  // Sienna One 0.10 at the bottom of page 2 — erase, leave blank
   bands.push([
     MOONLIGHT.eraseX,
     MOONLIGHT.siennaOneBandTop + ROW_INSET,
@@ -312,15 +367,18 @@ async function main() {
   const full = path.join(LISTS, FILE)
   const backup = path.join(LISTS, FILE.replace(/\.pdf$/, '.pre-bracelet-reprice.pdf'))
   if (!fs.existsSync(backup)) fs.copyFileSync(full, backup)
+  // Always patch from the pre-bracelet backup so PAGE3 from→to stays valid.
+  const inputPath = backup
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oct-bracelet-'))
   const pngPath = path.join(tmp, 'page.png')
   try {
-    const src = await PDFDocument.load(fs.readFileSync(full))
+    const src = await PDFDocument.load(fs.readFileSync(inputPath))
     const pageCount = src.getPageCount()
     const { width, height } = src.getPages()[SHAPY.pageIndex].getSize()
 
     const cells = rewriteCells(src, 2, PAGE3_CELLS)
+    const erased = eraseCells(src, 2, PAGE3_ERASE)
 
     extractPageImage(src, SHAPY.pageIndex, pngPath)
     eraseBands(pngPath, moonlightBands(), width, height)
@@ -341,12 +399,9 @@ async function main() {
           drawCell(page, font, SHAPY.fontSize, SHAPY.align, SHAPY.b2bX, baseline, row.b2b)
           drawCell(page, font, SHAPY.fontSize, SHAPY.align, SHAPY.b2cX, baseline, row.b2c)
         })
-        // Moonlight + Sienna One
+        // Moonlight only (Sienna One band erased above, not redrawn)
         MOONLIGHT_ROWS.forEach((row, k) => {
-          const fromTop = k < MOONLIGHT_ROWS.length - 1
-            ? MOONLIGHT.baselineTop + k * MOONLIGHT.baselinePitch
-            : MOONLIGHT.siennaOneBaselineTop
-          const baseline = height - fromTop
+          const baseline = height - (MOONLIGHT.baselineTop + k * MOONLIGHT.baselinePitch)
           page.drawText(row.name, { x: MOONLIGHT.nameX, y: baseline, size: MOONLIGHT.fontSize, font, color: INK })
           drawCell(page, font, MOONLIGHT.fontSize, MOONLIGHT.align, MOONLIGHT.caratX, baseline, row.carat)
           drawCell(page, font, MOONLIGHT.fontSize, MOONLIGHT.align, MOONLIGHT.b2bX, baseline, row.b2b)
@@ -359,7 +414,8 @@ async function main() {
     }
 
     fs.writeFileSync(full, await out.save())
-    console.log(`repriced ${FILE} (${MOONLIGHT_ROWS.length} moonlight/sienna rows, ${cells} page-3 cells)`)
+    console.log(`repriced ${FILE} (${MOONLIGHT_ROWS.length} moonlight rows, ${cells} page-3 cells, ${erased} SI1 erased)`)
+    console.log(`source: ${path.basename(inputPath)}`)
     console.log(`backup: ${backup}`)
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
