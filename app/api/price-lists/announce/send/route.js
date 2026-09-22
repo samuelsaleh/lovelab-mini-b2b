@@ -82,6 +82,8 @@ export async function POST(request) {
 
   const notes = normaliseNotes(body?.notes);
   if (Object.keys(notes).length === 0) return badRequest('Write what changed, in at least one language');
+  // Every agent also receives the English version below their own.
+  if (!notes.en) return badRequest('The English text is required: every agent receives it as a second version');
   for (const text of Object.values(notes)) {
     if (text.length > MAX_NOTE_LENGTH) return badRequest(`Note is too long (max ${MAX_NOTE_LENGTH} characters)`);
   }
@@ -105,6 +107,7 @@ export async function POST(request) {
       lang: testLang,
       firstName: firstNameOf(auth.user?.user_metadata?.full_name || ''),
       note: notes[testLang],
+      englishNote: notes.en,
       collectionLabels,
       allCollections,
       fileName: file.name,
@@ -177,6 +180,7 @@ export async function POST(request) {
       lang: r.language,
       firstName: firstNameOf(r.name),
       note: notes[r.language],
+      englishNote: notes.en,
       collectionLabels,
       allCollections,
       fileName: file.name,

@@ -98,6 +98,13 @@ describe('POST /api/price-lists/announce/send', () => {
     expect((await SEND(req({ ...GOOD, notes: { en: 'x'.repeat(2001) } }))).status).toBe(400)
   })
 
+  test('the English text is required, because every agent gets it as a second version', async () => {
+    const res = await SEND(req({ ...GOOD, notes: { it: 'Prezzi +5%.', nl: 'Prijzen +5%.' } }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/English/)
+    expect(mockSendEmail).not.toHaveBeenCalled()
+  })
+
   test('PDF that cannot be fetched fails the whole call before any send', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 })
     const res = await SEND(req(GOOD))
@@ -117,6 +124,9 @@ describe('POST /api/price-lists/announce/send', () => {
     expect(byTo['anna@x.com'].subject).toBe('Nuovo listino prezzi LoveLab — CUTY, CUBIX')
     expect(byTo['anna@x.com'].html).toContain('Gentile Anna,')
     expect(byTo['anna@x.com'].html).toContain('Prezzi +5%.')
+    expect(byTo['anna@x.com'].html).toContain('English version')
+    expect(byTo['anna@x.com'].html).toContain('Prices up 5%.')
+    expect(byTo['carl@x.com'].html).not.toContain('English version')
     expect(byTo['bart@x.com'].subject).toMatch(/^Nieuwe LoveLab-prijslijst/)
     expect(byTo['bart@x.com'].html).toContain('Prijzen +5%.')
     expect(byTo['carl@x.com'].subject).toMatch(/^New LoveLab price list/)

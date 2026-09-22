@@ -17,10 +17,11 @@ const EMPTY_TRANSLATIONS = {}
 /**
  * Announce a new price list to every agent, in their own language.
  *
- * Three steps: compose (PDF, collections, note), review the translations
- * (one editable tab per language that has recipients, live preview, test
- * copy), send (confirm, progress, results, retry the failures). Nothing is
- * sent until every language with recipients has a text.
+ * Three steps: compose (PDF, collections, note, who receives it), review
+ * the translations (one editable tab per language that has recipients plus
+ * English, which every agent also gets as a second version; live preview;
+ * test copy), send (confirm, progress, results, retry the failures).
+ * Nothing is sent until every language in play has a text.
  */
 export default function AnnouncePriceListModal({ open, onClose }) {
   const { t, lang: appLang } = useI18n()
@@ -37,6 +38,11 @@ export default function AnnouncePriceListModal({ open, onClose }) {
 
   const [recipients, setRecipients] = useState(null)
   const [recipientsError, setRecipientsError] = useState(null)
+  // Agents the admin has unticked for this send. Everyone is in by default.
+  const [excluded, setExcluded] = useState(() => new Set())
+  const [showRecipients, setShowRecipients] = useState(false)
+  const [savingLangFor, setSavingLangFor] = useState(null)
+  const [langError, setLangError] = useState(null)
 
   // translations[lang] = { status: 'pending' | 'done' | 'refused' | 'manual', verified, error }
   const [translations, setTranslations] = useState(EMPTY_TRANSLATIONS)
@@ -60,6 +66,10 @@ export default function AnnouncePriceListModal({ open, onClose }) {
     setSourceLang(defaultSourceLang)
     setRecipients(null)
     setRecipientsError(null)
+    setExcluded(new Set())
+    setShowRecipients(false)
+    setSavingLangFor(null)
+    setLangError(null)
     setTranslations(EMPTY_TRANSLATIONS)
     setTexts({})
     setActiveLang(null)
@@ -75,20 +85,28 @@ export default function AnnouncePriceListModal({ open, onClose }) {
   }, [open, reset])
 
   // Who will get it — fetched as soon as the modal opens so the counts sit
-  // next to the form while the admin writes.
+  // next to the form while the admin writes, and again after a language
+  // change so the list always shows what the profile says.
+  const loadRecipients = useCallback(async () => {
+    setRecipientsError(null)
+    try {
+      const res = await fetch('/api/price-lists/announce/recipients')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
+      setRecipients(data)
+      return data
+    } catch (err) {
+      setRecipientsError(err?.message || 'error')
+      return null
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setRecipientsError(null)
-    fetch('/api/price-lists/announce/recipients')
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
-        if (!cancelled) setRecipients(data)
-      })
-      .catch((err) => { if (!cancelled) setRecipientsError(err?.message || 'error') })
+    loadRecipients().then(() => { if (cancelled) return })
     return () => { cancelled = true }
-  }, [open])
+  }, [open, loadRecipients])
 
   const file = useMemo(() => PRICE_LIST_FILES.find((f) => f.path === filePath) || null, [filePath])
 
@@ -104,14 +122,25 @@ export default function AnnouncePriceListModal({ open, onClose }) {
     [collectionIds],
   )
 
-  // Languages that actually have someone to write to, in a stable order.
-  const neededLangs = useMemo(() => {
-    const counts = recipients?.counts || {}
-    return AGENT_LANGUAGES.filter((l) => (counts[l] || 0) > 0)
-  }, [recipients])
+  // Every eligible agent, grouped by language, and the included subset.
+  const allByLanguage = recipients?.byLanguage || {}
+  const totalRecipients = recipients?.total || 0
+  const includedByLanguage = useMemo(() => {
+    const out = {}
+    for (const lang of AGENT_LANGUAGES) {
+      const list = (allByLanguage[lang] || []).filter((r) => !excluded.has(r.id))
+      if (list.length) out[lang] = list
+    }
+    return out
+  }, [allByLanguage, excluded])
+  const includedCount = Object.values(includedByLanguage).reduce((n, list) => n + list.length, 0)
 
-  const recipientCount = recipients?.total || 0
-  const canCompose = !!file && (allCollections || collectionIds.size > 0) && note.trim().length > 0 && recipientCount > 0
+  // Languages that have someone to write to, in a stable order; plus
+  // English, which every agent receives as a second version.
+  const neededLangs = useMemo(() => AGENT_LANGUAGES.filter((l) => (includedByLanguage[l] || []).length > 0), [includedByLanguage])
+  const translationLangs = useMemo(() => AGENT_LANGUAGES.filter((l) => l === 'en' || neededLangs.includes(l)), [neededLangs])
+
+  const canCompose = !!file && (allCollections || collectionIds.size > 0) && note.trim().length > 0 && includedCount > 0
 
   const toggleCollection = (id) => {
     setCollectionIds((prev) => {
@@ -127,6 +156,43 @@ export default function AnnouncePriceListModal({ open, onClose }) {
       for (const c of group) (on ? next.add(c.id) : next.delete(c.id))
       return next
     })
+  }
+
+  const toggleRecipient = (id) => {
+    setExcluded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const setLanguageIncluded = (lang, on) => {
+    setExcluded((prev) => {
+      const next = new Set(prev)
+      for (const r of allByLanguage[lang] || []) (on ? next.delete(r.id) : next.add(r.id))
+      return next
+    })
+  }
+
+  // A language change is saved to the agent's profile, not kept for this
+  // send only: the next announcement must not repeat the mistake.
+  const saveAgentLanguage = async (id, code) => {
+    setSavingLangFor(id)
+    setLangError(null)
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_language: code || null }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
+      await loadRecipients()
+    } catch (err) {
+      setLangError(t('announce.languageSaveFailed', { reason: err?.message || 'error' }))
+    } finally {
+      setSavingLangFor(null)
+    }
   }
 
   // ── Step 2: translations ──────────────────────────────────────────────
@@ -149,35 +215,34 @@ export default function AnnouncePriceListModal({ open, onClose }) {
 
   const goToTranslate = () => {
     const source = note.trim()
-    const initialTexts = { [sourceLang]: source }
-    const initial = { [sourceLang]: { status: 'done', verified: true } }
-    setTexts(initialTexts)
-    setTranslations(initial)
-    setActiveLang(neededLangs.includes(sourceLang) ? sourceLang : (neededLangs[0] || sourceLang))
+    setTexts({ [sourceLang]: source })
+    setTranslations({ [sourceLang]: { status: 'done', verified: true } })
+    setActiveLang(translationLangs.includes(sourceLang) ? sourceLang : (translationLangs[0] || 'en'))
     setStep(2)
-    for (const target of neededLangs) {
+    for (const target of translationLangs) {
       if (target === sourceLang) continue
       translateOne(target, sourceLang, source)
     }
   }
 
-  const missingLangs = neededLangs.filter((l) => !(texts[l] || '').trim())
+  const missingLangs = translationLangs.filter((l) => !(texts[l] || '').trim())
   const readyToSend = neededLangs.length > 0 && missingLangs.length === 0
 
   const previewHtml = useMemo(() => {
     if (!activeLang || !file) return ''
     const siteUrl = typeof window !== 'undefined' ? window.location.origin : ''
-    const sample = recipients?.byLanguage?.[activeLang]?.[0]
+    const sample = includedByLanguage[activeLang]?.[0]
     const { html } = priceListAnnouncementEmail({
       lang: activeLang,
       firstName: firstNameOf(sample?.name || ''),
       note: texts[activeLang] || '',
+      englishNote: texts.en || '',
       collectionLabels,
       allCollections,
       fileName: file.name,
     }, siteUrl)
     return html
-  }, [activeLang, file, texts, collectionLabels, allCollections, recipients])
+  }, [activeLang, file, texts, collectionLabels, allCollections, includedByLanguage])
 
   const previewSubject = useMemo(() => {
     if (!activeLang || !file) return ''
@@ -190,7 +255,7 @@ export default function AnnouncePriceListModal({ open, onClose }) {
     filePath,
     collectionIds: allCollections ? [] : [...collectionIds],
     allCollections,
-    notes: Object.fromEntries(neededLangs.filter((l) => (texts[l] || '').trim()).map((l) => [l, texts[l].trim()])),
+    notes: Object.fromEntries(translationLangs.filter((l) => (texts[l] || '').trim()).map((l) => [l, texts[l].trim()])),
   })
 
   const sendTestCopy = async () => {
@@ -216,7 +281,6 @@ export default function AnnouncePriceListModal({ open, onClose }) {
     setSending({ done: 0, total: ids.length })
     let remaining = ids
     let done = 0
-    const collected = []
     const base = sendPayloadBase()
     try {
       for (let pass = 0; pass < MAX_SEND_PASSES && remaining.length > 0; pass += 1) {
@@ -227,7 +291,6 @@ export default function AnnouncePriceListModal({ open, onClose }) {
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
-        collected.push(...(data.results || []))
         done += (data.results || []).length
         remaining = Array.isArray(data.remaining) ? data.remaining : []
         setSending({ done, total: ids.length })
@@ -248,7 +311,7 @@ export default function AnnouncePriceListModal({ open, onClose }) {
     const ids = []
     for (const l of neededLangs) {
       if (!(texts[l] || '').trim()) continue
-      for (const r of recipients?.byLanguage?.[l] || []) ids.push(r.id)
+      for (const r of includedByLanguage[l] || []) ids.push(r.id)
     }
     return ids
   }
@@ -338,6 +401,18 @@ export default function AnnouncePriceListModal({ open, onClose }) {
               setSourceLang={setSourceLang}
               recipients={recipients}
               recipientsError={recipientsError}
+              allByLanguage={allByLanguage}
+              includedByLanguage={includedByLanguage}
+              includedCount={includedCount}
+              totalRecipients={totalRecipients}
+              excluded={excluded}
+              toggleRecipient={toggleRecipient}
+              setLanguageIncluded={setLanguageIncluded}
+              showRecipients={showRecipients}
+              setShowRecipients={setShowRecipients}
+              saveAgentLanguage={saveAgentLanguage}
+              savingLangFor={savingLangFor}
+              langError={langError}
             />
           )}
 
@@ -345,6 +420,7 @@ export default function AnnouncePriceListModal({ open, onClose }) {
             <TranslateStep
               t={t}
               mobile={mobile}
+              translationLangs={translationLangs}
               neededLangs={neededLangs}
               activeLang={activeLang}
               setActiveLang={setActiveLang}
@@ -352,7 +428,7 @@ export default function AnnouncePriceListModal({ open, onClose }) {
               texts={texts}
               setTexts={setTexts}
               setTranslations={setTranslations}
-              recipients={recipients}
+              includedByLanguage={includedByLanguage}
               sourceLang={sourceLang}
               note={note}
               translateOne={translateOne}
@@ -455,9 +531,10 @@ function mergeResults(prev, incoming) {
 function ComposeStep({
   t, mobile, filePath, setFilePath, bracelets, necklaces, collectionIds, toggleCollection, setGroup,
   allCollections, setAllCollections, note, setNote, sourceLang, setSourceLang, recipients, recipientsError,
+  allByLanguage, includedByLanguage, includedCount, totalRecipients, excluded, toggleRecipient, setLanguageIncluded,
+  showRecipients, setShowRecipients, saveAgentLanguage, savingLangFor, langError,
 }) {
-  const counts = recipients?.counts || {}
-  const chips = AGENT_LANGUAGES.filter((l) => counts[l]).map((l) => `${counts[l]} ${AGENT_LANGUAGE_LABELS[l]}`)
+  const chips = AGENT_LANGUAGES.filter((l) => includedByLanguage[l]).map((l) => `${includedByLanguage[l].length} ${AGENT_LANGUAGE_LABELS[l]}`)
 
   return (
     <>
@@ -527,19 +604,35 @@ function ComposeStep({
           <select value={sourceLang} onChange={(e) => setSourceLang(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
             {AGENT_LANGUAGES.map((l) => <option key={l} value={l}>{AGENT_LANGUAGE_LABELS[l]}</option>)}
           </select>
+          <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 6, lineHeight: 1.4 }}>{t('announce.englishAlways')}</div>
         </div>
       </div>
 
       <div style={{ fontSize: 12, color: colors.text, padding: '10px 12px', borderRadius: 8, background: '#f7f5fb', border: `1px solid ${colors.lineGray}` }}>
-        <div style={{ ...labelStyle, marginBottom: 4 }}>{t('announce.recipients')}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <div style={{ ...labelStyle, marginBottom: 0 }}>
+            {t('announce.recipients')}
+            {recipients && totalRecipients > 0 && (
+              <span style={{ marginLeft: 8, textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>
+                {t('announce.selectedCount', { selected: includedCount, total: totalRecipients })}
+              </span>
+            )}
+          </div>
+          {recipients && totalRecipients > 0 && (
+            <button type="button" onClick={() => setShowRecipients((s) => !s)} style={linkBtn}>
+              {showRecipients ? `▾ ${t('announce.hideRecipients')}` : `▸ ${t('announce.editRecipients')}`}
+            </button>
+          )}
+        </div>
         {recipientsError && <div style={{ color: colors.danger }}>{recipientsError}</div>}
         {!recipients && !recipientsError && <div style={{ color: colors.lovelabMuted }}>{t('announce.recipientsLoading')}</div>}
-        {recipients && recipients.total === 0 && <div style={{ color: colors.danger }}>{t('announce.recipientsNone')}</div>}
-        {recipients && recipients.total > 0 && (
+        {recipients && totalRecipients === 0 && <div style={{ color: colors.danger }}>{t('announce.recipientsNone')}</div>}
+        {recipients && totalRecipients > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {chips.map((c) => (
               <span key={c} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: '#fff', border: `1px solid ${colors.lineGray}`, color: colors.inkPlum }}>{c}</span>
             ))}
+            {includedCount === 0 && <span style={{ fontSize: 11, color: colors.danger }}>{t('announce.recipientsNoneSelected')}</span>}
           </div>
         )}
         {recipients?.fallbackToEnglish > 0 && (
@@ -548,25 +641,93 @@ function ComposeStep({
         {recipients?.missingEmail?.length > 0 && (
           <div style={{ fontSize: 11, color: colors.danger, marginTop: 4 }}>{t('announce.missingEmail', { count: recipients.missingEmail.length })}</div>
         )}
+
+        {showRecipients && recipients && totalRecipients > 0 && (
+          <RecipientsEditor
+            t={t}
+            mobile={mobile}
+            allByLanguage={allByLanguage}
+            excluded={excluded}
+            toggleRecipient={toggleRecipient}
+            setLanguageIncluded={setLanguageIncluded}
+            saveAgentLanguage={saveAgentLanguage}
+            savingLangFor={savingLangFor}
+            langError={langError}
+          />
+        )}
       </div>
     </>
   )
 }
 
+function RecipientsEditor({ t, mobile, allByLanguage, excluded, toggleRecipient, setLanguageIncluded, saveAgentLanguage, savingLangFor, langError }) {
+  return (
+    <div style={{ marginTop: 10, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 8 }} data-testid="recipients-editor">
+      {langError && <div style={{ fontSize: 11, color: colors.danger, marginBottom: 6 }}>{langError}</div>}
+      {AGENT_LANGUAGES.filter((l) => (allByLanguage[l] || []).length > 0).map((lang) => {
+        const list = allByLanguage[lang]
+        const on = list.filter((r) => !excluded.has(r.id)).length
+        return (
+          <div key={lang} style={{ marginBottom: 8 }} data-testid={`recipients-${lang}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {AGENT_LANGUAGE_LABELS[lang]} <span style={{ fontWeight: 500, color: colors.lovelabMuted }}>{on}/{list.length}</span>
+              </span>
+              <span style={{ fontSize: 11 }}>
+                <button type="button" onClick={() => setLanguageIncluded(lang, true)} style={linkBtn}>{t('announce.includeAll')}</button>
+                {' · '}
+                <button type="button" onClick={() => setLanguageIncluded(lang, false)} style={linkBtn}>{t('announce.excludeAll')}</button>
+              </span>
+            </div>
+            {list.map((r) => {
+              const included = !excluded.has(r.id)
+              return (
+                <div key={r.id} style={{
+                  display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'auto 1fr auto', gap: mobile ? 4 : 10, alignItems: 'center',
+                  padding: '5px 0', borderTop: `1px solid ${colors.borderLight || colors.lineGray}`, opacity: included ? 1 : 0.55,
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minWidth: 0 }}>
+                    <input type="checkbox" checked={included} onChange={() => toggleRecipient(r.id)} aria-label={`${t('announce.include')} ${r.name || r.email}`} />
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name || r.email}</span>
+                  </label>
+                  <span style={{ fontSize: 11, color: colors.lovelabMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.email}{r.status === 'paused' ? ` · ${t('announce.paused')}` : ''}
+                    {r.languageSource !== 'stored' ? ` · ${t('announce.languageAuto')}` : ''}
+                  </span>
+                  <select
+                    value={r.languageSource === 'stored' ? r.language : ''}
+                    disabled={savingLangFor === r.id}
+                    onChange={(e) => saveAgentLanguage(r.id, e.target.value)}
+                    aria-label={`${t('announce.languageFor')} ${r.name || r.email}`}
+                    style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}
+                  >
+                    <option value="">{t('announce.languageAuto')} ({AGENT_LANGUAGE_LABELS[r.language]})</option>
+                    {AGENT_LANGUAGES.map((l) => <option key={l} value={l}>{AGENT_LANGUAGE_LABELS[l]}</option>)}
+                  </select>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Step 2 ────────────────────────────────────────────────────────────────
 function TranslateStep({
-  t, mobile, neededLangs, activeLang, setActiveLang, translations, texts, setTexts, setTranslations,
-  recipients, sourceLang, note, translateOne, showPreview, setShowPreview, previewHtml, previewSubject,
+  t, mobile, translationLangs, neededLangs, activeLang, setActiveLang, translations, texts, setTexts, setTranslations,
+  includedByLanguage, sourceLang, note, translateOne, showPreview, setShowPreview, previewHtml, previewSubject,
   testState, sendTestCopy, missingLangs,
 }) {
   const state = translations[activeLang] || {}
-  const agents = recipients?.byLanguage?.[activeLang] || []
+  const agents = includedByLanguage[activeLang] || []
+  const englishOnlyAsSecond = activeLang === 'en' && !neededLangs.includes('en')
 
   const badge = (lang) => {
     const s = translations[lang]?.status
     const hasText = !!(texts[lang] || '').trim()
     if (s === 'pending') return { color: colors.lovelabMuted, text: '…' }
-    if (s === 'refused' && !hasText) return { color: colors.danger, text: '!' }
     if (!hasText) return { color: colors.danger, text: '!' }
     if (translations[lang]?.verified === false) return { color: colors.warning, text: '?' }
     return { color: colors.success, text: '✓' }
@@ -575,9 +736,10 @@ function TranslateStep({
   return (
     <>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-        {neededLangs.map((lang) => {
+        {translationLangs.map((lang) => {
           const b = badge(lang)
           const active = lang === activeLang
+          const count = (includedByLanguage[lang] || []).length
           return (
             <button key={lang} type="button" onClick={() => setActiveLang(lang)} style={{
               fontSize: 12, fontWeight: 700, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: fonts.body,
@@ -586,7 +748,7 @@ function TranslateStep({
             }}>
               {AGENT_LANGUAGE_LABELS[lang]}
               <span style={{ fontSize: 10, color: active ? '#fff' : b.color }}>{b.text}</span>
-              <span style={{ fontSize: 10, opacity: 0.7 }}>{recipients?.counts?.[lang] || 0}</span>
+              <span style={{ fontSize: 10, opacity: 0.7 }}>{lang === 'en' && count === 0 ? '+' : count}</span>
             </button>
           )
         })}
@@ -602,8 +764,13 @@ function TranslateStep({
             <label style={labelStyle}>
               {t('announce.note')} — {AGENT_LANGUAGE_LABELS[activeLang]}
             </label>
-            <span style={{ fontSize: 11, color: colors.lovelabMuted }}>{t('announce.agentsInLanguage', { count: agents.length })}</span>
+            <span style={{ fontSize: 11, color: colors.lovelabMuted }}>
+              {englishOnlyAsSecond ? t('announce.englishSecondVersion') : t('announce.agentsInLanguage', { count: agents.length })}
+            </span>
           </div>
+          {activeLang === 'en' && !englishOnlyAsSecond && (
+            <div style={{ fontSize: 11, color: colors.lovelabMuted, marginBottom: 6 }}>{t('announce.englishSecondVersion')}</div>
+          )}
 
           {state.status === 'pending' && (
             <div style={{ fontSize: 12, color: colors.lovelabMuted, marginBottom: 6 }}>{t('announce.translating')}</div>
@@ -630,6 +797,7 @@ function TranslateStep({
             disabled={state.status === 'pending'}
             onChange={(e) => setTexts((p) => ({ ...p, [activeLang]: e.target.value }))}
             rows={8}
+            aria-label={`${t('announce.note')} ${AGENT_LANGUAGE_LABELS[activeLang]}`}
             style={{ ...inputStyle, resize: 'vertical', minHeight: 160, lineHeight: 1.45, fontSize: 12 }}
           />
 
@@ -644,7 +812,7 @@ function TranslateStep({
             <button
               type="button"
               onClick={sendTestCopy}
-              disabled={testState?.status === 'sending' || !(texts[activeLang] || '').trim()}
+              disabled={testState?.status === 'sending' || !(texts[activeLang] || '').trim() || !(texts.en || '').trim()}
               style={linkBtn}
             >
               ✉ {t('announce.testCopy')}
