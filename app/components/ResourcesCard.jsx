@@ -288,8 +288,10 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                 Internal Software
               </LinkButton>
             )}
-            {isAdmin && (
-              <div style={{
+            {/* Documents: every agent gets the catalogues (all languages) and
+                the brand documents, to download or email to a client (Sam,
+                22 Sep 2026). Price lists, EAN, packs and IGI stay admin-only. */}
+            <div style={{
                 marginTop: 6, paddingTop: 12,
                 borderTop: `1px dashed ${colors.inkPlum}30`,
                 display: 'flex', flexDirection: 'column', gap: 6,
@@ -306,6 +308,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   {t('resources.documents')}
                 </div>
                 <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
+                {isAdmin && (<>
                 <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} status={packsStatus} onRetry={retryPacks} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
@@ -326,6 +329,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   {t('resources.announcePriceList')}
                 </button>
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
+                </>)}
                 <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} />
 
                 {count > 0 && (
@@ -353,9 +357,8 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   files={selectedFiles}
                   folderLabel={folderSummary}
                 />
-                <AnnouncePriceListModal open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+                {isAdmin && <AnnouncePriceListModal open={announceOpen} onClose={() => setAnnounceOpen(false)} />}
               </div>
-            )}
           </div>
         </div>
 

@@ -57,14 +57,26 @@ const FRENCH_PDFS = {
 }
 
 describe('ResourcesCard — EAN Codes folder', () => {
-  it('does not render the document folders for non-admins', () => {
+  it('gives non-admins the catalogues and brand documents, but not the admin-only folders', () => {
     render(<ResourcesCard isAdmin={false} />)
+    expect(screen.getByText('Catalogue')).toBeInTheDocument()
+    expect(screen.getByText('Brand Documents')).toBeInTheDocument()
     expect(screen.queryByText('EAN Codes')).not.toBeInTheDocument()
-    expect(screen.queryByText('Catalogue')).not.toBeInTheDocument()
-    expect(screen.queryByText('Brand Documents')).not.toBeInTheDocument()
+    expect(screen.queryByText('Packs')).not.toBeInTheDocument()
     // Price lists are wholesale documents — no agent downloads or emails them,
     // Piotr included. Only the builder's price list toggle is per-agent.
     expect(screen.queryByText('Price List')).not.toBeInTheDocument()
+    expect(screen.queryByText('resources.announcePriceList')).not.toBeInTheDocument()
+  })
+
+  it('lets a non-admin pick a catalogue and a brand document and email them', () => {
+    render(<ResourcesCard isAdmin={false} />)
+    fireEvent.click(screen.getByText('Catalogue'))
+    expect(screen.getAllByRole('checkbox', { name: /^Select .*Catalogue.*\.pdf$/ })).toHaveLength(8)
+    fireEvent.click(screen.getByLabelText('Select Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf'))
+    fireEvent.click(screen.getByText('Brand Documents'))
+    fireEvent.click(screen.getByLabelText('Select LoveLab Brand Presentation — German.pdf'))
+    expect(screen.getByText(/Send 2 files by email/i)).toBeInTheDocument()
   })
 
   it('does not render the price list folder for Piotr either', () => {
@@ -132,64 +144,20 @@ describe('ResourcesCard — IGI folder', () => {
   })
 })
 
-describe('ResourcesCard — role-aware catalogue access', () => {
-  const SHOWROOM_ORG = '171e2660-88f9-4677-a346-72d7c71462e9'
+describe('ResourcesCard — every agent sees every catalogue', () => {
   const optionNames = () => screen.queryAllByRole('option').map((option) => option.textContent)
 
-  it('shows no catalogue preview to an unassigned agent', () => {
+  it('shows an unassigned agent all eight catalogues in the preview selector', () => {
     render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
-    expect(screen.queryByLabelText('Catalogue preview')).not.toBeInTheDocument()
+    expect(optionNames()).toHaveLength(8)
+    expect(optionNames()).toContain('Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
+    expect(optionNames()).toContain('Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf')
   })
 
-  it('shows Sarah’s organization the September and October non-General French catalogues', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="wassila@showroomaccestory.com" organizationId={SHOWROOM_ORG} />)
-    expect(optionNames()).toEqual([
-      'Sept Fr LoveLab B2B Catalogue (210 x 210 mm).pdf',
-      '_Oct FR_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-    ])
-  })
-
-  it('does not grant Sarah’s catalogues from a lookalike email without membership', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="outsider@showroomaccestory.com" organizationId="other-org" />)
-    expect(screen.queryByLabelText('Catalogue preview')).not.toBeInTheDocument()
-  })
-
-  it('shows Nicolas the September and October General French catalogues', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="NICOLAS.VIAL@ASCENSION-FRANCE.COM" />)
-    expect(optionNames()).toEqual([
-      'Sept Fr LoveLab B2B Catalogue General (210 x 210 mm).pdf',
-      'Oct FR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    ])
-  })
-
-  it('shows Piotr only October English and Polish', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="piotr.kicinski84@gmail.com" />)
-    expect(optionNames()).toEqual([
-      'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-      'Oct PL_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    ])
-  })
-
-  it('shows Bastian only October English and German', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="bastianmeyer319@hotmail.com" />)
-    expect(optionNames()).toEqual([
-      'Oct EN_LoveLab_B2B_Catalogue (210 x 210 mm).pdf',
-      'Oct DE_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf',
-    ])
-  })
-
-  it('shows admins all eight retained catalogues, including admin-only Greek', () => {
+  it('shows admins the same eight', () => {
     render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     expect(optionNames()).toHaveLength(8)
-    expect(optionNames()).toContain('Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
     expect(optionNames()).not.toContain('EN_LoveLab_B2B_Catalogue.pdf')
-  })
-
-  it('gives the Samuel commercial assistant the same eight catalogues as admins', () => {
-    render(<ResourcesCard isAdmin={false} userEmail="SAMUEL@LOVE-LAB.COM" />)
-    expect(optionNames()).toHaveLength(8)
-    expect(optionNames()).toContain('Oct GR_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
-    expect(optionNames()).toContain('Oct PL_LoveLab_B2B_Catalogue General (210 x 210 mm).pdf')
   })
 
   test.each([
@@ -218,12 +186,21 @@ describe('ResourcesCard — role-aware catalogue access', () => {
 })
 
 describe('ResourcesCard — Brand Documents folder', () => {
-  it('renders Brand Documents for admins only', () => {
+  it('renders Brand Documents for agents and admins alike', () => {
     const { rerender } = render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
-    expect(screen.queryByText('Brand Documents')).not.toBeInTheDocument()
+    expect(screen.getByText('Brand Documents')).toBeInTheDocument()
 
     rerender(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
     expect(screen.getByText('Brand Documents')).toBeInTheDocument()
+  })
+
+  it('lists all five brand documents for an agent', () => {
+    render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
+    fireEvent.click(screen.getByText('Brand Documents'))
+    for (const name of ['French', 'English', 'German', 'Italian']) {
+      expect(screen.getByText(`LoveLab Brand Presentation — ${name}.pdf`)).toBeInTheDocument()
+    }
+    expect(screen.getByText('LoveLab Lifestyle Slideshow.pdf')).toBeInTheDocument()
   })
 
   it('lists French and English brand presentations with encoded download hrefs', () => {
