@@ -84,6 +84,13 @@ describe('GET /api/documents — an admin asking for their own orders (Sam, 15 S
     const orCalls = mockQuery.or.mock.calls.map((c) => c[0])
     expect(orCalls.some((f) => /created_by\.in\.\(admin-user\)/.test(f))).toBe(false)
   })
+
+  test("created_by_agent leaves out orders explicitly taken away from the agent (Sam, 22 Sep 2026)", async () => {
+    await GET(makeRequest({ created_by_agent: 'bastian-uuid' }))
+    const orCalls = mockQuery.or.mock.calls.map((c) => c[0])
+    expect(orCalls.some((f) => /^created_by\.in\.\(/.test(f))).toBe(true)
+    expect(orCalls).toContain('metadata->>no_agent.is.null,metadata->>no_agent.neq.true')
+  })
 })
 
 describe('GET /api/documents', () => {
