@@ -66,6 +66,11 @@ const CHANNEL_CONFIG = {
   delete_from_stock: { showEvent: false, showConsignment: false, showComment: true, autoClientName: 'Write-off' },
 }
 
+// Explicit "no agent" choice in the selling-agent dropdown. Distinct from ''
+// (which on an edit means "keep the current agent") so an admin can take an
+// existing order away from an agent (Sam, 22 Sep 2026).
+export const NO_AGENT = '__none__';
+
 export default function SaveDocumentModal({
   isOpen,
   onClose,
@@ -228,6 +233,22 @@ export default function SaveDocumentModal({
             a => a.agent_status === 'active' || a.agent_status === 'invited'
           );
           setAgents(activeAgents);
+
+      // On an edit, show the order's current agent so "No agent" is a real
+      // choice next to it. If the order cannot be read, the blank option
+      // still means "keep the current agent".
+      if (isAdmin && editingDocumentId) {
+        try {
+          const docRes = await fetch(`/api/documents/${editingDocumentId}`, { signal: controller.signal });
+          const docData = docRes?.ok ? await safeJson(docRes) : null;
+          const currentAgentId = docData?.document?.agent_id || null;
+          if (currentAgentId && activeAgents.some((a) => a.id === currentAgentId)) {
+            setSelectedAgentId(currentAgentId);
+          }
+        } catch {
+          // keep '' — "Keep current agent"
+        }
+      }
         } catch { /* non-blocking */ }
       }
 
@@ -560,10 +581,11 @@ export default function SaveDocumentModal({
           body: JSON.stringify({
           event_id: (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent ? (selectedEventId || null) : null,
           // Selling agent. On a NEW order we always send it (null = no agent);
-          // on an EDIT we only send it when a value is chosen, so we never wipe
-          // an existing attribution just because the modal opened blank.
+          // on an EDIT we only send it when a choice was made — an agent, or
+          // the explicit "No agent" — so a modal that opened blank never wipes
+          // an existing attribution.
           ...(((CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && (!editingDocumentId || selectedAgentId))
-            ? { agent_id: selectedAgentId || null }
+            ? { agent_id: selectedAgentId && selectedAgentId !== NO_AGENT ? selectedAgentId : null }
             : {}),
           client_name: resolvedClientName,
           client_company: clientCompany || null,
@@ -946,6 +968,13 @@ export default function SaveDocumentModal({
                     onChange={(e) => {
                       const agentId = e.target.value
                       setSelectedAgentId(agentId)
+                      if (agentId === NO_AGENT) {
+                        // Taking the order away from an agent: drop their
+                        // folder, keep a real fair if one is selected.
+                        const current = events.find((ev) => ev.id === selectedEventId)
+                        if (current?.type === 'agent') setSelectedEventId('')
+                        return
+                      }
                       if (!agentId) {
                         setSelectedEventId('')
                         return
@@ -963,9 +992,8 @@ export default function SaveDocumentModal({
                       fontFamily: fonts.body, color: colors.charcoal, background: '#fff', cursor: 'pointer',
                     }}
                   >
-                    <option value="">
-                      {editingDocumentId ? 'Keep current agent' : 'No agent (office / direct)'}
-                    </option>
+                    {editingDocumentId && <option value="">Keep current agent</option>}
+                    <option value={NO_AGENT}>No agent (office / direct)</option>
                     {agents.map(a => (
                       <option key={a.id} value={a.id}>{a.full_name || a.email}</option>
                     ))}
@@ -976,9 +1004,14 @@ export default function SaveDocumentModal({
                     <span style={{ color: colors.lovelabMuted }}> — this order is credited to you.</span>
                   </div>
                 )}
-                {isAdmin && selectedAgentId && (
+                {isAdmin && selectedAgentId && selectedAgentId !== NO_AGENT && (
                   <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>
                     The matching agent folder is selected automatically below.
+                  </div>
+                )}
+                {isAdmin && editingDocumentId && selectedAgentId === NO_AGENT && (
+                  <div style={{ fontSize: 11, color: colors.lovelabMuted, marginTop: 5 }}>
+                    Saving removes the agent from this order.
                   </div>
                 )}
               </div>
