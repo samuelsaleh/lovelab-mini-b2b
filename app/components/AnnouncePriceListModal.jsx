@@ -439,6 +439,7 @@ export default function AnnouncePriceListModal({ open, onClose }) {
               testState={testState}
               sendTestCopy={sendTestCopy}
               missingLangs={missingLangs}
+              onEditRecipients={() => { setShowRecipients(true); setStep(1) }}
             />
           )}
 
@@ -729,7 +730,7 @@ function RecipientsEditor({ t, mobile, allByLanguage, excluded, toggleRecipient,
 function TranslateStep({
   t, mobile, translationLangs, neededLangs, activeLang, setActiveLang, translations, texts, setTexts, setTranslations,
   includedByLanguage, sourceLang, note, translateOne, showPreview, setShowPreview, previewHtml, previewSubject,
-  testState, sendTestCopy, missingLangs,
+  testState, sendTestCopy, missingLangs, onEditRecipients,
 }) {
   const state = translations[activeLang] || {}
   const agents = includedByLanguage[activeLang] || []
@@ -814,6 +815,8 @@ function TranslateStep({
 
           <div style={{ marginTop: 10, fontSize: 11, color: colors.lovelabMuted }}>
             {agents.map((a) => a.name || a.email).join(', ')}
+            {agents.length > 0 ? ' · ' : ''}
+            <button type="button" onClick={onEditRecipients} style={{ ...linkBtn, fontSize: 11 }}>{t('announce.editRecipients')}</button>
           </div>
 
           <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

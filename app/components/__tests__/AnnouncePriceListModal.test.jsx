@@ -123,6 +123,17 @@ describe('AnnouncePriceListModal — recipients', () => {
     expect(screen.getByText('3 of 3 selected')).toBeInTheDocument()
   })
 
+  test('step 2 offers a shortcut back to the recipients list', async () => {
+    await openWithRecipients()
+    compose()
+    fireEvent.click(screen.getByText('Next: translate'))
+    await screen.findByRole('button', { name: /Français|Nederlands/ })
+    const links = screen.getAllByText('Edit recipients')
+    fireEvent.click(links[links.length - 1])
+    expect(await screen.findByTestId('recipients-editor')).toBeInTheDocument()
+    expect(screen.getByText('3 of 3 selected')).toBeInTheDocument()
+  })
+
   test('nobody selected blocks the next step', async () => {
     await openWithRecipients()
     for (const name of ['Anna Rossi', 'Bart', 'Carl']) fireEvent.click(screen.getByLabelText(`Include ${name}`))
