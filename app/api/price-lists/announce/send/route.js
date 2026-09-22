@@ -14,11 +14,15 @@ import { priceListAnnouncementEmail, firstNameOf, MAX_NOTE_LENGTH } from '@/lib/
 
 export const runtime = 'nodejs';
 
-// Vercel functions have a ~10 s wall clock: time-box the loop and return
-// `remaining` so the modal calls again until the queue is drained. Six in
-// flight keeps a 500-agent broadcast to a handful of calls without tripping
-// Resend's per-second limit on most plans.
-const CONCURRENCY = 6;
+// Time-boxed loop (see lib/mapPoolWithDeadline.js): the route returns
+// `remaining` and the modal calls again until the queue is drained.
+//
+// Resend allows 2 requests per second. The fair send at 8 in flight got
+// HTTP 429 on 9 Sept 2026 and a third of the German drafts failed. Two
+// workers, each waiting out a full second per email, stays at that limit;
+// a hundred agents is under a minute across a few calls.
+const CONCURRENCY = 2;
+const MIN_MS_PER_SEND = process.env.NODE_ENV === 'test' ? 0 : 1000;
 const TIME_BUDGET_MS = 8500;
 const MAX_RECIPIENTS = 500;
 const REPLY_TO = 'alberto@love-lab.com';
@@ -161,6 +165,14 @@ export async function POST(request) {
 
   const deadlineAt = Date.now() + TIME_BUDGET_MS;
   const outcomes = await mapPoolWithDeadline(queue, CONCURRENCY, deadlineAt, async (r) => {
+    const startedAt = Date.now();
+    const outcome = await sendOne(r);
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < MIN_MS_PER_SEND) await new Promise((res) => setTimeout(res, MIN_MS_PER_SEND - elapsed));
+    return outcome;
+  });
+
+  async function sendOne(r) {
     const { subject, html } = priceListAnnouncementEmail({
       lang: r.language,
       firstName: firstNameOf(r.name),
@@ -184,7 +196,7 @@ export async function POST(request) {
       id: r.id, email: r.email, name: r.name, lang: r.language, status: 'failed',
       reason: result.reason || 'unknown', detail: result.status ? `HTTP ${result.status}` : (result.error || null),
     };
-  });
+  }
 
   const remaining = [];
   let sent = 0;
