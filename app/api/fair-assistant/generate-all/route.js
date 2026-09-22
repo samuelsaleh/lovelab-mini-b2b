@@ -74,7 +74,7 @@ export async function POST(request) {
     paragraph2: batch.paragraph2,
     signoff: batch.signoff,
   };
-  const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.';
+  const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab-antwerp.com or contact us anytime.';
   const fairName = batch.fair_name || batch.name;
 
   function slotsForLead(lead) {

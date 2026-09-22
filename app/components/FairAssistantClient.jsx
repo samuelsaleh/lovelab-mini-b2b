@@ -1550,16 +1550,16 @@ export default function FairAssistantClient() {
                   description: 'Two pill buttons sit between paragraph 1 and 2. Clear Button 2 to hide it.',
                   fields: [
                     { key: 'button1_label', label: 'Button 1 label (filled)', kind: 'input', placeholder: 'Visit Our Website' },
-                    { key: 'button1_url',   label: 'Button 1 URL',           kind: 'input', placeholder: 'https://lovelab.be/' },
+                    { key: 'button1_url',   label: 'Button 1 URL',           kind: 'input', placeholder: 'https://lovelab-antwerp.com/' },
                     { key: 'button2_label', label: 'Button 2 label (outline)', kind: 'input', placeholder: 'B2B Login' },
-                    { key: 'button2_url',   label: 'Button 2 URL',             kind: 'input', placeholder: 'https://lovelab.be/b2b-signup' },
+                    { key: 'button2_url',   label: 'Button 2 URL',             kind: 'input', placeholder: 'https://app.lovelab-antwerp.com/' },
                   ],
                 },
                 {
                   id: 'advanced',
                   title: 'Extras',
                   icon: '',
-                  description: 'Optional. Auto-hidden if it just mentions lovelab.be (buttons already say it).',
+                  description: 'Optional. Auto-hidden if it just mentions lovelab-antwerp.com (buttons already say it).',
                   fields: [
                     { key: 'cta_line', label: 'Extra CTA sentence', kind: 'textarea', rows: 2 },
                   ],

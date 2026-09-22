@@ -285,7 +285,7 @@ export default function QuoteModal({ quote, client, onClose, onFinalize }) {
             textAlign: 'center', 
             lineHeight: 1.7 
           }}>
-            THE LOVE GROUP BV · Schupstraat 20, 2018 Antwerp · hello@love-lab.com · www.lovelab.be<br />
+            THE LOVE GROUP BV · Schupstraat 20, 2018 Antwerp · hello@love-lab.com · www.lovelab-antwerp.com<br />
             VAT: BE0627515170 · Delivery 4–6 weeks · 18KT gold on request{!showBelgianVat && ' · Prices excl. VAT'}
           </div>
         </div>

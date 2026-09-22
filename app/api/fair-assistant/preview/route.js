@@ -70,7 +70,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'No leads available for preview' }, { status: 400 });
   }
   const fairName = batch.fair_name || batch.name;
-  const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab.be or contact us anytime.';
+  const ctaLine = batch.cta_line || 'In the meantime, feel free to explore our collections at lovelab-antwerp.com or contact us anytime.';
 
   // forceLeadType lets the Outreach tab preview a specific template (e.g. the
   // user is editing the Agents tab — show the agent email even if the first

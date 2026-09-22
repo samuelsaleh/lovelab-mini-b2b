@@ -165,7 +165,7 @@ export async function POST(request) {
       fileNames.push(baseName);
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || baseUrl || 'https://lovelab-b2b.vercel.app';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || baseUrl || 'https://app.lovelab-antwerp.com';
     const { subject, html } = clientResourcesEmail({
       contactName: contactName || '',
       lang: langCode,

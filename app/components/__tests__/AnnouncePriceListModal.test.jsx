@@ -114,6 +114,15 @@ describe('AnnouncePriceListModal — recipients', () => {
     await waitFor(() => expect(calls.filter((c) => c.url === '/api/price-lists/announce/recipients').length).toBe(2))
   })
 
+  test('search narrows the list to matching agents without changing the selection', async () => {
+    await openWithRecipients()
+    fireEvent.change(screen.getByLabelText('Search an agent by name or email…'), { target: { value: 'bart' } })
+    const editor = screen.getByTestId('recipients-editor')
+    expect(within(editor).getByText('Bart')).toBeInTheDocument()
+    expect(within(editor).queryByText('Anna Rossi')).not.toBeInTheDocument()
+    expect(screen.getByText('3 of 3 selected')).toBeInTheDocument()
+  })
+
   test('nobody selected blocks the next step', async () => {
     await openWithRecipients()
     for (const name of ['Anna Rossi', 'Bart', 'Carl']) fireEvent.click(screen.getByLabelText(`Include ${name}`))
