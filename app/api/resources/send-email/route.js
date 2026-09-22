@@ -6,6 +6,7 @@ import { getSenderFrom, getAdminNotificationRecipients } from '@/lib/email';
 import { clientResourcesEmail } from '@/lib/email-templates';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 import { ALLOWED_RESOURCE_PATH_RE, publicAssetHref } from '@/lib/publicAssetHref';
+import { isAgentResourcePath } from '@/lib/b2b-files';
 
 export const runtime = 'nodejs';
 
@@ -76,10 +77,9 @@ export async function POST(request) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    // Defense in depth — UI also hides this for non-admins.
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    // Sam, 22 Sep 2026: every agent may email catalogues and brand documents
+    // to their clients. Price lists, EAN codes and order packs stay admin-only;
+    // the per-file check is below, once the paths are known.
 
     const body = await request.json().catch(() => ({}));
     const { files, to, lang = 'en', contactName } = body || {};
@@ -113,6 +113,10 @@ export async function POST(request) {
       const filePath = typeof f?.path === 'string' ? f.path : null;
       if (!filePath) {
         return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+      // Defense in depth — the UI also hides the admin-only folders.
+      if (!isAdmin && !isAgentResourcePath(filePath)) {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
       }
 
       // Pack templates are generated/private — resolve their bytes via the
