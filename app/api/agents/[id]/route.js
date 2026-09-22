@@ -1,4 +1,5 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { AGENT_LANGUAGES, isAgentLanguage } from '@/lib/agents/language';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { restoreAgentEmail } from '@/lib/email-templates';
 import { sendEmail } from '@/lib/send-email';
@@ -9,7 +10,7 @@ import { recordHealthEvent } from '@/lib/healthEvent';
 import { recalcUnpaidCommissionsForAgent } from '@/lib/commissionRecalc';
 import { NextResponse } from 'next/server';
 
-const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_deleted_at, agent_contract_url, created_at, organization_id';
+const AGENT_FIELDS = 'id, email, full_name, avatar_url, is_agent, agent_status, commission_rate, agent_since, agent_conditions, agent_phone, agent_company, agent_country, agent_city, agent_region, agent_territory, agent_specialty, agent_notes, agent_language, agent_deleted_at, agent_contract_url, created_at, organization_id';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET - Single agent detail with commission history (admin only)
@@ -159,6 +160,7 @@ export async function PUT(request, { params }) {
       'full_name', 'commission_rate', 'agent_status', 'agent_conditions',
       'agent_phone', 'agent_company', 'agent_country', 'agent_city',
       'agent_region', 'agent_territory', 'agent_specialty', 'agent_notes',
+      'agent_language',
     ];
 
     const updates = {};
@@ -174,6 +176,10 @@ export async function PUT(request, { params }) {
         return NextResponse.json({ error: 'Commission rate must be between 0 and 100' }, { status: 400 });
       }
       updates.commission_rate = rate;
+    }
+
+    if (updates.agent_language !== undefined && updates.agent_language !== null && !isAgentLanguage(updates.agent_language)) {
+      return NextResponse.json({ error: `Invalid agent language. Must be one of: ${AGENT_LANGUAGES.join(', ')}` }, { status: 400 });
     }
 
     if (updates.agent_status !== undefined) {
@@ -313,6 +319,7 @@ export async function DELETE(request, { params }) {
           agent_territory: null,
           agent_specialty: null,
           agent_notes: null,
+          agent_language: null,
           agent_deleted_at: null,
         })
         .eq('id', id);

@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { useI18n } from '@/lib/i18n'
 import { CATALOGUE_FILES, getVisibleCatalogues } from '@/lib/catalogues'
+import { PRICE_LIST_FILES, EAN_FILES, BRAND_DOCUMENT_FILES } from '@/lib/b2b-files'
 import { publicAssetHref } from '@/lib/publicAssetHref'
 import SendResourcesModal from './SendResourcesModal'
+import AnnouncePriceListModal from './AnnouncePriceListModal'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
 
@@ -13,33 +15,11 @@ const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-
 // /api/pack-templates (see lib/packTemplates.js). The Packs folder fetches
 // them dynamically so filenames always track the pack's current label.
 
-const PRICE_LIST_FILES = [
-  { name: 'Pricelist_LoveLab_2025.pdf', path: '/Price Lists/Pricelist_LoveLab_2025.pdf' },
-  { name: 'Pricelist_LoveLab_2026.pdf', path: '/Price Lists/Pricelist_LoveLab_2026.pdf' },
-  { name: 'Pricelist_LoveLab_2026_October.pdf', path: '/Price Lists/Pricelist_LoveLab_2026_October.pdf' },
-]
-
-const EAN_FILES = [
-  { name: 'Final-GS1-Code.xlsx', path: '/Ean Codes/Final-GS1-Code.xlsx' },
-]
-
+// Price lists, EAN codes and brand documents come from lib/b2b-files.js so
+// there is one list to edit (and one test pinning it). IGI's fill sheet is
+// only offered here.
 const IGI_FILES = [
   { name: 'IGI_ORDERS_FILL.xlsx', path: '/IGI Excel/IGI_ORDERS_FILL.xlsx' },
-]
-
-const BRAND_DOCUMENT_FILES = [
-  {
-    name: 'LoveLab Brand Presentation — French.pdf',
-    path: '/BRAND PRESENTATION DOCS/LoveLab_Presentation_Marque_FR.pdf',
-  },
-  {
-    name: 'LoveLab Brand Presentation — English.pdf',
-    path: '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
-  },
-  {
-    name: 'LoveLab Lifestyle Slideshow.pdf',
-    path: '/BRAND PRESENTATION DOCS/LoveLab_Lifestyle_Slideshow.pdf',
-  },
 ]
 
 // Controlled folder: selection state lives in the parent so a single email
@@ -182,6 +162,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
   // Catalogue + Packs + Price List together.
   const [selected, setSelected] = useState(() => new Set())
   const [modalOpen, setModalOpen] = useState(false)
+  const [announceOpen, setAnnounceOpen] = useState(false)
 
   // Pack order templates are generated per pack and listed dynamically, so the
   // filenames always reflect each pack's current label (admin only).
@@ -328,6 +309,22 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                 <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} status={packsStatus} onRetry={retryPacks} />
                 <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
+                <button
+                  type="button"
+                  onClick={() => setAnnounceOpen(true)}
+                  style={{
+                    padding: '8px 12px', borderRadius: 8,
+                    fontSize: 12, fontWeight: 700, fontFamily: fonts.body,
+                    background: '#fff', color: colors.inkPlum,
+                    border: `1px solid ${colors.inkPlum}`, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M3 11l18-7-7 18-2-8-9-3z"/>
+                  </svg>
+                  {t('resources.announcePriceList')}
+                </button>
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} />
 
@@ -356,6 +353,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   files={selectedFiles}
                   folderLabel={folderSummary}
                 />
+                <AnnouncePriceListModal open={announceOpen} onClose={() => setAnnounceOpen(false)} />
               </div>
             )}
           </div>
