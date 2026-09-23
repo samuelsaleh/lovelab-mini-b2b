@@ -341,7 +341,7 @@ function MiniStat({ label, items, maxItems = 5 }) {
   )
 }
 
-function HousingColorTable({ rows, withStock }) {
+function HousingColorTable({ rows }) {
   const th = { textAlign: 'right', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 10px', whiteSpace: 'nowrap' }
   const td = { textAlign: 'right', fontSize: 12, padding: '7px 10px', borderTop: `1px solid ${colors.lineGray}`, whiteSpace: 'nowrap' }
   return (
@@ -351,16 +351,12 @@ function HousingColorTable({ rows, withStock }) {
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>Colour</th>
             <th style={th}>Sold</th>
-            {withStock && <th style={th}>Ordered in</th>}
-            {withStock && <th style={th}>Sold (all)</th>}
-            {withStock && <th style={th}>Available</th>}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => {
             const unspecified = r.name === NOT_SPECIFIED
-            const empty = r.qty === 0 && (!withStock || (r.in === 0 && r.out === 0))
-            const negative = withStock && r.available < 0
+            const empty = r.qty === 0
             return (
               <tr key={r.name} data-testid={`housing-row-${r.name}`} style={{ opacity: empty || unspecified ? 0.5 : 1, background: empty ? '#fafafa' : '#fff' }}>
                 <td style={{ ...td, textAlign: 'left' }}>
@@ -370,13 +366,6 @@ function HousingColorTable({ rows, withStock }) {
                   </span>
                 </td>
                 <td style={{ ...td, fontWeight: 600, color: colors.inkPlum }}>{fmtStat(r.qty)}</td>
-                {withStock && <td style={{ ...td, color: '#666' }}>{fmtStat(r.in)}</td>}
-                {withStock && <td style={{ ...td, color: '#666' }}>{fmtStat(r.out)}</td>}
-                {withStock && (
-                  <td data-testid={`housing-available-${r.name}`} style={{ ...td, fontWeight: 700, color: negative ? colors.danger : colors.success }}>
-                    {negative ? `−${fmtStat(Math.abs(r.available))}` : fmtStat(r.available)}
-                  </td>
-                )}
               </tr>
             )
           })}
@@ -445,9 +434,6 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const { isCompact: mobile } = useResponsive()
 
   const [documents, setDocuments] = useState([])
-  // Housing colours available (admin only, all time). null = not available to
-  // this user or not loaded; the section then shows sold pieces only.
-  const [housingStock, setHousingStock] = useState(null)
   const [events, setEvents] = useState([])
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -520,20 +506,6 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       setFetchError('Failed to load analytics data.')
     }
     setLoading(false)
-
-    // Availability is derived server-side from internal orders (admin only).
-    // Agents get a 403 and simply see the sold column.
-    try {
-      const res = await safeFetch('/api/analytics/housing-stock')
-      if (res?.ok) {
-        const data = await res.json()
-        setHousingStock(Array.isArray(data?.rows) ? data.rows : null)
-      } else {
-        setHousingStock(null)
-      }
-    } catch {
-      setHousingStock(null)
-    }
   }
 
   useEffect(() => { loadAnalytics() }, [dataScope])
@@ -666,26 +638,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const colorBreakdown = useMemo(() => buildColorBreakdown(docs), [docs])
   const sortedColors = useMemo(() => sortColorBreakdown(colorBreakdown, colorSort), [colorBreakdown, colorSort])
 
-  // ─── Housing colours: sold (current view) + available (all time, admin) ──
-  const housingRows = useMemo(() => {
-    const sold = buildHousingSold(docs)
-    if (!housingStock) return sold.map((r) => ({ ...r, in: null, out: null, available: null }))
-    const stockByName = new Map(housingStock.map((r) => [r.name, r]))
-    const names = [...sold.map((r) => r.name)]
-    for (const r of housingStock) if (!names.includes(r.name)) names.push(r.name)
-    return names.map((name) => {
-      const s = sold.find((r) => r.name === name)
-      const st = stockByName.get(name)
-      return {
-        name,
-        hex: s?.hex || st?.hex,
-        qty: s?.qty || 0,
-        in: st?.in ?? 0,
-        out: st?.out ?? 0,
-        available: st ? st.available : 0,
-      }
-    })
-  }, [docs, housingStock])
+  // ─── Housing colours: pieces sold per colour (current view) ──────────
+  const housingRows = useMemo(() => buildHousingSold(docs), [docs])
 
   const countryDetails = useMemo(() => {
     if (!selectedCountry) return []
@@ -1271,15 +1225,12 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           </div>
         </Section>
 
-        {/* ─── Row 4b: Housing colours — sold now, available from the orders ─── */}
+        {/* ─── Row 4b: Housing colours — pieces sold per colour ─── */}
         <Section title="Housing colours" style={{ marginBottom: gridGap }}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
-            Pieces per housing colour. Sold follows the filters above.
-            {housingStock
-              ? ' Available = internal (Antwerp Office) orders − B2B/B2C sales, all time and all agents. Stock that came in before the app is not in any order, so a colour can show negative.'
-              : ''}
+            Pieces per housing colour. Follows the filters above.
           </div>
-          <HousingColorTable rows={housingRows} withStock={!!housingStock} />
+          <HousingColorTable rows={housingRows} />
         </Section>
 
         {/* ─── Row 5: Quick Stats Grid ─── */}

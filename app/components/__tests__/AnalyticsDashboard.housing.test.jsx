@@ -1,6 +1,5 @@
 /**
- * AnalyticsDashboard — "Housing colours": pieces sold per housing colour,
- * plus the available column when the admin stock endpoint answers.
+ * AnalyticsDashboard — "Housing colours": pieces sold per housing colour.
  */
 
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -30,30 +29,17 @@ const DOCS = [
   orderDoc('d2', 'b2c', [{ collection: 'CUTY', bpColor: 'YWP', quantity: '1', total: '100' }]),
 ]
 
-const STOCK = {
-  rows: [
-    { name: 'Yellow', hex: '#D9B25F', in: 10, out: 2, available: 8 },
-    { name: 'White', hex: '#DCDCDC', in: 1, out: 3, available: -2 },
-  ],
-}
-
-function mockFetch({ stock }) {
+beforeEach(() => {
   global.fetch = jest.fn((url) => {
     const u = String(url)
     if (u.startsWith('/api/documents')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ documents: DOCS }) })
     if (u.startsWith('/api/events')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) })
-    if (u.startsWith('/api/analytics/housing-stock')) {
-      return stock
-        ? Promise.resolve({ ok: true, json: () => Promise.resolve(stock) })
-        : Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'Forbidden' }) })
-    }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
   })
-}
+})
 
 describe('AnalyticsDashboard — Housing colours', () => {
-  it('shows pieces sold per housing colour, with unsold colours at 0', async () => {
-    mockFetch({ stock: null })
+  it('shows pieces sold per housing colour, with unsold colours at 0, and nothing else', async () => {
     render(<AnalyticsDashboard />)
     await waitFor(() => expect(screen.getByText('Housing colours')).toBeInTheDocument(), { timeout: 8000 })
     const table = screen.getByTestId('housing-table')
@@ -61,17 +47,9 @@ describe('AnalyticsDashboard — Housing colours', () => {
     expect(within(table).getByTestId('housing-row-Yellow')).toHaveTextContent('2')
     expect(within(table).getByTestId('housing-row-Yellow + White + Pink')).toHaveTextContent('1')
     expect(within(table).getByTestId('housing-row-Gray Matte')).toHaveTextContent('0')
-    expect(within(table).queryByText('Available')).not.toBeInTheDocument()
-  }, 12000)
-
-  it('shows the available column from the admin endpoint, negatives included', async () => {
-    mockFetch({ stock: STOCK })
-    render(<AnalyticsDashboard />)
-    await waitFor(() => expect(screen.getByText('Housing colours')).toBeInTheDocument(), { timeout: 8000 })
-    await waitFor(() => expect(screen.getByText('Available')).toBeInTheDocument(), { timeout: 8000 })
-    expect(screen.getByTestId('housing-available-Yellow')).toHaveTextContent('8')
-    expect(screen.getByTestId('housing-available-White')).toHaveTextContent('−2')
-    expect(screen.getByTestId('housing-available-Pink')).toHaveTextContent('0')
-    expect(screen.getByText(/Available = internal/)).toBeInTheDocument()
+    expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Colour', 'Sold'])
+    expect(screen.queryByText('Available')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ordered in')).not.toBeInTheDocument()
+    expect(global.fetch.mock.calls.some(([u]) => String(u).includes('housing-stock'))).toBe(false)
   }, 12000)
 })
