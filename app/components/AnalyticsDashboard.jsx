@@ -19,6 +19,7 @@ import {
 import { clientNameFromDoc } from '@/lib/analyticsAliases'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
+import { buildHousingSold, NOT_SPECIFIED } from '@/lib/housingColorStock'
 import {
   buildAnalyticsExportRows,
   analyticsExportFilename,
@@ -340,6 +341,51 @@ function MiniStat({ label, items, maxItems = 5 }) {
   )
 }
 
+function HousingColorTable({ rows, withStock }) {
+  const th = { textAlign: 'right', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 10px', whiteSpace: 'nowrap' }
+  const td = { textAlign: 'right', fontSize: 12, padding: '7px 10px', borderTop: `1px solid ${colors.lineGray}`, whiteSpace: 'nowrap' }
+  return (
+    <div data-testid="housing-table" style={{ overflowX: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fonts.body }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left' }}>Colour</th>
+            <th style={th}>Sold</th>
+            {withStock && <th style={th}>Ordered in</th>}
+            {withStock && <th style={th}>Sold (all)</th>}
+            {withStock && <th style={th}>Available</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const unspecified = r.name === NOT_SPECIFIED
+            const empty = r.qty === 0 && (!withStock || (r.in === 0 && r.out === 0))
+            const negative = withStock && r.available < 0
+            return (
+              <tr key={r.name} data-testid={`housing-row-${r.name}`} style={{ opacity: empty || unspecified ? 0.5 : 1, background: empty ? '#fafafa' : '#fff' }}>
+                <td style={{ ...td, textAlign: 'left' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 4, background: r.hex || '#ddd', border: '1px solid rgba(0,0,0,0.12)', flexShrink: 0 }} />
+                    <span style={{ color: colors.charcoal }}>{r.name}</span>
+                  </span>
+                </td>
+                <td style={{ ...td, fontWeight: 600, color: colors.inkPlum }}>{fmtStat(r.qty)}</td>
+                {withStock && <td style={{ ...td, color: '#666' }}>{fmtStat(r.in)}</td>}
+                {withStock && <td style={{ ...td, color: '#666' }}>{fmtStat(r.out)}</td>}
+                {withStock && (
+                  <td data-testid={`housing-available-${r.name}`} style={{ ...td, fontWeight: 700, color: negative ? colors.danger : colors.success }}>
+                    {negative ? `−${fmtStat(Math.abs(r.available))}` : fmtStat(r.available)}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ColorPaletteColumn({ title, items, showDate = false }) {
   return (
     <div data-testid={`color-palette-${title.toLowerCase()}`} style={{ flex: 1, minWidth: 220 }}>
@@ -399,6 +445,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const { isCompact: mobile } = useResponsive()
 
   const [documents, setDocuments] = useState([])
+  // Housing colours available (admin only, all time). null = not available to
+  // this user or not loaded; the section then shows sold pieces only.
+  const [housingStock, setHousingStock] = useState(null)
   const [events, setEvents] = useState([])
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -471,6 +520,20 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       setFetchError('Failed to load analytics data.')
     }
     setLoading(false)
+
+    // Availability is derived server-side from internal orders (admin only).
+    // Agents get a 403 and simply see the sold column.
+    try {
+      const res = await safeFetch('/api/analytics/housing-stock')
+      if (res?.ok) {
+        const data = await res.json()
+        setHousingStock(Array.isArray(data?.rows) ? data.rows : null)
+      } else {
+        setHousingStock(null)
+      }
+    } catch {
+      setHousingStock(null)
+    }
   }
 
   useEffect(() => { loadAnalytics() }, [dataScope])
@@ -602,6 +665,27 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   const colorBreakdown = useMemo(() => buildColorBreakdown(docs), [docs])
   const sortedColors = useMemo(() => sortColorBreakdown(colorBreakdown, colorSort), [colorBreakdown, colorSort])
+
+  // ─── Housing colours: sold (current view) + available (all time, admin) ──
+  const housingRows = useMemo(() => {
+    const sold = buildHousingSold(docs)
+    if (!housingStock) return sold.map((r) => ({ ...r, in: null, out: null, available: null }))
+    const stockByName = new Map(housingStock.map((r) => [r.name, r]))
+    const names = [...sold.map((r) => r.name)]
+    for (const r of housingStock) if (!names.includes(r.name)) names.push(r.name)
+    return names.map((name) => {
+      const s = sold.find((r) => r.name === name)
+      const st = stockByName.get(name)
+      return {
+        name,
+        hex: s?.hex || st?.hex,
+        qty: s?.qty || 0,
+        in: st?.in ?? 0,
+        out: st?.out ?? 0,
+        available: st ? st.available : 0,
+      }
+    })
+  }, [docs, housingStock])
 
   const countryDetails = useMemo(() => {
     if (!selectedCountry) return []
@@ -1185,6 +1269,17 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               <ColorPaletteColumn title="Other" items={sortedColors.other} showDate={colorSort === 'chrono'} />
             )}
           </div>
+        </Section>
+
+        {/* ─── Row 4b: Housing colours — sold now, available from the orders ─── */}
+        <Section title="Housing colours" style={{ marginBottom: gridGap }}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
+            Pieces per housing colour. Sold follows the filters above.
+            {housingStock
+              ? ' Available = internal (Antwerp Office) orders − B2B/B2C sales, all time and all agents. Stock that came in before the app is not in any order, so a colour can show negative.'
+              : ''}
+          </div>
+          <HousingColorTable rows={housingRows} withStock={!!housingStock} />
         </Section>
 
         {/* ─── Row 5: Quick Stats Grid ─── */}
