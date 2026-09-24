@@ -16,6 +16,12 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: (...a) => checkRateLimit(...a) }));
 jest.mock('@/app/api/_lib/access', () => ({ getUserContext: (...a) => getUserContext(...a) }));
+// IGI are emailed to number a new model (Sam, 24 Sept 2026); the mail itself is tested in lib/__tests__/igi-notify.test.js.
+const notifyIgiOfNewModel = jest.fn(async () => ({ sent: true, recipients: ['michael@igi.org'] }));
+jest.mock('@/lib/igi/notify', () => ({
+  notifyIgiOfNewModel: (...a) => notifyIgiOfNewModel(...a),
+  siteUrlFor: () => 'https://app.test',
+}));
 
 const models = require('../igi/models/route');
 const portalSerial = require('../igi-portal/models/[modelId]/serial/route');
@@ -88,6 +94,14 @@ describe('LoveLab add a model', () => {
     expect(global.__admin.state.inserted).toMatchObject({ state: 'awaiting_serial', requested_by: 'sam' });
     expect(global.__admin.state.inserted.requested_at).toBeTruthy();
     expect(global.__admin.state.inserted).not.toHaveProperty('serial');
+  });
+
+  test('emails IGI to number it, and says so in the answer', async () => {
+    notifyIgiOfNewModel.mockClear();
+    const res = await models.POST(req({ name: 'Full Moonlight', stones: '1', carat: 0.5, shape: 'Round' }));
+    expect(res.status).toBe(201);
+    expect(notifyIgiOfNewModel).toHaveBeenCalledWith(global.__admin, { modelId: 'new-id', siteUrl: 'https://app.test' });
+    expect((await res.json()).email).toEqual({ sent: true, recipients: ['michael@igi.org'] });
   });
 
   test('saves the name the way every other name reads, whatever was typed', async () => {

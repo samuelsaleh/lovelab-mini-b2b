@@ -24,6 +24,7 @@ const TABLES = [
   'igi_models',
   'igi_batches',
   'igi_counts',
+  'igi_digest_sends',
   'igi_visits',
   'igi_visit_lines',
   'igi_descriptions',

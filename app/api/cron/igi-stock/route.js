@@ -24,7 +24,6 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordHealthEvent } from '@/lib/healthEvent';
 import { syncShelfSnapshot } from '@/lib/igi/syncShelf';
-import { runLevelAlerts } from '@/lib/igi/levelAlerts';
 
 function verifyCronAuth(request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -75,19 +74,10 @@ export async function GET(request) {
       });
     }
 
-    // With tonight's shelf figure in, check every level and email LoveLab
-    // about any model that has just crossed one (lib/igi/levelAlerts.js).
-    // A failure here must not undo the shelf read above, so it is contained.
-    try {
-      summary.level_alerts = await runLevelAlerts(adminSupabase);
-    } catch (err) {
-      summary.level_alerts = { error: err?.message || 'level check failed' };
-      await recordHealthEvent({
-        source: 'cron_igi_stock',
-        severity: 'warn',
-        message: `Certificate level alerts could not be checked: ${err?.message || 'unknown'}`,
-      });
-    }
+    // The nightly "once per crossing" level emails used to run here. Since
+    // 24 Sept 2026 the same figures go out on a clock instead — Liuba every
+    // morning, IGI every Friday, Alberto every second Friday — from
+    // /api/cron/igi-mail, so nothing is announced at a moment nobody chose.
 
     return NextResponse.json(summary);
   } catch (err) {
