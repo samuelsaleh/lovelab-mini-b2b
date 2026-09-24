@@ -75,12 +75,12 @@ describe('CollectionConfig — closure column visibility', () => {
     expect(screen.getByText('Closure')).toBeInTheDocument()
   })
 
-  it('shows the Closure header for CUBIX (hasClosure: true) when there are configs', () => {
+  it('does NOT show the Closure header for CUBIX (forced non-braided)', () => {
     const line = mockLine(CUBIX, [
       mockColorConfig({ caratIdx: 0, housing: 'Yellow', size: 'S/M', closureType: null }),
     ])
     renderConfig(CUBIX, line)
-    expect(screen.getByText('Closure')).toBeInTheDocument()
+    expect(screen.queryByText('Closure')).not.toBeInTheDocument()
   })
 
   it('shows the Closure header for MATCHY FANCY (newly-enabled nylon bracelet)', () => {
@@ -352,20 +352,16 @@ describe('CollectionConfig — closure-driven sizes', () => {
     ])
   })
 
-  it('keeps a still-valid size when switching closure (S/M stays on non-braided)', () => {
+  it('stamps CUBIX rows to non-braided when a legacy braided value is restored', () => {
     const onChange = jest.fn()
     const line = mockLine(CUBIX, [
       mockColorConfig({ id: 'cfg-1', caratIdx: 0, housing: 'Yellow', size: 'S/M', closureType: 'braided' }),
     ])
     renderConfig(CUBIX, line, onChange)
 
-    const selects = screen.getAllByRole('combobox')
-    const closureSelect = selects.find(s => Array.from(s.options || []).some(o => o.text === 'Non-braided'))
-    fireEvent.change(closureSelect, { target: { value: 'nonBraided' } })
-
+    expect(onChange).toHaveBeenCalled()
     const call = onChange.mock.calls.find(c => c[1]?.colorConfigs)
     expect(call).toBeTruthy()
-    // S/M is valid for non-braided, so it must NOT be cleared.
     expect(call[1].colorConfigs).toEqual([
       expect.objectContaining({ id: 'cfg-1', closureType: 'nonBraided', size: 'S/M' }),
     ])
