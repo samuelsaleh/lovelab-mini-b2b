@@ -53,7 +53,8 @@ CRON_BLOCK="# LoveLab B2B crons (Option B — CRON_SECRET from ${SERVER_APP_DIR}
 0 4 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/health-check >/dev/null 2>&1
 0 6 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/email-deliveries >/dev/null 2>&1
 0 1 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-stock >/dev/null 2>&1
-*/10 * * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1"
+*/10 * * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1
+0 * * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-mail >/dev/null 2>&1"
 
 echo "Merging crontab entries (idempotent)…"
 ssh_stdin "bash -s" <<REMOTE
@@ -74,4 +75,5 @@ echo "Smoke-testing certificate-outs cron once…"
 # Prefer /usr/bin/head — some Mac setups shadow `head` with an HTTP HEAD helper.
 ssh_cmd "${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs" | /usr/bin/head -c 500
 echo
-echo "Done. Certificate In/Out sync runs every 10 minutes."
+echo "Done. Certificate In/Out sync runs every 10 minutes; the certificate emails"
+echo "(/api/cron/igi-mail) are checked every hour and go out on Antwerp time."
