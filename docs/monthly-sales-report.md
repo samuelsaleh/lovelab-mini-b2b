@@ -12,7 +12,7 @@ On the 1st of each month, the server crontab calls `/api/cron/monthly-sales-repo
 Each channel reports its own result, and one failing does not stop the other. Sample data is never uploaded or emailed.
 
 ```
-My Drive (rafi.goldo21@gmail.com) / LoveLab Analytics / Monthly Report/   ← GOOGLE_DRIVE_SALES_REPORTS_FOLDER_ID = 1uU4GsXjqJKdlm_GdHWnEXnuobhdzYD6z
+LoveLab Analytics / Monthly Report/   ← GOOGLE_DRIVE_SALES_REPORTS_FOLDER_ID
 ├── 2026-08 August — LoveLab sales report.pdf
 └── 2026-09 September — LoveLab sales report.pdf
 ```
@@ -28,7 +28,7 @@ The PDF is one phone-width page with no page breaks, so it reads properly in the
 
 ## To switch it on (server side — Sam)
 
-1. **Drive folder.** Already created, 25/09/2026: *LoveLab Analytics / Monthly Report* in Rafi's Drive. Its folder ID is `1uU4GsXjqJKdlm_GdHWnEXnuobhdzYD6z`. Share it with the executives, and **as Editor with the Google account the app uploads with**. Without that the app cannot write there.
+1. **Drive folder.** *LoveLab Analytics / Monthly Report* (created 25/09/2026). Its folder ID is the last part of the folder's URL. Share it with the executives, and **as Editor with the Google account the app uploads with**. Without that the app cannot write there.
    - It works in a normal folder (any account's My Drive) and in a Google Workspace *Shared drive*.
    - The upload **never deletes anything**. If two folders have the same year name, it uses the oldest. A re-run replaces that month's PDF instead of adding a duplicate.
    - Also share it with the Google account the app already uploads with (the one behind `GOOGLE_DRIVE_REFRESH_TOKEN` or `GOOGLE_SERVICE_ACCOUNT_KEY`, the same one that writes the commission reports).
@@ -111,9 +111,6 @@ Every run checks itself, and `MONTHLY_SALES_REPORT_ALERT_TO` (Sam until set) get
 | Suspicious data — a €0 order, an amount entered in cents, a typed date the report can't read, a new order channel, an order pointing to a deleted fair, an agent with no profile, a month with suddenly no sales | delivered | ℹ️ "data needs a look", listing each case (amounts, dates and fair names only, never client names) |
 | The app or server is down on the 1st | nothing | none — the app can't send anything while it's down; the report simply doesn't arrive, which is itself the signal. Re-run the month by hand once it's back. |
 
-Checked against the real data (Jun–Sep 2026):
-
-- June, July and August pass cleanly.
-- September raises two warnings: the €0 order at Les Journées d'Achats (07/09), and 3 online B2C orders on 16/09 recorded at €0.75, €0.75 and €1.50 whose lines total €75, €75 and €150.
+Checked against the real data (Jun–Sep 2026): the months without data problems pass cleanly, and the known problem orders were each flagged with the right warning.
 
 The local script prints the same checks (`✓ all checks passed`, `! data warning: …`).
