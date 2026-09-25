@@ -1,0 +1,203 @@
+{
+  "name": "LoveLab — Monthly Sales Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "1st of the month, 07:00 Brussels",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Runs at 07:00 on the 1st of every month. The workflow timezone is set to Europe/Brussels in Settings (below), so 07:00 is Antwerp time."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.lovelab-antwerp.com/api/cron/monthly-sales-report",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "autodetect"
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "id": "http-report",
+      "name": "GET /api/cron/monthly-sales-report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lovelab-cron-secret",
+          "name": "LoveLab CRON_SECRET (x-vercel-cron-secret)"
+        }
+      },
+      "notes": "No ?month → the app builds the PREVIOUS calendar month. The app reads the database (read-only), puts ONLY the PDF in Drive and emails the HTML with the PDF attached to MONTHLY_SALES_REPORT_RECIPIENTS. neverError + full response so a 401/500 reaches the check below instead of silently stopping the run. onError = continue, so a timeout, DNS failure or refused connection (the app is down) also reaches the check and triggers the alert.",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "status-200",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "drive-ok",
+              "leftValue": "={{ $json.body?.drive?.ok === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "email-ok",
+              "leftValue": "={{ $json.body?.email?.sent === true || $json.body?.email?.reason === 'no_recipients' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-delivered",
+      "name": "PDF in Drive and email sent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        840,
+        300
+      ],
+      "notes": "Success = HTTP 200 AND the PDF landed in Drive AND the email went out (or no recipients are configured yet, which is deliberate)."
+    },
+    {
+      "parameters": {
+        "content": "=## ✅ Monthly sales report delivered\n\nMonth: **{{ $json.body.month }}**\n\n- Net sales: €{{ Math.round($json.body.sales).toLocaleString('en-GB') }} from {{ $json.body.orders }} orders\n- Drive: {{ $json.body.drive.webViewLink }}\n- Email: {{ $json.body.email.sent ? 'sent to ' + $json.body.email.recipients + ' recipient(s), PDF attached' : 'not sent (no recipients configured)' }}",
+        "options": {}
+      },
+      "id": "noop-success",
+      "name": "Success log",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.N8N_SALES_REPORT_ALERT_TO || $env.N8N_ALERT_TO || 'sam@love-lab.com' }}",
+        "subject": "=⚠️  LoveLab monthly sales report — not fully delivered ({{ $json.body?.month || 'unknown month' }})",
+        "emailType": "html",
+        "message": "=<h3>Monthly sales report — delivery problem</h3>\n<p>HTTP status: <strong>{{ $json.statusCode || 'no answer (app down, timeout or network error)' }}</strong></p>\n<ul>\n  <li>Month: {{ $json.body?.month || '—' }}</li>\n  <li>Google Drive (PDF): {{ $json.body?.drive?.ok ? 'OK — ' + $json.body.drive.webViewLink : 'NOT uploaded — ' + ($json.body?.drive?.error || $json.body?.drive?.reason || '—') }}</li>\n  <li>Email (HTML + PDF): {{ $json.body?.email?.sent ? 'sent' : 'NOT sent — ' + ($json.body?.email?.error || $json.body?.email?.reason || '—') }}</li>\n</ul>\n<p>App error, if any: <code>{{ $json.body?.error || $json.error?.message || $json.error || '—' }}</code></p>\n<p>Common causes: 401 = CRON_SECRET credential wrong; 404 = the report code is not deployed yet; 500 “No Chrome/Chromium” = Chromium missing on the server; Drive “env_not_set” = GOOGLE_DRIVE_SALES_REPORTS_FOLDER_ID missing. Re-run a month by hand: GET /api/cron/monthly-sales-report?month=YYYY-MM with the same header.</p>",
+        "options": {}
+      },
+      "id": "alert-email",
+      "name": "Email alert (delivery failed)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        220
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Goes to N8N_SALES_REPORT_ALERT_TO, else N8N_ALERT_TO, else sam@love-lab.com (for now). Uses the existing Gmail OAuth2 credential — rename to match yours."
+    }
+  ],
+  "connections": {
+    "1st of the month, 07:00 Brussels": {
+      "main": [
+        [
+          {
+            "node": "GET /api/cron/monthly-sales-report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /api/cron/monthly-sales-report": {
+      "main": [
+        [
+          {
+            "node": "PDF in Drive and email sent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF in Drive and email sent?": {
+      "main": [
+        [
+          {
+            "node": "Success log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email alert (delivery failed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Brussels"
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
