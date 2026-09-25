@@ -12,7 +12,7 @@ Every month, LoveLab gets a sales report for Sam and the executives in two forms
 1. **Email (HTML):** a very brief overview.
 2. **PDF:** more detail, with charts and the complete tables. It is phone-first: one page, 120 mm wide, with no page breaks, drawn directly with pdf-lib.
 
-The PDF alone goes into Google Drive ("LoveLab Analytics / Monthly Report"). The email is the HTML body with the PDF attached. Until the recipient list is configured, both the email and the alerts go to sam@love-lab.com.
+The PDF alone goes into Google Drive ("LoveLab Analytics / Monthly Report"). The email is the HTML body with the PDF attached; it goes to the recipients set in the script's private settings (Sam), and alerts go to the script's owner (Rafi).
 
 ## Content
 
@@ -74,4 +74,4 @@ Google Apps Script (Rafi's account) — trigger: 1st of the month, 07:00 Brussel
 | 25/09 | Nothing on the LoveLab server (Sam questioned installing Chrome): the PDF is drawn in plain JS (pdf-lib), and the report runs in Google Apps Script in Rafi's account. |
 | 25/09 | Self-checks and alert emails; independent code review fixes (dates, paging, Drive safety, auth). |
 | 25/09 | Drive folder: "LoveLab Analytics / Monthly Report" in Rafi's Drive, PDFs directly inside. |
-| 25/09 | Email and alert recipients: sam@love-lab.com until the real list is set. |
+| 25/09 | Recipients live only in private settings (Apps Script Script Properties / server .env), never in the public code. The report goes to Sam's address, set there; alerts go to the script owner. |

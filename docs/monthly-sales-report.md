@@ -12,7 +12,7 @@ On the 1st of each month, around 07:00 Brussels time, a Google Apps Script trigg
 4. **Saves the PDF, and only the PDF, to Google Drive** in *LoveLab Analytics / Monthly Report*.
    - Files are named `YYYY-MM Month — LoveLab sales report.pdf`, so they sort by month.
    - A re-run replaces that month's PDF. The old copy goes to the Drive trash, where it can be recovered for 30 days.
-5. **Emails the brief HTML report with the PDF attached.** It goes to sam@love-lab.com until other recipients are set.
+5. **Emails the brief HTML report with the PDF attached** to the recipients set in the script's private settings (`REPORT_RECIPIENTS`). The code has no built-in address, because the repository is public.
 6. **Alerts the script's owner** when anything goes wrong, or when the data looks suspicious (see below).
 
 The PDF is one phone-width page (120 mm) with no page breaks, so it reads properly on an iPhone. It is drawn directly in JavaScript with pdf-lib: no browser and no Chrome. The text font is Liberation Sans (SIL OFL, see `lib/monthlySalesReport/fonts/`), so every name prints with its accents.
@@ -58,7 +58,7 @@ The PDF is one phone-width page (120 mm) with no page breaks, so it reads proper
    | `SUPABASE_URL` | the project URL |
    | `SUPABASE_KEY` | a Supabase secret key (used read-only) |
    | `DRIVE_FOLDER_ID` | the *Monthly Report* folder's ID (the last part of its URL) |
-   | `REPORT_RECIPIENTS` | optional, comma separated. **Not set = sam@love-lab.com** |
+   | `REPORT_RECIPIENTS` | who gets the report, comma separated. **Not set = no email** |
    | `ALERT_TO` | optional. **Not set = the script's owner** |
 
 4. **Test:** run `testReportToMe`. It builds last month, saves the PDF to Drive, and emails **only you**. The first run asks Google for permission to use Drive, email and web requests.

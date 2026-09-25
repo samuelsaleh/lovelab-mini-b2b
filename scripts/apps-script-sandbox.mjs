@@ -19,7 +19,7 @@ export async function runInSandbox(codePath, { month } = {}) {
 
   const saved = []
   const sent = []
-  const props = { SUPABASE_URL: url, SUPABASE_KEY: key, DRIVE_FOLDER_ID: 'sandbox-folder' }
+  const props = { SUPABASE_URL: url, SUPABASE_KEY: key, DRIVE_FOLDER_ID: 'sandbox-folder', REPORT_RECIPIENTS: 'recipient@sandbox.test' }
   const fmt = (d, tz, pattern) => {
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((p) => [p.type, p.value]))
     const mon = new Intl.DateTimeFormat('en-GB', { timeZone: tz, month: 'short' }).format(d)
