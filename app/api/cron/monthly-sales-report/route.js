@@ -55,12 +55,11 @@ function verifyCronAuth(request) {
   return given.length === expected.length && timingSafeEqual(given, expected)
 }
 
-async function logoDataUri() {
+async function logoPng() {
   try {
-    const png = await readFile(path.join(process.cwd(), 'public', 'email', 'logo.png'))
-    return `data:image/png;base64,${png.toString('base64')}`
+    return new Uint8Array(await readFile(path.join(process.cwd(), 'public', 'email', 'logo.png')))
   } catch {
-    return ''
+    return undefined
   }
 }
 
@@ -93,7 +92,7 @@ export async function GET(request) {
   // 2. Report + PDF.
   let built
   try {
-    built = await generateMonthlySalesReport({ model, month, logoSrc: await logoDataUri() })
+    built = await generateMonthlySalesReport({ model, month, logoPng: await logoPng() })
   } catch (err) {
     return fail(month, `Could not build the report — nothing was delivered. ${err?.message || err}`)
   }

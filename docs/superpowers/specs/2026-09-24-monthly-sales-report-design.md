@@ -10,7 +10,7 @@
 Every month, LoveLab gets a sales report for Sam and the executives in two forms:
 
 1. **Email (HTML):** a very brief overview.
-2. **PDF:** more detail, with charts and the complete tables. It is phone-first: one page, 120 mm wide, with no page breaks, so it reads properly in the Drive app on an iPhone.
+2. **PDF:** more detail, with charts and the complete tables. It is phone-first: one page, 120 mm wide, with no page breaks, drawn directly with pdf-lib.
 
 The PDF alone goes into Google Drive ("LoveLab Analytics / Monthly Report"). The email is the HTML body with the PDF attached. Until the recipient list is configured, both the email and the alerts go to sam@love-lab.com.
 
@@ -43,17 +43,20 @@ The PDF alone goes into Google Drive ("LoveLab Analytics / Monthly Report"). The
 ## Architecture
 
 ```
-server crontab (1st, 07:00) ──run-cron.sh──▶ /api/cron/monthly-sales-report
-                                     ├─ dataSources/supabase.js   read-only, paged by id
-                                     ├─ buildReportData.js        pure figures
-                                     ├─ checks.js                 self-checks: errors block delivery, warnings alert
-                                     ├─ renderEmail.js / renderPdfHtml.js + svgCharts.js → htmlToPdf.js
-                                     ├─ drive.js                  PDF → Drive (never deletes, replaces a same-name PDF)
-                                     ├─ emailDelivery.js          HTML + PDF → email
-                                     └─ alerts.js                 problems → alert email
+Google Apps Script (Rafi's account) — trigger: 1st of the month, 07:00 Brussels
+  └─ appsScript/main.js
+       ├─ dataSources/supabaseRest.js   read-only GETs, paged by id (identical data to supabase.js)
+       ├─ buildReportData.js            pure figures
+       ├─ checks.js                     self-checks: errors block delivery, warnings alert
+       ├─ renderEmail.js                email HTML
+       ├─ pdfDirect.js + svgCharts.js   PDF drawn with pdf-lib (no browser)
+       ├─ DriveApp                      PDF → "LoveLab Analytics / Monthly Report"
+       ├─ MailApp                       HTML + PDF → recipients (Sam until set)
+       └─ alerts.js                     problems → the owner
 ```
 
 - The CLI `scripts/monthly-sales-report.mjs` runs the same pipeline locally. It never emails, and it uploads to Drive only with `--drive`.
+- `app/api/cron/monthly-sales-report` does the same inside the app but is not scheduled.
 - Sample data (`dataSources/sample.js`) is never uploaded or emailed.
 
 ## Decisions log
@@ -67,7 +70,8 @@ server crontab (1st, 07:00) ──run-cron.sh──▶ /api/cron/monthly-sales-r
 | 25/09 | Each fair shown separately, plus every fair of the year. |
 | 25/09 | Figures on the sales-by-month chart and a B2B / B2C table. |
 | 25/09 | Delivery: Google Drive (Sam's preference), PDF only; email = HTML + PDF attached. |
-| 25/09 | No n8n: the server crontab (scripts/install-server-cron.sh) is the monthly trigger, like the other LoveLab crons. |
+| 25/09 | No n8n. |
+| 25/09 | Nothing on the LoveLab server (Sam questioned installing Chrome): the PDF is drawn in plain JS (pdf-lib), and the report runs in Google Apps Script in Rafi's account. |
 | 25/09 | Self-checks and alert emails; independent code review fixes (dates, paging, Drive safety, auth). |
 | 25/09 | Drive folder: "LoveLab Analytics / Monthly Report" in Rafi's Drive, PDFs directly inside. |
 | 25/09 | Email and alert recipients: sam@love-lab.com until the real list is set. |

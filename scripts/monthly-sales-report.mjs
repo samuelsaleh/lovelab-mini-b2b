@@ -1,4 +1,4 @@
-// Monthly sales report: brief HTML email + phone-width PDF.
+// Monthly sales report: brief HTML email + phone-width PDF (drawn in plain JS, no browser).
 //
 // Usage:
 //   node scripts/monthly-sales-report.mjs --month 2026-08 --source sample
@@ -12,7 +12,7 @@
 //             (GOOGLE_DRIVE_SALES_REPORTS_FOLDER_ID + Google credentials).
 //             Off unless asked; sample data is never uploaded.
 //
-// Writes email.html, email.txt, report.html (PDF preview) and report.pdf.
+// Writes email.html, email.txt and report.pdf.
 // Never emails anything and never writes to the database.
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -46,13 +46,12 @@ else {
 }
 
 const logoPath = resolve('public/email/logo.png')
-const logoSrc = existsSync(logoPath) ? `data:image/png;base64,${readFileSync(logoPath).toString('base64')}` : ''
-const { report, email, pdfHtml, pdf, pdfError } = await generateMonthlySalesReport({ model, month, logoSrc })
+const logoPng = existsSync(logoPath) ? new Uint8Array(readFileSync(logoPath)) : undefined
+const { report, email, pdf, pdfError } = await generateMonthlySalesReport({ model, month, logoPng })
 
 mkdirSync(outDir, { recursive: true })
 writeFileSync(join(outDir, 'email.html'), email.html)
 writeFileSync(join(outDir, 'email.txt'), `Subject: ${email.subject}\n\n${email.text}\n`)
-writeFileSync(join(outDir, 'report.html'), pdfHtml)
 if (pdf) writeFileSync(join(outDir, 'report.pdf'), pdf)
 
 const k = report.kpis
@@ -60,7 +59,7 @@ console.log(`${report.monthLabel} · source: ${report.source}${report.isSample ?
 console.log(`  sales ${k.sales} (${k.orders} orders) · B2B ${k.b2b} / B2C ${k.b2c} · commission owed ${k.commissionEarned} / paid ${k.commissionPaidOut} · fairs ${k.fairCount}`)
 if (report.notes.length) console.log(`  notes: ${report.notes.join(' | ')}`)
 console.log(`  subject: ${email.subject}`)
-console.log(`  → ${outDir}/ email.html, email.txt, report.html, ${pdf ? 'report.pdf' : `report.pdf NOT written — ${pdfError} (report.html is the same page)`}`)
+console.log(`  → ${outDir}/ email.html, email.txt, ${pdf ? 'report.pdf' : `report.pdf NOT written — ${pdfError}`}`)
 
 const checks = checkReport(report, model)
 for (const e of checks.errors) console.log(`  ✖ CHECK FAILED: ${e}`)

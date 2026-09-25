@@ -77,7 +77,7 @@ describe('/api/cron/monthly-sales-report GET', () => {
   })
 
   test('500 and no upload when the PDF fails', async () => {
-    generateMonthlySalesReport.mockResolvedValue({ ...built, pdf: null, pdfError: 'No Chrome/Chromium found' })
+    generateMonthlySalesReport.mockResolvedValue({ ...built, pdf: null, pdfError: 'font failed' })
     const res = await GET(req())
     expect(res.status).toBe(500)
     expect(uploadSalesReportToDrive).not.toHaveBeenCalled()
