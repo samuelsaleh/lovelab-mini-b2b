@@ -692,10 +692,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Resolve once per render so every downstream getter / calculator sees the
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
-  // The October list is offered to anyone who can sell a collection it
-  // reprices (Iconix for every agent; Moonlight / Sienna / Za-Ha for admins
-  // and Piotr). See canSeePricelist in collectionAccess.js. The active list is
-  // always offered so the button state keeps matching the prices in the builder.
+  // October is the default for everyone. 2025 / 2026 stay available only for
+  // Alberto and Dionne (see canSeePricelist). The active list is always offered
+  // so reopening a legacy-priced document still shows the matching button.
   const offeredPricelists = useMemo(
     () => getVisiblePricelists(isAdmin ? { ...profile, role: 'admin' } : profile, activePricelist),
     [isAdmin, profile, activePricelist],
@@ -3036,17 +3035,15 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: mobile ? 'flex-start' : 'flex-end' }}>
                     {/* ─── Pricelist toggle (2025 / 2026 / 2026 from Oct.) ─── */}
-                    {/* Wraps in a fieldset for screen-reader semantics: a clear
-                        radiogroup label avoids confusing AT users who
-                        otherwise hear three unconnected buttons. */}
+                    {/* Hidden when only one list is offered (everyone except
+                        Alberto/Dionne). Wraps in a fieldset for screen-reader
+                        semantics when the radiogroup is shown. */}
+                    {offeredPricelists.length > 1 && (
                     <fieldset
                       data-testid="pricelist-toggle"
                       aria-label="Active price list"
                       title={
-                        'Choose 2025 for legacy clients still on the old pricing during the 6-month transition. 2026 is the current list.'
-                        + (offeredPricelists.includes('2026-10')
-                          ? ' The October revision reprices Moonlight, Sienna, Za-Ha and Iconix.'
-                          : '')
+                        'October is the current price list. 2025 and 2026 remain available for legacy clients still on the older pricing during the transition.'
                       }
                       style={{
                         display: 'inline-flex', flexWrap: 'wrap', border: '1px solid #ddd',
@@ -3083,6 +3080,7 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
                         )
                       })}
                     </fieldset>
+                    )}
                     {/* Collapse / Expand all */}
                     {(() => {
                       const allExpanded = lines.filter(l => l.collectionId).every(l => l.expanded !== false)

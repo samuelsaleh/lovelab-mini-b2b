@@ -83,7 +83,7 @@ export default function App() {
   // The order type waiting on "same boutique or another?" — null when nothing asked.
   const [pendingNewOrder, setPendingNewOrder] = useState(null)
 
-  // Active price list (2025 vs 2026). Defaults to DEFAULT_PRICELIST ('2026').
+  // Active price list. Defaults to DEFAULT_PRICELIST ('2026-10').
   // Lives at App-level so the same value flows into Builder, OrderForm,
   // saved metadata, and AI prompt context — single source of truth.
   // Wrapped setter normalizes the input through resolvePricelist so a stray

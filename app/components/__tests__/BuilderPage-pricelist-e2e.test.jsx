@@ -32,12 +32,11 @@ const { COLLECTIONS } = require('@/lib/catalog')
 const CUTY = COLLECTIONS.find((c) => c.id === 'CUTY')
 const MNH = COLLECTIONS.find((c) => c.id === 'MNH')
 
-// The October list is offered to admins and a few granted agents only, so the
-// harness signs in as an admin — the access rules are covered in
-// BuilderPage-pricelist-toggle.test.jsx.
-const ADMIN = { role: 'admin', email: 'admin@example.com' }
+// Legacy lists (2025 / 2026) are Alberto/Dionne-only, so the harness signs in
+// as Alberto — the access rules are covered in BuilderPage-pricelist-toggle.
+const ALBERTO = { role: 'admin', email: 'alberto@love-lab.com' }
 
-function ParentHarness({ initialYear = '2026', initialLines, profile = ADMIN }) {
+function ParentHarness({ initialYear = '2026', initialLines, profile = ALBERTO }) {
   const [year, setYearRaw] = useState(initialYear)
   const setYear = (next) => setYearRaw(resolvePricelist(next))
   const [lines, setLines] = useState(initialLines)
