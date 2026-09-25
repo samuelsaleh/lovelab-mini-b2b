@@ -26,11 +26,6 @@ jest.mock('@/lib/healthEvent', () => ({
   recordHealthEvent: (...args) => recordHealthEvent(...args),
 }));
 
-const runLevelAlerts = jest.fn().mockResolvedValue({ emailed: false, shelf: [], order: [], recovered: 0 });
-jest.mock('@/lib/igi/levelAlerts', () => ({
-  runLevelAlerts: (...args) => runLevelAlerts(...args),
-}));
-
 const { GET } = require('../cron/igi-stock/route');
 
 function makeRequest(headers = {}) {
@@ -146,24 +141,12 @@ describe('/api/cron/igi-stock GET', () => {
 });
 
 
-describe('after the shelf read, the level alerts run', () => {
-  beforeEach(() => { process.env.CRON_SECRET = 'secret'; runLevelAlerts.mockClear(); });
-
-  test('their summary rides along in the response', async () => {
+describe('the nightly read sends no email of its own any more (24 Sept 2026)', () => {
+  test('the response carries no level_alerts', async () => {
+    process.env.CRON_SECRET = 'secret';
     syncShelfSnapshot.mockResolvedValue(summary());
-    runLevelAlerts.mockResolvedValueOnce({ emailed: true, shelf: ['a'], order: [], recovered: 0 });
     const res = await GET(makeRequest({ 'x-vercel-cron-secret': 'secret' }));
     expect(res.status).toBe(200);
-    expect((await res.json()).level_alerts).toMatchObject({ emailed: true, shelf: ['a'] });
-    expect(runLevelAlerts).toHaveBeenCalledTimes(1);
-  });
-
-  test('a failure there is recorded and does not undo the shelf read', async () => {
-    syncShelfSnapshot.mockResolvedValue(summary());
-    runLevelAlerts.mockRejectedValueOnce(new Error('mail down'));
-    const res = await GET(makeRequest({ 'x-vercel-cron-secret': 'secret' }));
-    expect(res.status).toBe(200);
-    expect((await res.json()).level_alerts).toEqual({ error: 'mail down' });
-    expect(recordHealthEvent).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn', message: expect.stringMatching(/level alerts/) }));
+    expect((await res.json()).level_alerts).toBeUndefined();
   });
 });

@@ -761,6 +761,47 @@ COMMENT ON COLUMN public.igi_visits.notified_at IS
 
 COMMENT ON COLUMN public.igi_visits.notify_error IS
   'Why the last attempt to email IGI about this request failed. Null once one succeeds.';
+-- IGI may read when a model was requested and numbered (24 Sept 2026).
+--
+-- The first real IGI sign-in (Michael's and Sam's IGI-only accounts) opened
+-- My stock on "Failed to load your stock". The portal loader asks igi_models
+-- for requested_at — the new-model flow of 10 Sept — and the column grant
+-- rewritten on 17 Sept (one level at IGI) listed every column but that one.
+-- Under row level security a column outside the grant is "permission denied
+-- for table igi_models", and the whole read fails with it. LoveLab's preview
+-- never showed this because it reads with the service role, which no grant
+-- constrains.
+--
+-- Two dates, nothing else: when LoveLab asked for a model, when IGI numbered
+-- it. Neither says anything about the shelf.
+GRANT SELECT (requested_at, numbered_at) ON public.igi_models TO authenticated;
+-- The scheduled certificate emails remember that they went out (24 Sept 2026).
+--
+-- Sam settled three mails on a clock: Liuba's "go collect" every morning at
+-- 07:00, IGI's "what LoveLab need from you" every Friday at 14:00, and
+-- Alberto's "order at IGI" every second Friday. The server's crontab calls
+-- one route every hour and the route reads the Antwerp clock; this table is
+-- what keeps a double tick, a redeploy in the same hour, or a manual re-run
+-- from sending the same mail twice. One row per mail per day: the runner
+-- inserts first, and a duplicate key means "already sent today".
+
+CREATE TABLE IF NOT EXISTS public.igi_digest_sends (
+  kind        text        NOT NULL CHECK (kind IN ('morning', 'igi_weekly', 'order')),
+  sent_on     date        NOT NULL,
+  sent_at     timestamptz NOT NULL DEFAULT now(),
+  recipients  text[]      NOT NULL DEFAULT '{}',
+  subject     text,
+  PRIMARY KEY (kind, sent_on)
+);
+
+COMMENT ON TABLE public.igi_digest_sends IS
+  'One row per scheduled certificate email per day (morning to LoveLab, Friday to IGI, every second Friday the order list). Inserted before sending; the primary key is what stops a second send the same day.';
+
+ALTER TABLE public.igi_digest_sends ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admin full access on igi_digest_sends" ON public.igi_digest_sends;
+CREATE POLICY "Admin full access on igi_digest_sends" ON public.igi_digest_sends
+  USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- ─── 2 of 3 · The opening balances ─────────────────────────────────────
 --

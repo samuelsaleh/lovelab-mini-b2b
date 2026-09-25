@@ -7,7 +7,7 @@
  */
 const { loadIgiWorld } = require('../igi-portal/_lib/load');
 
-function sb({ hasRequestedAt }) {
+function sb({ hasRequestedAt, denied = false }) {
   const selects = [];
   const rows = {
     igi_models: [
@@ -24,6 +24,10 @@ function sb({ hasRequestedAt }) {
         select: (c) => { cols = c; selects.push([table, c]); return chain; },
         order: () => chain,
         then: (resolve) => {
+          if (table === 'igi_models' && /requested_at/.test(cols) && denied) {
+            // Under row level security a column outside IGI's SELECT grant reads like this.
+            return resolve({ data: null, error: { code: '42501', message: 'permission denied for table igi_models' } });
+          }
           if (table === 'igi_models' && /requested_at/.test(cols) && !hasRequestedAt) {
             return resolve({ data: null, error: { code: '42703', message: 'column igi_models.requested_at does not exist' } });
           }
@@ -51,4 +55,13 @@ test('falls back to the old columns when the database is behind, and still lists
   expect(modelSelects[1]).not.toMatch(/requested_at/);
   expect(world.models.map((m) => m.id)).toEqual(['m1']);
   expect(world.awaiting.map((m) => m.id)).toEqual(['m2']);
+});
+
+test('falls back the same way when the column exists but IGI may not read it (24 Sept 2026: the first real sign-in)', async () => {
+  const db = sb({ hasRequestedAt: true, denied: true });
+  const world = await loadIgiWorld(db);
+  const modelSelects = db.selects.filter(([t]) => t === 'igi_models').map(([, c]) => c);
+  expect(modelSelects).toHaveLength(2);
+  expect(modelSelects[1]).not.toMatch(/requested_at/);
+  expect(world.models.map((m) => m.id)).toEqual(['m1']);
 });

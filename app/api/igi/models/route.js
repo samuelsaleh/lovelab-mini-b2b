@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { formatModelName } from '@/lib/igi/modelName';
 import { whyNotDeletableModel } from '@/lib/igi/models';
+import { notifyIgiOfNewModel, siteUrlFor } from '@/lib/igi/notify';
 
 const SHAPES = ['Round', 'Oval', 'Pear', 'Marquise', 'Cushion', 'Long Cushion', 'Emerald', 'Heart', 'Princess', 'Radiant', 'Asscher', 'Baguette'];
 
@@ -61,7 +62,10 @@ export async function POST(request) {
       .single();
 
     if (error) return fail('IGI/Models POST', error, 'Failed to add the model');
-    return NextResponse.json({ model: data }, { status: 201 });
+
+    // IGI are told to number it (Sam, 24 Sept 2026). The model is saved whether or not the mail goes.
+    const email = await notifyIgiOfNewModel(auth.adminSupabase, { modelId: data.id, siteUrl: siteUrlFor(request) });
+    return NextResponse.json({ model: data, email }, { status: 201 });
   } catch (err) {
     return fail('IGI/Models POST', err, 'Internal server error');
   }

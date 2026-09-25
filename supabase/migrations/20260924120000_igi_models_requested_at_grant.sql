@@ -1,0 +1,14 @@
+-- IGI may read when a model was requested and numbered (24 Sept 2026).
+--
+-- The first real IGI sign-in (Michael's and Sam's IGI-only accounts) opened
+-- My stock on "Failed to load your stock". The portal loader asks igi_models
+-- for requested_at — the new-model flow of 10 Sept — and the column grant
+-- rewritten on 17 Sept (one level at IGI) listed every column but that one.
+-- Under row level security a column outside the grant is "permission denied
+-- for table igi_models", and the whole read fails with it. LoveLab's preview
+-- never showed this because it reads with the service role, which no grant
+-- constrains.
+--
+-- Two dates, nothing else: when LoveLab asked for a model, when IGI numbered
+-- it. Neither says anything about the shelf.
+GRANT SELECT (requested_at, numbered_at) ON public.igi_models TO authenticated;

@@ -432,7 +432,7 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     expect(screen.getAllByTestId('short-issue')).toHaveLength(1)
   })
 
-  it('lists LoveLab ERP outs on the LoveLab out switch', async () => {
+  it('lists LoveLab ERP outs grouped by invoice on the LoveLab out switch', async () => {
     const OUTS = [
       {
         id: 'o8',
@@ -445,11 +445,33 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
         serial: 'LGAJ6529',
         synced_at: '2026-09-18T11:10:02Z',
       },
+      {
+        id: 'o9',
+        erp_out_id: 9,
+        invoice_no: '2',
+        out_date: '2026-09-18',
+        party: 'ALBERT SALEH',
+        description: 'Shapy Shine · LGAJ6552 · 1 × 0,5 Heart',
+        pcs: 50,
+        serial: 'LGAJ6552',
+        synced_at: '2026-09-18T11:10:02Z',
+      },
+      {
+        id: 'o10',
+        erp_out_id: 10,
+        invoice_no: '3',
+        out_date: '2026-09-17',
+        party: 'OTHER BUYER',
+        description: 'Full Moonlight · LGAJ6500',
+        pcs: 20,
+        serial: 'LGAJ6500',
+        synced_at: '2026-09-18T11:10:02Z',
+      },
     ]
     global.fetch = jest.fn((url) => {
       const u = String(url)
       if (u.includes('/api/igi/certificate-erp-outs')) {
-        return Promise.resolve({ ok: true, json: async () => ({ outs: OUTS, count: 1 }) })
+        return Promise.resolve({ ok: true, json: async () => ({ outs: OUTS, count: 3 }) })
       }
       return Promise.resolve({ ok: true, json: async () => ({ visits: [] }) })
     })
@@ -457,13 +479,51 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     await waitFor(() => expect(screen.getByTestId('view')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId('view-erp-out'))
-    await waitFor(() => expect(screen.getByTestId('erp-out-row')).toBeInTheDocument())
-    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('LGAJ6529')
-    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('104')
-    expect(screen.getByTestId('erp-out-row')).toHaveTextContent('ALBERT SALEH')
+    await waitFor(() => expect(screen.getAllByTestId('erp-out-group')).toHaveLength(2))
+
+    const invoice2 = screen.getAllByTestId('erp-out-group')[0]
+    expect(invoice2).toHaveTextContent('ALBERT SALEH')
+    expect(invoice2).toHaveTextContent('154')
+    expect(screen.queryByTestId('erp-out-row')).not.toBeInTheDocument()
+
+    fireEvent.click(invoice2)
+    await waitFor(() => expect(screen.getAllByTestId('erp-out-row')).toHaveLength(2))
+    expect(screen.getByTestId('erp-outs-table')).toHaveTextContent('LGAJ6529')
+    expect(screen.getByTestId('erp-outs-table')).toHaveTextContent('LGAJ6552')
   })
 
-  it('lists LoveLab ERP ins on the LoveLab in switch', async () => {
+  it('filters LoveLab outs by party search', async () => {
+    const OUTS = [
+      {
+        id: 'o8', erp_out_id: 8, invoice_no: '2', out_date: '2026-09-18',
+        party: 'ALBERT SALEH', description: 'x', pcs: 104, serial: 'LGAJ6529',
+        synced_at: '2026-09-18T11:10:02Z',
+      },
+      {
+        id: 'o10', erp_out_id: 10, invoice_no: '3', out_date: '2026-09-17',
+        party: 'OTHER BUYER', description: 'y', pcs: 20, serial: 'LGAJ6500',
+        synced_at: '2026-09-18T11:10:02Z',
+      },
+    ]
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      if (u.includes('/api/igi/certificate-erp-outs')) {
+        return Promise.resolve({ ok: true, json: async () => ({ outs: OUTS, count: 2 }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visits: [] }) })
+    })
+    render(<CertificatesVisitsClient />)
+    await waitFor(() => expect(screen.getByTestId('view')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('view-erp-out'))
+    await waitFor(() => expect(screen.getAllByTestId('erp-out-group')).toHaveLength(2))
+
+    fireEvent.change(screen.getByTestId('erp-party-search'), { target: { value: 'albert' } })
+    await waitFor(() => expect(screen.getAllByTestId('erp-out-group')).toHaveLength(1))
+    expect(screen.getByTestId('erp-out-group')).toHaveTextContent('ALBERT SALEH')
+    expect(screen.queryByText('OTHER BUYER')).not.toBeInTheDocument()
+  })
+
+  it('lists LoveLab ERP ins grouped by invoice on the LoveLab in switch', async () => {
     const INS = [
       {
         id: 'i5',
@@ -501,8 +561,14 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     await waitFor(() => expect(screen.getByTestId('view')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId('view-erp-in'))
-    await waitFor(() => expect(screen.getAllByTestId('erp-in-row')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByTestId('erp-in-group')).toHaveLength(2))
+    expect(screen.queryByTestId('erp-in-row')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByTestId('erp-in-group')[0])
+    await waitFor(() => expect(screen.getByTestId('erp-in-row')).toBeInTheDocument())
     expect(screen.getByText('IGI receive')).toBeInTheDocument()
-    expect(screen.getByText('ERP manual')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByTestId('erp-in-group')[1])
+    await waitFor(() => expect(screen.getByText('ERP manual')).toBeInTheDocument())
   })
 })

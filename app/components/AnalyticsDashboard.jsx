@@ -19,6 +19,7 @@ import {
 import { clientNameFromDoc } from '@/lib/analyticsAliases'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
 import { safeFetch } from '@/lib/api'
+import { buildHousingSold, NOT_SPECIFIED } from '@/lib/housingColorStock'
 import {
   buildAnalyticsExportRows,
   analyticsExportFilename,
@@ -340,6 +341,40 @@ function MiniStat({ label, items, maxItems = 5 }) {
   )
 }
 
+function HousingColorTable({ rows }) {
+  const th = { textAlign: 'right', fontSize: 11, fontWeight: 700, color: colors.lovelabMuted, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 10px', whiteSpace: 'nowrap' }
+  const td = { textAlign: 'right', fontSize: 12, padding: '7px 10px', borderTop: `1px solid ${colors.lineGray}`, whiteSpace: 'nowrap' }
+  return (
+    <div data-testid="housing-table" style={{ overflowX: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fonts.body }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left' }}>Colour</th>
+            <th style={th}>Sold</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const unspecified = r.name === NOT_SPECIFIED
+            const empty = r.qty === 0
+            return (
+              <tr key={r.name} data-testid={`housing-row-${r.name}`} style={{ opacity: empty || unspecified ? 0.5 : 1, background: empty ? '#fafafa' : '#fff' }}>
+                <td style={{ ...td, textAlign: 'left' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 4, background: r.hex || '#ddd', border: '1px solid rgba(0,0,0,0.12)', flexShrink: 0 }} />
+                    <span style={{ color: colors.charcoal }}>{r.name}</span>
+                  </span>
+                </td>
+                <td style={{ ...td, fontWeight: 600, color: colors.inkPlum }}>{fmtStat(r.qty)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ColorPaletteColumn({ title, items, showDate = false }) {
   return (
     <div data-testid={`color-palette-${title.toLowerCase()}`} style={{ flex: 1, minWidth: 220 }}>
@@ -602,6 +637,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   const colorBreakdown = useMemo(() => buildColorBreakdown(docs), [docs])
   const sortedColors = useMemo(() => sortColorBreakdown(colorBreakdown, colorSort), [colorBreakdown, colorSort])
+
+  // ─── Housing colours: pieces sold per colour (current view) ──────────
+  const housingRows = useMemo(() => buildHousingSold(docs), [docs])
 
   const countryDetails = useMemo(() => {
     if (!selectedCountry) return []
@@ -1185,6 +1223,14 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               <ColorPaletteColumn title="Other" items={sortedColors.other} showDate={colorSort === 'chrono'} />
             )}
           </div>
+        </Section>
+
+        {/* ─── Row 4b: Housing colours — pieces sold per colour ─── */}
+        <Section title="Housing colours" style={{ marginBottom: gridGap }}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
+            Pieces per housing colour. Follows the filters above.
+          </div>
+          <HousingColorTable rows={housingRows} />
         </Section>
 
         {/* ─── Row 5: Quick Stats Grid ─── */}

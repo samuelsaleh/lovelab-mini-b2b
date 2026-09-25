@@ -91,9 +91,28 @@ asked" and "N missing on return" on such movements.
 **IGI see the level you set.** "IGI must hold" on Models is the one level on
 their stock. Their stock screen shows it beside what they hold — a model
 below it is tinted red, sorted to the top, and says how short beside your
-level — their To do
-lists every model below it under "Produce more", and once they have an
-account they are emailed the night it happens — the same night you are.
+level — and their To do lists every model below it under "Produce more".
+
+**The mails, as settled on 24 Sept 2026.** Every mail IGI read puts the
+serial number big and our name small, because IGI work by serial.
+
+| When | Who | What |
+|---|---|---|
+| You send a request | IGI | The request: serial, asked, what they hold, short by |
+| You add a model | IGI | "Please give it an IGI serial", with the three steps |
+| IGI record what they made | LoveLab | "IGI made V-0xx", lines fewer than asked in red |
+| You confirm a short return | IGI | "V-0xx came back short", the missing lines |
+| Every morning, 07:00 | Liuba | Go collect: model, on the shelf, level, ask IGI for; what is ready at IGI |
+| Every Friday, 14:00 | IGI | Three tables: produce more, requests waiting, models to number (only when something is waiting) |
+| Every second Friday, 14:00 | Alberto | Order at IGI: IGI hold, must hold, short by; what is waiting on IGI (only when something is below) |
+
+The three scheduled ones come from one hourly cron line on the server
+(`/api/cron/igi-mail`, see `docs/CERTIFICATE_ERP_SYNC.md`); the route reads
+the Antwerp clock and sends each at most once a day. The nightly "once per
+crossing" level emails are gone: the Friday and morning mails say the same
+thing at a time somebody chose. Recipients can be changed on the server with
+`IGI_MORNING_EMAILS` and `IGI_ORDER_EMAILS` (comma-separated); IGI's mails go
+to every IGI login plus `IGI_EMAILS`.
 
 IGI's side — what is on their screen right now — is a link at the foot of the
 sidebar.

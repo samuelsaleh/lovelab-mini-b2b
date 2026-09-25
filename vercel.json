@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/igi-certificate-outs",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/igi-mail",
+      "schedule": "0 * * * *"
     }
   ],
   "redirects": [

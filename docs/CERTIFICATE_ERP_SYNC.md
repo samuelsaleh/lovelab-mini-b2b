@@ -24,7 +24,13 @@ Failed B2B→ERP In receipts are retried on the same cron.
 
 ```cron
 */10 * * * * /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1
+0 * * * * /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh /api/cron/igi-mail >/dev/null 2>&1
 ```
+
+The hourly `igi-mail` line is the scheduled certificate emails (Liuba every
+morning at 07:00, IGI every Friday at 14:00, Alberto every second Friday).
+The route reads the Antwerp clock itself and sends each mail at most once a
+day (`igi_digest_sends`), so the hour it runs at does not matter.
 
 ## Apply DB migrations (Supabase)
 

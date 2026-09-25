@@ -438,7 +438,10 @@ describe('BuilderPage — Remove pack in one click', () => {
       packRow('p1', { id: 'c2', qty: 3 }),
       mockColorConfig({ id: 'hand', caratIdx: 0 }),
     ])
-    const cubix = makeLine(COLLECTIONS.find(c => c.id === 'CUBIX'), [packRow('p1', { id: 'x1', qty: 1 })])
+    const cubix = makeLine(COLLECTIONS.find(c => c.id === 'CUBIX'), [
+      // CUBIX is non-braided-only: a row already carrying it is left alone on open.
+      packRow('p1', { id: 'x1', qty: 1, closureType: 'nonBraided' }),
+    ])
     // M3 is braided-only: a row already carrying it is left alone on open, so
     // the only setLines call in these tests is the one the click makes.
     const m3 = makeLine(M3, [packRow('p2', { id: 'm1', qty: 4, closureType: 'braided' })])

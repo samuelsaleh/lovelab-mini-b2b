@@ -74,7 +74,10 @@ export default function CertificatesModelsClient() {
       setModels((prev) => [...prev, { ...body.model, pool: null, shelf: null }])
       setForm(EMPTY_FORM)
       setFormOpen(false)
-      say(`${body.model.name} added. It is on IGI's To do; once they give it a serial it appears on Stock.`, 7000)
+      const told = body.email?.sent
+        ? 'IGI have been emailed.'
+        : body.email?.reason === 'no_recipients' ? 'No IGI address to email.' : 'IGI could not be emailed.'
+      say(`${body.model.name} added. It is on IGI's To do; once they give it a serial it appears on Stock. ${told}`, 7000)
       setError(null)
     } catch (err) {
       setError(err.message)
