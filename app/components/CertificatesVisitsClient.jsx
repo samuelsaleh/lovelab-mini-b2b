@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatQty, visitRef, sameDayLabel } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
@@ -29,6 +29,7 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   const [loading, setLoading] = useState(true)
   const [erpLoading, setErpLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [partyQuery, setPartyQuery] = useState('')
 
   useEffect(() => { load() }, [])
 
@@ -83,24 +84,50 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
     }
   }
 
+  function changeView(next) {
+    setView(next)
+    setPartyQuery('')
+  }
+
   if (loading) return <Loading />
+
+  const isErpView = view === 'erp-in' || view === 'erp-out'
+  const erpRows = view === 'erp-in' ? (erpIns || []) : view === 'erp-out' ? (erpOuts || []) : []
+  const erpBusy = isErpView && (erpLoading || (view === 'erp-in' ? erpIns == null : erpOuts == null))
 
   const open = visits.filter((v) => v.status !== 'closed')
   let sub = `${visits.length} movement${visits.length === 1 ? '' : 's'}${open.length ? `, ${open.length} still open` : ', all closed'}`
-  if (view === 'erp-in') {
-    sub = erpLoading || erpIns == null
-      ? 'Loading LoveLab ins…'
-      : `${erpIns.length} in line${erpIns.length === 1 ? '' : 's'} from the stock software`
-  } else if (view === 'erp-out') {
-    sub = erpLoading || erpOuts == null
-      ? 'Loading LoveLab outs…'
-      : `${erpOuts.length} out line${erpOuts.length === 1 ? '' : 's'} from the stock software`
+  if (view === 'erp-in' || view === 'erp-out') {
+    if (erpBusy) {
+      sub = view === 'erp-in' ? 'Loading LoveLab ins…' : 'Loading LoveLab outs…'
+    } else {
+      const filtered = filterErpRows(erpRows, partyQuery)
+      const groups = groupErpByInvoice(filtered, view === 'erp-in')
+      const pcs = groups.reduce((sum, g) => sum + g.pcs, 0)
+      const kind = view === 'erp-in' ? 'in' : 'out'
+      sub = `${groups.length} invoice${groups.length === 1 ? '' : 's'} · ${formatQty(pcs)} pcs ${kind}`
+      if (partyQuery.trim()) {
+        sub += ` matching “${partyQuery.trim()}”`
+      } else {
+        sub += ' from the stock software'
+      }
+    }
   }
 
   return (
     <>
       <PageHead title="Movements" sub={sub}>
-        <Switch options={VIEWS} value={view} onChange={setView} testId="view" />
+        {(view === 'erp-in' || view === 'erp-out') && (
+          <input
+            type="search"
+            value={partyQuery}
+            onChange={(e) => setPartyQuery(e.target.value)}
+            placeholder="Search by party"
+            data-testid="erp-party-search"
+            style={{ width: 230 }}
+          />
+        )}
+        <Switch options={VIEWS} value={view} onChange={changeView} testId="view" />
         <Btn kind="primary" onClick={() => router.push('/certificates/stock')} testId="new-request">
           Ask IGI for more
         </Btn>
@@ -115,6 +142,7 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
           kind="in"
           rows={erpIns || []}
           loading={erpLoading || erpIns == null}
+          query={partyQuery}
           onReload={loadErpIns}
         />
       ) : view === 'erp-out' ? (
@@ -122,6 +150,7 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
           kind="out"
           rows={erpOuts || []}
           loading={erpLoading || erpOuts == null}
+          query={partyQuery}
           onReload={loadErpOuts}
         />
       ) : (
@@ -198,23 +227,93 @@ export default function CertificatesVisitsClient({ initialView = 'visit' }) {
   )
 }
 
-function ErpLedgerPanel({ kind, rows, loading, onReload }) {
-  if (loading) return <Loading />
+function filterErpRows(rows, query) {
+  const q = query.trim().toLowerCase()
+  if (!q) return rows
+  return rows.filter((row) => String(row.party || '').toLowerCase().includes(q))
+}
+
+function invoiceKey(row) {
+  const raw = row.invoice_no
+  if (raw == null || String(raw).trim() === '') return '—'
+  return String(raw)
+}
+
+function groupErpByInvoice(rows, isIn) {
+  const map = new Map()
+  for (const row of rows) {
+    const key = invoiceKey(row)
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        invoice_no: key,
+        lines: [],
+        pcs: 0,
+        parties: new Set(),
+        latestDate: null,
+        latestSynced: null,
+      })
+    }
+    const group = map.get(key)
+    group.lines.push(row)
+    group.pcs += Number(row.pcs) || 0
+    if (row.party) group.parties.add(row.party)
+    const date = isIn ? row.in_date : row.out_date
+    if (date && (!group.latestDate || date > group.latestDate)) group.latestDate = date
+    if (row.synced_at && (!group.latestSynced || row.synced_at > group.latestSynced)) {
+      group.latestSynced = row.synced_at
+    }
+  }
+  return [...map.values()]
+    .map((g) => ({
+      ...g,
+      partyLabel: g.parties.size === 0
+        ? '—'
+        : g.parties.size === 1
+          ? [...g.parties][0]
+          : `${[...g.parties][0]} +${g.parties.size - 1}`,
+      lineCount: g.lines.length,
+    }))
+    .sort((a, b) => {
+      const da = a.latestDate || ''
+      const db = b.latestDate || ''
+      if (da !== db) return db.localeCompare(da)
+      return String(b.invoice_no).localeCompare(String(a.invoice_no), undefined, { numeric: true })
+    })
+}
+
+function ErpLedgerPanel({ kind, rows, loading, query, onReload }) {
+  const [expanded, setExpanded] = useState(null)
 
   const isIn = kind === 'in'
+  const filtered = useMemo(() => filterErpRows(rows, query), [rows, query])
+  const groups = useMemo(() => groupErpByInvoice(filtered, isIn), [filtered, isIn])
+
+  useEffect(() => {
+    setExpanded(null)
+  }, [query, kind])
+
+  if (loading) return <Loading />
+
   const title = isIn ? 'LoveLab Certificate In' : 'LoveLab Certificate Out'
   const sub = isIn
-    ? 'Copied from the stock software every 10 minutes (manual ins and IGI receives).'
-    : 'Copied from the stock software every 10 minutes when LoveLab outs certificates.'
+    ? 'Grouped by invoice. Click a row for the model lines. Copied from the stock software every 10 minutes.'
+    : 'Grouped by invoice. Click a row for the model lines. Copied from the stock software every 10 minutes.'
   const empty = isIn
     ? 'No LoveLab ins synced yet. Create a Certificate In in the stock software, or receive an IGI movement; it appears here within about 10 minutes.'
     : 'No LoveLab outs synced yet. Create a Certificate Out in the stock software; it appears here within about 10 minutes.'
+  const emptySearch = 'No invoices match that party.'
   const note = isIn
     ? 'These rows are LoveLab Certificate In from the ERP. Rows with a visit:… reference came from an IGI receive push; others were entered in the stock software.'
     : 'These rows are LoveLab Certificate Out from the ERP. They do not change the IGI pool on Stock — that drops when IGI issues. They record certificates leaving LoveLab\'s own shelf.'
+  const groupTestId = isIn ? 'erp-in-group' : 'erp-out-group'
   const rowTestId = isIn ? 'erp-in-row' : 'erp-out-row'
   const tableTestId = isIn ? 'erp-ins-table' : 'erp-outs-table'
   const reloadTestId = isIn ? 'reload-erp-ins' : 'reload-erp-outs'
+
+  function toggle(key) {
+    setExpanded((prev) => (prev === key ? null : key))
+  }
 
   return (
     <>
@@ -231,53 +330,96 @@ function ErpLedgerPanel({ kind, rows, loading, onReload }) {
                 <th>Date</th>
                 <th>Invoice</th>
                 <th>Party</th>
-                <th>Model</th>
+                <th className="num">Lines</th>
                 <th className="num">Pcs</th>
                 {isIn && <th>Source</th>}
                 <th>Synced</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const date = isIn ? row.in_date : row.out_date
-                const key = row.id || (isIn ? row.erp_in_id : row.erp_out_id)
-                const fromVisit = isIn && row.external_ref && /^visit:/i.test(String(row.external_ref))
+              {groups.map((group) => {
+                const open = expanded === group.key
                 return (
-                  <tr key={key} data-testid={rowTestId}>
-                    <td>{date ? formatDate(date) : '—'}</td>
-                    <td className="mono">{row.invoice_no ?? '—'}</td>
-                    <td>{row.party || '—'}</td>
-                    <td>
-                      <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                        {row.serial || '—'}
-                      </div>
-                      <div className="spec" style={{ marginTop: 2, maxWidth: 420 }}>
-                        {row.description || '—'}
-                      </div>
-                    </td>
-                    <td className="num">{formatQty(row.pcs)}</td>
-                    {isIn && (
-                      <td>
-                        {fromVisit
-                          ? <Chip tone="fine">IGI receive</Chip>
-                          : <Chip tone="watch">ERP manual</Chip>}
-                      </td>
-                    )}
-                    <td className="spec">
-                      {row.synced_at ? formatDate(String(row.synced_at).slice(0, 10)) : '—'}
-                    </td>
-                  </tr>
+                  <ErpInvoiceGroup
+                    key={group.key}
+                    group={group}
+                    open={open}
+                    isIn={isIn}
+                    groupTestId={groupTestId}
+                    rowTestId={rowTestId}
+                    onToggle={() => toggle(group.key)}
+                  />
                 )
               })}
             </tbody>
           </table>
         </TableWrap>
         {rows.length === 0 && <Empty>{empty}</Empty>}
+        {rows.length > 0 && groups.length === 0 && <Empty>{emptySearch}</Empty>}
       </Card>
 
       <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', maxWidth: 720, lineHeight: 1.6 }}>
         {note}
       </p>
+    </>
+  )
+}
+
+function ErpInvoiceGroup({ group, open, isIn, groupTestId, rowTestId, onToggle }) {
+  return (
+    <>
+      <tr
+        className="clickable"
+        onClick={onToggle}
+        aria-expanded={open}
+        data-testid={groupTestId}
+      >
+        <td>{group.latestDate ? formatDate(group.latestDate) : '—'}</td>
+        <td className="mono" style={{ fontWeight: 600, color: 'var(--ink)' }}>
+          {group.invoice_no}
+          <span style={{ marginLeft: 8, color: 'var(--ink-faint)', fontWeight: 400 }}>
+            {open ? '▾' : '▸'}
+          </span>
+        </td>
+        <td>{group.partyLabel}</td>
+        <td className="num">{formatQty(group.lineCount)}</td>
+        <td className="num">{formatQty(group.pcs)}</td>
+        {isIn && <td className="spec">—</td>}
+        <td className="spec">
+          {group.latestSynced ? formatDate(String(group.latestSynced).slice(0, 10)) : '—'}
+        </td>
+      </tr>
+      {open && group.lines.map((row) => {
+        const date = isIn ? row.in_date : row.out_date
+        const key = row.id || (isIn ? row.erp_in_id : row.erp_out_id)
+        const fromVisit = isIn && row.external_ref && /^visit:/i.test(String(row.external_ref))
+        return (
+          <tr key={key} data-testid={rowTestId} style={{ background: 'var(--accent-tint, #f6f3ef)' }}>
+            <td style={{ paddingLeft: 28 }}>{date ? formatDate(date) : '—'}</td>
+            <td className="mono spec">{row.invoice_no ?? '—'}</td>
+            <td>{row.party || '—'}</td>
+            <td>
+              <div style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                {row.serial || '—'}
+              </div>
+              <div className="spec" style={{ marginTop: 2, maxWidth: 420, whiteSpace: 'normal' }}>
+                {row.description || '—'}
+              </div>
+            </td>
+            <td className="num">{formatQty(row.pcs)}</td>
+            {isIn && (
+              <td>
+                {fromVisit
+                  ? <Chip tone="fine">IGI receive</Chip>
+                  : <Chip tone="watch">ERP manual</Chip>}
+              </td>
+            )}
+            <td className="spec">
+              {row.synced_at ? formatDate(String(row.synced_at).slice(0, 10)) : '—'}
+            </td>
+          </tr>
+        )
+      })}
     </>
   )
 }
