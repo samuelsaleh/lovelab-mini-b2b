@@ -4,7 +4,7 @@ Built by Rafi on branch `claude/rafi-monthly-sales-report`. Nothing here is live
 
 ## What it does
 
-On the 1st of each month, `/api/cron/monthly-sales-report` builds the previous month's sales report from the database (read-only) and delivers it on two channels:
+On the 1st of each month, the server crontab calls `/api/cron/monthly-sales-report`, which builds the previous month's sales report from the database (read-only) and delivers it on two channels:
 
 - **Google Drive gets the PDF only**, in a shared folder.
 - **Email:** the brief HTML is the body, with the PDF attached. It goes to `MONTHLY_SALES_REPORT_RECIPIENTS`. **While that is not set, it goes to sam@love-lab.com**; the other addresses are added later. Set but empty means no email.
@@ -37,18 +37,28 @@ The PDF is one phone-width page with no page breaks, so it reads properly in the
    - `GOOGLE_DRIVE_SALES_REPORTS_FOLDER_ID=<folder id>`
    - `MONTHLY_SALES_REPORT_RECIPIENTS=<emails, comma separated>`. Optional: **not set means sam@love-lab.com**, for now. The email uses the existing Resend setup (`RESEND_API_KEY`, `SENDER_EMAIL`).
    - `MONTHLY_SALES_REPORT_ALERT_TO=<email>`: who gets the problem alerts (see below). **Not set means sam@love-lab.com.**
-3. **Chrome for the PDF.** The PDF is printed by headless Chromium through `puppeteer-core`, which does not download a browser.
-   - On the server: `apt install chromium` (or google-chrome).
-   - If it lives somewhere other than `/usr/bin/chromium`, `/usr/bin/chromium-browser` or `/usr/bin/google-chrome`, set `CHROME_PATH`.
-4. **Schedule.** Pick one of these:
-   - **Server crontab** (same as the other crons). Add this line to `CRON_BLOCK` in `scripts/install-server-cron.sh` and re-run it:
-     ```
-     0 7 1 * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/monthly-sales-report >/dev/null 2>&1
-     ```
-   - **n8n (chosen by Rafi, 25/09/2026).** The workflow is ready at `n8n/monthly-sales-report.workflow.json`. See the n8n section below.
-5. **First run by hand.** Run this and check `drive.webViewLink` and `email.sent` in the response:
+3. **Chrome for the PDF.** The PDF is printed by headless Chrome through `puppeteer-core`, which does not download a browser. Chrome is installed once, on the server (DigitalOcean, `root@46.101.98.106`). This does not touch the app.
    ```
-   GET /api/cron/monthly-sales-report?month=2026-09
+   ssh root@46.101.98.106
+   . /etc/os-release && echo "$PRETTY_NAME"; uname -m; free -h     # expect Ubuntu/Debian, x86_64, and ~300 MB free
+   cd /tmp && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+   export DEBIAN_FRONTEND=noninteractive
+   apt-get update && apt-get install -y ./google-chrome-stable_current_amd64.deb
+   rm google-chrome-stable_current_amd64.deb
+   google-chrome-stable --version
+   google-chrome-stable --headless=new --no-sandbox --disable-gpu --print-to-pdf=/tmp/t.pdf about:blank && ls -la /tmp/t.pdf && rm /tmp/t.pdf
+   ```
+   - The app finds `/usr/bin/google-chrome-stable` on its own, so there is nothing to configure.
+   - If `uname -m` says `aarch64` (ARM), Google Chrome is not available. Instead run `apt-get install -y chromium` and set `CHROME_PATH=/usr/bin/chromium` in the server `.env`.
+   - Chrome updates itself with the normal `apt upgrade`.
+4. **Schedule.** Add it to the server crontab by re-running `scripts/install-server-cron.sh`, like the other crons. The script already contains this line:
+   ```
+   0 7 1 * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/monthly-sales-report >/dev/null 2>&1
+   ```
+   It runs at 07:00 server time on the 1st. The server clock is probably UTC, which is 08:00 or 09:00 in Antwerp; either way it is already the 1st in Brussels, so it builds the right month.
+5. **First run by hand**, on the server. Check `drive.webViewLink` and `email.sent` in the JSON it prints:
+   ```
+   /var/www/app.lovelab-antwerp.com/scripts/run-cron.sh "/api/cron/monthly-sales-report?month=2026-08"
    ```
 
 ## Running it locally (no server needed)
@@ -82,32 +92,11 @@ node scripts/monthly-sales-report.mjs --month 2026-09 --source supabase --drive 
   - `drive` (PDF → Drive)
   - `emailDelivery` (HTML + PDF → email)
   - `run` (all steps together)
-- `app/api/cron/monthly-sales-report/route.js` is the cron endpoint.
+- `app/api/cron/monthly-sales-report/route.js` is the cron endpoint. It is scheduled by `scripts/install-server-cron.sh` (no n8n).
 - `scripts/monthly-sales-report.mjs` is the CLI.
 - Tests are in `lib/monthlySalesReport/__tests__/` and `app/api/__tests__/cron-monthly-sales-report.test.js`.
 - The CLI never emails. Emails go out only from the cron route, and only to `MONTHLY_SALES_REPORT_RECIPIENTS`.
 
-## n8n workflow
-
-The file `n8n/monthly-sales-report.workflow.json` is imported **inactive**. It has four steps:
-
-1. **Schedule:** 1st of the month, 07:00, Europe/Brussels.
-2. **GET** `/api/cron/monthly-sales-report`. The app builds the previous month, puts the PDF in Drive and emails the HTML with the PDF attached.
-3. **Check:** HTTP 200, and the PDF is in Drive, and the email went out (or no recipients are set yet).
-4. **Success:** a log entry in the run history. **Otherwise:** an alert email with what failed and the likely cause.
-
-**To import it:**
-
-1. In n8n: *Workflows → Import from file* → pick the file.
-2. **Credential "LoveLab CRON_SECRET (x-vercel-cron-secret)"** (Header Auth):
-   - Name: `x-vercel-cron-secret`
-   - Value: the server's `CRON_SECRET`
-   - The commission-report workflow already uses this same credential, so reuse it if it exists.
-3. **Gmail credential** for the alert. The alert goes to `N8N_SALES_REPORT_ALERT_TO`, then `N8N_ALERT_TO`, and otherwise to sam@love-lab.com.
-4. Confirm the workflow timezone is Europe/Brussels (*Settings*).
-5. Click **Execute workflow** once by hand and check the result (PDF in Drive, email received). Only then switch it **Active**.
-
-**It only works once the report code is deployed.** Before this branch is merged and live, the GET returns 404 and the workflow sends the alert.
 
 ## Alerts: what happens when something goes wrong
 
@@ -120,7 +109,7 @@ Every run checks itself, and `MONTHLY_SALES_REPORT_ALERT_TO` (Sam until set) get
 | The report contradicts itself (totals don't add up) | **nothing** — Sam and the executives never see a wrong report | ⚠️ "problem", naming the total that doesn't add up |
 | Drive or email fails | the other channel still goes out | ⚠️ "problem", saying what was and wasn't delivered |
 | Suspicious data — a €0 order, an amount entered in cents, a typed date the report can't read, a new order channel, an order pointing to a deleted fair, an agent with no profile, a month with suddenly no sales | delivered | ℹ️ "data needs a look", listing each case (amounts, dates and fair names only, never client names) |
-| The app is down or doesn't answer | nothing | the **n8n** workflow's own alert (the app can't send anything when it's down) |
+| The app or server is down on the 1st | nothing | none — the app can't send anything while it's down; the report simply doesn't arrive, which is itself the signal. Re-run the month by hand once it's back. |
 
 Checked against the real data (Jun–Sep 2026):
 

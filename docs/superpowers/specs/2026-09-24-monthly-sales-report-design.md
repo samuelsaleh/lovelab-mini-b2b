@@ -3,7 +3,7 @@
 **Date:** 2026-09-24, updated 2026-09-25 to match what was built
 **Author:** Rafi (with Claude)
 **Branch:** `claude/rafi-monthly-sales-report`. Branch only: no merge to `main`, no PR.
-**Operations guide:** [`docs/monthly-sales-report.md`](../../monthly-sales-report.md) covers setup, alerts and n8n.
+**Operations guide:** [`docs/monthly-sales-report.md`](../../monthly-sales-report.md) covers setup, alerts and scheduling.
 
 ## Goal
 
@@ -43,7 +43,7 @@ The PDF alone goes into Google Drive ("LoveLab Analytics / Monthly Report"). The
 ## Architecture
 
 ```
-n8n (1st, 07:00 Brussels) ──GET──▶ /api/cron/monthly-sales-report
+server crontab (1st, 07:00) ──run-cron.sh──▶ /api/cron/monthly-sales-report
                                      ├─ dataSources/supabase.js   read-only, paged by id
                                      ├─ buildReportData.js        pure figures
                                      ├─ checks.js                 self-checks: errors block delivery, warnings alert
@@ -67,7 +67,7 @@ n8n (1st, 07:00 Brussels) ──GET──▶ /api/cron/monthly-sales-report
 | 25/09 | Each fair shown separately, plus every fair of the year. |
 | 25/09 | Figures on the sales-by-month chart and a B2B / B2C table. |
 | 25/09 | Delivery: Google Drive (Sam's preference), PDF only; email = HTML + PDF attached. |
-| 25/09 | n8n is the monthly trigger; the report logic stays in the app. |
+| 25/09 | No n8n: the server crontab (scripts/install-server-cron.sh) is the monthly trigger, like the other LoveLab crons. |
 | 25/09 | Self-checks and alert emails; independent code review fixes (dates, paging, Drive safety, auth). |
 | 25/09 | Drive folder: "LoveLab Analytics / Monthly Report" in Rafi's Drive, PDFs directly inside. |
 | 25/09 | Email and alert recipients: sam@love-lab.com until the real list is set. |

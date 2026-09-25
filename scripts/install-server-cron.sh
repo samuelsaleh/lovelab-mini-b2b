@@ -53,7 +53,8 @@ CRON_BLOCK="# LoveLab B2B crons (Option B — CRON_SECRET from ${SERVER_APP_DIR}
 0 4 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/health-check >/dev/null 2>&1
 0 6 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/email-deliveries >/dev/null 2>&1
 0 1 * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-stock >/dev/null 2>&1
-*/10 * * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1"
+*/10 * * * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/igi-certificate-outs >/dev/null 2>&1
+0 7 1 * * ${SERVER_SCRIPTS}/run-cron.sh /api/cron/monthly-sales-report >/dev/null 2>&1"
 
 echo "Merging crontab entries (idempotent)…"
 ssh_stdin "bash -s" <<REMOTE

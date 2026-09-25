@@ -14,8 +14,9 @@
  * unreadable, PDF failed, checks failed, Drive or email failed, or suspicious
  * data — emails an alert to MONTHLY_SALES_REPORT_ALERT_TO (Rafi).
  *
- * Triggered by the server crontab through scripts/run-cron.sh, or by n8n,
- * with the same x-vercel-cron-secret header as the other /api/cron routes.
+ * Triggered on the 1st of the month by the server crontab through
+ * scripts/run-cron.sh (see scripts/install-server-cron.sh), with the same
+ * x-vercel-cron-secret header as the other /api/cron routes.
  *
  *   GET /api/cron/monthly-sales-report              → last complete month
  *   GET /api/cron/monthly-sales-report?month=2026-08 → a specific month
@@ -63,7 +64,7 @@ async function logoDataUri() {
   }
 }
 
-/** Stop here: alert Rafi and answer 500 so n8n alerts too. */
+/** Stop here: send the alert email and answer 500. */
 async function fail(month, problem, extra = {}) {
   console.error('[cron monthly-sales-report]', problem)
   const alert = await sendReportAlert({ month, level: 'error', problems: [problem], send: sendEmail })
