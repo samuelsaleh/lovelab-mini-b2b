@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import SynaliaReportCard from './SynaliaReportCard'
+import { isHideRevenue } from '@/lib/utils'
 import {
   JEWELER_GROUP_OPTIONS,
   getJewelerGroupLabel,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/jewelerGroup'
 
 const fmt2 = (n) => {
+  if (isHideRevenue()) return '—';
   const num = Number(n);
   if (Number.isNaN(num)) return '0,00 €';
   return new Intl.NumberFormat('fr-BE', {

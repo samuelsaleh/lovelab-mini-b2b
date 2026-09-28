@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { getConsignmentRows, rowDescription, rowSpecs } from '@/lib/consignment'
+import { isHideRevenue } from '@/lib/utils'
 
 /**
  * ReconcileConsignmentModal
@@ -133,7 +134,7 @@ export default function ReconcileConsignmentModal({ order, onClose, onConfirmed 
 
   // ── Format ────────────────────────────────────────────────────────────────
   const fmt = (n) => {
-    if (n == null || isNaN(n)) return '—'
+    if (n == null || isNaN(n) || isHideRevenue()) return '—'
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n)
   }
 

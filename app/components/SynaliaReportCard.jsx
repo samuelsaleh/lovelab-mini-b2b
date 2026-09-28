@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { colors, fonts } from '@/lib/styles'
 import { getCurrentQuarter, listSynaliaQuarterOptions } from '@/lib/synaliaQuarter'
+import { isHideRevenue } from '@/lib/utils'
 
 /**
  * SYNALIA quarterly export — separate from Commission Report.
@@ -78,8 +79,10 @@ export default function SynaliaReportCard({ agentId, agentName }) {
   const exportUrl = `/api/synalia-report/export?agent_id=${encodeURIComponent(agentId)}&year=${year}&quarter=${quarter}`
   const downloadName = `${agentName || 'Agent'} - SYNALIA T${quarter} ${year}.xlsx`
 
+  // Demo accounts see the card but no figures, and cannot send or download.
+  const demo = isHideRevenue()
   const fmtEuro = (n) =>
-    new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0)
+    demo ? '—' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0)
 
   return (
     <div style={{
@@ -135,9 +138,9 @@ export default function SynaliaReportCard({ agentId, agentName }) {
             <span style={{ color: colors.lovelabMuted }}>…</span>
           ) : preview ? (
             <>
-              {preview.orderCount} commande{preview.orderCount !== 1 ? 's' : ''}
+              {demo ? '—' : preview.orderCount} commande{preview.orderCount !== 1 ? 's' : ''}
               {' · '}
-              {preview.clientCount} client{preview.clientCount !== 1 ? 's' : ''}
+              {demo ? '—' : preview.clientCount} client{preview.clientCount !== 1 ? 's' : ''}
               {' · '}
               {fmtEuro(preview.grandTotal)}
             </>
@@ -169,25 +172,29 @@ export default function SynaliaReportCard({ agentId, agentName }) {
           <button
             type="button"
             onClick={handleSend}
-            disabled={sending || !agentId}
+            disabled={sending || !agentId || demo}
             style={{
               padding: '10px 16px',
               borderRadius: 8,
               border: 'none',
-              background: sending ? '#ccc' : colors.inkPlum,
+              background: sending || demo ? '#ccc' : colors.inkPlum,
               color: '#fff',
               fontSize: 13,
               fontWeight: 700,
-              cursor: sending ? 'default' : 'pointer',
+              cursor: sending || demo ? 'default' : 'pointer',
               fontFamily: fonts.body,
             }}
           >
             {sending ? 'Envoi…' : 'Envoyer'}
           </button>
           <a
-            href={exportUrl}
-            download={downloadName}
+            href={demo ? undefined : exportUrl}
+            download={demo ? undefined : downloadName}
+            aria-disabled={demo || undefined}
+            onClick={demo ? (e) => e.preventDefault() : undefined}
             style={{
+              opacity: demo ? 0.5 : 1,
+              cursor: demo ? 'default' : 'pointer',
               padding: '10px 16px',
               borderRadius: 8,
               border: `1px solid ${colors.lineGray}`,
