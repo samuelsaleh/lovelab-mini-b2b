@@ -1,10 +1,10 @@
 /**
  * Iconix silk in the Builder — the closure picker and the sizes it drives.
  *
- * Flower Heart keeps the choice: pick a colour, the row starts as Non-braided
+ * Za-Ha keeps the choice: pick a colour, the row starts as Non-braided
  * with S/M · L/XL; switch to Braided and the sizes become S · M · L.
  *
- * Riviera Four is braided-only (Sam, Sep 2026): no Closure column at all, every
+ * Riviera Four and Flower Heart are braided-only: no Closure column at all, every
  * colour starts braided with S · M · L, and a row saved while non-braided was
  * still on offer is normalised to braided and loses its grouped size.
  *
@@ -23,6 +23,7 @@ jest.mock('@/lib/useIsMobile', () => ({
 
 const { COLLECTIONS } = require('@/lib/catalog')
 const RIV4 = COLLECTIONS.find((c) => c.id === 'RIV4')
+const ZAHA = COLLECTIONS.find((c) => c.id === 'ZAHA')
 const LUVA = COLLECTIONS.find((c) => c.id === 'LUVA')
 const CollectionConfig = require('../CollectionConfig').default
 
@@ -52,10 +53,10 @@ const selectWithOption = (text) =>
 const optionTexts = (sel) => Array.from(sel.options).map((o) => o.text).filter(Boolean)
 const sizeLike = (t) => ['XS', 'S', 'M', 'L', 'XL', 'S/M', 'L/XL'].includes(t)
 
-describe('Flower Heart — closure in the Builder', () => {
+describe('Za-Ha — closure in the Builder', () => {
   test('a newly added colour starts as Non-braided', () => {
     const onChange = jest.fn()
-    renderConfig(LUVA, mockLine(LUVA), onChange)
+    renderConfig(ZAHA, mockLine(ZAHA), onChange)
     // Silk needs a thickness first; Iconix is Thin-only so pick it.
     fireEvent.click(screen.getByText('Thin'))
     fireEvent.click(screen.getByTitle('Silver grey'))
@@ -65,7 +66,7 @@ describe('Flower Heart — closure in the Builder', () => {
   })
 
   test('shows the Closure column with both choices', () => {
-    renderConfig(LUVA, mockLine(LUVA, [
+    renderConfig(ZAHA, mockLine(ZAHA, [
       mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'S/M', thickness: 'Thin', cordType: 'silk', closureType: 'nonBraided' }),
     ]))
     expect(screen.getByText('Closure')).toBeInTheDocument()
@@ -74,7 +75,7 @@ describe('Flower Heart — closure in the Builder', () => {
   })
 
   test('non-braided offers S/M · L/XL', () => {
-    renderConfig(LUVA, mockLine(LUVA, [
+    renderConfig(ZAHA, mockLine(ZAHA, [
       mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'S/M', thickness: 'Thin', cordType: 'silk', closureType: 'nonBraided' }),
     ]))
     const size = selectWithOption('S/M')
@@ -83,7 +84,7 @@ describe('Flower Heart — closure in the Builder', () => {
   })
 
   test('braided offers S · M · L', () => {
-    renderConfig(LUVA, mockLine(LUVA, [
+    renderConfig(ZAHA, mockLine(ZAHA, [
       mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'M', thickness: 'Thin', cordType: 'silk', closureType: 'braided' }),
     ]))
     const size = selectWithOption('M')
@@ -92,7 +93,7 @@ describe('Flower Heart — closure in the Builder', () => {
 
   test('switching to braided drops a grouped size that no longer applies', () => {
     const onChange = jest.fn()
-    renderConfig(LUVA, mockLine(LUVA, [
+    renderConfig(ZAHA, mockLine(ZAHA, [
       mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'S/M', thickness: 'Thin', cordType: 'silk', closureType: 'nonBraided' }),
     ]), onChange)
     fireEvent.change(selectWithOption('Braided'), { target: { value: 'braided' } })
@@ -104,10 +105,40 @@ describe('Flower Heart — closure in the Builder', () => {
   test('a row saved before closures existed still counts as complete', () => {
     // Old Iconix rows have no closureType; the default resolves it, so the
     // completion counter must not suddenly report old orders as unfinished.
-    renderConfig(LUVA, mockLine(LUVA, [
+    renderConfig(ZAHA, mockLine(ZAHA, [
       mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'S/M', thickness: 'Thin', cordType: 'silk', closureType: null }),
     ]))
     expect(screen.getByText(/1\/1 complete/i)).toBeInTheDocument()
+  })
+})
+
+describe('Flower Heart — braided only in the Builder', () => {
+  test('a newly added colour starts Braided', () => {
+    const onChange = jest.fn()
+    renderConfig(LUVA, mockLine(LUVA), onChange)
+    fireEvent.click(screen.getByText('Thin'))
+    fireEvent.click(screen.getByTitle('Silver grey'))
+    const cfg = onChange.mock.calls.at(-1)[1].colorConfigs[0]
+    expect(cfg.closureType).toBe('braided')
+  })
+
+  test('has no Closure column and offers S · M · L', () => {
+    renderConfig(LUVA, mockLine(LUVA, [
+      mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'M', thickness: 'Thin', cordType: 'silk', closureType: 'braided' }),
+    ]))
+    expect(screen.queryByText('Closure')).not.toBeInTheDocument()
+    expect(selectWithOption('Non-braided')).toBeUndefined()
+    expect(optionTexts(selectWithOption('M')).filter(sizeLike)).toEqual(['S', 'M', 'L'])
+  })
+
+  test('a row saved as non-braided is pinned to braided and loses its S/M size', () => {
+    const onChange = jest.fn()
+    renderConfig(LUVA, mockLine(LUVA, [
+      mockColorConfig({ id: 'c1', caratIdx: 0, housing: 'White', size: 'S/M', thickness: 'Thin', cordType: 'silk', closureType: 'nonBraided' }),
+    ]), onChange)
+    const cfg = onChange.mock.calls.at(-1)[1].colorConfigs[0]
+    expect(cfg.closureType).toBe('braided')
+    expect(cfg.size).toBeNull()
   })
 })
 

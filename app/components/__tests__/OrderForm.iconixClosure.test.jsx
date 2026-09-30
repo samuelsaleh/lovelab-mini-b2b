@@ -1,8 +1,8 @@
 /**
  * Iconix silk in the Order Form — closure column, closure-driven sizes.
  *
- * Flower Heart keeps the Braided / Non-braided choice. Riviera Four is
- * braided-only (Sam, Sep 2026): the closure cell is locked to Braided, the
+ * Za-Ha keeps the Braided / Non-braided choice. Riviera Four and Flower Heart
+ * are braided-only: the closure cell is locked to Braided, the
  * sizes are S · M · L, and a line saved as non-braided S/M comes back braided
  * with its size blanked so the agent re-picks.
  *
@@ -30,9 +30,17 @@ jest.mock('../SaveDocumentModal', () => ({ __esModule: true, default: () => null
 
 const OrderForm = require('../OrderForm').default
 
+const zahaLine = (over = {}) => ({
+  product: 'Za-Ha', carat: '0.30', certType: 'igi', housing: 'White',
+  size: 'S/M', closureType: 'nonBraided', colorName: 'Silver grey',
+  cordType: 'silk', thickness: 'Thin',
+  qty: 1, unitB2B: 110, lineTotal: 110, retailUnit: 330, retailTotal: 330,
+  ...over,
+})
+
 const flowerLine = (over = {}) => ({
   product: 'Flower Heart', carat: '0.40', certType: 'igi', housing: 'White',
-  size: 'S/M', closureType: 'nonBraided', colorName: 'Silver grey',
+  size: 'M', closureType: 'braided', colorName: 'Silver grey',
   cordType: 'silk', thickness: 'Thin',
   qty: 1, unitB2B: 150, lineTotal: 150, retailUnit: 585, retailTotal: 585,
   ...over,
@@ -65,9 +73,9 @@ const selectWithOption = (text) =>
 const optionTexts = (sel) => Array.from(sel.options).map((o) => o.text).filter(Boolean)
 const sizeLike = (t) => ['XS', 'S', 'M', 'L', 'XL', 'S/M', 'L/XL'].includes(t)
 
-describe('Flower Heart — Order Form', () => {
+describe('Za-Ha — Order Form', () => {
   test('the closure cell is a real Braided / Non-braided select', () => {
-    renderForm([flowerLine()])
+    renderForm([zahaLine()])
     const closure = selectWithOption('Braided')
     expect(closure).toBeTruthy()
     expect(optionTexts(closure)).toEqual(expect.arrayContaining(['Braided', 'Non-braided']))
@@ -75,14 +83,14 @@ describe('Flower Heart — Order Form', () => {
   })
 
   test('non-braided: the size select offers S/M and L/XL only', () => {
-    renderForm([flowerLine()])
+    renderForm([zahaLine()])
     const size = selectWithOption('S/M')
     expect(optionTexts(size).filter(sizeLike)).toEqual(['S/M', 'L/XL'])
     expect(size.value).toBe('S/M')
   })
 
   test('braided: the size select offers S, M, L only', () => {
-    renderForm([flowerLine({ closureType: 'braided', size: 'M' })])
+    renderForm([zahaLine({ closureType: 'braided', size: 'M' })])
     const size = selectWithOption('M')
     expect(optionTexts(size).filter(sizeLike)).toEqual(['S', 'M', 'L'])
     expect(size.value).toBe('M')
@@ -90,13 +98,13 @@ describe('Flower Heart — Order Form', () => {
 
   test('a line from the Builder with no closure lands as Non-braided', () => {
     // Older Iconix rows and any line whose closure was never touched.
-    renderForm([flowerLine({ closureType: null })])
+    renderForm([zahaLine({ closureType: null })])
     expect(selectWithOption('Braided').value).toBe('nonBraided')
     expect(optionTexts(selectWithOption('S/M')).filter(sizeLike)).toEqual(['S/M', 'L/XL'])
   })
 
   test('changing closure to braided clears a grouped size that no longer applies', () => {
-    renderForm([flowerLine()])
+    renderForm([zahaLine()])
     fireEvent.change(selectWithOption('Braided'), { target: { value: 'braided' } })
     // The size that was 'S/M' is gone; the list is now the braided one.
     const sizeSelects = screen.getAllByRole('combobox').filter((s) => optionTexts(s).includes('M'))
@@ -106,8 +114,25 @@ describe('Flower Heart — Order Form', () => {
   })
 
   test('the thread stays Thin', () => {
-    renderForm([flowerLine()])
+    renderForm([zahaLine()])
     expect(screen.getAllByDisplayValue(/Thin/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('Flower Heart — Order Form, braided only', () => {
+  test('the closure cell is locked to Braided — Non-braided is not on offer', () => {
+    renderForm([flowerLine()])
+    const closure = selectWithOption('Braided')
+    expect(closure.value).toBe('braided')
+    expect(optionTexts(closure)).not.toContain('Non-braided')
+  })
+
+  test('a line saved as non-braided S/M comes back braided with its size blanked', () => {
+    renderForm([flowerLine({ closureType: 'nonBraided', size: 'S/M' })])
+    expect(selectWithOption('Braided').value).toBe('braided')
+    const size = selectWithOption('M')
+    expect(optionTexts(size).filter(sizeLike)).toEqual(['S', 'M', 'L'])
+    expect(size.value).toBe('')
   })
 })
 
