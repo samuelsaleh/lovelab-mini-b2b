@@ -10,8 +10,8 @@ import { colors, fonts, brandGradient } from '@/lib/styles';
  *   - /reset-password (after a recovery link)
  *
  * Both flows do the same thing: the user has a Supabase session and needs
- * to choose a new password. The only differences are the headline copy and
- * what to do after success — encapsulated via props.
+ * to choose a new password. When markPasswordSet is true, the server route
+ * updates Supabase Auth and flips the profile flag in one trusted sequence.
  *
  * Props:
  *   - title       (string)   header bar text, defaults to "LoveLab B2B"
@@ -50,21 +50,31 @@ export default function PasswordSetForm({
 
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        setError(updateError.message);
-        setLoading(false);
-        return;
-      }
-
       if (markPasswordSet) {
-        // Best-effort flag flip — if it fails the user is still signed in
-        // with the new password, so we don't block the success path on it.
-        try {
-          await fetch('/api/me/password-set', { method: 'PATCH' });
-        } catch {
-          console.warn('[PasswordSetForm] could not mark has_password_set, continuing.');
+        const res = await fetch('/api/me/password-set', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          let message = 'Could not save your password. Please try again.';
+          try {
+            const data = await res.json();
+            if (data?.error) message = data.error;
+          } catch {
+            // Keep the generic message when the server response is not JSON.
+          }
+          setError(message);
+          setLoading(false);
+          return;
+        }
+      } else {
+        const supabase = createClient();
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) {
+          setError(updateError.message);
+          setLoading(false);
+          return;
         }
       }
 
