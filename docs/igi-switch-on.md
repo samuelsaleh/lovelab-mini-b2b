@@ -82,7 +82,9 @@ IGI login and every address in `IGI_EMAILS` — so Michael gets it before he has
 login. The movement page shows "IGI were emailed" in green; if the email failed
 it shows why, in red, with a **Send the email again** button, and the admins get
 a notice. The request itself is always saved. When IGI record what they made,
-you get "IGI made V-0xx: N certificates", with any line fewer than asked in red.
+Liuba gets "IGI made V-0xx: N certificates", with any line fewer than asked in
+red — only her, since she is the one who goes and collects (Sam, 7 Oct 2026);
+`IGI_ISSUED_EMAILS` on the server changes that list.
 When you confirm a return with something missing, IGI get "V-0xx came back
 short" the same minute. Nothing is carried over: the shelf still reads low, so
 the Dashboard asks again on its own. The Movements list shows "N fewer than
@@ -100,7 +102,7 @@ serial number big and our name small, because IGI work by serial.
 |---|---|---|
 | You send a request | IGI | The request: serial, asked, what they hold, short by |
 | You add a model | IGI | "Please give it an IGI serial", with the three steps |
-| IGI record what they made | LoveLab | "IGI made V-0xx", lines fewer than asked in red |
+| IGI record what they made | Liuba | "IGI made V-0xx", lines fewer than asked in red |
 | You confirm a short return | IGI | "V-0xx came back short", the missing lines |
 | Every morning, 07:00 | Liuba | Go collect: model, on the shelf, level, ask IGI for; what is ready at IGI |
 | Every Friday, 14:00 | IGI | Three tables: produce more, requests waiting, models to number (only when something is waiting) |
@@ -111,8 +113,8 @@ The three scheduled ones come from one hourly cron line on the server
 the Antwerp clock and sends each at most once a day. The nightly "once per
 crossing" level emails are gone: the Friday and morning mails say the same
 thing at a time somebody chose. Recipients can be changed on the server with
-`IGI_MORNING_EMAILS` and `IGI_ORDER_EMAILS` (comma-separated); IGI's mails go
-to every IGI login plus `IGI_EMAILS`.
+`IGI_MORNING_EMAILS`, `IGI_ISSUED_EMAILS` and `IGI_ORDER_EMAILS` (comma-separated);
+IGI's mails go to every IGI login plus `IGI_EMAILS`.
 
 IGI's side — what is on their screen right now — is a link at the foot of the
 sidebar.
