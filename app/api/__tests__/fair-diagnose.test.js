@@ -18,7 +18,7 @@ describe('diagnose', () => {
   })
   afterEach(() => { global.fetch = orig })
 
-  test('reports the n8n host (not the secret path), reply-to, pacing and Resend tracking flags', async () => {
+  test('reports the n8n host (not the secret path), pacing and Resend tracking flags', async () => {
     global.fetch = jest.fn(async () => ({
       ok: true, status: 200, headers: { get: (k) => (k === 'ratelimit-policy' ? '10;w=1' : null) },
       json: async () => ({ data: [{ name: 'love-lab.com', open_tracking: false, click_tracking: false }] }),
@@ -27,7 +27,6 @@ describe('diagnose', () => {
     expect(body.n8nHost).toBe('n8n.example.com')
     expect(JSON.stringify(body)).not.toContain('secret-path')
     expect(body.callbackUrl).toBe('https://app.example.com/api/fair-assistant/callback')
-    expect(body.replyTo).toBe('alberto@love-lab.com')
     expect(body.resend).toMatchObject({ keySet: true, limitPolicy: '10;w=1', domain: 'love-lab.com', openTracking: false, clickTracking: false })
   })
 

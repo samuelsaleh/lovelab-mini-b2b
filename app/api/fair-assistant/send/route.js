@@ -239,9 +239,9 @@ export async function POST(request) {
         to: testMode ? testRecipient : realTo,
         subject: testMode ? `[to: ${realTo}] ${draft.subject}` : draft.subject,
         html: draft.body_html,
-        // Resend sender defaults to lib/email.getSenderFrom(); reply-to lets recipients
-        // reply straight to the sales inbox (FAIR_REPLY_TO, alberto@love-lab.com until Sam picks another).
-        replyTo: process.env.FAIR_REPLY_TO || 'alberto@love-lab.com',
+        // Resend sender defaults to lib/email.getSenderFrom(); reply-to lets
+        // recipients reply straight to Alberto's existing inbox.
+        replyTo: 'alberto@love-lab.com',
         // PDFs/Excels the user picked in Outreach → Attachments. Materialized
         // once at the top of this request so we don't refetch per draft.
         attachments: attachments.length ? attachments : undefined,

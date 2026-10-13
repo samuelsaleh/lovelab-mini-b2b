@@ -18,7 +18,6 @@ export async function GET() {
     // Where the card reader (n8n) is called, and the settings the send path runs with.
     n8nHost: hostOf(process.env.FAIR_N8N_WEBHOOK_URL),
     callbackUrl: `${process.env.NEXT_PUBLIC_SITE_URL || ''}/api/fair-assistant/callback`,
-    replyTo: process.env.FAIR_REPLY_TO || 'alberto@love-lab.com',
     sendPerSecond: Number.isFinite(resendPacer.perSecond) ? resendPacer.perSecond : null,
     commit: process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || null,
     resend: { keySet: Boolean(process.env.RESEND_API_KEY) },

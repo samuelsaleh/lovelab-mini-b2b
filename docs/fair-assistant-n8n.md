@@ -14,12 +14,13 @@ A photo in `processing` for more than 5 minutes is shown as *no answer*. The row
 
 ## Environment variables
 
+The sender is the app-wide `SENDER_EMAIL` (default `dionne@love-lab.com`, see `lib/email.js`); the reply-to of the follow-up emails is `alberto@love-lab.com`, set in `app/api/fair-assistant/send/route.js`. Neither was changed.
+
 | Variable | Meaning |
 |---|---|
 | `FAIR_WEBHOOK_SECRET` | Random value (`openssl rand -hex 24`). n8n sends it as header `X-Fair-Auth` on every callback; the app compares it. Never commit it. |
 | `FAIR_N8N_WEBHOOK_URL` | Production URL of the n8n extract webhook. |
 | `FAIR_DRIVE_INBOX_FOLDER_ID` | Drive folder the photos go to. |
-| `FAIR_REPLY_TO` | Reply-to of the follow-up emails (default `alberto@love-lab.com`). |
 | `RESEND_MAX_PER_SECOND` | Mail rate cap, default `3`. Never raise it above what Resend allows (10 per second for the whole team). |
 | `FAIR_SEND_CHUNK_SECONDS` | Work per Send call, default 25; keep below the reverse-proxy timeout. |
 
