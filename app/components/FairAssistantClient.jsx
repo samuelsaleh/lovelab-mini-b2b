@@ -9,6 +9,7 @@ import FairOutreachChatPanel from '@/app/components/FairOutreachChatPanel'
 import FairBatchFollowUp from '@/app/components/FairBatchFollowUp'
 import { useI18n } from '@/lib/i18n'
 import { emailStatusFor } from '@/lib/fair-assistant/emailStatus'
+import { describeImage, summarizeImages, batchStatusLabel, sendRateLabel } from '@/lib/fair-assistant/imageStatus'
 
 // Still exported from here for the Leads tab and its test; the helper now
 // lives in lib/fair-assistant/emailStatus.js so the follow-up shares it.
@@ -110,6 +111,14 @@ export default function FairAssistantClient() {
   const [previewHtml, setPreviewHtml] = useState(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [busyAction, setBusyAction] = useState(null)
+  // While Send loops: how many are left and how fast mails are really going
+  // out, measured from what the server reports after each pass.
+  const [sendLive, setSendLive] = useState(null)
+  // What the last Send did (rate, and the server's cap when it reports one), kept after it ends.
+  const [sendLast, setSendLast] = useState(null)
+  // Max view: lets the page use the whole screen instead of a 1100px column.
+  const [maxView, setMaxView] = useState(false)
+  const pageRef = useRef(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(null)
@@ -369,15 +378,60 @@ export default function FairAssistantClient() {
     }
   }, [activeBatchId, batch])
 
+  // The tab content swaps in place. Without a scroll the page stays where the
+  // clicked button was (far down the photo list) and the click seems to do
+  // nothing, so every tab switch brings the new content into view.
+  const goToTab = useCallback((id) => {
+    setTab(id)
+    const run = () => {
+      const el = pageRef.current
+      if (el && typeof el.scrollTo === 'function') el.scrollTo({ top: 0, behavior: 'smooth' })
+      else if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else run()
+  }, [])
+
+  // While Send loops, re-read the batch every 2 seconds so the sent counter moves
+  // between the server's passes instead of jumping once per pass.
+  useEffect(() => {
+    if (!busyAction || !String(busyAction).startsWith('send') || !activeBatchId) return
+    const id = setInterval(() => { loadBatchDetails(activeBatchId).catch(() => {}) }, 2000)
+    return () => clearInterval(id)
+  }, [busyAction, activeBatchId, loadBatchDetails])
+
+  const toggleMaxView = useCallback(() => {
+    setMaxView((v) => {
+      const next = !v
+      try { window.localStorage.setItem('fairAssistantMaxView', next ? '1' : '0') } catch {}
+      return next
+    })
+  }, [])
+  useEffect(() => {
+    try { if (window.localStorage.getItem('fairAssistantMaxView') === '1') setMaxView(true) } catch {}
+  }, [])
+
   const handleMarkImageDuplicate = useCallback(async (imageId, fileName) => {
     if (!activeBatchId) return
-    if (!window.confirm(`Mark "${fileName || 'this photo'}" as a Salesforce duplicate?\n\nUse this when n8n found an existing Salesforce lead for this card (so it didn't create a new one and never called back). The photo will show as "✓ done (duplicate)" instead of stuck.`)) return
+    if (!window.confirm(`Mark "${fileName || 'this photo'}" as already in Salesforce?\n\nOnly do this after checking the contact is in Salesforce. The photo is cleared, but no lead is added to this batch, so this contact gets no follow-up email from here.`)) return
     try {
       const res = await fetch(`/api/fair-assistant/images/${imageId}/mark-duplicate`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Failed to mark as duplicate')
       await loadBatchDetails(activeBatchId)
-      showToast('✓ Marked as duplicate (already in Salesforce)')
+      showToast('✓ Marked as already in Salesforce')
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [activeBatchId, loadBatchDetails, showToast])
+
+  const handleRetryImage = useCallback(async (imageId, fileName) => {
+    if (!activeBatchId) return
+    try {
+      const res = await fetch(`/api/fair-assistant/images/${imageId}/retry`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not try again')
+      await loadBatchDetails(activeBatchId)
+      showToast(`Reading "${fileName || 'the photo'}" again…`)
     } catch (err) {
       setError(err.message)
     }
@@ -385,7 +439,7 @@ export default function FairAssistantClient() {
 
   const handleDeleteImage = useCallback(async (imageId, fileName) => {
     if (!activeBatchId) return
-    if (!window.confirm(`Delete "${fileName || 'this photo'}" from the batch?\n\nUse this when a photo is stuck on "processing" because the n8n callback never arrived. The photo will be removed from the batch and (best-effort) from Drive. If n8n later sends a callback for it, the lead will still be created without an image link.`)) return
+    if (!window.confirm(`Delete "${fileName || 'this photo'}" from the batch?\n\nThe photo is removed from the batch (and from Drive when possible), and you can upload it again. If the card reader answers later, the lead is still created.`)) return
     try {
       const res = await fetch(`/api/fair-assistant/images/${imageId}`, { method: 'DELETE' })
       const data = await res.json().catch(() => ({}))
@@ -647,7 +701,9 @@ export default function FairAssistantClient() {
     const CONCURRENCY = 4
     // Per-file timeout — a single Drive call hanging on 503 shouldn't
     // poison the whole batch. AbortController is cleaned up in `finally`.
-    const PER_FILE_TIMEOUT_MS = 45000
+    const PER_FILE_TIMEOUT_MS = 90000
+    // A timeout or a dropped connection is retried (2 s, then 5 s). Safe: the server keeps one copy of identical bytes per batch.
+    const RETRY_DELAYS_MS = [2000, 5000]
 
     const uploadOne = async (file) => {
       let toSend = file
@@ -662,33 +718,42 @@ export default function FairAssistantClient() {
       const form = new FormData()
       form.append('batchId', activeBatchId)
       form.append('file', toSend)
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), PER_FILE_TIMEOUT_MS)
-      try {
-        const res = await fetch('/api/fair-assistant/upload', {
-          method: 'POST',
-          body: form,
-          signal: controller.signal,
-        })
-        let data
+      for (let attempt = 0; ; attempt++) {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), PER_FILE_TIMEOUT_MS)
         try {
-          data = await res.json()
-        } catch {
-          if (res.status === 413) {
-            throw new Error(
-              compressError
-                ? `compression failed (${compressError}); original ${origKB} KB`
-                : `sent ${sentKB} KB (original ${origKB} KB); Vercel limit ~4.5 MB`
-            )
+          const res = await fetch('/api/fair-assistant/upload', {
+            method: 'POST',
+            body: form,
+            signal: controller.signal,
+          })
+          let data
+          try {
+            data = await res.json()
+          } catch {
+            if (res.status === 413) {
+              throw Object.assign(new Error(
+                compressError
+                  ? `compression failed (${compressError}); original ${origKB} KB`
+                  : `sent ${sentKB} KB (original ${origKB} KB) — too large`
+              ), { final: true })
+            }
+            throw new Error(`HTTP ${res.status}`)
           }
-          throw new Error(`HTTP ${res.status}`)
+          if (!res.ok) throw Object.assign(new Error(data.error || 'upload failed'), { final: res.status >= 400 && res.status < 500 })
+          return
+        } catch (err) {
+          const network = err?.name === 'AbortError' || !err?.final
+          if (network && attempt < RETRY_DELAYS_MS.length && !(err instanceof Error && /^HTTP 4/.test(err.message))) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
+            continue
+          }
+          const msg = err?.name === 'AbortError' ? `timed out after ${PER_FILE_TIMEOUT_MS / 1000}s` : err.message
+          failures.push({ name: file.name, error: msg })
+          return
+        } finally {
+          clearTimeout(timer)
         }
-        if (!res.ok) throw new Error(data.error || 'upload failed')
-      } catch (err) {
-        const msg = err?.name === 'AbortError' ? `timed out after ${PER_FILE_TIMEOUT_MS / 1000}s` : err.message
-        failures.push({ name: file.name, error: msg })
-      } finally {
-        clearTimeout(timer)
       }
     }
 
@@ -719,7 +784,7 @@ export default function FairAssistantClient() {
         const more = failures.length > 3 ? ` (+${failures.length - 3} more)` : ''
         setError(`${failures.length} of ${files.length} failed — ${summary}${more}`)
       } else if (files.length > 0) {
-        setTab('leads')
+        goToTab('leads')
       }
     } finally {
       setUploading(false)
@@ -864,10 +929,10 @@ export default function FairAssistantClient() {
       // /send call drains as many as it can within the Vercel 10s function
       // budget; for huge batches this just means a few extra round-trips.
       let totals = { sent: 0, failed: 0, skipped: 0 }
-      let passes = 0
+      let idlePasses = 0
+      const sendLoopStartedAt = Date.now()
+      let lastCap = null
       while (true) {
-        passes += 1
-        if (passes > 20) throw new Error('Aborted after 20 send passes — too many drafts; check Resend quota.')
         const res = await fetch('/api/fair-assistant/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -878,15 +943,35 @@ export default function FairAssistantClient() {
         totals.sent += data.sent || 0
         totals.failed += data.failed || 0
         totals.skipped += data.skipped || 0
+        if (typeof data.perSecond === 'number' && data.perSecond > 0) lastCap = data.perSecond
         await loadBatchDetails(activeBatchId)
+        if (data.blocked === 'quota') {
+          // Waiting does not help: stop, and say that nothing was lost.
+          setError(`Resend's sending limit is reached. Nothing was lost: ${data.remaining} email${data.remaining === 1 ? ' is' : 's are'} waiting. Press Send again once the limit has reset.`)
+          return
+        }
         if (!data.remaining) break
+        // Stop only when nothing moves for a while (not after a fixed number of passes).
+        const moved = (data.sent || 0) + (data.failed || 0) + (data.skipped || 0) > 0
+        idlePasses = moved ? 0 : idlePasses + 1
+        if (idlePasses >= 6) throw new Error('Sending is not moving. Check Resend (status page, quota) and press Send again.')
+        // A server that paces its sends can say its rate up front; otherwise
+        // show the rate measured from what has actually gone out so far.
+        const cap = typeof data.perSecond === 'number' && data.perSecond > 0 ? data.perSecond : null
+        const rate = cap ? `${cap} per second` : sendRateLabel(totals.sent, Date.now() - sendLoopStartedAt)
+        const waitMs = data.deferred ? Math.min(Math.max(Number(data.retryAfterMs) || 2000, 500), 30000) : 0
+        setSendLive({ left: data.remaining, rate, cap, note: waitMs ? `Resend asked us to slow down. Continuing in ${Math.ceil(waitMs / 1000)} s.` : null })
         setBusyAction(`send-loop-${data.remaining}`) // UI sees "Sending... 47 remaining"
+        if (waitMs) await new Promise((r) => setTimeout(r, waitMs))
       }
-      setError(`Done — ${totals.sent} sent, ${totals.failed} failed, ${totals.skipped} skipped (no email).`)
+      const rateNote = sendRateLabel(totals.sent, Date.now() - sendLoopStartedAt)
+      setSendLast({ rate: totals.sent > 1 ? rateNote : null, cap: lastCap })
+      setError(`Done — ${totals.sent} sent, ${totals.failed} failed, ${totals.skipped} skipped (no email).${rateNote && totals.sent > 1 ? ` Sent at about ${rateNote}.` : ''}`)
     } catch (err) {
       setError(err.message)
     } finally {
       setBusyAction(null)
+      setSendLive(null)
     }
   }
 
@@ -895,7 +980,7 @@ export default function FairAssistantClient() {
   }
 
   return (
-    <div className="fa-page" style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px calc(24px + env(safe-area-inset-bottom)) 12px' : '24px 20px', WebkitOverflowScrolling: 'touch' }}>
+    <div className="fa-page" ref={pageRef} style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px calc(24px + env(safe-area-inset-bottom)) 12px' : '24px 20px', WebkitOverflowScrolling: 'touch' }}>
       {/* iPhone polish — scoped to the Fair Assistant page only.
           16px font-size prevents iOS Safari from auto-zooming on focus,
           which made the form unusable on phones. */}
@@ -1028,11 +1113,27 @@ export default function FairAssistantClient() {
         </div>
       )}
 
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div data-testid="fair-container" style={{ maxWidth: maxView ? 'none' : 1100, margin: '0 auto' }}>
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12 }}>
           <div>
             <h1 style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: colors.inkPlum, margin: 0 }}>Fair Assistant</h1>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: colors.lovelabMuted }}>Upload cards, review leads, send branded outreach emails.</p>
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={toggleMaxView}
+                aria-pressed={maxView}
+                title={maxView ? 'Back to the centred layout' : 'Use the whole screen width'}
+                style={{ marginTop: 8, padding: '6px 12px', minHeight: 32, borderRadius: 16, border: `1px solid ${maxView ? colors.inkPlum : colors.border}`, background: maxView ? colors.inkPlum : '#fff', color: maxView ? '#fff' : colors.inkPlum, fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: fonts.body, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {maxView
+                    ? (<><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></>)
+                    : (<><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>)}
+                </svg>
+                {maxView ? 'Normal view' : 'Max view'}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8, alignItems: isMobile ? 'stretch' : 'center' }}>
             <select
@@ -1042,7 +1143,7 @@ export default function FairAssistantClient() {
             >
               <option value="">Select batch...</option>
               {batches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name} ({b.status})</option>
+                <option key={b.id} value={b.id}>{b.name} ({batchStatusLabel(b.status)})</option>
               ))}
             </select>
             <input
@@ -1063,7 +1164,7 @@ export default function FairAssistantClient() {
                 onClick={handleDeleteBatch}
                 title="Delete this batch"
                 aria-label="Delete this batch"
-                style={{ padding: '12px 14px', minHeight: 44, borderRadius: 8, border: `1px solid #fecaca`, background: '#fff', color: '#dc2626', fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                style={{ padding: '12px 14px', minHeight: 44, borderRadius: 8, border: `1px solid ${colors.border}`, background: '#fff', color: '#b45454', fontWeight: 600, cursor: 'pointer', fontFamily: fonts.body, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6"/>
@@ -1071,16 +1172,20 @@ export default function FairAssistantClient() {
                   <path d="M10 11v6"/>
                   <path d="M14 11v6"/>
                 </svg>
-                Delete batch
+                {isMobile ? 'Delete batch' : null}
               </button>
             )}
           </div>
         </div>
 
-        {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 16px', marginBottom: 16, color: '#dc2626', fontSize: 13 }}>
+        {error && (() => {
+          // The same box carries both problems and the "Done — 12 sent" summary;
+          // a success summary should not look like an error.
+          const good = /^(Done\b|✓)/.test(String(error)) && !/\b[1-9]\d* failed\b/.test(String(error))
+          return (
+          <div role={good ? 'status' : 'alert'} style={{ background: good ? '#f0fdf4' : '#fef2f2', border: `1px solid ${good ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, padding: '10px 16px', marginBottom: 16, color: good ? '#166534' : '#dc2626', fontSize: 13 }}>
             {error}
-            <button onClick={() => setError(null)} style={{ float: 'right', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}>×</button>
+            <button onClick={() => setError(null)} aria-label="Dismiss message" style={{ float: 'right', background: 'none', border: 'none', color: good ? '#166534' : '#dc2626', cursor: 'pointer', fontSize: 16, lineHeight: 1, minWidth: 28, minHeight: 28 }}>×</button>
             {(() => {
               // Per-draft failure breakdown — surfaces fair_email_drafts.error so
               // the user can see WHY each lead failed (bounce, Resend rate limit,
@@ -1111,49 +1216,22 @@ export default function FairAssistantClient() {
               )
             })()}
           </div>
-        )}
+          )
+        })()}
 
         {!activeBatchId ? (
           <div style={{ padding: 40, textAlign: 'center', color: colors.lovelabMuted }}>Create or select a batch to begin.</div>
         ) : (
           <>
-            {/* Journey stepper — shows where the user is in the workflow */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: colors.lovelabMuted, flexWrap: 'wrap' }}>
-              {TABS.map((t, idx) => {
-                const isActive = tab === t.id
-                const stepCount = t.id === 'upload' ? images.length : t.id === 'leads' ? leads.length : t.id === 'outreach' ? (batch?.total_sent || 0) : openedCount
-                const stepLabels = ['Upload cards', 'Review leads', 'Send outreach', tr('fair.followup.tab')]
-                return (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button
-                      onClick={() => setTab(t.id)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '4px 10px', borderRadius: 14, border: 'none', background: 'transparent',
-                        color: isActive ? colors.inkPlum : colors.lovelabMuted, cursor: 'pointer', fontWeight: isActive ? 700 : 500,
-                        fontSize: 12, fontFamily: fonts.body,
-                      }}
-                    >
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 20, height: 20, borderRadius: '50%',
-                        background: isActive ? colors.inkPlum : '#e8dfee',
-                        color: isActive ? '#fff' : colors.inkPlum, fontWeight: 700, fontSize: 11,
-                      }}>{idx + 1}</span>
-                      <span>{stepLabels[idx]}{stepCount > 0 ? ` (${stepCount})` : ''}</span>
-                    </button>
-                    {idx < TABS.length - 1 && <span style={{ color: '#d0c4d6' }}>›</span>}
-                  </div>
-                )
-              })}
-            </div>
-
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4, alignItems: 'center' }}>
-              {TABS.map((t) => (
+              {TABS.map((t) => {
+                const stepCount = t.id === 'upload' ? images.length : t.id === 'leads' ? leads.length : t.id === 'outreach' ? (batch?.total_sent || 0) : openedCount
+                return (
                 <button
                   key={t.id}
                   data-testid={`fair-tab-${t.id}`}
-                  onClick={() => setTab(t.id)}
+                  aria-current={tab === t.id ? 'step' : undefined}
+                  onClick={() => goToTab(t.id)}
                   style={{
                     padding: '10px 18px', minHeight: 40, borderRadius: 20, border: `1px solid ${tab === t.id ? colors.inkPlum : colors.border}`,
                     background: tab === t.id ? colors.inkPlum : '#fff', color: tab === t.id ? '#fff' : colors.text,
@@ -1161,18 +1239,22 @@ export default function FairAssistantClient() {
                   }}
                 >
                   {t.i18nKey ? tr(t.i18nKey) : t.label}
+                  {stepCount > 0 && (
+                    <span style={{ marginLeft: 8, padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: tab === t.id ? 'rgba(255,255,255,.22)' : '#f1ecf3', color: tab === t.id ? '#fff' : colors.inkPlum }}>{stepCount}</span>
+                  )}
                 </button>
-              ))}
+                )
+              })}
               {batch && (
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: colors.lovelabMuted, alignSelf: 'center' }}>
-                  {batch.total_leads || 0} leads · {batch.total_sent || 0} sent · status: {batch.status}
+                  {batch.total_leads || 0} leads · {batch.total_sent || 0} sent · {batchStatusLabel(batch.status)}
                 </span>
               )}
             </div>
 
             {tab === 'upload' && (
               <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 12, padding: isMobile ? 16 : 24 }}>
-                <p style={{ marginTop: 0, color: colors.textLight, fontSize: 14 }}>Pick photos from your library, the camera, or files — multi-select supported (you can grab the whole roll). Each one is uploaded to Drive and processed automatically.</p>
+                <p style={{ marginTop: 0, color: colors.textLight, fontSize: 14 }}>Pick photos from your library or the camera. Select as many as you like; each one is uploaded and read automatically.</p>
 
                 <input
                   ref={fileInputRef}
@@ -1229,49 +1311,92 @@ export default function FairAssistantClient() {
                 {images.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
                     <h3 style={{ fontSize: 13, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Photos in this batch</h3>
+                    {(() => {
+                      // One line that says what needs attention before the list does.
+                      const sum = summarizeImages(images)
+                      if (sum.stuck > 0) {
+                        return (
+                          <div role="alert" data-testid="fair-photos-banner" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#991b1b' }}>
+                            <strong>{sum.stuck} photo{sum.stuck === 1 ? '' : 's'} got no answer from the card reader</strong>
+                            <div style={{ marginTop: 2, color: '#7f1d1d' }}>Waiting for up to {sum.oldestStuckMin} minutes. Check each contact in Salesforce, then use the buttons on the photo.</div>
+                          </div>
+                        )
+                      }
+                      if (sum.processing > 0) {
+                        return (
+                          <div role="status" data-testid="fair-photos-banner" style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#854d0e' }}>
+                            Reading {sum.processing} card{sum.processing === 1 ? '' : 's'}… usually under 30 seconds.
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {images.map((img, i) => {
-                        const createdAtMs = img.created_at ? new Date(img.created_at).getTime() : Date.now()
-                        const ageMin = (Date.now() - createdAtMs) / 60000
-                        const isStuck = img.status === 'processing' && ageMin > 5
-                        const isDuplicate = img.status === 'processed' && typeof img.error === 'string' && /duplicate/i.test(img.error)
-                        const statusColor =
-                          isDuplicate ? '#0891b2' :
-                          img.status === 'processed' ? '#16a34a' :
-                          img.status === 'failed' ? '#dc2626' :
-                          isStuck ? '#dc2626' :
-                          img.status === 'processing' ? '#ca8a04' : colors.lovelabMuted
-                        const statusLabel =
-                          isDuplicate ? '✓ duplicate' :
-                          img.status === 'processed' ? '✓ done' :
-                          img.status === 'failed' ? '✗ failed' :
-                          isStuck ? `⚠ stuck (${Math.floor(ageMin)}m)` :
-                          img.status === 'processing' ? '⋯ processing' : img.status
+                        const info = describeImage(img)
+                        const isStuck = info.stuck
+                        const isDuplicate = info.key === 'duplicate'
+                        const toneColor = { ok: '#16a34a', info: '#0891b2', warn: '#ca8a04', bad: '#dc2626', muted: colors.lovelabMuted }[info.tone]
                         return (
-                          <div key={img.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '8px 10px', background: isStuck ? '#fef2f2' : isDuplicate ? '#ecfeff' : '#fafafa', borderRadius: 6, border: isStuck ? '1px solid #fecaca' : isDuplicate ? '1px solid #a5f3fc' : '1px solid transparent', flexWrap: 'wrap' }}>
-                            <span style={{ color: colors.lovelabMuted, minWidth: 24 }}>#{i + 1}</span>
-                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.file_name || 'card.jpg'}</span>
-                            <span style={{ color: statusColor, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{statusLabel}</span>
+                          <div key={img.id} data-testid={`fair-photo-${info.key}`} style={{ display: 'flex', alignItems: 'center', gap: '4px 8px', fontSize: 13, padding: '8px 10px', background: isStuck ? '#fef2f2' : isDuplicate ? '#ecfeff' : '#fafafa', borderRadius: 6, border: isStuck ? '1px solid #fecaca' : isDuplicate ? '1px solid #a5f3fc' : '1px solid transparent', flexWrap: 'wrap' }}>
+                            {/* On a phone: [# name ×] on the first line, status and detail underneath. */}
+                            <span style={{ color: colors.lovelabMuted, minWidth: 24, order: 0 }}>#{i + 1}</span>
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', order: 1 }}>{img.file_name || 'card.jpg'}</span>
+                            <span style={{ color: toneColor, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', order: isMobile ? 3 : 2, ...(isMobile ? { flexBasis: '100%', paddingLeft: 32 } : {}) }}>{info.label}</span>
+                            {info.detail && (
+                              <span style={{ flexBasis: '100%', paddingLeft: 32, fontSize: 12, color: colors.lovelabMuted, order: 4 }}>{info.detail}</span>
+                            )}
                             {isStuck && (
+                              <span style={{ flexBasis: '100%', paddingLeft: 32, display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2, order: 5 }}>
+                                <button
+                                  onClick={() => handleRetryImage(img.id, img.file_name)}
+                                  title="Send this photo to the card reader again"
+                                  data-testid="fair-photo-retry"
+                                  style={{ background: '#fff', border: `1px solid #111`, color: '#111', cursor: 'pointer', padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, minHeight: 36, fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                >
+                                  Try again
+                                </button>
+                                <button
+                                  onClick={() => handleMarkImageDuplicate(img.id, img.file_name)}
+                                  title="Use this only if the contact is already in Salesforce. It hides the photo; no lead is created here."
+                                  style={{ background: '#fff', border: `1px solid #0891b2`, color: '#0891b2', cursor: 'pointer', padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, minHeight: 36, fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                >
+                                  Already in Salesforce
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteImage(img.id, img.file_name)}
+                                  title="Remove the photo from this batch so you can upload it again"
+                                  style={{ background: '#fff', border: `1px solid #fecaca`, color: '#dc2626', cursor: 'pointer', padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, minHeight: 36, fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                >
+                                  Delete and upload again
+                                </button>
+                              </span>
+                            )}
+                            {info.key === 'failed' && img.drive_file_id && (
+                              <span style={{ flexBasis: '100%', paddingLeft: 32, display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2, order: 5 }}>
+                                <button
+                                  onClick={() => handleRetryImage(img.id, img.file_name)}
+                                  title="Send this photo to the card reader again"
+                                  data-testid="fair-photo-retry"
+                                  style={{ background: '#fff', border: `1px solid #111`, color: '#111', cursor: 'pointer', padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, minHeight: 36, fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                >
+                                  Try again
+                                </button>
+                              </span>
+                            )}
+                            {!isStuck && (
                               <button
-                                onClick={() => handleMarkImageDuplicate(img.id, img.file_name)}
-                                title="Mark this stuck photo as a duplicate already in Salesforce"
-                                style={{ background: '#fff', border: `1px solid #0891b2`, color: '#0891b2', cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 6, minHeight: 28, fontFamily: fonts.body, whiteSpace: 'nowrap' }}
+                                onClick={() => handleDeleteImage(img.id, img.file_name)}
+                                title="Delete photo from batch"
+                                aria-label="Delete photo"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4, minHeight: 28, order: isMobile ? 2 : 3 }}
                               >
-                                ✓ Already in SF
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="18" y1="6" x2="6" y2="18"/>
+                                  <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
                               </button>
                             )}
-                            <button
-                              onClick={() => handleDeleteImage(img.id, img.file_name)}
-                              title={isStuck ? 'Delete stuck photo' : 'Delete photo from batch'}
-                              aria-label="Delete photo"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4, minHeight: 28 }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                              </svg>
-                            </button>
                           </div>
                         )
                       })}
@@ -1293,7 +1418,7 @@ export default function FairAssistantClient() {
 
                 {leads.length > 0 && !uploading && (
                   <button
-                    onClick={() => setTab('leads')}
+                    onClick={() => goToTab('leads')}
                     style={{
                       width: '100%', padding: '14px 16px', minHeight: 48, borderRadius: 10,
                       border: 'none', background: '#16a34a', color: '#fff',
@@ -1875,14 +2000,51 @@ export default function FairAssistantClient() {
                           }}
                         >
                           {busyAction === 'send' ? 'Writing and sending…'
-                            : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} to go`
+                            : busyAction?.startsWith('send-loop-') ? `Sending… ${busyAction.replace('send-loop-', '')} to go${sendLive?.rate ? ` · ${sendLive.rate}` : ''}`
                             : aiBad ? 'AI key missing — Send is off'
                             : uploading ? 'Wait for uploads…'
                             : leads.length === 0 ? 'No leads yet'
                             : `Write and send to ${leads.length} lead${leads.length === 1 ? '' : 's'}`}
                         </button>
+                        {(() => {
+                          // How many have gone out, as a bar with the count. Counts only leads
+                          // that have an email; a card without one can never be sent.
+                          const sendable = leads.filter((l) => l.email && String(l.email).trim()).length
+                          if (sendable === 0 || !(sendBusy || sendStats.sent > 0)) return null
+                          const sentNow = Math.min(sendStats.sent, sendable)
+                          const pct = Math.round((sentNow / sendable) * 100)
+                          const rateText = sendBusy && sendLive?.rate
+                            ? `${sendLive.rate}${sendLive.cap ? ` · max ${sendLive.cap} per second` : ''}`
+                            : !sendBusy && sendLast && (sendLast.rate || sendLast.cap)
+                              ? `last send ${sendLast.rate ? `at about ${sendLast.rate}` : ''}${sendLast.cap ? `${sendLast.rate ? ' · ' : ''}max ${sendLast.cap} per second` : ''}`
+                              : ''
+                          return (
+                            <div data-testid="fair-send-progress" style={{ marginTop: 12 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: 13, marginBottom: 6 }}>
+                                <span style={{ fontWeight: 700, color: colors.inkPlum }}>{sentNow} of {sendable} sent</span>
+                                {rateText && <span style={{ color: colors.lovelabMuted }}>{rateText}</span>}
+                              </div>
+                              <div
+                                role="progressbar"
+                                aria-label="Emails sent"
+                                aria-valuemin={0}
+                                aria-valuemax={sendable}
+                                aria-valuenow={sentNow}
+                                style={{ height: 12, background: '#f1ecf3', borderRadius: 6, overflow: 'hidden' }}
+                              >
+                                <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#16a34a' : colors.inkPlum, transition: 'width .4s' }} />
+                              </div>
+                            </div>
+                          )
+                        })()}
                         <p role="status" style={{ margin: '10px 0 12px', fontSize: 13, color: colors.lovelabMuted, textAlign: 'center' }}>
-                          {leads.length === 0
+                          {sendBusy && sendLive?.note
+                            ? sendLive.note
+                            : sendBusy && sendLive?.rate
+                            ? 'Keep this page open until it says Done.'
+                            : sendBusy
+                              ? 'Writing the emails, then sending. Keep this page open until it says Done.'
+                              : leads.length === 0
                             ? 'Upload card photos first — there is nobody to write to yet.'
                             : sendStats.sent > 0
                               ? `${sendStats.sent} email${sendStats.sent === 1 ? '' : 's'} sent so far${sendStats.failed > 0 ? ` · ${sendStats.failed} failed` : ''}${attachedCount > 0 ? ` · ${attachedCount} attachment${attachedCount === 1 ? '' : 's'}` : ''}. Sending again only writes to leads that have not received one.`

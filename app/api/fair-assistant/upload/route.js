@@ -1,13 +1,20 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { requireFairAdmin } from '@/lib/fair-assistant/server';
-import { uploadFileToDrive } from '@/lib/google-drive';
+import { uploadFileToDrive, deleteFileFromDrive } from '@/lib/google-drive';
 import { triggerN8nCardWebhook } from '@/lib/fair-assistant/n8n';
 
 // Allow up to 60s per file. Drive uploads + n8n trigger can take
 // 5-15s under load; the default 10s timeout was killing ~1 in 20
 // uploads mid-batch when the user was sending 30+ pictures in a row.
 export const maxDuration = 60;
+
+// Only card photos. A PDF or a screenshot of something else used to vanish inside
+// n8n with no answer and stay "processing" forever.
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const ALLOWED_EXT = /\.(jpe?g|png|webp|heic|heif)$/i;
+const MAX_BYTES = 12 * 1024 * 1024;
 
 export async function POST(request) {
   const rateLimitRes = checkRateLimit(request, { maxRequests: 120, prefix: 'fair-upload' });
@@ -42,9 +49,30 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const fileName = file.name || `card-${Date.now()}.jpg`;
   const mimeType = file.type || 'image/jpeg';
+  if (!ALLOWED_TYPES.has(mimeType.toLowerCase()) && !(mimeType === 'application/octet-stream' && ALLOWED_EXT.test(fileName))) {
+    return NextResponse.json({ error: `"${fileName}" is not a photo. Use JPEG, PNG, WebP or HEIC.` }, { status: 415 });
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: `"${fileName}" is too large (${Math.round(file.size / 1024 / 1024)} MB, max ${MAX_BYTES / 1024 / 1024} MB).` }, { status: 413 });
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+  // The same bytes already in this batch (a retry after a timeout): hand back that photo, store nothing twice.
+  // Skipped quietly when the migration adding content_hash has not been run yet.
+  const { data: sameRows, error: sameErr } = await auth.adminSupabase
+    .from('fair_images')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('content_hash', contentHash)
+    .limit(1);
+  const hasHashColumn = !sameErr;
+  if (hasHashColumn && sameRows?.length) {
+    return NextResponse.json({ image: sameRows[0], driveFileId: sameRows[0].drive_file_id, duplicate: true });
+  }
 
   let driveFile;
   try {
@@ -66,10 +94,18 @@ export async function POST(request) {
       drive_file_id: driveFile.id,
       file_name: fileName,
       status: 'processing',
+      ...(hasHashColumn ? { content_hash: contentHash } : {}),
     })
     .select('*')
     .single();
 
+  if (imageErr && hasHashColumn && imageErr.code === '23505') {
+    // Two identical uploads raced past the check above; the unique index kept one. Return it, drop our extra Drive copy.
+    const { data: winner } = await auth.adminSupabase
+      .from('fair_images').select('*').eq('batch_id', batchId).eq('content_hash', contentHash).limit(1);
+    deleteFileFromDrive(driveFile.id).catch(() => {});
+    if (winner?.length) return NextResponse.json({ image: winner[0], driveFileId: winner[0].drive_file_id, duplicate: true });
+  }
   if (imageErr) {
     console.error('[fair-upload] image row failed:', imageErr.message);
     return NextResponse.json({ error: 'Failed to record image' }, { status: 500 });
