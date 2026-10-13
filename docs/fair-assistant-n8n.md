@@ -1,220 +1,67 @@
-# Fair Assistant — n8n integration
+# Fair Assistant — how it works and how to keep it running
 
-**Important:** Do **not** edit your existing Google Drive card workflow. Leave it as backup.
-Duplicate it twice in n8n so you end up with **3 workflows**:
+Admin screen: `/admin/fair-assistant`. Business-card photos go in, leads and follow-up emails come out.
 
-| Workflow | Purpose | Touch existing? |
-|---|---|---|
-| **Original** (today) | Alberto drops photos in Drive manually → OCR → Salesforce | **Leave alone — backup** |
-| **fair-assistant-extract** (new) | App uploads photo → same OCR logic → callback to app | Clone + add callbacks |
-| **fair-assistant-send** (new) | App clicks Send → Gmail HTML emails → callback to app | Build new |
+## The flow
 
----
+1. **Upload** (`POST /api/fair-assistant/upload`): the photo is checked (JPEG, PNG, WebP or HEIC, max 12 MB), hashed (the same bytes are stored once per batch), saved in the Drive inbox folder, and a `fair_images` row is created as `processing`. The app then calls the n8n extract webhook.
+2. **Card reader** (n8n workflow *LoveLab App Fair Assistant*): OCR, cleaning, Salesforce lookup and lead creation.
+3. **Callback** (`POST /api/fair-assistant/callback`): n8n tells the app what happened (events below). The app creates the lead and marks the photo.
+4. **Drafts** (`generate-all`): one email per lead, translated into the lead's language. Drafts already sent are never rewritten.
+5. **Send** (`send`): see below.
 
-## Where to put each variable (plain English)
+A photo in `processing` for more than 5 minutes is shown as *no answer*. The row has **Try again** (sends the same Drive file to n8n again), **Already in Salesforce** and **Delete and upload again**.
 
-You need the **same values in two places**: your app (Vercel + local `.env`) and your n8n HTTP nodes (header).
+## Environment variables
 
-### 1. `FAIR_WEBHOOK_SECRET` — a shared password
+The sender is the app-wide `SENDER_EMAIL` (default `dionne@love-lab.com`, see `lib/email.js`); the reply-to of the follow-up emails is `alberto@love-lab.com`, set in `app/api/fair-assistant/send/route.js`. Neither was changed.
 
-**What it is:** A secret only your app and n8n know. Like a door code. Stops random people from calling your webhook URLs.
-
-**What to put:** Any long random string you invent once. Examples:
-
-```
-FAIR_WEBHOOK_SECRET=lovelab-fair-2026-xK9mP2vL8nQ4wR7
-```
-
-Or generate one in Terminal:
-
-```bash
-openssl rand -hex 24
-```
-
-Copy the output and use it as the value.
-
-**Where to add it:**
-
-| Place | How |
+| Variable | Meaning |
 |---|---|
-| **Local dev** | File `.env` in project root (create from `.env.example`) |
-| **Vercel** | Project → Settings → Environment Variables → Add `FAIR_WEBHOOK_SECRET` |
-| **n8n** | In each HTTP Request node to your app, add header: `X-Fair-Auth` = paste the **exact same string** |
+| `FAIR_WEBHOOK_SECRET` | Random value (`openssl rand -hex 24`). n8n sends it as header `X-Fair-Auth` on every callback; the app compares it. Never commit it. |
+| `FAIR_N8N_WEBHOOK_URL` | Production URL of the n8n extract webhook. |
+| `FAIR_DRIVE_INBOX_FOLDER_ID` | Drive folder the photos go to. |
+| `RESEND_MAX_PER_SECOND` | Mail rate cap, default `3`. Never raise it above what Resend allows (10 per second for the whole team). |
+| `FAIR_SEND_CHUNK_SECONDS` | Work per Send call, default 25; keep below the reverse-proxy timeout. |
 
-You do **not** need a special account or service for this — you make it up once and reuse it everywhere.
+The n8n callback nodes must post to `https://<app domain>/api/fair-assistant/callback` with the same secret. If the domain or the secret changes, change both places; the screen *Diagnose* shows the callback URL the app expects.
 
----
+## Callback events (n8n to app)
 
-### 2. `FAIR_N8N_WEBHOOK_URL` — URL of the **new** extract workflow
+| `event` | Fields | Result |
+|---|---|---|
+| `lead_created` | `batchId`, `imageId`, `lead{firstName, lastName, company, email, phone, mobilephone, title, country, street, city, state, postalCode, salesforceId}` | Lead inserted (idempotent by lead hash), photo `processed`. |
+| `image_duplicate` | `batchId`, `imageId`, `salesforceId` | Photo `processed` with a note "already in Salesforce". No lead is added, so no follow-up email. |
+| `image_failed` / `lead_failed` | `batchId`, `imageId`, `error` | Photo `failed` with the reason. |
+| `extraction_complete` | `batchId`, `summary.totalLeads` | Batch `extracted`. |
 
-**What it is:** The webhook address n8n gives you when you create the **cloned** extract workflow (not the old one).
+Build the JSON body with `JSON.stringify` in n8n, never by pasting OCR text into a string: a quote or a line break in a name breaks the JSON and the callback is lost.
 
-**What to put:**
+## Sending
 
-1. In n8n, duplicate your existing card workflow → rename `fair-assistant-extract`
-2. Open the **Webhook** trigger node at the start
-3. Copy **Production URL** (looks like `https://your-n8n.com/webhook/abc123...`)
-4. Paste into:
+- **3 mails per second, hard cap**, retries included. Every Resend call in the app goes through one limiter (`lib/resendPacer.js`), so order mails, alerts and the fair send share the same budget. The send response reports `perSecond`.
+- A draft is **claimed** (`draft_ready` to `sending`) before it is sent, so two clicks or two admins never send the same mail. Every mail carries a Resend `Idempotency-Key`.
+- A Resend rate limit (429) is retried after `Retry-After`; still blocked, the draft goes back to `draft_ready`. A **quota** 429 stops the send and loses nothing.
+- Pressing Send when everything is sent sends 0.
+- An address that bounced for good, complained, or is on Resend's suppression list is skipped.
+- A batch whose name starts with `[TEST]` sends every mail to the logged-in admin only, with the real recipient in the subject.
 
-```
-FAIR_N8N_WEBHOOK_URL=https://your-n8n.com/webhook/abc123...
-```
+## Opened and clicked
 
-**Where to add it:** Vercel + local `.env` only (the app calls n8n — n8n does not need this variable).
+The Follow-up tab shows Delivered, Opened and Clicked from Resend's webhook (`/api/webhooks/resend`, see `docs/email-delivery-status.md`). Opens and clicks only exist if **Open tracking** and **Click tracking** are switched on for the sending domain in Resend. *Diagnose* shows both flags. Mail apps that preload images overstate opens.
 
----
+## Migrations
 
-### 3. `FAIR_N8N_SEND_WEBHOOK_URL` — URL of the **new** send workflow
+`supabase/migrations/20261013120000_fair_images_content_hash.sql` adds the photo hash. The app works without it (no duplicate-photo protection until it is run).
 
-**What it is:** Same idea, but for the send-outreach workflow you build later.
+## A card is stuck: what to do
 
-**What to put:** Webhook Production URL from the `fair-assistant-send` workflow.
+1. Open *Diagnose*. Check the n8n host, the callback URL, `webhookSecretSet`, and that the sending domain is right.
+2. In n8n, open the *LoveLab App Fair Assistant* executions. A failed execution names the node.
+3. Press **Try again** on the photo. If the contact is already in Salesforce, the photo comes back as *already in Salesforce*.
+4. If *Try again* answers "card reader did not accept", the n8n webhook is down or its URL changed: fix `FAIR_N8N_WEBHOOK_URL`.
+5. A callback that never arrives usually means a wrong domain or secret in the n8n callback nodes (HTTP 401 or 503 in the n8n execution).
 
-**Where to add it:** Vercel + local `.env` only.
+## Rotating the secret
 
-You can leave this empty until the send workflow exists. Upload + leads will still work without it.
-
----
-
-### 4. `FAIR_DRIVE_INBOX_FOLDER_ID` — Google Drive folder for incoming photos
-
-**What it is:** The folder where the app uploads card photos before n8n processes them.
-
-**What to put:**
-
-1. Open the Google Drive folder you use today for card inbox (or create a new one)
-2. Look at the browser URL:
-
-```
-https://drive.google.com/drive/folders/1OrCRtd66TyfXQVx7kr8PNaceu9fMfQDl
-                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                                      this part is the folder ID
-```
-
-3. Paste:
-
-```
-FAIR_DRIVE_INBOX_FOLDER_ID=1OrCRtd66TyfXQVx7kr8PNaceu9fMfQDl
-```
-
-**Where to add it:** Vercel + local `.env` only.
-
----
-
-## Summary checklist
-
-```
-[ ] Supabase migration run (supabase-phase23-fair-assistant.sql)
-[ ] FAIR_WEBHOOK_SECRET invented + same value in Vercel, .env, and n8n HTTP headers
-[ ] FAIR_DRIVE_INBOX_FOLDER_ID from Google Drive URL
-[ ] Clone existing workflow → fair-assistant-extract (do NOT edit original)
-[ ] FAIR_N8N_WEBHOOK_URL = Production URL from cloned extract workflow
-[ ] Add callback HTTP nodes to cloned extract workflow only
-[ ] Build fair-assistant-send workflow (later)
-[ ] FAIR_N8N_SEND_WEBHOOK_URL = Production URL from send workflow
-```
-
----
-
-## 1. Clone extract workflow (keep original as backup)
-
-In n8n:
-
-1. Open your **existing** card workflow
-2. **Duplicate** it (three dots → Duplicate)
-3. Rename duplicate to **`fair-assistant-extract`**
-4. **Deactivate or leave original active** — both can coexist
-
-The app calls **only** the new webhook URL (`FAIR_N8N_WEBHOOK_URL`). The old workflow still works if Alberto drops files in Drive the manual way.
-
-### What the app sends when you upload a photo
-
-Your Next.js app POSTs to the **new** webhook:
-
-```json
-{
-  "body": {
-    "id": "GOOGLE_DRIVE_FILE_ID",
-    "mimeType": "image/jpeg"
-  },
-  "batchId": "uuid-from-supabase",
-  "imageId": "uuid-from-supabase"
-}
-```
-
-The cloned workflow's first Webhook node receives this. The **Download Business Card** node should still use `{{ $json.body.id }}` for the file id (same as today).
-
-### Add callback nodes (cloned workflow only)
-
-After **Create Salesforce Lead1** (success), add **HTTP Request**:
-
-- **Method:** POST
-- **URL:** `https://YOUR-APP-DOMAIN/api/fair-assistant/callback`
-- **Header:** `X-Fair-Auth` = your `FAIR_WEBHOOK_SECRET` string (paste literally, or `$env.FAIR_WEBHOOK_SECRET` if set on Hostinger)
-- **Body:**
-
-```json
-{
-  "event": "lead_created",
-  "batchId": "{{ $('Webhook').item.json.batchId }}",
-  "imageId": "{{ $('Webhook').item.json.imageId }}",
-  "lead": {
-    "firstName": "{{ $('Validate and Clean Data').item.json.firstName }}",
-    "lastName": "{{ $('Validate and Clean Data').item.json.lastName }}",
-    "company": "{{ $('Validate and Clean Data').item.json.company }}",
-    "email": "{{ $('Validate and Clean Data').item.json.email }}",
-    "phone": "{{ $('Validate and Clean Data').item.json.phone }}",
-    "mobilephone": "{{ $('Parse Info').item.json.mobilephone }}",
-    "title": "{{ $('Validate and Clean Data').item.json.title }}",
-    "country": "{{ $('Validate and Clean Data').item.json.country }}",
-    "street": "{{ $('Validate and Clean Data').item.json.street }}",
-    "city": "{{ $('Validate and Clean Data').item.json.city }}",
-    "state": "{{ $('Validate and Clean Data').item.json.state }}",
-    "postalCode": "{{ $('Validate and Clean Data').item.json.postalCode }}",
-    "salesforceId": "{{ $('Create Salesforce Lead1').item.json.id }}"
-  }
-}
-```
-
-On error paths, POST:
-
-```json
-{
-  "event": "lead_failed",
-  "batchId": "{{ $('Webhook').item.json.batchId }}",
-  "imageId": "{{ $('Webhook').item.json.imageId }}",
-  "error": "processing failed"
-}
-```
-
-You can **remove** the internal Gmail notification node from the clone if you want (optional — the app UI replaces it).
-
----
-
-## 2. New send-outreach workflow (`fair-assistant-send`)
-
-**Trigger:** Webhook POST `{ "batchId": "..." }` — app sends this when Alberto clicks Send.
-
-**Steps:**
-
-1. HTTP GET `https://YOUR-APP/api/fair-assistant/drafts?batchId=...`
-   - Header: `X-Fair-Auth: your-secret-string`
-2. Split in batches (1 at a time)
-3. Wait 2 seconds
-4. Gmail — HTML email from draft (`body_html`, `subject`, lead email)
-5. HTTP POST `https://YOUR-APP/api/fair-assistant/send-callback` with `event: email_sent` or `email_failed`
-6. After last item: `event: send_complete`
-
----
-
-## 3. Supabase migration
-
-Run [`database-migrations/supabase-phase23-fair-assistant.sql`](../database-migrations/supabase-phase23-fair-assistant.sql) in Supabase SQL editor.
-
----
-
-## 4. App URL
-
-Admin UI: `/admin/fair-assistant`
-
-Preview deploy: push branch `feature/fair-assistant` to GitHub — Vercel gives you a preview URL. Use that URL in n8n callback nodes until you merge to production.
+Generate a new value, set `FAIR_WEBHOOK_SECRET` on the server and restart, then update the four callback nodes in n8n to the same value. Do it outside fair hours and upload one test card in a `[TEST]` batch afterwards.

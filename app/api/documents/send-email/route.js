@@ -1,3 +1,4 @@
+import { resendFetch } from '@/lib/resendFetch';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
@@ -61,7 +62,7 @@ async function sendAdminAlert({ apiKey, recipient, bccEmail, lang, documentId, r
         </table>
       </div>
     `;
-    await fetch('https://api.resend.com/emails', {
+    await resendFetch({
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -275,7 +276,7 @@ export async function POST(request) {
       attachments,
     };
 
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await resendFetch({
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

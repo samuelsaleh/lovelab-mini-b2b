@@ -1,3 +1,4 @@
+import { resendFetch } from '@/lib/resendFetch';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createDailyBackupFolder, uploadJsonToDrive, uploadFileToDrive, hasDriveCredentials } from '@/lib/google-drive';
 import { checkRateLimit } from '@/lib/rateLimit';
@@ -64,7 +65,7 @@ async function sendAlertEmail(error) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.lovelab-antwerp.com';
 
   try {
-    await fetch('https://api.resend.com/emails', {
+    await resendFetch({
       method: 'POST',
       headers: {
         Authorization: `Bearer ${resendApiKey}`,
