@@ -170,6 +170,26 @@ describe('Upload — weak connection', () => {
   })
 })
 
+describe('Test batches', () => {
+  test('a [TEST] batch says on the Outreach tab that emails go only to the admin', async () => {
+    const orig = BATCH.name
+    BATCH.name = '[TEST] Paris dry run'
+    try {
+      images = [{ id: 'i1', status: 'processed', created_at: minutesAgo(30) }]
+      await openUpload()
+      fireEvent.click(screen.getByTestId('fair-tab-outreach'))
+      expect(await screen.findByTestId('fair-test-banner')).toHaveTextContent(/your own address only/i)
+    } finally { BATCH.name = orig }
+  })
+  test('a normal batch shows no test banner', async () => {
+    images = [{ id: 'i1', status: 'processed', created_at: minutesAgo(30) }]
+    await openUpload()
+    fireEvent.click(screen.getByTestId('fair-tab-outreach'))
+    await waitFor(() => expect(screen.getByTestId('fair-tab-outreach')).toBeInTheDocument())
+    expect(screen.queryByTestId('fair-test-banner')).not.toBeInTheDocument()
+  })
+})
+
 describe('Navigation', () => {
   test('one step bar: the four tabs keep their test ids and show counts; no second stepper row', async () => {
     images = [{ id: 'i1', status: 'processed', created_at: minutesAgo(30) }, { id: 'i2', status: 'processed', created_at: minutesAgo(30) }]

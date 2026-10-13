@@ -226,4 +226,22 @@ describe('send route', () => {
     expect(sendEmail).not.toHaveBeenCalled()
     expect(statuses().every((s) => s === 'draft_ready')).toBe(true)
   })
+
+  test('a stale "sending" draft that Resend already accepted is marked sent, not sent a second time', async () => {
+    tables.email_deliveries = [{ draft_id: 'd0', resend_id: 're_old' }]
+    tables.fair_email_drafts[0].status = 'sending'; tables.fair_email_drafts[0].updated_at = new Date(Date.now() - 6 * 60000).toISOString()
+    const body = await (await call()).json()
+    expect(status('d0')).toBe('sent')
+    expect(body.sent).toBe(4)                                   // d1..d4 only
+    expect(sendEmail.mock.calls.map(([a]) => a.to)).not.toContain('p0@shop.com')
+    delete tables.email_deliveries
+  })
+
+  test('no Resend key on the server: every draft is kept (not failed) and the screen is told', async () => {
+    sendEmail.mockImplementation(async () => ({ sent: false, reason: 'no_api_key' }))
+    const body = await (await call()).json()
+    expect(body.blocked).toBe('config')
+    expect(body.failed).toBe(0)
+    expect(statuses().every((s) => s === 'draft_ready')).toBe(true)
+  })
 })

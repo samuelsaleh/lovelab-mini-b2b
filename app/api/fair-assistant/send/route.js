@@ -148,12 +148,7 @@ export async function POST(request) {
 
   // 0. Free drafts a crashed call left in 'sending' (safe: the idempotency key
   //    makes a second send of the same text return Resend's first answer).
-  await db
-    .from('fair_email_drafts')
-    .update({ status: 'draft_ready', updated_at: now() })
-    .eq('batch_id', batchId)
-    .eq('status', 'sending')
-    .lt('updated_at', new Date(Date.now() - STALE_SENDING_MS).toISOString());
+  await freeStaleDrafts(db, batchId, now);
 
   const readyCount = async () => {
     const { count } = await db.from('fair_email_drafts').select('*', { count: 'exact', head: true }).eq('batch_id', batchId).eq('status', 'draft_ready');
@@ -260,7 +255,7 @@ export async function POST(request) {
 
       if (result.sent) {
         sent += 1;
-        await setDraft(draft.id, { status: 'sent', message_id: result.message_id || null, sent_at: now(), error: null });
+        await setDraft(draft.id, { status: 'sent', message_id: result.message_id || null, sent_at: now(), error: testMode ? `TEST: sent to ${testRecipient} only, not to the lead` : null });
         // Track the outcome (delivered / bounced / opened) — see lib/emailDeliveries.js.
         await recordSend(db, {
           resendId: result.message_id || null,
@@ -269,6 +264,10 @@ export async function POST(request) {
           recipient: testMode ? testRecipient : realTo,
           subject: draft.subject,
         });
+      } else if (result.reason === 'no_api_key') {
+        // A server setting problem, not the lead's: keep every draft and say so, instead of failing them all.
+        blocked = 'config';
+        await release(draft.id, 'Email sending is not set up on the server (no Resend key) — nothing was lost');
       } else if (result.reason === 'quota_exceeded') {
         // Waiting does not help: stop, keep the draft, say so.
         blocked = 'quota';
@@ -307,7 +306,8 @@ export async function POST(request) {
     .eq('id', batchId);
 
   const parts = [`${sent} sent, ${failed} failed, ${skipped} skipped.`];
-  if (blocked === 'quota') parts.push("Resend's quota is reached: nothing was lost; press Send again once it has reset.");
+  if (blocked === 'config') parts.push('Email sending is not set up on the server: nothing was lost.');
+  else if (blocked === 'quota') parts.push("Resend's quota is reached: nothing was lost; press Send again once it has reset.");
   else if (deferred) parts.push(`${deferred} waiting for Resend's rate limit; they will be retried.`);
   else if (remaining) parts.push(`${remaining} more drafts ready — press Send again to continue.`);
   else parts.push('Batch complete.');
@@ -324,6 +324,25 @@ export async function POST(request) {
     perSecond: perSecondReport(),
     message: parts.join(' '),
   });
+}
+
+// Drafts a crashed call left in 'sending' for over 5 minutes. If Resend already accepted one (the delivery
+// tracker has a row for it) it is marked sent; only the others go back to draft_ready. Without this check, a
+// correction of the lead's email before the retry would give the draft a new idempotency key and mail the lead twice.
+async function freeStaleDrafts(db, batchId, now) {
+  const cutoff = new Date(Date.now() - STALE_SENDING_MS).toISOString();
+  const { data: stale } = await db.from('fair_email_drafts').select('id').eq('batch_id', batchId).eq('status', 'sending').lt('updated_at', cutoff);
+  if (!stale?.length) return;
+  const ids = stale.map((d) => d.id);
+  let sentIds = new Set();
+  try {
+    const { data: rows, error } = await db.from('email_deliveries').select('draft_id, resend_id').in('draft_id', ids);
+    if (!error) sentIds = new Set((rows || []).map((r) => r.draft_id));
+  } catch { /* table missing: treat all as unsent, as before */ }
+  const sentNow = ids.filter((id) => sentIds.has(id));
+  const back = ids.filter((id) => !sentIds.has(id));
+  if (sentNow.length) await db.from('fair_email_drafts').update({ status: 'sent', sent_at: now(), error: null, updated_at: now() }).in('id', sentNow).eq('status', 'sending');
+  if (back.length) await db.from('fair_email_drafts').update({ status: 'draft_ready', updated_at: now() }).in('id', back).eq('status', 'sending');
 }
 
 // The pacer's rate, for the screen ("max 3 per second"); null when unlimited (tests, local dev).

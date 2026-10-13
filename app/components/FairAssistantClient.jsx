@@ -950,6 +950,10 @@ export default function FairAssistantClient() {
           setError(`Resend's sending limit is reached. Nothing was lost: ${data.remaining} email${data.remaining === 1 ? ' is' : 's are'} waiting. Press Send again once the limit has reset.`)
           return
         }
+        if (data.blocked === 'config') {
+          setError(`Email sending is not set up on the server (no Resend key). Nothing was lost: ${data.remaining} email${data.remaining === 1 ? ' is' : 's are'} waiting. Ask whoever manages the server.`)
+          return
+        }
         if (!data.remaining) break
         // Stop only when nothing moves for a while (not after a fixed number of passes).
         const moved = (data.sent || 0) + (data.failed || 0) + (data.skipped || 0) > 0
@@ -2006,6 +2010,11 @@ export default function FairAssistantClient() {
                             : leads.length === 0 ? 'No leads yet'
                             : `Write and send to ${leads.length} lead${leads.length === 1 ? '' : 's'}`}
                         </button>
+                        {/^\s*\[TEST\]/i.test(batch?.name || '') && (
+                          <div data-testid="fair-test-banner" role="status" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: '#fefce8', border: '1px solid #fde68a', color: '#854d0e', fontSize: 13 }}>
+                            Test batch: every email goes to your own address only, with the lead's address in the subject. The drafts count as sent, so rename the batch only if you create a new one for the real send.
+                          </div>
+                        )}
                         {(() => {
                           // How many have gone out, as a bar with the count. Counts only leads
                           // that have an email; a card without one can never be sent.
