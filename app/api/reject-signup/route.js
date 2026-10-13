@@ -63,12 +63,9 @@ export async function GET(request) {
     // Send rejection email to the requester
     const resendApiKey = process.env.RESEND_API_KEY;
     if (resendApiKey) {
-      const emailController = new AbortController();
-      const emailTimeout = setTimeout(() => emailController.abort(), 10_000);
       try {
         await resendFetch({
           method: 'POST',
-          signal: emailController.signal,
           headers: {
             'Authorization': `Bearer ${resendApiKey}`,
             'Content-Type': 'application/json',
@@ -78,11 +75,9 @@ export async function GET(request) {
             to: [signup.email],
             ...rejectedSignupEmail(signup.full_name, siteUrl),
           }),
-        });
+        }, { timeoutMs: 10_000 });
       } catch (err) {
         console.error('[reject-signup] Rejection email error:', err.message);
-      } finally {
-        clearTimeout(emailTimeout);
       }
     }
 

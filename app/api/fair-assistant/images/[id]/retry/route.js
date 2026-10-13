@@ -21,7 +21,7 @@ export async function POST(request, { params }) {
   const db = auth.adminSupabase;
   const { data: image, error: imgErr } = await db
     .from('fair_images')
-    .select('id, batch_id, drive_file_id, file_name, status')
+    .select('id, batch_id, drive_file_id, file_name, status, updated_at')
     .eq('id', id)
     .single();
 
@@ -31,6 +31,11 @@ export async function POST(request, { params }) {
   }
   if (!image.drive_file_id) {
     return NextResponse.json({ error: 'This photo has no file to read again. Delete it and upload it again.' }, { status: 409 });
+  }
+
+  // A double click: the card reader was asked a moment ago, do not ask twice.
+  if (image.status === 'processing' && image.updated_at && Date.now() - new Date(image.updated_at).getTime() < 20_000) {
+    return NextResponse.json({ error: 'Already being read. Give it a moment.' }, { status: 409 });
   }
 
   const now = () => new Date().toISOString();

@@ -7,6 +7,24 @@ import { defaultTemplateForLeadType } from '@/lib/fair-assistant/templates';
 
 const CONCURRENCY = 4;   // Claude rate limits: 4 translations at a time, each retried on 429/529
 
+// Writes one lead's draft, but never over a draft that is sent or being sent. The check and the write are
+// ONE statement (a conditional UPDATE), so a Send running during a slow Generate-all cannot be undone by it:
+// the list of locked leads read at the start can be minutes old by the time a translation finishes.
+async function writeDraft(db, row) {
+  const { data: updated, error: updErr } = await db
+    .from('fair_email_drafts')
+    .update(row)
+    .eq('lead_id', row.lead_id)
+    .not('status', 'in', '(sent,sending)')
+    .select('id');
+  if (updErr) throw updErr;
+  if (updated?.length) return 'written';
+  const { error: insErr } = await db.from('fair_email_drafts').insert(row);
+  if (!insErr) return 'written';
+  if (insErr.code === '23505') return 'locked';      // a draft exists and the UPDATE skipped it: it is sent or sending
+  throw insErr;
+}
+
 async function mapPool(items, limit, fn) {
   const results = new Array(items.length);
   let index = 0;
@@ -69,7 +87,7 @@ export async function POST(request) {
     .eq('batch_id', batchId);
   const lockedLeadIds = new Set((existingDrafts || []).filter((d) => d.status === 'sent' || d.status === 'sending').map((d) => d.lead_id));
   const leadsToWrite = leads.filter((l) => !lockedLeadIds.has(l.id));
-  const skippedSent = leads.length - leadsToWrite.length;
+  let skippedSent = leads.length - leadsToWrite.length;
 
   await auth.adminSupabase
     .from('fair_batches')
@@ -149,20 +167,17 @@ export async function POST(request) {
         subject: batch.subject || undefined,
       });
 
-      const { error } = await auth.adminSupabase
-        .from('fair_email_drafts')
-        .upsert({
-          batch_id: batchId,
-          lead_id: lead.id,
-          subject: email.subject,
-          body_html: email.bodyHtml,
-          language: email.language,
-          status: 'draft_ready',
-          error: null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'lead_id' });
-
-      if (error) throw error;
+      const outcome = await writeDraft(auth.adminSupabase, {
+        batch_id: batchId,
+        lead_id: lead.id,
+        subject: email.subject,
+        body_html: email.bodyHtml,
+        language: email.language,
+        status: 'draft_ready',
+        error: null,
+        updated_at: new Date().toISOString(),
+      });
+      if (outcome === 'locked') { skippedSent += 1; return; }
       generated += 1;
     } catch (err) {
       failed += 1;
@@ -179,17 +194,15 @@ export async function POST(request) {
       // Clear any earlier body so a stale draft can never be sent by mistake:
       // the send route only picks up draft_ready rows, and this one is failed
       // with no content.
-      await auth.adminSupabase
-        .from('fair_email_drafts')
-        .upsert({
-          batch_id: batchId,
-          lead_id: lead.id,
-          subject: null,
-          body_html: null,
-          status: 'failed',
-          error: err.message,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'lead_id' });
+      await writeDraft(auth.adminSupabase, {
+        batch_id: batchId,
+        lead_id: lead.id,
+        subject: null,
+        body_html: null,
+        status: 'failed',
+        error: err.message,
+        updated_at: new Date().toISOString(),
+      }).catch(() => {});
     }
   });
 

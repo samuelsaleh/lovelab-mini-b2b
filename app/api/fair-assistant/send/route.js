@@ -19,13 +19,17 @@ const SLICE = 6;              // drafts claimed at a time, so nothing sits claim
 const HARD_LIMIT = 500;       // safety: never touch more than 500 drafts per request
 const STALE_SENDING_MS = 5 * 60 * 1000;   // a draft left in 'sending' this long was orphaned by a crashed call
 
+export const maxDuration = 90;   // a call works ~25 s, but a Resend retry can wait up to 30 s on top
+
 const chunkSeconds = () => Number(process.env.FAIR_SEND_CHUNK_SECONDS) || 25;
 const isTestBatch = (batch) => /^\s*\[TEST\]/i.test(batch?.name || '');
 
 // Same draft + same text = same key, so Resend returns the first result if a
 // retry (or a second call) sends it again within 24 h. Changed text = new key.
-function idempotencyKeyFor(draft) {
-  const hash = crypto.createHash('sha1').update(`${draft.subject}\n${draft.body_html}`).digest('hex').slice(0, 12);
+// The key covers everything Resend compares (recipient, subject, text, attachments): the same key with a
+// different payload is refused by Resend (409), which would strand a draft whose lead email was corrected.
+function idempotencyKeyFor(draft, { to, subject, attachmentSig }) {
+  const hash = crypto.createHash('sha1').update([to, subject, draft.body_html, attachmentSig].join('\n')).digest('hex').slice(0, 12);
   return `fair-${draft.id}-${hash}`;
 }
 
@@ -56,11 +60,15 @@ export async function POST(request) {
   const deadlineAt = Date.now() + chunkSeconds() * 1000;
 
   // Load the batch first so we know which PDFs to attach to every email.
-  const { data: batch } = await auth.adminSupabase
+  const { data: batch, error: batchErr } = await auth.adminSupabase
     .from('fair_batches')
     .select('id, name, attached_files')
     .eq('id', batchId)
     .single();
+  // Fail closed: without the batch we cannot know whether it is a [TEST] batch, and a real send must never start by accident.
+  if (batchErr || !batch) {
+    return NextResponse.json({ error: 'Batch not found. Nothing was sent.' }, { status: 404 });
+  }
 
   // Materialize attachment buffers once, reuse across the whole send loop.
   // Files live in /public so we fetch them by absolute URL from this same
@@ -132,6 +140,8 @@ export async function POST(request) {
       skippedAttachments.push({ path, reason: 'fetch_error' });
     }
   }
+
+  const attachmentSig = attachments.map((a) => `${a.filename}:${a.content.length}`).join('|');
 
   const db = auth.adminSupabase;
   const now = () => new Date().toISOString();
@@ -245,7 +255,7 @@ export async function POST(request) {
         // PDFs/Excels the user picked in Outreach → Attachments. Materialized
         // once at the top of this request so we don't refetch per draft.
         attachments: attachments.length ? attachments : undefined,
-        idempotencyKey: idempotencyKeyFor(draft),
+        idempotencyKey: idempotencyKeyFor(draft, { to: testMode ? testRecipient : realTo, subject: testMode ? `[to: ${realTo}] ${draft.subject}` : draft.subject, attachmentSig }),
       });
 
       if (result.sent) {

@@ -84,12 +84,9 @@ export async function POST(request) {
     }
 
     // Send notification email to admin via Resend (8 s timeout)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const emailRes = await resendFetch({
         method: 'POST',
-        signal: controller.signal,
         headers: {
           'Authorization': `Bearer ${resendApiKey}`,
           'Content-Type': 'application/json',
@@ -103,7 +100,7 @@ export async function POST(request) {
             siteUrl,
           ),
         }),
-      });
+      }, { timeoutMs: 8000 });
 
       if (!emailRes.ok) {
         const err = await emailRes.text();
@@ -112,7 +109,6 @@ export async function POST(request) {
     } catch (fetchErr) {
       console.error('[signup-request] Resend fetch failed/timed out:', fetchErr.message);
     } finally {
-      clearTimeout(timeout);
     }
 
     return NextResponse.json({ success: true });

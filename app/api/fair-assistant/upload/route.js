@@ -71,7 +71,19 @@ export async function POST(request) {
     .limit(1);
   const hasHashColumn = !sameErr;
   if (hasHashColumn && sameRows?.length) {
-    return NextResponse.json({ image: sameRows[0], driveFileId: sameRows[0].drive_file_id, duplicate: true });
+    const existing = sameRows[0];
+    // The first attempt ended in an error: picking the photo again is the user asking for another try.
+    if (existing.status === 'failed' && existing.drive_file_id) {
+      try {
+        await triggerN8nCardWebhook({ driveFileId: existing.drive_file_id, mimeType, batchId, imageId: existing.id });
+        const { data: again } = await auth.adminSupabase
+          .from('fair_images').update({ status: 'processing', error: null, updated_at: new Date().toISOString() }).eq('id', existing.id).select('*').single();
+        return NextResponse.json({ image: again || existing, driveFileId: existing.drive_file_id, duplicate: true, retried: true });
+      } catch (err) {
+        console.error('[fair-upload] retry of failed duplicate failed:', err.message);
+      }
+    }
+    return NextResponse.json({ image: existing, driveFileId: existing.drive_file_id, duplicate: true });
   }
 
   let driveFile;

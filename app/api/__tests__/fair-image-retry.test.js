@@ -83,4 +83,11 @@ describe('image retry route', () => {
     expect(images[0].status).toBe('failed')
     expect(images[0].error).toMatch(/403/)
   })
+
+  test('a second click within seconds is refused (the card reader was just asked)', async () => {
+    images[0].updated_at = new Date().toISOString()
+    const res = await call('i1')
+    expect(res.status).toBe(409)
+    expect(trigger).not.toHaveBeenCalled()
+  })
 })

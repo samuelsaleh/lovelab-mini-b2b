@@ -112,4 +112,14 @@ describe('upload route', () => {
     expect(res.status).toBe(413)
     expect(upload).not.toHaveBeenCalled()
   })
+
+  test('picking again a photo whose first attempt FAILED asks the card reader again', async () => {
+    await send('retry-me')
+    images[0].status = 'failed'; images[0].error = 'x'
+    trigger.mockClear()
+    const body = await (await send('retry-me')).json()
+    expect(body).toMatchObject({ duplicate: true, retried: true })
+    expect(trigger).toHaveBeenCalledTimes(1)
+    expect(images).toHaveLength(1)
+  })
 })

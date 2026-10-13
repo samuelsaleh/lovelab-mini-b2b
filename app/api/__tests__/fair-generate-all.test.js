@@ -17,7 +17,12 @@ const adminSupabase = {
   from(name) {
     const st = { filters: [], op: 'select', patch: null, single: false }
     const q = {
-      select() { return q }, order() { return q }, limit() { return q },
+      select() { st.wantRows = true; return q }, order() { return q }, limit() { return q },
+      not(c, op, list) { const vals = String(list).replace(/[()]/g, '').split(','); st.filters.push((r) => !vals.includes(r[c])); return q },
+      insert(row) {
+        if (tables[name].some((r) => r.lead_id === row.lead_id)) return Promise.resolve({ error: { code: '23505', message: 'dup' } })
+        tables[name].push({ id: `d${tables[name].length + 1}`, ...row }); return Promise.resolve({ error: null })
+      },
       eq(c, v) { st.filters.push((r) => r[c] === v); return q },
       neq(c, v) { st.filters.push((r) => r[c] !== v); return q },
       single() { st.single = true; return q },
@@ -30,7 +35,7 @@ const adminSupabase = {
       },
       then(res, rej) {
         let rows = tables[name].filter((r) => st.filters.every((f) => f(r)))
-        if (st.op === 'update') { rows.forEach((r) => Object.assign(r, st.patch)); return Promise.resolve({ error: null }).then(res, rej) }
+        if (st.op === 'update') { rows.forEach((r) => Object.assign(r, st.patch)); return Promise.resolve(st.wantRows ? { data: rows.map((r) => ({ id: r.id })), error: null } : { error: null }).then(res, rej) }
         const out = rows.map((r) => ({ ...r }))
         return Promise.resolve(st.single ? { data: out[0] || null, error: out[0] ? null : { message: 'nf' } } : { data: out, error: null }).then(res, rej)
       },
@@ -82,5 +87,19 @@ describe('generate-all', () => {
     expect(tables.fair_email_drafts.filter((d) => d.status === 'draft_ready')).toHaveLength(3)
     expect(tables.fair_email_drafts.find((d) => d.lead_id === 'l0').subject).toBe('Hi A')
     expect(body).toMatchObject({ generated: 3, skippedSent: 0 })
+  })
+
+  test('a draft that is sent WHILE Generate-all is translating is not overwritten (the locked list read at the start is stale)', async () => {
+    tables.fair_email_drafts = [{ id: 'd1', batch_id: 'b1', lead_id: 'l0', status: 'draft_ready', subject: 'old', body_html: '<p>old</p>' }]
+    const { buildEmailForLead } = require('@/lib/fair-assistant/translate')
+    buildEmailForLead.mockImplementationOnce(({ lead }) => {
+      // a Send finishes for lead l0 while this lead is still being written
+      tables.fair_email_drafts.find((d) => d.lead_id === 'l0').status = 'sent'
+      return { subject: `Hi ${lead.first_name}`, bodyHtml: `<p>${lead.first_name}</p>`, language: 'en' }
+    })
+    const body = await (await call()).json()
+    expect(tables.fair_email_drafts.find((d) => d.lead_id === 'l0')).toMatchObject({ status: 'sent', subject: 'old' })
+    expect(body.skippedSent).toBe(1)
+    expect(body.generated).toBe(2)
   })
 })

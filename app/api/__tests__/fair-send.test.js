@@ -105,6 +105,13 @@ describe('send route', () => {
     expect(sendEmail.mock.calls[0][0].idempotencyKey).not.toBe(keys[0])
   })
 
+  test('the key changes when the recipient changes (a corrected lead email is not refused by Resend as a reused key)', async () => {
+    await call(); const first = sendEmail.mock.calls[0][0].idempotencyKey
+    seed(); tables.fair_leads[0].email = 'corrected@shop.com'
+    sendEmail.mockClear(); await call()
+    expect(sendEmail.mock.calls[0][0].idempotencyKey).not.toBe(first)
+  })
+
   test('two simultaneous calls send each draft exactly once in total', async () => {
     seed({ n: 20 })
     const [a, b] = await Promise.all([call(), call()])
@@ -210,5 +217,13 @@ describe('send route', () => {
     expect(body.sent).toBeGreaterThan(0); expect(body.sent).toBeLessThan(40)
     expect(body.remaining).toBe(40 - body.sent)
     expect(statuses().filter((s) => s === 'sending')).toHaveLength(0)     // nothing left claimed but unsent
+  })
+
+  test('a batch that cannot be read sends nothing (fails closed; it could have been a [TEST] batch)', async () => {
+    tables.fair_batches = []
+    const res = await call()
+    expect(res.status).toBe(404)
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(statuses().every((s) => s === 'draft_ready')).toBe(true)
   })
 })
