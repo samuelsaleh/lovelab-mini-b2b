@@ -5,7 +5,7 @@ import { buildEmailForLead, translateSlotsForLanguages } from '@/lib/fair-assist
 import { languageForLead, languageLabel } from '@/lib/fair-assistant/languages';
 import { defaultTemplateForLeadType } from '@/lib/fair-assistant/templates';
 
-const CONCURRENCY = 10;
+const CONCURRENCY = 4;   // Claude rate limits: 4 translations at a time, each retried on 429/529
 
 async function mapPool(items, limit, fn) {
   const results = new Array(items.length);
@@ -59,6 +59,17 @@ export async function POST(request) {
   if (!leads?.length) {
     return NextResponse.json({ error: 'No leads to generate' }, { status: 400 });
   }
+
+  // A draft that was already sent (or is being sent right now) is never touched.
+  // Rewriting it back to draft_ready is what made a second press of Send email
+  // every lead again (found 12 Oct 2026).
+  const { data: existingDrafts } = await auth.adminSupabase
+    .from('fair_email_drafts')
+    .select('lead_id, status')
+    .eq('batch_id', batchId);
+  const lockedLeadIds = new Set((existingDrafts || []).filter((d) => d.status === 'sent' || d.status === 'sending').map((d) => d.lead_id));
+  const leadsToWrite = leads.filter((l) => !lockedLeadIds.has(l.id));
+  const skippedSent = leads.length - leadsToWrite.length;
 
   await auth.adminSupabase
     .from('fair_batches')
@@ -123,7 +134,7 @@ export async function POST(request) {
   // exactly what went wrong and that nothing was generated for those leads.
   const translationFailures = [];
 
-  await mapPool(leads, CONCURRENCY, async (lead) => {
+  await mapPool(leadsToWrite, CONCURRENCY, async (lead) => {
     try {
       const { language, slots, translatedByLanguage } = await getTranslations(lead);
       const email = buildEmailForLead({
@@ -192,6 +203,7 @@ export async function POST(request) {
     generated,
     failed,
     total: leads.length,
+    skippedSent,
     translationFailures: translationFailures.length ? translationFailures : undefined,
   });
 }

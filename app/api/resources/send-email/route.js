@@ -1,3 +1,4 @@
+import { resendFetch } from '@/lib/resendFetch';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
@@ -186,7 +187,7 @@ export async function POST(request) {
       attachments,
     };
 
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await resendFetch({
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

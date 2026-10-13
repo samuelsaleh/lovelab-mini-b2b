@@ -1,3 +1,4 @@
+import { resendFetch } from '@/lib/resendFetch';
 import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
@@ -65,7 +66,7 @@ export async function GET(request) {
       const emailController = new AbortController();
       const emailTimeout = setTimeout(() => emailController.abort(), 10_000);
       try {
-        await fetch('https://api.resend.com/emails', {
+        await resendFetch({
           method: 'POST',
           signal: emailController.signal,
           headers: {
