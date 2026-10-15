@@ -1349,8 +1349,10 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
       } else {
         line.colorConfigs.forEach((cfg, idx) => {
           const caratLabel = cfg.caratIdx !== null ? col.carats[cfg.caratIdx] + 'ct' : 'no carat'
-          const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType, activePricelist) : 0
-          parts.push(`  ${idx + 1}. ${cfg.colorName} | ${caratLabel} | ${cfg.housing || 'no housing'} | ${cfg.size || 'no size'} | qty:${cfg.qty} | €${price * cfg.qty}`)
+          const unit = cfg.priceOverride != null && cfg.priceOverride >= 0
+            ? cfg.priceOverride
+            : (cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType, activePricelist) : 0)
+          parts.push(`  ${idx + 1}. ${cfg.colorName} | ${caratLabel} | ${cfg.housing || 'no housing'} | ${cfg.size || 'no size'} | qty:${cfg.qty} | €${unit * cfg.qty}`)
         })
       }
     })
@@ -3372,10 +3374,11 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
           {lines.filter(l => l.collectionId && l.colorConfigs.length > 0).map(line => {
             const col = COLLECTIONS.find(c => c.id === line.collectionId)
             if (!col) return null
-            const lineTotal = line.colorConfigs.reduce((sum, cfg) => {
-              const price = cfg.caratIdx !== null ? getPrice(col, cfg.caratIdx, cfg.certType, activePricelist) : 0
-              return sum + (cfg.qty * price)
-            }, 0)
+            // Use the quote's lineTotal so manual price overrides are honoured
+            // (getPrice alone returns the list price and ignored them).
+            const lineTotal = quote.lines
+              .filter(q => q.lineUid === line.uid)
+              .reduce((sum, q) => sum + q.lineTotal, 0)
             const pieces = line.colorConfigs.reduce((sum, cfg) => sum + cfg.qty, 0)
             if (pieces === 0 && lineTotal === 0) return null
             return (
