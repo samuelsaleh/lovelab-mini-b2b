@@ -194,10 +194,10 @@ describe('ResourcesCard — Brand Documents folder', () => {
     expect(screen.getByText('Brand Documents')).toBeInTheDocument()
   })
 
-  it('lists all five brand documents for an agent', () => {
+  it('lists all six brand documents for an agent', () => {
     render(<ResourcesCard isAdmin={false} userEmail="agent@example.com" />)
     fireEvent.click(screen.getByText('Brand Documents'))
-    for (const name of ['French', 'English', 'German', 'Italian']) {
+    for (const name of ['French', 'English', 'German', 'Italian', 'Spanish']) {
       expect(screen.getByText(`LoveLab Brand Presentation — ${name}.pdf`)).toBeInTheDocument()
     }
     expect(screen.getByText('LoveLab Lifestyle Slideshow.pdf')).toBeInTheDocument()
