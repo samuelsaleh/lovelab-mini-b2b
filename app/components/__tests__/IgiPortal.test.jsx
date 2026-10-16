@@ -94,6 +94,70 @@ describe('IGI: to do', () => {
     expect(container.textContent.toLowerCase()).not.toContain('shelf')
   })
 
+  describe('reporting a problem (Mika, 16 Oct 2026)', () => {
+    const CATALOGUE = [
+      { id: 'm1', serial: 'LGAJ6530', name: 'Cuty-Cubix', stones: '1', carat: 0.1, shape: 'Round', spec: null },
+      { id: 'm2', serial: 'LGAJ6552', name: 'Shapy Shine', stones: '1', carat: 0.5, shape: 'Heart', spec: null },
+      { id: 'm75', serial: 'LGAJ6575', name: 'Riviera 8', stones: '8', carat: 0.4, shape: 'Round', spec: 'D/E' },
+    ]
+
+    it('puts a request on hold with a note, a new quantity and a card that was not asked for', async () => {
+      const seen = []
+      mockFetch({
+        '/todo/v1/problem': (init) => {
+          seen.push(JSON.parse(init.body))
+          return Promise.resolve({ ok: true, json: async () => ({ visit_no: 24, problem_id: 'p1', changes: 2 }) })
+        },
+        '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: VISITS, catalogue: CATALOGUE }) }),
+      })
+      render(<IgiTodoClient />)
+      await waitFor(() => expect(screen.getByTestId('report-problem')).toBeInTheDocument())
+      fireEvent.click(screen.getByTestId('report-problem'))
+
+      // The send button waits for a note.
+      expect(screen.getByTestId('send-problem')).toBeDisabled()
+      fireEvent.change(screen.getByTestId('problem-note'), { target: { value: '36 have 8 stones' } })
+      fireEvent.change(screen.getAllByTestId('should-qty')[0], { target: { value: '64' } })
+
+      // Only models not already on the request can be added.
+      const options = within(screen.getByTestId('add-card-model')).getAllByRole('option').map((o) => o.value)
+      expect(options).toEqual(['', 'm75'])
+      fireEvent.change(screen.getByTestId('add-card-model'), { target: { value: 'm75' } })
+      fireEvent.change(screen.getByTestId('add-card-qty'), { target: { value: '36' } })
+      fireEvent.click(screen.getByTestId('add-card-confirm'))
+      expect(screen.getByTestId('problem-extra')).toHaveTextContent('LGAJ6575')
+
+      fireEvent.click(screen.getByTestId('send-problem'))
+      await waitFor(() => expect(seen).toEqual([{
+        note: '36 have 8 stones',
+        proposal: [{ model_id: 'm1', qty: 64 }, { model_id: 'm75', qty: 36 }],
+      }]))
+      await waitFor(() => expect(screen.getByTestId('notice')).toHaveTextContent('V-024 is on hold'))
+    })
+
+    it('shows a request on hold as waiting for LoveLab, with nothing to record', async () => {
+      const held = [{
+        ...VISITS[0],
+        status: 'on_hold',
+        problem: {
+          id: 'p1', note: '36 have 8 stones', reported_at: '2026-10-16T13:30:00Z',
+          changes: [{ model_id: 'm75', serial: 'LGAJ6575', name: 'Riviera 8', stones: '8', carat: 0.4, shape: 'Round', spec: 'D/E', from: null, to: 36 }],
+        },
+      }]
+      mockFetch({ '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: held }) }) })
+      render(<IgiTodoClient />)
+      await waitFor(() => expect(screen.getByTestId('on-hold')).toBeInTheDocument())
+      expect(screen.getByTestId('on-hold')).toHaveTextContent('LoveLab will answer')
+      expect(screen.getByTestId('on-hold')).toHaveTextContent('36 have 8 stones')
+      expect(screen.getByTestId('problem-change')).toHaveTextContent('LGAJ6575')
+      expect(screen.queryByTestId('made-qty')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('send-to-lovelab')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('report-problem')).not.toBeInTheDocument()
+      // The sheet can still be printed.
+      expect(screen.getByTestId('print-request')).toBeInTheDocument()
+    })
+  })
+
   describe('the printed sheet (Mika, 16 Oct 2026)', () => {
     let print
     beforeEach(() => {

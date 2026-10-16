@@ -204,6 +204,9 @@
 .certapp select{font-family:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--rule);
   border-radius:var(--control-radius);background:var(--surface);color:var(--ink);max-width:280px;height:31px}
 .certapp select:focus-visible{outline:var(--focus);outline-offset:1px}
+.certapp textarea{font-family:inherit;font-size:13px;padding:8px 11px;border:1px solid var(--rule);
+  border-radius:var(--control-radius);background:var(--surface);color:var(--ink);box-sizing:border-box;resize:vertical}
+.certapp textarea:focus-visible{outline:var(--focus);outline-offset:1px}
 
 .certapp .switch{display:flex;gap:0;border:1px solid var(--rule);border-radius:var(--control-radius);overflow:hidden}
 .certapp .switch button{all:unset;box-sizing:border-box;cursor:pointer;font-size:12px;padding:6px 12px;

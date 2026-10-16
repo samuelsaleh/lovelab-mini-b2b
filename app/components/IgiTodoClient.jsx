@@ -5,6 +5,8 @@ import { formatQty, visitRef } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import SerialSpec from './igi/SerialSpec'
 import BatchPrintSheet from './igi/BatchPrintSheet'
+import Chip from './igi/Chip'
+import { ChangesTable, AddCard } from './igi/ProblemParts'
 import { useIgiPortal } from './certificates/IgiPortalContext'
 import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates/ui'
 
@@ -31,6 +33,8 @@ export default function IgiTodoClient() {
   const [made, setMade] = useState({})
   const [serials, setSerials] = useState({})
   const [printing, setPrinting] = useState(null)
+  const [catalogue, setCatalogue] = useState([])
+  const [reporting, setReporting] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -43,6 +47,7 @@ export default function IgiTodoClient() {
       setVisits(body.visits || [])
       setNewModels(body.new_models || [])
       setProduce(body.produce || [])
+      setCatalogue(body.catalogue || [])
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -86,6 +91,28 @@ export default function IgiTodoClient() {
       setNotice(`Sent — ${formatQty(body.made)} certificates back to LoveLab.`)
       setTimeout(() => setNotice(null), 6000)
       setMade((m) => ({ ...m, [visit.id]: {} }))
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  // Something looks wrong with a request: put it on hold and tell LoveLab.
+  async function reportProblem(visit, report) {
+    setSavingId(visit.id)
+    try {
+      const res = await fetch(`${base}/todo/${visit.id}/problem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(report),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not report the problem')
+      setNotice(`${visitRef(visit)} is on hold. LoveLab were told and will answer.`)
+      setTimeout(() => setNotice(null), 6000)
+      setReporting(null)
       load()
     } catch (err) {
       setError(err.message)
@@ -196,16 +223,31 @@ export default function IgiTodoClient() {
       {visits.map((visit) => {
         const short = visit.lines.filter((l) => l.short_by > 0)
         const asked = visit.lines.reduce((t, l) => t + l.qty_requested, 0)
+        const onHold = visit.status === 'on_hold'
         return (
           <div className="task" key={visit.id} data-testid="todo-card">
             <div className="task-h">
               <h2>{visitRef(visit)}</h2>
               <span className="when">{formatDate(visit.visit_date)}</span>
+              {onHold && <Chip tone="now">On hold</Chip>}
               <span className="ask">{formatQty(asked)} asked for</span>
               <Btn onClick={() => setPrinting(visit)} testId="print-request">Print sheet</Btn>
             </div>
 
-            {short.length > 0 && (
+            {onHold && (
+              <div className="nextstep" data-testid="on-hold" style={{ background: 'var(--warn-tint)' }}>
+                <b style={{ color: 'var(--warn)' }}>You reported a problem. LoveLab will answer.</b>
+                <span>Nothing to make until then. It comes back here, corrected or confirmed, and you are emailed.</span>
+                {visit.problem && (
+                  <div style={{ marginTop: 10, width: '100%' }}>
+                    <p style={{ margin: '0 0 8px' }}><i>“{visit.problem.note}”</i></p>
+                    <ChangesTable changes={visit.problem.changes} askedLabel="They asked" suggestLabel="You suggested" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!onHold && short.length > 0 && (
               <div className="nextstep" data-testid="shortage" style={{ background: 'var(--warn-tint)' }}>
                 <b style={{ color: 'var(--warn)' }}>
                   You hold fewer than they asked for on {short.length} model{short.length > 1 ? 's' : ''}.
@@ -237,7 +279,7 @@ export default function IgiTodoClient() {
                     <span style={{ color: 'var(--signal)' }}>short by {formatQty(line.short_by)}</span>
                   )}
                 </div>
-                <div className="made">
+                {!onHold && <div className="made">
                   <label htmlFor={`made-${line.id}`}>You made</label>
                   <input
                     id={`made-${line.id}`}
@@ -251,29 +293,148 @@ export default function IgiTodoClient() {
                     }))}
                     data-testid="made-qty"
                   />
-                </div>
+                </div>}
               </div>
             ))}
 
-            <div className="task-foot">
-              <Btn
-                kind="primary"
-                onClick={() => send(visit)}
-                disabled={savingId === visit.id}
-                testId="send-to-lovelab"
-              >
-                {savingId === visit.id ? 'Sending…' : 'Send back to LoveLab'}
-              </Btn>
-              <span className="msg">
-                Leave a model empty if you made everything they asked for.
-                {preview && ' Recorded against your name, not IGI’s.'}
-              </span>
-            </div>
+            {!onHold && reporting === visit.id && (
+              <ReportProblem
+                visit={visit}
+                catalogue={catalogue}
+                saving={savingId === visit.id}
+                onCancel={() => setReporting(null)}
+                onSend={(report) => reportProblem(visit, report)}
+              />
+            )}
+
+            {!onHold && reporting !== visit.id && (
+              <div className="task-foot">
+                <Btn
+                  kind="primary"
+                  onClick={() => send(visit)}
+                  disabled={savingId === visit.id}
+                  testId="send-to-lovelab"
+                >
+                  {savingId === visit.id ? 'Sending…' : 'Send back to LoveLab'}
+                </Btn>
+                <Btn onClick={() => setReporting(visit.id)} testId="report-problem">
+                  Report a problem
+                </Btn>
+                <span className="msg">
+                  Leave a model empty if you made everything they asked for.
+                  {preview && ' Recorded against your name, not IGI’s.'}
+                </span>
+              </div>
+            )}
           </div>
         )
       })}
 
       {printing && <BatchPrintSheet visit={printing} onDone={() => setPrinting(null)} />}
     </>
+  )
+}
+
+/**
+ * "Something is wrong with this request." What IGI think it should carry —
+ * a new figure on a line, a card that is not on it — and a note. LoveLab
+ * decide; nothing on the request changes until they do.
+ */
+function ReportProblem({ visit, catalogue, saving, onCancel, onSend }) {
+  const [note, setNote] = useState('')
+  const [should, setShould] = useState({})
+  const [extra, setExtra] = useState([])
+  const onRequest = new Set(visit.lines.map((l) => l.model_id))
+  const taken = new Set([...onRequest, ...extra.map((e) => e.model_id)])
+  const byId = new Map((catalogue || []).map((m) => [m.id, m]))
+
+  function submit() {
+    const proposal = [
+      ...visit.lines
+        .filter((l) => should[l.model_id] !== undefined && should[l.model_id] !== '')
+        .map((l) => ({ model_id: l.model_id, qty: Number(should[l.model_id]) })),
+      ...extra,
+    ]
+    onSend({ note, proposal })
+  }
+
+  return (
+    <div className="nextstep" data-testid="report-form" style={{ display: 'block' }}>
+      <b>What is wrong with {visitRef(visit)}?</b>
+      <span style={{ display: 'block', margin: '4px 0 12px' }}>
+        LoveLab are emailed and the request waits for their answer. Only fill in what should change.
+      </span>
+
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="e.g. 36 of these bracelets have 8 stones: they need LGAJ6575, not LGAJ6538."
+        rows={3}
+        maxLength={1000}
+        data-testid="problem-note"
+        style={{ width: '100%', marginBottom: 12 }}
+      />
+
+      {visit.lines.map((l) => (
+        <div className="task-line" key={l.id} data-testid="problem-line" style={{ paddingLeft: 0, paddingRight: 0 }}>
+          <div className="who">
+            <b>{l.name}</b>
+            <SerialSpec model={l} compact />
+          </div>
+          <div className="have">
+            <span>They asked for</span>
+            <b>{formatQty(l.qty_requested)}</b>
+          </div>
+          <div className="made">
+            <label htmlFor={`should-${l.id}`}>Should be</label>
+            <input
+              id={`should-${l.id}`}
+              type="number"
+              min="0"
+              placeholder={String(l.qty_requested)}
+              value={should[l.model_id] ?? ''}
+              onChange={(e) => setShould((s) => ({ ...s, [l.model_id]: e.target.value }))}
+              data-testid="should-qty"
+            />
+          </div>
+        </div>
+      ))}
+
+      {extra.map((e) => {
+        const m = byId.get(e.model_id) || {}
+        return (
+          <div className="task-line" key={e.model_id} data-testid="problem-extra" style={{ paddingLeft: 0, paddingRight: 0 }}>
+            <div className="who">
+              <b>{m.name}</b>
+              <SerialSpec model={m} compact />
+            </div>
+            <div className="have">
+              <span>They asked for</span>
+              <b>—</b>
+            </div>
+            <div className="have">
+              <span>Add</span>
+              <b>{formatQty(e.qty)}</b>
+            </div>
+            <Btn onClick={() => setExtra((list) => list.filter((x) => x.model_id !== e.model_id))}>Remove</Btn>
+          </div>
+        )
+      })}
+
+      <div style={{ margin: '12px 0' }}>
+        <AddCard
+          catalogue={catalogue}
+          exclude={taken}
+          onAdd={(modelId, qty) => setExtra((list) => [...list, { model_id: modelId, qty }])}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <Btn kind="primary" onClick={submit} disabled={saving || !note.trim()} testId="send-problem">
+          {saving ? 'Sending…' : 'Put on hold and tell LoveLab'}
+        </Btn>
+        <Btn onClick={onCancel} disabled={saving} testId="cancel-problem">Cancel</Btn>
+      </div>
+    </div>
   )
 }

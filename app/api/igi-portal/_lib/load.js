@@ -1,4 +1,5 @@
 import { poolOf, askedRightNow } from '@/lib/igi/derive';
+import { isMissingProblemsTable } from '@/lib/igi/problems';
 
 /**
  * The four reads every IGI screen needs, and nothing else.
@@ -34,8 +35,18 @@ async function loadModels(supabase) {
   return supabase.from('igi_models').select(MODEL_COLUMNS).order('sort_order', { ascending: true });
 }
 
+// The problems IGI reported on requests (16 Oct 2026). Before that migration
+// has run, there are none rather than a broken To do.
+async function loadProblems(supabase) {
+  const res = await supabase.from('igi_visit_problems')
+    .select('id, visit_id, note, proposal, reported_at, resolution, reply, resolved_at')
+    .order('reported_at', { ascending: false });
+  if (res.error && isMissingProblemsTable(res.error)) return { data: [] };
+  return res;
+}
+
 export async function loadIgiWorld(supabase) {
-  const [models, batches, counts, lines, visits] = await Promise.all([
+  const [models, batches, counts, lines, visits, problems] = await Promise.all([
     loadModels(supabase),
     supabase.from('igi_batches').select('id, model_id, qty, batch_date, reference, created_at'),
     supabase.from('igi_counts').select('id, model_id, was, counted, delta, note, counted_at, created_by')
@@ -44,9 +55,10 @@ export async function loadIgiWorld(supabase) {
     supabase.from('igi_visits')
       .select('id, visit_no, visit_date, status, date_suspect, correction, unattributed_total, issued_at, closed_at')
       .order('visit_no', { ascending: false }),
+    loadProblems(supabase),
   ]);
 
-  const firstError = [models, batches, lines, visits, counts].find((r) => r.error)?.error;
+  const firstError = [models, batches, lines, visits, counts, problems].find((r) => r.error)?.error;
   if (firstError) throw new Error(firstError.message);
 
   // Reserved serials were numbered and never ordered; they belong on no IGI
@@ -65,6 +77,7 @@ export async function loadIgiWorld(supabase) {
     counts: counts.data,
     lines: lines.data,
     visits: visits.data,
+    problems: problems.data || [],
     poolFor: (modelId) => poolOf(modelId, batches.data, lines.data, counts.data),
     askedFor: (modelId) => askedRightNow(modelId, lines.data, visits.data),
     modelById: new Map(inUse.map((m) => [m.id, m])),

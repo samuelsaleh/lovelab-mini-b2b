@@ -37,13 +37,15 @@ export function Serial({ model, compact = false }) {
 }
 
 /**
- * What the piece actually is: stones, carat, shape.
+ * What the piece actually is: stones, carat, shape, and the grade when it has one.
  *
  * Full weight and full colour — this is the line someone checks a physical card
  * against, so it is not decoration.
  */
 export function Spec({ model, compact = false }) {
-  const spec = modelSpec(model)
+  // The colour grade too (D/E): LGAJ6538 and LGAJ6575 are both 0,40 ct round
+  // and differ by stones and grade (Mika, 16 Oct 2026).
+  const spec = [modelSpec(model), model.spec].filter(Boolean).join(' · ')
   return (
     <span
       style={{
