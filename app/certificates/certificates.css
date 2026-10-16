@@ -370,3 +370,45 @@
 .certapp button.shelf-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 .certapp .delta-pos{color:var(--good)}
 .certapp .delta-neg{color:var(--signal)}
+
+/*
+ * The printed request (app/components/igi/BatchPrintSheet.jsx).
+ *
+ * The one rule here not scoped under `.certapp`: the sheet is rendered into
+ * <body>, outside the app's chrome, so that printing it means hiding
+ * everything else rather than restyling the whole app for paper. It is never
+ * visible on screen.
+ */
+.certprint{display:none}
+@media print{
+  @page{size:A4;margin:14mm}
+  body.printing-batch > *:not(.certprint){display:none !important}
+  body.printing-batch{background:#fff !important}
+  body.printing-batch .certprint{display:block;color:#000;
+    font-family:"IBM Plex Sans",Helvetica,Arial,sans-serif;font-size:11pt}
+  .certprint header{display:flex;justify-content:space-between;align-items:flex-end;
+    border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px}
+  .certprint .eyebrow{font-size:8.5pt;letter-spacing:.08em;text-transform:uppercase}
+  .certprint h1{font-family:"IBM Plex Serif",Georgia,serif;font-size:22pt;margin:2px 0 0}
+  .certprint .meta{text-align:right;font-size:10pt;line-height:1.5}
+  .certprint table{width:100%;border-collapse:collapse}
+  .certprint th{font-size:8.5pt;letter-spacing:.06em;text-transform:uppercase;text-align:left;
+    border-bottom:1.5px solid #000;padding:6px}
+  .certprint td{border-bottom:1px solid #999;padding:9px 6px;vertical-align:middle}
+  .certprint tr{break-inside:avoid}
+  .certprint thead{display:table-header-group}
+  .certprint .n{width:22px;color:#444}
+  .certprint .serial{font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:12pt;
+    letter-spacing:.03em;white-space:nowrap}
+  .certprint .spec{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+  .certprint .q{text-align:right;width:70px}
+  .certprint td.q{font-family:"IBM Plex Mono",monospace;font-size:13pt;font-weight:700}
+  .certprint .tick{width:28px;text-align:center}
+  .certprint .box{display:inline-block;width:58px;height:22px;border:1.5px solid #000;vertical-align:middle}
+  .certprint .check{display:inline-block;width:16px;height:16px;border:1.5px solid #000;vertical-align:middle}
+  .certprint tfoot td{border-top:2px solid #000;border-bottom:none;font-weight:700}
+  .certprint .rule{font-size:9.5pt;margin:14px 0 26px}
+  .certprint footer{display:flex;gap:24px;font-size:10pt}
+  .certprint footer div{flex:1;display:flex;align-items:flex-end;gap:8px}
+  .certprint footer span{flex:1;border-bottom:1px solid #000;height:20px}
+}

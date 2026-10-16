@@ -93,6 +93,49 @@ describe('IGI: to do', () => {
     await waitFor(() => expect(screen.getAllByTestId('todo-card')).toHaveLength(1))
     expect(container.textContent.toLowerCase()).not.toContain('shelf')
   })
+
+  describe('the printed sheet (Mika, 16 Oct 2026)', () => {
+    let print
+    beforeEach(() => {
+      jest.useFakeTimers()
+      print = jest.fn()
+      window.print = print
+    })
+    afterEach(() => {
+      jest.useRealTimers()
+      document.body.classList.remove('printing-batch')
+    })
+
+    it('prints one line per model in serial order, with what was asked and a box to count', async () => {
+      const lines = [
+        { ...LINES[1], spec: 'D/E' },
+        LINES[0],
+      ]
+      mockFetch({ '/todo': () => Promise.resolve({ ok: true, json: async () => ({ visits: [{ ...VISITS[0], lines }] }) }) })
+      render(<IgiTodoClient />)
+      await waitFor(() => expect(screen.getByTestId('print-request')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByTestId('print-request'))
+      const sheet = screen.getByTestId('print-sheet')
+      expect(sheet.parentElement).toBe(document.body)
+      expect(document.body).toHaveClass('printing-batch')
+
+      const rows = within(sheet).getAllByTestId('print-line')
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toHaveTextContent('LGAJ6530')
+      expect(rows[1]).toHaveTextContent('LGAJ6552')
+      expect(rows[1]).toHaveTextContent('1 st · 0,50 ct · Heart · D/E')
+      expect(within(sheet).getByTestId('print-total')).toHaveTextContent('600')
+      expect(sheet).toHaveTextContent('V-024')
+
+      jest.runOnlyPendingTimers()
+      expect(print).toHaveBeenCalledTimes(1)
+
+      window.dispatchEvent(new Event('afterprint'))
+      await waitFor(() => expect(screen.queryByTestId('print-sheet')).not.toBeInTheDocument())
+      expect(document.body).not.toHaveClass('printing-batch')
+    })
+  })
 })
 
 describe('IGI: new models to number', () => {

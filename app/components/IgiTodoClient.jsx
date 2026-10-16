@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { formatQty, visitRef } from '@/lib/igi/derive'
 import { formatDate } from '@/lib/igi/dates'
 import SerialSpec from './igi/SerialSpec'
+import BatchPrintSheet from './igi/BatchPrintSheet'
 import { useIgiPortal } from './certificates/IgiPortalContext'
 import { PageHead, Card, Loading, Note, Toast, Btn, Empty } from './certificates/ui'
 
@@ -29,6 +30,7 @@ export default function IgiTodoClient() {
   const [savingId, setSavingId] = useState(null)
   const [made, setMade] = useState({})
   const [serials, setSerials] = useState({})
+  const [printing, setPrinting] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -200,6 +202,7 @@ export default function IgiTodoClient() {
               <h2>{visitRef(visit)}</h2>
               <span className="when">{formatDate(visit.visit_date)}</span>
               <span className="ask">{formatQty(asked)} asked for</span>
+              <Btn onClick={() => setPrinting(visit)} testId="print-request">Print sheet</Btn>
             </div>
 
             {short.length > 0 && (
@@ -269,6 +272,8 @@ export default function IgiTodoClient() {
           </div>
         )
       })}
+
+      {printing && <BatchPrintSheet visit={printing} onDone={() => setPrinting(null)} />}
     </>
   )
 }
