@@ -52,7 +52,15 @@ const directoryReturns = (rows) => {
   })
 }
 
-const QUOTE = { lines: [{ collection: 'Cuty', quantity: 6, unitPrice: 100, total: 600 }], total: 600, totalPieces: 6 }
+// A complete CUTY line: Save is blocked while any required field is blank,
+// so the address check is only reachable with a fully filled row.
+const QUOTE = {
+  lines: [{
+    product: 'CUTY', qty: 6, unitB2B: 100, carat: '0.10', certType: 'igi',
+    housing: 'Yellow', closureType: 'braided', size: 'M', colorName: 'Black',
+  }],
+  total: 600, totalPieces: 6,
+}
 
 const renderForm = (client) => render(
   <I18nProvider>
@@ -151,6 +159,41 @@ describe('saving an order the directory agrees with', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('offline'))
     renderForm(LEAKED)
     await clickSave()
+
+    await waitFor(() => expect(screen.getByTestId('save-modal-open')).toBeInTheDocument())
+  })
+})
+
+describe('saving an order with a required field left blank', () => {
+  const NO_CLOSURE = { lines: [{ ...QUOTE.lines[0], closureType: null }], total: 600, totalPieces: 6 }
+
+  it('stops, highlights the blank cell and names it', async () => {
+    directoryReturns([THEATRE_ROW])
+    render(
+      <I18nProvider>
+        <OrderForm quote={NO_CLOSURE} client={LEAKED} onClose={() => {}} currentUser={{ full_name: 'Dionne' }} />
+      </I18nProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByText(/please fill in the highlighted fields/i)).toBeInTheDocument()
+    expect(screen.getByText(/Row 1:/).parentElement).toHaveTextContent(/closure/i)
+    expect(document.querySelectorAll('[data-field-error="true"]')).toHaveLength(1)
+    // Neither the prepayment step nor the save modal opens.
+    expect(screen.queryByRole('button', { name: /confirm & continue/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('save-modal-open')).not.toBeInTheDocument()
+  })
+
+  it('still lets the order be parked as a draft', async () => {
+    directoryReturns([])
+    render(
+      <I18nProvider>
+        <OrderForm quote={NO_CLOSURE} client={LEAKED} onClose={() => {}} currentUser={{ full_name: 'Dionne' }} />
+      </I18nProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /save as draft instead/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & continue/i }))
 
     await waitFor(() => expect(screen.getByTestId('save-modal-open')).toBeInTheDocument())
   })

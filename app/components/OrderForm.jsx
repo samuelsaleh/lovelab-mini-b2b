@@ -353,7 +353,7 @@ function CellInput({ value, onChange, width, align, bold, color: clr, isPrinting
   )
 }
 
-function CellSelect({ value, onChange, options, isPrinting, align, wrapText, error }) {
+function CellSelect({ value, onChange, options, isPrinting, align, wrapText }) {
   const baseStyle = {
     width: '100%',
     fontFamily: fonts.body,
@@ -378,14 +378,7 @@ function CellSelect({ value, onChange, options, isPrinting, align, wrapText, err
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      aria-invalid={error || undefined}
-      data-size-error={error ? 'true' : undefined}
-      style={{
-        ...baseStyle, border: 'none', cursor: 'pointer', color: 'rgb(79, 79, 79)',
-        outline: error ? '1.5px solid #dc2626' : 'none',
-        outlineOffset: error ? -1 : undefined,
-        background: error ? '#fee2e2' : 'transparent',
-      }}
+      style={{ ...baseStyle, border: 'none', outline: 'none', background: 'transparent', cursor: 'pointer', color: 'rgb(79, 79, 79)' }}
     >
       <option value=""></option>
       {isOffList && <option value={value}>{value}</option>}
@@ -1215,9 +1208,11 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
   }, [afterDiscount, finalTotal, shippingAmount, customLineAmount, vitrineTotal, taxPercent])
 
   // ── Order completeness gate ────────────────────────────────────────────
-  // Missing fields are a soft warning (banner + tooltip), with one
-  // exception: a blank size blocks the final save, because the goods can't
-  // be shipped without it. Drafts / Offre can still be saved.
+  // Every field the agent has to pick (see lib/orderRowValidation) must be
+  // filled before the final save — incomplete orders reached production and
+  // couldn't be made (Oct 2026). Drafts / Offre can still be parked
+  // half-filled. Before the first Save attempt this is an amber heads-up;
+  // after it, the missing cells turn red.
   const orderValidation = useMemo(() => {
     const filledRows = rows.filter(isRowFilled)
     if (filledRows.length === 0) {
@@ -1228,21 +1223,30 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     return validateOrderRows(filledRows, findCollection)
   }, [rows])
   const orderIncomplete = !orderValidation.ok
+  const orderHasNoRows = orderValidation.issues.length === 1 && orderValidation.issues[0].missing[0] === 'rows'
+  // Column header text for a field key, so messages read "Closure" not "closure".
+  const fieldLabel = useCallback((key) => {
+    const col = COLUMNS.find(c => c.key === key)
+    return col ? t(col.labelKey) : key
+  }, [t])
   const incompleteSummary = useMemo(() => {
     if (orderValidation.ok) return ''
+    if (orderHasNoRows) return 'Add at least one product row.'
     return orderValidation.issues
-      .map(i => `Row ${i.rowNo}: missing ${i.missing.join(', ')}`)
+      .map(i => `Row ${i.rowNo}: ${i.missing.map(fieldLabel).join(', ')}`)
       .join(' \u00B7 ')
+  }, [orderValidation, orderHasNoRows, fieldLabel])
+  // rowNo -> Set of missing field keys, for highlighting cells.
+  const missingByRow = useMemo(() => {
+    const map = new Map()
+    for (const i of orderValidation.issues) map.set(String(i.rowNo), new Set(i.missing))
+    return map
   }, [orderValidation])
-  const sizeMissingRows = useMemo(
-    () => orderValidation.issues.filter(i => i.missing.includes('size')).map(i => i.rowNo),
-    [orderValidation]
-  )
-  const sizeMissingSet = useMemo(() => new Set(sizeMissingRows.map(String)), [sizeMissingRows])
-  const sizeMissing = sizeMissingRows.length > 0
   // Red highlights only after the first Save attempt, so a row being typed
   // doesn't flash red.
-  const [showSizeErrors, setShowSizeErrors] = useState(false)
+  const [showFieldErrors, setShowFieldErrors] = useState(false)
+  const isFieldMissing = (row, key) =>
+    showFieldErrors && !isPrinting && !!missingByRow.get(String(row.no))?.has(key)
 
   const checkVat = useCallback(() => {
     const vat = vatNumber.trim()
@@ -1581,18 +1585,22 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     else if (action === 'download') handleDownload()
   }, [handlePrint, handleDownload, checkAddressAgainstDirectory])
 
-  const triggerWithPrepaymentCheck = useCallback((action) => {
-    // Soft validation: incomplete orders show a warning banner with the
-    // exact missing fields, but Save / Print / Download stay clickable
-    // (Sam asked for this). Size is the exception: on Save, blank sizes
-    // turn red and scroll into view, and the modal only allows a draft
-    // until they are filled — we can't ship goods without a size.
-    if (action === 'save' && sizeMissing) {
-      setShowSizeErrors(true)
+  const triggerWithPrepaymentCheck = useCallback((action, { allowIncomplete = false } = {}) => {
+    // Save on an incomplete order stops here: the missing cells turn red,
+    // the first one scrolls into view, and the red banner lists them. The
+    // banner's "Save as draft" passes allowIncomplete to park it anyway —
+    // the modal then only offers Draft / Offre (final save stays disabled).
+    // Print / Download are not gated.
+    if (action === 'save' && orderIncomplete && !allowIncomplete) {
+      setShowFieldErrors(true)
       setTimeout(() => {
-        const el = document.querySelector('[data-size-error="true"]')
-        if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus({ preventScroll: true }) }
+        const cell = document.querySelector('[data-field-error="true"]')
+        if (!cell) return
+        cell.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+        const input = cell.matches('input, select, textarea') ? cell : cell.querySelector('input, select, textarea')
+        input?.focus({ preventScroll: true })
       }, 0)
+      return
     }
     if (prepaymentConfirmed === null) {
       setGateHasPrepayment(hasPrepayment)
@@ -1603,7 +1611,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
     } else {
       runAction(action)
     }
-  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction, sizeMissing])
+  }, [prepaymentConfirmed, hasPrepayment, prepaymentAmount, prepaymentMethod, runAction, orderIncomplete])
 
   const confirmPrepaymentGate = useCallback(() => {
     setHasPrepayment(gateHasPrepayment)
@@ -1930,7 +1938,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         elementRef={printRef}
         orderIncomplete={orderIncomplete}
         incompleteSummary={incompleteSummary}
-        sizeMissingRows={sizeMissingRows}
         clientName={contactName || client?.name}
         clientCompany={companyName}
         clientEmail={email}
@@ -2285,15 +2292,13 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
           {t('nav.orderform')}
         </div>
         {/*
-          Save / Download / Print stay clickable even when the order is
-          incomplete. The warning banner below still surfaces every missing
-          field (per row) so nothing is filled silently. A blank size is the
-          one hard rule: Save highlights it and the modal only allows a
-          draft (see triggerWithPrepaymentCheck / SaveDocumentModal).
+          Save stops on an incomplete order and highlights what's missing
+          (see triggerWithPrepaymentCheck). Download / Print stay clickable;
+          the tooltip still lists the missing fields.
          */}
         <button
           onClick={() => triggerWithPrepaymentCheck('save')}
-          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Fill in before saving: ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
@@ -2308,7 +2313,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('download')}
-          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Fill in before saving: ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 20px', borderRadius: 8, border: `1px solid ${colors.inkPlum}`,
             background: '#fff', color: colors.inkPlum, fontSize: mobile ? 12 : 13, fontWeight: 700,
@@ -2323,7 +2328,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         </button>
         <button
           onClick={() => triggerWithPrepaymentCheck('print')}
-          title={orderIncomplete ? `Some rows are incomplete. ${incompleteSummary}` : undefined}
+          title={orderIncomplete ? `Fill in before saving: ${incompleteSummary}` : undefined}
           style={{
             padding: mobile ? '10px 16px' : '8px 24px', borderRadius: 8, border: 'none',
             background: colors.inkPlum, color: '#fff', fontSize: mobile ? 12 : 13, fontWeight: 700,
@@ -2338,62 +2343,67 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
         </button>
       </div>
 
-      {showSizeErrors && sizeMissing && (
-        <div
-          role="alert"
-          style={{
-            margin: mobile ? '0 12px' : '0 20px',
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid #fca5a5',
-            background: '#fee2e2',
-            color: '#b91c1c',
-            fontFamily: fonts.body,
-            fontSize: mobile ? 12 : 13,
-            fontWeight: 600,
-          }}
-        >
-          Please fill in the size on row{sizeMissingRows.length > 1 ? 's' : ''} {sizeMissingRows.join(', ')}. We can&rsquo;t ship goods without a size.
-        </div>
-      )}
-
-      {orderIncomplete && (
-        <div
-          role="alert"
-          style={{
-            margin: mobile ? '0 12px' : '0 20px',
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid #f0c39c',
-            background: '#fff7eb',
-            color: '#7a4a14',
-            fontFamily: fonts.body,
-            fontSize: mobile ? 12 : 13,
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }} aria-hidden="true">!</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, marginBottom: 2 }}>
-              {sizeMissing
-                ? 'Some rows are incomplete — size is required before the final save'
-                : 'Some rows are incomplete — you can still save'}
+      {orderIncomplete && (() => {
+        // Amber heads-up while typing; red once Save was clicked.
+        const blocking = showFieldErrors
+        // A sent order being re-edited can't go back to draft, so the
+        // escape hatch is only offered for new orders and drafts.
+        const canParkDraft = (editingDocumentId || savedDocId)
+          ? (editingDocumentId ? editingDocStatus : savedDocStatus) === 'draft'
+          : true
+        return (
+          <div
+            role="alert"
+            style={{
+              margin: mobile ? '0 12px' : '0 20px',
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: `1px solid ${blocking ? '#fca5a5' : '#f0c39c'}`,
+              background: blocking ? '#fee2e2' : '#fff7eb',
+              color: blocking ? '#b91c1c' : '#7a4a14',
+              fontFamily: fonts.body,
+              fontSize: mobile ? 12 : 13,
+              display: 'flex',
+              flexWrap: mobile ? 'wrap' : 'nowrap',
+              alignItems: 'flex-start',
+              gap: 10,
+            }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }} aria-hidden="true">!</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                {blocking
+                  ? 'Please fill in the highlighted fields \u2014 the order can\u2019t be saved until they are filled in'
+                  : 'Some fields still need to be filled in before you can save'}
+              </div>
+              <div style={{ lineHeight: 1.45, wordBreak: 'break-word' }}>
+                {orderHasNoRows
+                  ? 'Add at least one product row before saving.'
+                  : orderValidation.issues.map((issue, idx) => (
+                    <span key={`${issue.rowNo}-${idx}`}>
+                      {idx > 0 && <span style={{ color: blocking ? '#f87171' : '#caa073', margin: '0 6px' }}>&middot;</span>}
+                      <strong>Row {issue.rowNo}:</strong> {issue.missing.map(fieldLabel).join(', ')}
+                    </span>
+                  ))}
+              </div>
             </div>
-            <div style={{ lineHeight: 1.45, wordBreak: 'break-word' }}>
-              {orderValidation.issues.length === 1 && orderValidation.issues[0].missing[0] === 'rows'
-                ? 'Tip: add at least one product row before saving.'
-                : orderValidation.issues.map((issue, idx) => (
-                  <span key={`${issue.rowNo}-${idx}`}>
-                    {idx > 0 && <span style={{ color: '#caa073', margin: '0 6px' }}>&middot;</span>}
-                    <strong>Row {issue.rowNo}:</strong> missing {issue.missing.join(', ')}
-                  </span>
-                ))}
-            </div>
+            {blocking && canParkDraft && !orderHasNoRows && (
+              <button
+                onClick={() => triggerWithPrepaymentCheck('save', { allowIncomplete: true })}
+                title="Park this order as a draft and finish it later"
+                style={{
+                  flexShrink: 0, padding: '6px 12px', borderRadius: 6,
+                  border: '1px solid #b91c1c', background: '#fff', color: '#b91c1c',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: fonts.body,
+                  minHeight: mobile ? 40 : 'auto',
+                }}
+              >
+                Save as draft instead
+              </button>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Main content: form pages + calculator */}
       <div id="order-form-scroll-area" ref={scrollAreaRef} style={{ 
@@ -2763,10 +2773,10 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                   {pageRows.map((row, rowIdx) => {
                     const globalIdx = pageIdx * ROWS_PER_PAGE + rowIdx
                     const filled = isRowFilled(row)
-                    const cardSizeError = showSizeErrors && filled && !row.size && sizeMissingSet.has(String(row.no))
+                    const cardError = filled && showFieldErrors && missingByRow.has(String(row.no))
                     return (
                       <div key={globalIdx} style={{
-                        border: cardSizeError ? '1.5px solid #dc2626' : `1px solid ${filled ? colors.lineGray : '#f0f0f0'}`,
+                        border: cardError ? '1.5px solid #dc2626' : `1px solid ${filled ? colors.lineGray : '#f0f0f0'}`,
                         borderRadius: 10,
                         padding: 12,
                         background: filled ? '#fff' : '#fafafa',
@@ -2790,7 +2800,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                         {/* Card fields */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {COLUMNS.filter(col => col.key !== 'no' && col.key !== 'total' && col.key !== 'photo').map(col => {
-                            const fieldError = cardSizeError && col.key === 'size'
+                            const fieldError = cardError && isFieldMissing(row, col.key)
                             return (
                             <div key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ fontSize: 10, fontWeight: 600, color: fieldError ? '#dc2626' : '#999', width: 70, textTransform: 'uppercase', flexShrink: 0 }}>
@@ -2801,7 +2811,7 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                 onChange={(e) => updateCell(globalIdx, col.key, e.target.value)}
                                 placeholder={fieldError ? 'Required' : '—'}
                                 aria-invalid={fieldError || undefined}
-                                data-size-error={fieldError ? 'true' : undefined}
+                                data-field-error={fieldError ? 'true' : undefined}
                                 style={{
                                   flex: 1, border: fieldError ? '1.5px solid #dc2626' : '1px solid #e8e8e8', borderRadius: 6,
                                   padding: '10px 12px', fontSize: 14, fontFamily: fonts.body,
@@ -2971,12 +2981,15 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                             (isClosureCol && !rowCol.hasClosure)
                           )
 
+                          const cellMissing = !isNA && isFieldMissing(row, col.key)
+
                           return (
-                            <td key={col.key} style={{
+                            <td key={col.key} data-field-error={cellMissing ? 'true' : undefined} style={{
                               ...tdStyle,
                               borderLeft: col.key === 'no' ? `1px solid ${colors.lineGray}` : 'none',
                               ...(col.key === 'total' ? { borderRight: `1px solid ${colors.lineGray}` } : {}),
                               ...(isNA ? { background: '#f8f7f6' } : {}),
+                              ...(cellMissing ? { background: '#fee2e2', boxShadow: 'inset 0 0 0 1.5px #dc2626' } : {}),
                             }}>
                               {isPhotoCol ? (
                                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 40 }}>
@@ -3069,7 +3082,6 @@ export default function OrderForm({ quote, client, onClose, currentUser, savedFo
                                   options={sizeOptions}
                                   isPrinting={isPrinting}
                                   align="center"
-                                  error={showSizeErrors && !isPrinting && !row.size && sizeMissingSet.has(String(row.no))}
                                 />
                               ) : isMaterialCol && impliedMaterialLabel ? (
                                 <div style={{ fontSize: 10, color: colors.charcoal, paddingLeft: 4 }}>{impliedMaterialLabel}</div>

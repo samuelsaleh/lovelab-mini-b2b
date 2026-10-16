@@ -89,17 +89,11 @@ export default function SaveDocumentModal({
   onSaveSuccess = null, // Callback when save completes successfully
   initialOrderChannel = 'b2b', // 'b2b' | 'b2c' | 'internal' | 'consignment' | 'delete_from_stock'
   clientEmail = '', // Pre-filled recipient when emailing the client directly
-  // Soft warning: if the parent OrderForm thinks some rows are incomplete,
-  // we surface the same summary at the top of the modal so the agent sees
-  // exactly what's missing before they hit Save. Saving is NOT blocked —
-  // Sam asked for the override in May 2026 because some rows have
-  // optional closure that the validator over-flags.
+  // Missing order fields from the parent OrderForm. The final save is
+  // blocked until they are filled (incomplete orders reached production and
+  // couldn't be made, Oct 2026); Draft / Offre can still park the order.
   orderIncomplete = false,
   incompleteSummary = '',
-  // Row numbers with a blank size. Unlike the soft warning above, this
-  // blocks the final save (goods can't ship without a size); Draft / Offre
-  // still work so the order can be finished later (Oct 2026).
-  sizeMissingRows = [],
 }) {
   const { profile } = useAuth();
   const { t, lang: appLang } = useI18n();
@@ -384,8 +378,8 @@ export default function SaveDocumentModal({
   // are the same 'draft' status — only the folder differs.
   const handleSave = async (intent = 'sent') => {
     const targetStatus = intent === 'sent' ? 'sent' : 'draft';
-    if (targetStatus === 'sent' && sizeMissingRows.length > 0) {
-      setError(`Size missing on row ${sizeMissingRows.join(', ')}. We can't ship goods without a size.`);
+    if (targetStatus === 'sent' && orderIncomplete) {
+      setError(`Fill in the missing fields before saving: ${incompleteSummary}`);
       return;
     }
     if (!elementRef?.current) {
@@ -1457,33 +1451,16 @@ export default function SaveDocumentModal({
 
             {orderIncomplete && (
               <div role="alert" style={{
-                background: '#fff7eb',
-                color: '#7a4a14',
-                border: '1px solid #f0c39c',
-                padding: '10px 12px',
-                borderRadius: 8,
-                fontSize: 12,
-                marginBottom: 16,
-              }}>
-                <strong>Some rows are incomplete.</strong>
-                {incompleteSummary ? <span> {incompleteSummary}</span> : null}
-                {sizeMissingRows.length > 0
-                  ? null
-                  : <> You can still save &mdash; or close this dialog to fill in the missing fields first.</>}
-              </div>
-            )}
-
-            {sizeMissingRows.length > 0 && (
-              <div role="alert" style={{
                 background: '#fee2e2',
                 color: '#dc2626',
                 padding: '10px 12px',
                 borderRadius: 8,
                 fontSize: 12,
-                fontWeight: 600,
                 marginBottom: 16,
               }}>
-                Size missing on row{sizeMissingRows.length > 1 ? 's' : ''} {sizeMissingRows.join(', ')}. We can&rsquo;t ship goods without a size &mdash; close this and fill in the highlighted size{(showSaveAsDraft || showSaveAsOffre) ? ', or save as draft for now' : ''}.
+                <strong>Some fields are not filled in yet.</strong>
+                {incompleteSummary ? <span> {incompleteSummary}</span> : null}
+                {' '}Close this and fill them in to save the order{(showSaveAsDraft || showSaveAsOffre) ? ', or save it as a draft for now' : ''}.
               </div>
             )}
 
@@ -1564,18 +1541,15 @@ export default function SaveDocumentModal({
                 // agent's folder" bug — Sarah / Nicolas, July 2026). The server
                 // also auto-files as a backstop, but this keeps the UI honest.
                 const eventsPending = (CHANNEL_CONFIG[orderChannel] || CHANNEL_CONFIG.b2b).showEvent && loading;
-                // `orderIncomplete` is intentionally NOT a disabling
-                // condition — it's a soft warning surfaced in the banner
-                // above. The remaining gates are real: a write-off needs
-                // a comment, an outgoing email needs a valid recipient,
-                // and every row needs a size (we can't ship without it).
-                const sizeBlocked = sizeMissingRows.length > 0;
-                const disabled = saving || writeOffMissing || emailMissing || eventsPending || sizeBlocked;
+                // A write-off needs a comment, an outgoing email needs a
+                // valid recipient, and every required order field must be
+                // filled (Draft / Offre above stay available).
+                const disabled = saving || writeOffMissing || emailMissing || eventsPending || orderIncomplete;
                 return (
                   <button
                     onClick={() => handleSave('sent')}
                     disabled={disabled}
-                    title={sizeBlocked ? `Fill in the size on row ${sizeMissingRows.join(', ')} first` : undefined}
+                    title={orderIncomplete ? `Fill in first: ${incompleteSummary}` : undefined}
                     style={{
                       padding: mobile ? '12px 24px' : '10px 24px',
                       borderRadius: 8,
