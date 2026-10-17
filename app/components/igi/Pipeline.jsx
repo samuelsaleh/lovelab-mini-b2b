@@ -43,7 +43,7 @@ export default function Pipeline({ active = 0, title = 'How a collection works' 
 
 /** Which step a movement is currently on. */
 export function stepForStatus(status) {
-  if (status === 'requested') return 2
+  if (status === 'requested' || status === 'on_hold') return 2
   if (status === 'issued') return 3
   if (status === 'closed') return 4
   return 0

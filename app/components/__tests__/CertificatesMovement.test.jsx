@@ -572,3 +572,82 @@ describe('the Movements list flags what went missing (Sam, 18 Sept 2026)', () =>
     await waitFor(() => expect(screen.getByText('ERP manual')).toBeInTheDocument())
   })
 })
+
+describe('IGI reported a problem (Mika, 16 Oct 2026)', () => {
+  const VISIT = { id: 'v41', visit_no: 41, visit_date: '2026-10-14', status: 'on_hold', unattributed_total: null, created_by: 'u1' }
+  const LINES = [
+    { id: 'l1', model_id: 'm38', serial: 'LGAJ6538', name: 'Multi 4', stones: '4', carat: 0.4, shape: 'Round', spec: null, qty_requested: 96, qty_issued: null, qty_received: null, held: 146, short_by: 0 },
+  ]
+  const PROBLEM = {
+    id: 'p1', note: '36 of these have 8 stones.', reported_at: '2026-10-16T13:30:00Z',
+    changes: [
+      { model_id: 'm38', serial: 'LGAJ6538', name: 'Multi 4', stones: '4', carat: 0.4, shape: 'Round', spec: null, from: 96, to: 60 },
+      { model_id: 'm75', serial: 'LGAJ6575', name: 'Riviera 8', stones: '8', carat: 0.4, shape: 'Round', spec: 'D/E', from: null, to: 36 },
+    ],
+  }
+  const CATALOGUE = [
+    { id: 'm38', serial: 'LGAJ6538', name: 'Multi 4', stones: '4', carat: 0.4, shape: 'Round', spec: null },
+    { id: 'm75', serial: 'LGAJ6575', name: 'Riviera 8', stones: '8', carat: 0.4, shape: 'Round', spec: 'D/E' },
+  ]
+
+  function mockOnHold(onAnswer) {
+    global.fetch = jest.fn((url, init) => {
+      if (init?.method === 'POST' && String(url).endsWith('/problem')) {
+        onAnswer?.(JSON.parse(init.body))
+        return Promise.resolve({ ok: true, json: async () => ({ visit_no: 41, resolution: 'accepted', total: 96, email: { sent: true } }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ visit: VISIT, lines: LINES, problem: PROBLEM, past_problems: [], catalogue: CATALOGUE }) })
+    })
+  }
+
+  it('shows IGI’s note and what they suggest beside what was asked, and nothing to record', async () => {
+    mockOnHold()
+    render(<CertificatesVisitDetail visitId="v41" />)
+    await waitFor(() => expect(screen.getByTestId('problem-card')).toBeInTheDocument())
+    expect(screen.getByTestId('problem-card')).toHaveTextContent('36 of these have 8 stones.')
+    const rows = screen.getAllByTestId('problem-change')
+    expect(rows[0]).toHaveTextContent('96')
+    expect(rows[0]).toHaveTextContent('60')
+    expect(rows[1]).toHaveTextContent('not asked')
+    expect(rows[1]).toHaveTextContent('D/E')
+    expect(screen.queryByTestId('confirm-made')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('made-qty')).not.toBeInTheDocument()
+  })
+
+  it('accepts IGI’s correction in one click, with a reply', async () => {
+    const seen = []
+    mockOnHold((b) => seen.push(b))
+    render(<CertificatesVisitDetail visitId="v41" />)
+    await waitFor(() => expect(screen.getByTestId('accept-problem')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('problem-reply'), { target: { value: 'Thanks Mika' } })
+    fireEvent.click(screen.getByTestId('accept-problem'))
+    await waitFor(() => expect(seen).toEqual([{ action: 'accept', reply: 'Thanks Mika' }]))
+    await waitFor(() => expect(screen.getByTestId('notice')).toHaveTextContent('V-041 is back with IGI'))
+  })
+
+  it('edits by hand, starting from IGI’s suggestion', async () => {
+    const seen = []
+    mockOnHold((b) => seen.push(b))
+    render(<CertificatesVisitDetail visitId="v41" />)
+    await waitFor(() => expect(screen.getByTestId('edit-problem')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('edit-problem'))
+    expect(screen.getByTestId('edit-qty')).toHaveValue(60)
+    expect(screen.getByTestId('edit-extra-qty')).toHaveValue(36)
+    fireEvent.change(screen.getByTestId('edit-qty'), { target: { value: '58' } })
+    fireEvent.click(screen.getByTestId('save-edit'))
+    await waitFor(() => expect(seen).toEqual([{
+      action: 'edit',
+      lines: [{ model_id: 'm38', qty: 58 }, { model_id: 'm75', qty: 36 }],
+      reply: '',
+    }]))
+  })
+
+  it('keeps the request as it was', async () => {
+    const seen = []
+    mockOnHold((b) => seen.push(b))
+    render(<CertificatesVisitDetail visitId="v41" />)
+    await waitFor(() => expect(screen.getByTestId('keep-problem')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('keep-problem'))
+    await waitFor(() => expect(seen).toEqual([{ action: 'keep', reply: '' }]))
+  })
+})

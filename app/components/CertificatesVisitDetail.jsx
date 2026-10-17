@@ -8,6 +8,7 @@ import { VISIT_LABELS, VISIT_TONES, whyNotDeletable } from '@/lib/igi/visits'
 import { Serial, Spec } from './igi/SerialSpec'
 import Chip from './igi/Chip'
 import Pipeline, { stepForStatus } from './igi/Pipeline'
+import { ChangesTable, AddCard } from './igi/ProblemParts'
 import { PageHead, Card, Loading, Note, Toast, Btn, TableWrap } from './certificates/ui'
 
 /**
@@ -31,6 +32,9 @@ export default function CertificatesVisitDetail({ visitId }) {
   const [emailing, setEmailing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [problem, setProblem] = useState(null)
+  const [pastProblems, setPastProblems] = useState([])
+  const [catalogue, setCatalogue] = useState([])
 
   useEffect(() => { load() }, [visitId])
 
@@ -42,6 +46,9 @@ export default function CertificatesVisitDetail({ visitId }) {
       if (!res.ok) throw new Error(body?.error || 'Failed to load the movement')
       setVisit(body.visit)
       setLines(body.lines || [])
+      setProblem(body.problem || null)
+      setPastProblems(body.past_problems || [])
+      setCatalogue(body.catalogue || [])
       setError(null)
     } catch (err) {
       setError(err.message)
@@ -90,6 +97,28 @@ export default function CertificatesVisitDetail({ visitId }) {
       setError(err.message)
     } finally {
       setEmailing(false)
+    }
+  }
+
+  // IGI reported a problem; LoveLab decide. accept | edit | keep.
+  async function answer(payload) {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/igi/visits/${visitId}/problem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body?.error || 'Could not answer IGI')
+      const told = body.email?.sent ? 'IGI were emailed.' : 'IGI could not be emailed, but they see it on their To do.'
+      setNotice(`${visitRef(visit)} is back with IGI: ${formatQty(body.total)} certificates. ${told}`)
+      setTimeout(() => setNotice(null), 8000)
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -150,6 +179,16 @@ export default function CertificatesVisitDetail({ visitId }) {
             correct themselves.
           </div>
         </Note>
+      )}
+
+      {visit.status === 'on_hold' && (
+        <AnswerProblem
+          problem={problem}
+          lines={lines}
+          catalogue={catalogue}
+          saving={saving}
+          onAnswer={answer}
+        />
       )}
 
       {visit.status === 'requested' && (
@@ -317,6 +356,18 @@ export default function CertificatesVisitDetail({ visitId }) {
         </p>
       )}
 
+      {pastProblems.length > 0 && (
+        <div style={{ fontSize: '.83rem', color: 'var(--ink-soft)', maxWidth: 720, marginTop: 18 }} data-testid="past-problems">
+          {pastProblems.map((p) => (
+            <p key={p.id} style={{ margin: '0 0 6px' }}>
+              IGI reported a problem {formatWhen(p.reported_at)}: <i>“{p.note}”</i>{' '}
+              LoveLab {RESOLUTION_WORDS[p.resolution] || 'answered'} {formatWhen(p.resolved_at)}.
+              {p.reply && <> Reply: <i>“{p.reply}”</i></>}
+            </p>
+          ))}
+        </div>
+      )}
+
       <DeleteMovement
         visit={visit}
         returning={totalMade}
@@ -394,6 +445,165 @@ function DeleteMovement({ visit, returning, confirming, deleting, onAsk, onCance
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const RESOLUTION_WORDS = {
+  accepted: 'accepted IGI’s correction',
+  edited: 'changed the request',
+  kept: 'kept the request as it was',
+}
+
+/**
+ * IGI stopped on this request and said why (Mika, 16 Oct 2026). Three
+ * answers: take IGI's correction as it stands, change the request by hand, or
+ * keep it. Each sends it back to IGI's To do and emails them.
+ */
+function AnswerProblem({ problem, lines, catalogue, saving, onAnswer }) {
+  const [reply, setReply] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [qty, setQty] = useState({})
+  const [extra, setExtra] = useState([])
+
+  const changes = problem?.changes || []
+
+  function startEditing() {
+    // Start from IGI's suggestion: it is usually most of the answer.
+    const start = {}
+    for (const l of lines) start[l.model_id] = String(l.qty_requested)
+    const added = []
+    for (const c of changes) {
+      if (c.from == null) added.push({ model_id: c.model_id, qty: c.to })
+      else start[c.model_id] = String(c.to)
+    }
+    setQty(start)
+    setExtra(added)
+    setEditing(true)
+  }
+
+  function saveEdit() {
+    const out = [
+      ...lines.map((l) => ({ model_id: l.model_id, qty: Number(qty[l.model_id] ?? l.qty_requested) })),
+      ...extra,
+    ]
+    onAnswer({ action: 'edit', lines: out, reply })
+  }
+
+  const byId = new Map((catalogue || []).map((m) => [m.id, m]))
+  const taken = new Set([...lines.map((l) => l.model_id), ...extra.map((e) => e.model_id)])
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--warn)' }} data-testid="problem-card">
+      <div className="card-head" style={{ background: 'var(--warn-tint)' }}>
+        <h3 style={{ color: 'var(--warn)' }}>IGI reported a problem</h3>
+        {problem?.reported_at && <span className="sub">{formatWhen(problem.reported_at)}</span>}
+      </div>
+      <div className="card-body">
+        {problem ? (
+          <>
+            <p style={{ margin: '0 0 12px' }}><i>“{problem.note}”</i></p>
+            {!editing && <ChangesTable changes={changes} askedLabel="You asked" />}
+          </>
+        ) : (
+          <p style={{ margin: 0 }}>The request is on hold, but IGI’s note could not be found.</p>
+        )}
+
+        {editing && (
+          <div data-testid="edit-request">
+            <TableWrap>
+              <table>
+                <thead>
+                  <tr><th>Model</th><th>Serial</th><th>Spec</th><th className="num">Asked</th><th className="num">New</th></tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => (
+                    <tr key={l.id} data-testid="edit-line">
+                      <td style={{ fontWeight: 600 }}>{l.name}</td>
+                      <td><Serial model={l} compact /></td>
+                      <td><Spec model={l} compact /></td>
+                      <td className="num">{formatQty(l.qty_requested)}</td>
+                      <td className="num">
+                        <input
+                          type="number"
+                          min="0"
+                          value={qty[l.model_id] ?? ''}
+                          onChange={(e) => setQty((q) => ({ ...q, [l.model_id]: e.target.value }))}
+                          data-testid="edit-qty"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                  {extra.map((e) => {
+                    const m = byId.get(e.model_id) || {}
+                    return (
+                      <tr key={e.model_id} data-testid="edit-extra">
+                        <td style={{ fontWeight: 600 }}>{m.name}</td>
+                        <td><Serial model={m} compact /></td>
+                        <td><Spec model={m} compact /></td>
+                        <td className="num">—</td>
+                        <td className="num">
+                          <input
+                            type="number"
+                            min="0"
+                            value={e.qty}
+                            onChange={(ev) => {
+                              const n = Number(ev.target.value)
+                              setExtra((list) => list.map((x) => (x.model_id === e.model_id ? { ...x, qty: Number.isInteger(n) && n >= 0 ? n : 0 } : x)))
+                            }}
+                            data-testid="edit-extra-qty"
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </TableWrap>
+            <div style={{ margin: '12px 0' }}>
+              <AddCard
+                catalogue={catalogue}
+                exclude={taken}
+                onAdd={(modelId, n) => setExtra((list) => [...list, { model_id: modelId, qty: n }])}
+              />
+            </div>
+            <p style={{ fontSize: '.83rem', color: 'var(--ink-faint)', margin: 0 }}>0 takes a model off the request.</p>
+          </div>
+        )}
+
+        <textarea
+          value={reply}
+          onChange={(e) => setReply(e.target.value)}
+          placeholder="A word back to IGI (optional)"
+          rows={2}
+          maxLength={1000}
+          data-testid="problem-reply"
+          style={{ width: '100%', marginTop: 14 }}
+        />
+      </div>
+      <div className="task-foot">
+        {!editing ? (
+          <>
+            {changes.length > 0 && (
+              <Btn kind="primary" onClick={() => onAnswer({ action: 'accept', reply })} disabled={saving} testId="accept-problem">
+                {saving ? 'Saving…' : 'Accept IGI’s correction'}
+              </Btn>
+            )}
+            <Btn onClick={startEditing} disabled={saving} testId="edit-problem">Edit it myself</Btn>
+            <Btn onClick={() => onAnswer({ action: 'keep', reply })} disabled={saving} testId="keep-problem">
+              Keep as it was
+            </Btn>
+          </>
+        ) : (
+          <>
+            <Btn kind="primary" onClick={saveEdit} disabled={saving} testId="save-edit">
+              {saving ? 'Saving…' : 'Save and send back to IGI'}
+            </Btn>
+            <Btn onClick={() => setEditing(false)} disabled={saving} testId="cancel-edit">Cancel</Btn>
+          </>
+        )}
+        <span className="msg">IGI are emailed your answer and the request goes back on their To do.</span>
+      </div>
     </div>
   )
 }

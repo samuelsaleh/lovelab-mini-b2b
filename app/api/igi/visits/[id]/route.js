@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireLoveLab, fail } from '@/app/api/igi/_lib/access';
 import { poolOf } from '@/lib/igi/derive';
 import { whyNotDeletable } from '@/lib/igi/visits';
+import { describeProposal, isMissingProblemsTable } from '@/lib/igi/problems';
 
 /**
  * GET /api/igi/visits/[id] — one movement with its lines.
@@ -31,7 +32,7 @@ export async function GET(request, { params }) {
       db.from('igi_visit_lines')
         .select('id, model_id, qty_requested, qty_issued, qty_received')
         .eq('visit_id', id),
-      db.from('igi_models').select('id, serial, name, stones, carat, shape, state'),
+      db.from('igi_models').select('id, serial, name, stones, carat, shape, spec, state, sort_order'),
       db.from('igi_batches').select('model_id, qty'),
       db.from('igi_visit_lines').select('model_id, qty_issued'),
       db.from('igi_visits').select('visit_no').eq('visit_date', visit.visit_date).order('visit_no'),
@@ -43,6 +44,20 @@ export async function GET(request, { params }) {
     }
 
     const byId = new Map(models.data.map((m) => [m.id, m]));
+
+    // What IGI reported on this request, newest first (16 Oct 2026). None
+    // before the migration that creates the table has run.
+    const problemsRes = await db.from('igi_visit_problems')
+      .select('id, note, proposal, reported_by, reported_at, resolution, reply, resolved_by, resolved_at')
+      .eq('visit_id', id)
+      .order('reported_at', { ascending: false });
+    if (problemsRes.error && !isMissingProblemsTable(problemsRes.error)) {
+      return fail('IGI/Visit GET', problemsRes.error, 'Failed to load the movement');
+    }
+    const problems = (problemsRes.error ? [] : problemsRes.data || []).map((p) => ({
+      ...p,
+      changes: describeProposal(lines.data, p.proposal, byId),
+    }));
 
     return NextResponse.json({
       visit: {
@@ -63,10 +78,20 @@ export async function GET(request, { params }) {
           stones: model.stones ?? null,
           carat: model.carat ?? null,
           shape: model.shape ?? null,
+          spec: model.spec ?? null,
           held,
           short_by: Math.max(0, l.qty_requested - held),
         };
       }),
+      problem: problems.find((p) => !p.resolved_at) || null,
+      past_problems: problems.filter((p) => p.resolved_at),
+      // Models that can be put on the request when answering IGI by hand.
+      catalogue: visit.status === 'on_hold'
+        ? models.data
+          .filter((m) => m.state === 'in_use')
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map(({ id: modelId, serial, name, stones, carat, shape, spec }) => ({ id: modelId, serial, name, stones, carat, shape, spec }))
+        : [],
     });
   } catch (err) {
     return fail('IGI/Visit GET', err, 'Internal server error');
