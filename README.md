@@ -2,6 +2,10 @@
 
 AI-powered B2B quote calculator for LoveLab Antwerp -- built for trade fairs (Munich 2026).
 
+> **Full technical and API documentation** for engineers: [`docs/api/README.md`](docs/api/README.md)
+> (endpoints, database schema and RLS, integrations, background jobs, environment, known issues).
+> Parts of this README (framework version, login methods, migration list) are out of date; the docs folder is current.
+
 ## Features
 
 - **Visual Builder** -- select collections, carats, colors, and build orders visually
