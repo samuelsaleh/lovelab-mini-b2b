@@ -13,6 +13,8 @@ import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 
 const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Channel', 'Agent', 'Type', 'Source', 'Amount']
 
+const NEW_COLUMNS = ['Channel', 'Agent']
+
 const UNKNOWN_CITY = 'Unknown'
 
 // The kinds of folder an event can be, in the order they're shown.
@@ -273,7 +275,9 @@ export default function ReportsDashboard() {
           !r.country.toLowerCase().includes(q) &&
           !r.city.toLowerCase().includes(q) &&
           !r.eventLabel.toLowerCase().includes(q) &&
-          !r.sourceLabel.toLowerCase().includes(q)
+          !r.sourceLabel.toLowerCase().includes(q) &&
+          !(r.channel || '').includes(q) &&
+          !(r.agentName || '').toLowerCase().includes(q)
         ) {
           return false
         }
@@ -322,7 +326,7 @@ export default function ReportsDashboard() {
       if (r.rowType !== 'document') continue
       if (!r.agentId) { houseOrders += 1; continue }
       const prev = byId.get(r.agentId)
-      byId.set(r.agentId, { id: r.agentId, name: r.agentName || 'Unnamed agent', count: (prev?.count || 0) + 1 })
+      byId.set(r.agentId, { id: r.agentId, name: (prev && prev.name !== 'Unnamed agent' ? prev.name : r.agentName) || prev?.name || 'Unnamed agent', count: (prev?.count || 0) + 1 })
     }
     const list = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name))
     if (houseOrders) list.push({ id: NO_AGENT, name: 'No agent (house orders)', count: houseOrders })
@@ -557,10 +561,19 @@ export default function ReportsDashboard() {
     const report = reports.find((r) => r.id === reportId)
     if (!report) return
     const cfg = report.config || {}
-    setFilters(filtersFromSavedConfig(cfg))
+    const next = filtersFromSavedConfig(cfg)
+    // An agent who has since left the data would filter every row out with no
+    // way to see why, so ids the picker no longer offers are dropped.
+    const knownAgents = new Set(agentOptions.map((a) => a.id))
+    next.agentIds = next.agentIds.filter((id) => knownAgents.has(id))
+    setFilters(next)
     // Restore saved column visibility if present (fall back to all columns)
     if (Array.isArray(cfg.visibleColumns) && cfg.visibleColumns.length > 0) {
-      setVisibleColumns(new Set(cfg.visibleColumns.filter(c => ALL_COLUMNS.includes(c))))
+      const restored = new Set(cfg.visibleColumns.filter(c => ALL_COLUMNS.includes(c)))
+      // A preset saved before Channel and Agent existed can't have chosen to
+      // hide them, so they come back switched on.
+      if (!('channel' in cfg)) NEW_COLUMNS.forEach((c) => restored.add(c))
+      setVisibleColumns(restored)
     } else {
       setVisibleColumns(new Set(ALL_COLUMNS))
     }
@@ -703,7 +716,7 @@ export default function ReportsDashboard() {
             <input
               value={filters.search}
               onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
-              placeholder="Search client/country/event"
+              placeholder="Search client, country, event, agent"
               style={inputStyle}
             />
             <input
@@ -1035,12 +1048,17 @@ function AgentFilter({ options, selectedIds, onToggle, onSelectShown, onClear })
   const ref = useRef(null)
 
   useEffect(() => {
-    if (!open) return
-    const handler = (e) => {
+    if (!open) { setQuery(''); return }
+    const onDown = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   const shown = query.trim()

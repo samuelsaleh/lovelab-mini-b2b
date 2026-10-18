@@ -438,4 +438,50 @@ describe('channel, agent and source in the page', () => {
     await waitFor(() => expect(savedPayloads).toHaveLength(1));
     expect(savedPayloads[0].config).toMatchObject({ channel: 'b2c', agentIds: [], source: 'all' });
   });
+
+  test('search finds an agent by name and a channel by label', async () => {
+    await renderReports();
+    fireEvent.change(screen.getByPlaceholderText(/search client/i), { target: { value: 'lena vogel' } });
+    expect(resultCount()).toBe(1);
+    // 'b2c' also matches the existing "ONLINE B2C" event, so two rows.
+    fireEvent.change(screen.getByPlaceholderText(/search client/i), { target: { value: 'b2c' } });
+    expect(resultCount()).toBe(2);
+    expect(screen.getByRole('cell', { name: 'Web Buyer' })).toBeInTheDocument();
+  });
+
+  test('an agent keeps their name when a later order has no profile embed', async () => {
+    DOCUMENTS.push({ ...makeDoc('x4', FAIR_A, 'Lena Again', {}), agent_id: 'a-lena', agent: null });
+    try {
+      await renderReports();
+      fireEvent.click(screen.getByRole('button', { name: /^Agents: All agents/ }));
+      expect(screen.getByRole('checkbox', { name: /Lena Vogel/ })).toBeInTheDocument();
+      expect(screen.queryByText('Unnamed agent')).not.toBeInTheDocument();
+    } finally { DOCUMENTS.pop(); }
+  });
+
+  test('Escape closes the agent list and a reopened list starts unfiltered', async () => {
+    await renderReports();
+    const trigger = () => screen.getByRole('button', { name: /^Agents:/ });
+    fireEvent.click(trigger());
+    fireEvent.change(screen.getByPlaceholderText('Search agents'), { target: { value: 'zzz' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByPlaceholderText('Search agents')).not.toBeInTheDocument();
+    fireEvent.click(trigger());
+    expect(screen.getByPlaceholderText('Search agents')).toHaveValue('');
+  });
+
+  test('an older preset brings Channel and Agent back; a stale agent id is dropped', async () => {
+    savedReports = [
+      { id: 'old', name: 'Old', config: { country: 'all', visibleColumns: ['Date', 'Client', 'Amount'] } },
+      { id: 'stale', name: 'Stale', config: { agentIds: ['gone-id'], channel: 'b2b', visibleColumns: ['Client'] } },
+    ];
+    await renderReports();
+    fireEvent.change(screen.getByDisplayValue('Load saved report'), { target: { value: 'old' } });
+    expect(screen.getByRole('columnheader', { name: 'Channel' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Agent' })).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('Old'), { target: { value: 'stale' } });
+    expect(resultCount()).toBe(7);
+    expect(screen.queryByRole('columnheader', { name: 'Agent' })).not.toBeInTheDocument();
+  });
 });
+
