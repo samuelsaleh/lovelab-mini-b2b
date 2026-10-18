@@ -8,6 +8,7 @@ import { PRICE_LIST_FILES, EAN_FILES, BRAND_DOCUMENT_FILES } from '@/lib/b2b-fil
 import { publicAssetHref } from '@/lib/publicAssetHref'
 import SendResourcesModal from './SendResourcesModal'
 import AnnouncePriceListModal from './AnnouncePriceListModal'
+import TranslateMenu from './TranslateMenu'
 
 const DRIVE_URL = 'https://drive.google.com/drive/folders/16T6-ib-cB53zpftAYn47-sx8FCJuhNhg?usp=sharing'
 
@@ -27,7 +28,7 @@ const IGI_FILES = [
 // `status` is only used by folders whose files are fetched (Packs): while the
 // list is loading or failed, an opened folder must say so instead of showing
 // nothing — a silent blank reads as "the folder doesn't open".
-function DownloadFolder({ label, files, selected, onToggle, status = 'ready', onRetry }) {
+function DownloadFolder({ label, files, selected, onToggle, status = 'ready', onRetry, onTranslate, translatingPath }) {
   const [open, setOpen] = useState(false)
   const { t } = useI18n()
 
@@ -123,6 +124,9 @@ function DownloadFolder({ label, files, selected, onToggle, status = 'ready', on
                   </svg>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                 </a>
+                {onTranslate && f.path.toLowerCase().endsWith('.pdf') && (
+                  <TranslateMenu file={f} onTranslate={onTranslate} busy={translatingPath === f.path} />
+                )}
               </div>
             )
           })}
@@ -163,6 +167,31 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
   const [selected, setSelected] = useState(() => new Set())
   const [modalOpen, setModalOpen] = useState(false)
   const [announceOpen, setAnnounceOpen] = useState(false)
+
+  // Admin "Translate to…": one document at a time. The result is a translated
+  // copy of the PDF with the same layout.
+  const [translatingPath, setTranslatingPath] = useState(null)
+  const [translateMsg, setTranslateMsg] = useState(null)
+  const translateDoc = async (file, language) => {
+    setTranslatingPath(file.path)
+    setTranslateMsg(null)
+    try {
+      const res = await fetch('/api/doc-translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: file.path, language: language.code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (data.downloadUrl) window.open(data.downloadUrl, '_blank', 'noreferrer')
+      setTranslateMsg({ ok: true, text: `${file.name} → ${language.name}` })
+    } catch (err) {
+      setTranslateMsg({ ok: false, text: `${file.name} → ${language.name}: ${err.message}` })
+    } finally {
+      setTranslatingPath(null)
+    }
+  }
+  const translateProps = isAdmin ? { onTranslate: translateDoc, translatingPath } : {}
 
   // Pack order templates are generated per pack and listed dynamically, so the
   // filenames always reflect each pack's current label (admin only).
@@ -307,11 +336,11 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   </svg>
                   {t('resources.documents')}
                 </div>
-                <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} {...translateProps} />
                 {isAdmin && (<>
                 <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} status={packsStatus} onRetry={retryPacks} />
-                <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} {...translateProps} />
                 <button
                   type="button"
                   onClick={() => setAnnounceOpen(true)}
@@ -330,7 +359,12 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                 </button>
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
                 </>)}
-                <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} />
+                <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} {...translateProps} />
+                {translateMsg && (
+                  <div role="status" style={{ fontSize: 12, fontFamily: fonts.body, color: translateMsg.ok ? colors.inkPlum : '#b91c1c', padding: '2px 4px' }}>
+                    {translateMsg.text}
+                  </div>
+                )}
 
                 {count > 0 && (
                   <button

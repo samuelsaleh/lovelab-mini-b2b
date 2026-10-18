@@ -316,3 +316,50 @@ describe('ResourcesCard — Price List folder', () => {
     expect(screen.getByText(/Send 1 file by email/i)).toBeInTheDocument()
   })
 })
+
+describe('ResourcesCard — Translate to… (admin only)', () => {
+  const EN_BRAND = 'LoveLab Brand Presentation — English.pdf'
+  const original = global.fetch
+  afterEach(() => { global.fetch = original })
+
+  const mockFetch = (translate) => {
+    global.fetch = jest.fn((url) => {
+      if (String(url).startsWith('/api/pack-templates')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) })
+      }
+      return translate(url)
+    })
+  }
+
+  it('shows no Translate control to non-admins', () => {
+    render(<ResourcesCard isAdmin={false} />)
+    fireEvent.click(screen.getByText('Brand Documents'))
+    expect(screen.queryByRole('button', { name: /translate to/i })).not.toBeInTheDocument()
+  })
+
+  it('shows Translate on PDFs for admins, not on the EAN Excel file', async () => {
+    mockFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }))
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Brand Documents'))
+    expect(screen.getAllByRole('button', { name: /translate to/i }).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByText('EAN Codes'))
+    const row = screen.getByText('Final-GS1-Code.xlsx').closest('div')
+    expect(row.querySelector('button[aria-haspopup="listbox"]')).toBeNull()
+  })
+
+  it('posts the document path and language, and reports a failure', async () => {
+    mockFetch(() => Promise.resolve({ ok: false, status: 501, json: () => Promise.resolve({ error: 'Translation engine is not connected yet' }) }))
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Brand Documents'))
+    const row = screen.getByText(EN_BRAND).closest('div')
+    fireEvent.click(row.querySelector('button[aria-haspopup="listbox"]'))
+    await act(async () => { fireEvent.mouseDown(screen.getByRole('option', { name: /French/ })) })
+    const call = global.fetch.mock.calls.find(([u]) => u === '/api/doc-translate')
+    expect(call).toBeTruthy()
+    expect(JSON.parse(call[1].body)).toEqual({
+      path: '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
+      language: 'fr',
+    })
+    expect(await screen.findByText(/French: Translation engine is not connected yet/)).toBeInTheDocument()
+  })
+})
