@@ -11,7 +11,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
-import ReportsDashboard, { filtersFromSavedConfig, matchesEventFilter } from '../ReportsDashboard';
+import ReportsDashboard, { filtersFromSavedConfig, matchesEventFilter, matchesSalesFilters, NO_AGENT } from '../ReportsDashboard';
 
 const FAIR_A = 'evt-inhorgenta';
 const FAIR_B = 'evt-nordstil';
@@ -98,9 +98,9 @@ const resultCount = () => {
 
 const citySelect = () => screen.getByDisplayValue('All cities');
 const cityOptions = () => within(citySelect()).getAllByRole('option').map((o) => o.textContent);
-// The only button carrying aria-expanded is the event picker's trigger.
-const eventButton = () =>
-  screen.queryByRole('button', { expanded: false }) || screen.getByRole('button', { expanded: true });
+// The event picker is the first trigger carrying aria-expanded (the agent
+// picker has one too, further along the filter bar).
+const eventButton = () => document.querySelector('button[aria-expanded]');
 
 // ─── City ──────────────────────────────────────────────────────────────────
 
@@ -334,3 +334,154 @@ describe('matchesEventFilter', () => {
     expect(matchesEventFilter(looseRow, { eventIds: ['a'] })).toBe(false);
   });
 });
+
+// ─── Channel, agent and source ─────────────────────────────────────────────
+
+describe('matchesSalesFilters', () => {
+  const b2bLena = { rowType: 'document', channel: 'b2b', agentId: 'a-lena' };
+  const b2cHouse = { rowType: 'document', channel: 'b2c', agentId: null };
+  const sf = { rowType: 'salesforce', channel: null, agentId: null };
+
+  test('no filters keeps every row', () => {
+    for (const r of [b2bLena, b2cHouse, sf]) expect(matchesSalesFilters(r, {})).toBe(true);
+    expect(matchesSalesFilters(sf)).toBe(true);
+  });
+
+  test('channel keeps only that side and drops Salesforce accounts', () => {
+    expect(matchesSalesFilters(b2bLena, { channel: 'b2b' })).toBe(true);
+    expect(matchesSalesFilters(b2cHouse, { channel: 'b2b' })).toBe(false);
+    expect(matchesSalesFilters(b2cHouse, { channel: 'b2c' })).toBe(true);
+    expect(matchesSalesFilters(sf, { channel: 'b2c' })).toBe(false);
+  });
+
+  test('agents match any ticked agent; NO_AGENT means house orders', () => {
+    expect(matchesSalesFilters(b2bLena, { agentIds: ['a-lena', 'a-other'] })).toBe(true);
+    expect(matchesSalesFilters(b2bLena, { agentIds: ['a-other'] })).toBe(false);
+    expect(matchesSalesFilters(b2cHouse, { agentIds: [NO_AGENT] })).toBe(true);
+    expect(matchesSalesFilters(b2bLena, { agentIds: [NO_AGENT] })).toBe(false);
+    expect(matchesSalesFilters(sf, { agentIds: [NO_AGENT] })).toBe(false);
+  });
+
+  test('source splits orders from Salesforce', () => {
+    expect(matchesSalesFilters(sf, { source: 'salesforce' })).toBe(true);
+    expect(matchesSalesFilters(sf, { source: 'document' })).toBe(false);
+    expect(matchesSalesFilters(b2bLena, { source: 'document' })).toBe(true);
+    expect(matchesSalesFilters(b2bLena, { source: 'salesforce' })).toBe(false);
+  });
+
+  test('filters combine', () => {
+    expect(matchesSalesFilters(b2bLena, { channel: 'b2b', agentIds: ['a-lena'], source: 'document' })).toBe(true);
+    expect(matchesSalesFilters(b2bLena, { channel: 'b2c', agentIds: ['a-lena'] })).toBe(false);
+  });
+});
+
+describe('presets saved before channel and agent existed', () => {
+  test('load with the new filters switched off', () => {
+    const f = filtersFromSavedConfig({ country: 'France', eventIds: ['e1'] });
+    expect(f).toMatchObject({ channel: 'all', agentIds: [], source: 'all', country: 'France' });
+  });
+
+  test('junk values fall back instead of hiding every row', () => {
+    const f = filtersFromSavedConfig({ channel: 'wholesale', source: 'nope', agentIds: 'x' });
+    expect(f).toMatchObject({ channel: 'all', source: 'all', agentIds: [] });
+  });
+
+  test('a saved selection survives', () => {
+    const f = filtersFromSavedConfig({ channel: 'b2c', agentIds: ['a1', '', 'a2'], source: 'document' });
+    expect(f).toMatchObject({ channel: 'b2c', agentIds: ['a1', 'a2'], source: 'document' });
+  });
+});
+
+describe('channel, agent and source in the page', () => {
+  const extra = [
+    { ...makeDoc('x1', FAIR_A, 'Web Buyer', {}), order_channel: 'b2c', agent_id: null, agent: null },
+    { ...makeDoc('x2', FAIR_A, 'Lena Client', {}), agent_id: 'a-lena', agent: { full_name: 'Lena Vogel', email: 'l@x.com' } },
+    { ...makeDoc('x3', FAIR_B, 'Matteo Client', {}), order_channel: null, agent_id: 'a-matteo', agent: { full_name: 'Matteo Rinaldi', email: 'm@x.com' } },
+  ];
+
+  beforeEach(() => { DOCUMENTS.push(...extra); });
+  afterEach(() => { DOCUMENTS.length -= extra.length; });
+
+  test('B2C shows only B2C orders; an empty channel counts as B2B', async () => {
+    await renderReports();
+    expect(resultCount()).toBe(8);
+    fireEvent.click(screen.getByRole('button', { name: 'B2C' }));
+    expect(resultCount()).toBe(1);
+    expect(screen.getByRole('cell', { name: 'Web Buyer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'B2B' }));
+    expect(resultCount()).toBe(7);
+    expect(screen.getByRole('cell', { name: 'Matteo Client' })).toBeInTheDocument();
+  });
+
+  test('picking an agent narrows to their orders', async () => {
+    await renderReports();
+    fireEvent.click(screen.getByRole('button', { name: /^Agents: All agents/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Lena Vogel/ }));
+    expect(resultCount()).toBe(1);
+    expect(screen.getByRole('cell', { name: 'Lena Client' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Matteo Rinaldi/ }));
+    expect(resultCount()).toBe(2);
+  });
+
+  test('"No agent" finds house orders', async () => {
+    await renderReports();
+    fireEvent.click(screen.getByRole('button', { name: /^Agents: All agents/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /No agent/ }));
+    expect(resultCount()).toBe(6);
+  });
+
+  test('the new filters are saved in the preset', async () => {
+    await renderReports();
+    fireEvent.click(screen.getByRole('button', { name: 'B2C' }));
+    fireEvent.change(screen.getByPlaceholderText('Preset name'), { target: { value: 'Web' } });
+    fireEvent.click(screen.getByRole('button', { name: /save preset/i }));
+    await waitFor(() => expect(savedPayloads).toHaveLength(1));
+    expect(savedPayloads[0].config).toMatchObject({ channel: 'b2c', agentIds: [], source: 'all' });
+  });
+
+  test('search finds an agent by name and a channel by label', async () => {
+    await renderReports();
+    fireEvent.change(screen.getByPlaceholderText(/search client/i), { target: { value: 'lena vogel' } });
+    expect(resultCount()).toBe(1);
+    // 'b2c' also matches the existing "ONLINE B2C" event, so two rows.
+    fireEvent.change(screen.getByPlaceholderText(/search client/i), { target: { value: 'b2c' } });
+    expect(resultCount()).toBe(2);
+    expect(screen.getByRole('cell', { name: 'Web Buyer' })).toBeInTheDocument();
+  });
+
+  test('an agent keeps their name when a later order has no profile embed', async () => {
+    DOCUMENTS.push({ ...makeDoc('x4', FAIR_A, 'Lena Again', {}), agent_id: 'a-lena', agent: null });
+    try {
+      await renderReports();
+      fireEvent.click(screen.getByRole('button', { name: /^Agents: All agents/ }));
+      expect(screen.getByRole('checkbox', { name: /Lena Vogel/ })).toBeInTheDocument();
+      expect(screen.queryByText('Unnamed agent')).not.toBeInTheDocument();
+    } finally { DOCUMENTS.pop(); }
+  });
+
+  test('Escape closes the agent list and a reopened list starts unfiltered', async () => {
+    await renderReports();
+    const trigger = () => screen.getByRole('button', { name: /^Agents:/ });
+    fireEvent.click(trigger());
+    fireEvent.change(screen.getByPlaceholderText('Search agents'), { target: { value: 'zzz' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByPlaceholderText('Search agents')).not.toBeInTheDocument();
+    fireEvent.click(trigger());
+    expect(screen.getByPlaceholderText('Search agents')).toHaveValue('');
+  });
+
+  test('an older preset brings Channel and Agent back; a stale agent id is dropped', async () => {
+    savedReports = [
+      { id: 'old', name: 'Old', config: { country: 'all', visibleColumns: ['Date', 'Client', 'Amount'] } },
+      { id: 'stale', name: 'Stale', config: { agentIds: ['gone-id'], channel: 'b2b', visibleColumns: ['Client'] } },
+    ];
+    await renderReports();
+    fireEvent.change(screen.getByDisplayValue('Load saved report'), { target: { value: 'old' } });
+    expect(screen.getByRole('columnheader', { name: 'Channel' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Agent' })).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('Old'), { target: { value: 'stale' } });
+    expect(resultCount()).toBe(7);
+    expect(screen.queryByRole('columnheader', { name: 'Agent' })).not.toBeInTheDocument();
+  });
+});
+
