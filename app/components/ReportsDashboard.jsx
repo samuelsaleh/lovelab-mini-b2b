@@ -11,7 +11,7 @@ import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 
 // ─── Column config ─────────────────────────────────────────────────────────
 
-const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Type', 'Source', 'Amount']
+const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Channel', 'Agent', 'Type', 'Source', 'Amount']
 
 const UNKNOWN_CITY = 'Unknown'
 
@@ -25,6 +25,16 @@ const EVENT_TYPES = [
 
 const NO_EVENT_TYPE = 'none'
 
+// Stands in for "orders with no selling agent" in the agent picker. Not a real
+// profile id, so it can never collide with one.
+export const NO_AGENT = '__none'
+
+const CHANNELS = [
+  { key: 'all', label: 'All' },
+  { key: 'b2b', label: 'B2B' },
+  { key: 'b2c', label: 'B2C' },
+]
+
 // Map column label → row field
 function getCellValue(row, col) {
   switch (col) {
@@ -33,6 +43,8 @@ function getCellValue(row, col) {
     case 'Country': return row.country
     case 'City':   return row.city
     case 'Event':  return row.eventLabel
+    case 'Channel': return row.channel ? row.channel.toUpperCase() : '—'
+    case 'Agent':  return row.agentName || '—'
     case 'Type':   return row.document_type
     case 'Source': return row.sourceLabel
     case 'Amount': return row.amount != null ? String(row.amount) : '0'
@@ -49,6 +61,9 @@ const initialFilters = {
   country: 'all',
   city: 'all',
   type: 'all',
+  channel: 'all',
+  agentIds: [],
+  source: 'all',
   search: '',
   minAmount: '',
   maxAmount: '',
@@ -66,6 +81,9 @@ export function filtersFromSavedConfig(cfg = {}) {
   const next = { ...initialFilters, ...rest }
   next.eventIds = Array.isArray(next.eventIds) ? next.eventIds.filter(Boolean) : []
   next.eventTypes = Array.isArray(next.eventTypes) ? next.eventTypes.filter(Boolean) : []
+  next.agentIds = Array.isArray(next.agentIds) ? next.agentIds.filter(Boolean) : []
+  if (!CHANNELS.some((c) => c.key === next.channel)) next.channel = 'all'
+  if (next.source !== 'document' && next.source !== 'salesforce') next.source = 'all'
   if (!next.eventIds.length && typeof eventId === 'string' && eventId) next.eventIds = [eventId]
   return next
 }
@@ -80,6 +98,23 @@ export function filtersFromSavedConfig(cfg = {}) {
 export function matchesEventFilter(row, { eventIds = [], eventTypes = [] } = {}) {
   if (eventIds.length) return eventIds.includes(row.event_id)
   if (eventTypes.length) return eventTypes.includes(row.eventType)
+  return true
+}
+
+/**
+ * Channel, agent and source filters.
+ *
+ * Salesforce rows are imported accounts: they have no channel and no selling
+ * agent, so choosing B2B, B2C or any agent leaves them out rather than
+ * guessing which side they belong to.
+ */
+export function matchesSalesFilters(row, { channel = 'all', agentIds = [], source = 'all' } = {}) {
+  if (source !== 'all' && row.rowType !== source) return false
+  if (channel !== 'all' && row.channel !== channel) return false
+  if (agentIds.length) {
+    if (row.rowType !== 'document') return false
+    if (!agentIds.includes(row.agentId || NO_AGENT)) return false
+  }
   return true
 }
 
@@ -161,6 +196,10 @@ export default function ReportsDashboard() {
       rowType: 'document',
       sourceLabel: 'Order',
       sourceComment: null,
+      // Empty order_channel has always meant B2B (see AgentFolderBrowser).
+      channel: d.order_channel === 'b2c' ? 'b2c' : 'b2b',
+      agentId: d.agent_id || null,
+      agentName: d.agent?.full_name || d.agent?.email || null,
       country: normalizeCountry(d.metadata?.formState?.country),
       // The order form has no city field — the city is typed into the address
       // line labelled "Postal code, City", so it has to be read back out.
@@ -180,6 +219,9 @@ export default function ReportsDashboard() {
         rowType: 'salesforce',
         sourceLabel: 'Salesforce',
         sourceComment: c.source_comment || 'Under Salesforce',
+        channel: null,
+        agentId: null,
+        agentName: null,
         country: normalizeCountry(c.country),
         // `clients.city` holds whatever was in the second address line, so it
         // gets the same treatment as an order.
@@ -215,6 +257,7 @@ export default function ReportsDashboard() {
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       if (!matchesEventFilter(r, filters)) return false
+      if (!matchesSalesFilters(r, filters)) return false
       if (filters.country !== 'all' && r.country !== filters.country) return false
       // Compared on the folded key so a preset saved as "LYON" still matches.
       if (filters.city !== 'all' && cityFoldKey(r.city) !== cityFoldKey(filters.city)) return false
@@ -270,6 +313,28 @@ export default function ReportsDashboard() {
       return a.localeCompare(b)
     })
   }, [rows, filters.country])
+
+  /** Agents the picker offers: everyone who sold something, plus house orders. */
+  const agentOptions = useMemo(() => {
+    const byId = new Map()
+    let houseOrders = 0
+    for (const r of rows) {
+      if (r.rowType !== 'document') continue
+      if (!r.agentId) { houseOrders += 1; continue }
+      const prev = byId.get(r.agentId)
+      byId.set(r.agentId, { id: r.agentId, name: r.agentName || 'Unnamed agent', count: (prev?.count || 0) + 1 })
+    }
+    const list = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name))
+    if (houseOrders) list.push({ id: NO_AGENT, name: 'No agent (house orders)', count: houseOrders })
+    return list
+  }, [rows])
+
+  const toggleAgentId = (id) => {
+    setFilters((p) => ({
+      ...p,
+      agentIds: p.agentIds.includes(id) ? p.agentIds.filter((x) => x !== id) : [...p.agentIds, id],
+    }))
+  }
 
   /** Events the picker offers: narrowed by the type chips, newest first. */
   const eventOptions = useMemo(() => {
@@ -354,8 +419,13 @@ export default function ReportsDashboard() {
     const eventLabel = filters.eventIds.length
       ? filters.eventIds.map(id => events.find(e => e.id === id)?.name).filter(Boolean).join(', ')
       : filters.eventTypes.map(t => EVENT_TYPES.find(x => x.key === t)?.label || t).join(' + ')
+    const channelLabel = filters.channel !== 'all' ? filters.channel.toUpperCase() : ''
+    const agentLabel = filters.agentIds.length
+      ? filters.agentIds.map(id => agentOptions.find(a => a.id === id)?.name).filter(Boolean).join(', ')
+      : ''
+    const sourceLabel = filters.source === 'document' ? 'Orders only' : filters.source === 'salesforce' ? 'Salesforce only' : ''
     const subtitleCell = ws.getCell('A2')
-    subtitleCell.value = [reportLabel, eventLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
+    subtitleCell.value = [reportLabel, eventLabel, channelLabel, agentLabel, sourceLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
     subtitleCell.font  = { size: 10, color: { argb: 'FFCFAECF' }, italic: true, name: 'Calibri' }
     subtitleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
     subtitleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
@@ -459,7 +529,7 @@ export default function ReportsDashboard() {
     })
 
     // ── Column widths ────────────────────────────────────────────────────────
-    const colWidths = { Date: 14, Client: 30, Country: 18, City: 18, Event: 26, Type: 12, Source: 14, Amount: 16 }
+    const colWidths = { Date: 14, Client: 30, Country: 18, City: 18, Event: 26, Channel: 11, Agent: 22, Type: 12, Source: 14, Amount: 16 }
     activeColumns.forEach((col, i) => {
       ws.getColumn(i + 1).width = colWidths[col] || 16
     })
@@ -592,6 +662,43 @@ export default function ReportsDashboard() {
               <option value="all">Order + Quote</option>
               <option value="order">Order only</option>
               <option value="quote">Quote only</option>
+            </select>
+            <div role="group" aria-label="Sales channel" style={segWrap}>
+              {CHANNELS.map((c) => {
+                const on = filters.channel === c.key
+                return (
+                  <button
+                    key={c.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setFilters((p) => ({ ...p, channel: c.key }))}
+                    style={{
+                      ...segBtn,
+                      background: on ? colors.inkPlum : '#fff',
+                      color: on ? '#fff' : colors.charcoal,
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                )
+              })}
+            </div>
+            <AgentFilter
+              options={agentOptions}
+              selectedIds={filters.agentIds}
+              onToggle={toggleAgentId}
+              onSelectShown={(ids) => setFilters((p) => ({ ...p, agentIds: [...new Set([...p.agentIds, ...ids])] }))}
+              onClear={() => setFilters((p) => ({ ...p, agentIds: [] }))}
+            />
+            <select
+              aria-label="Source"
+              value={filters.source}
+              onChange={(e) => setFilters((p) => ({ ...p, source: e.target.value }))}
+              style={inputStyle}
+            >
+              <option value="all">All sources</option>
+              <option value="document">Orders only</option>
+              <option value="salesforce">Salesforce only</option>
             </select>
             <input
               value={filters.search}
@@ -921,6 +1028,109 @@ function EventFilter({ events, options, selectedIds, selectedTypes, onToggleId, 
   )
 }
 
+/** Agent filter: tick one or more selling agents, or the orders with none. */
+function AgentFilter({ options, selectedIds, onToggle, onSelectShown, onClear }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const shown = query.trim()
+    ? options.filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : options
+
+  const label = (() => {
+    if (selectedIds.length === 0) return 'All agents'
+    if (selectedIds.length === 1) return options.find((a) => a.id === selectedIds[0])?.name || '1 agent'
+    return `${selectedIds.length} agents`
+  })()
+
+  const active = selectedIds.length > 0
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`Agents: ${label}`}
+        style={{
+          ...inputStyle,
+          width: '100%',
+          textAlign: 'left',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          color: active ? colors.inkPlum : colors.charcoal,
+          fontWeight: active ? 700 : 400,
+          borderColor: active ? colors.inkPlum : colors.lineGray,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ fontSize: 9, color: '#999' }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, width: 300, maxWidth: '90vw',
+        }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search agents"
+            aria-label="Search agents"
+            style={{ ...inputStyle, width: '100%', padding: '7px 9px', fontSize: 12, marginBottom: 6 }}
+          />
+
+          <div style={{ maxHeight: 220, overflowY: 'auto', margin: '0 -4px' }}>
+            {shown.length === 0 ? (
+              <div style={{ padding: '10px 14px', fontSize: 12, color: '#999' }}>No agents match.</div>
+            ) : shown.map((a) => {
+              const on = selectedIds.includes(a.id)
+              return (
+                <label key={a.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                  cursor: 'pointer', fontSize: 12.5,
+                  color: on ? colors.inkPlum : '#555', fontWeight: on ? 600 : 400,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => onToggle(a.id)}
+                    style={{ accentColor: colors.inkPlum, flexShrink: 0 }}
+                  />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{a.name}</span>
+                  <span style={{ fontSize: 11, color: '#999', fontWeight: 400 }}>{a.count}</span>
+                </label>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, borderTop: `1px solid ${colors.lineGray}`, paddingTop: 8 }}>
+            <button type="button" onClick={() => onSelectShown(shown.map((a) => a.id))} disabled={shown.length === 0} style={miniBtn}>
+              Select all shown
+            </button>
+            <button type="button" onClick={onClear} disabled={!active} style={miniBtn}>Clear</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Kpi({ label, value }) {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: '14px 16px' }}>
@@ -937,6 +1147,26 @@ const inputStyle = {
   fontSize: 13,
   fontFamily: fonts.body,
   background: '#fff',
+}
+
+const segWrap = {
+  display: 'flex',
+  border: `1px solid ${colors.lineGray}`,
+  borderRadius: 8,
+  overflow: 'hidden',
+  background: '#fff',
+  minHeight: 38,
+}
+
+const segBtn = {
+  flex: 1,
+  border: 'none',
+  borderRight: `1px solid ${colors.lineGray}`,
+  padding: '0 8px',
+  fontSize: 12,
+  fontWeight: 700,
+  fontFamily: fonts.body,
+  cursor: 'pointer',
 }
 
 const btnPrimary = {
