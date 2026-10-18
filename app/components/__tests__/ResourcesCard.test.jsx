@@ -362,4 +362,29 @@ describe('ResourcesCard — Translate to… (admin only)', () => {
     })
     expect(await screen.findByText(/French: Translation engine is not connected yet/)).toBeInTheDocument()
   })
+
+  it('downloads the translated PDF and says how many paragraphs need a look', async () => {
+    const blob = new Blob(['%PDF-fake'], { type: 'application/pdf' })
+    mockFetch(() => Promise.resolve({
+      ok: true,
+      blob: () => Promise.resolve(blob),
+      headers: { get: (h) => (h === 'X-Translation-Flags' ? '2' : null) },
+    }))
+    global.URL.createObjectURL = jest.fn(() => 'blob:fake')
+    global.URL.revokeObjectURL = jest.fn()
+    const clicked = []
+    const origClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () { clicked.push(this.download) }
+    try {
+      await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+      fireEvent.click(screen.getByText('Brand Documents'))
+      const row = screen.getByText(EN_BRAND).closest('div')
+      fireEvent.click(row.querySelector('button[aria-haspopup="listbox"]'))
+      await act(async () => { fireEvent.mouseDown(screen.getByRole('option', { name: /German/ })) })
+      expect(clicked).toEqual(['LoveLab Brand Presentation — English — German.pdf'])
+      expect(await screen.findByText(/German: downloaded\. 2 paragraphs to check/)).toBeInTheDocument()
+    } finally {
+      HTMLAnchorElement.prototype.click = origClick
+    }
+  })
 })

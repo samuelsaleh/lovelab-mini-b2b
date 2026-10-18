@@ -3,9 +3,11 @@
  * language, keeping the PDF layout identical (admin only).
  *
  * Body: { path: '/BRAND PRESENTATION DOCS/….pdf', language: 'fr' }
+ * Response: the translated PDF (application/pdf). X-Translation-Flags is the
+ * number of paragraphs that need a human look (did not fit, not translated).
  *
- * The request is validated here (admin, known PDF, supported language). The
- * extract → translate → render engine plugs in at `translateDocument`.
+ * The request is validated here (admin, known PDF, supported language), then
+ * handed to the extract → translate → render pipeline in lib/doc-translate.
  */
 
 import { NextResponse } from 'next/server'
@@ -39,7 +41,19 @@ export async function POST(request) {
 
     const result = await translateDocument({ file, language })
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status || 500 })
-    return NextResponse.json(result)
+
+    const base = file.name.replace(/\.pdf$/i, '')
+    const filename = `${base} — ${language.name}.pdf`
+    return new NextResponse(result.pdf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="translated.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'X-Translation-Flags': String(result.flags.length),
+        'X-Translation-Pages': String(result.stats.pages),
+        'Cache-Control': 'no-store',
+      },
+    })
   } catch (err) {
     console.error('[doc-translate POST] Exception:', err?.message)
     return NextResponse.json({ error: 'Translation failed' }, { status: 500 })

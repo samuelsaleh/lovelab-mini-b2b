@@ -181,10 +181,24 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: file.path, language: language.code }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      if (data.downloadUrl) window.open(data.downloadUrl, '_blank', 'noreferrer')
-      setTranslateMsg({ ok: true, text: `${file.name} → ${language.name}` })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${file.name.replace(/\.pdf$/i, '')} — ${language.name}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      const flags = Number(res.headers.get('X-Translation-Flags') || 0)
+      setTranslateMsg({
+        ok: true,
+        text: `${file.name} → ${language.name}: downloaded${flags ? `. ${flags} paragraph${flags > 1 ? 's' : ''} to check (did not fit or not translated).` : '.'}`,
+      })
     } catch (err) {
       setTranslateMsg({ ok: false, text: `${file.name} → ${language.name}: ${err.message}` })
     } finally {

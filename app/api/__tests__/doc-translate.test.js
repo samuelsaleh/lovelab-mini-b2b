@@ -41,11 +41,14 @@ describe('POST /api/doc-translate', () => {
     expect((await POST(req({ path: PDF, language: 'xx' }))).status).toBe(400)
   })
 
-  it('hands a valid request to the engine and returns its result', async () => {
-    mockEngine.mockResolvedValue({ ok: true, downloadUrl: '/x.pdf' })
+  it('hands a valid request to the engine and returns the PDF', async () => {
+    mockEngine.mockResolvedValue({ ok: true, pdf: Buffer.from('%PDF-1.4 fake'), flags: [{}, {}], stats: { pages: 11, units: 200, shortened: 3 } })
     const res = await POST(req({ path: PDF, language: 'fr' }))
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, downloadUrl: '/x.pdf' })
+    expect(res.headers.get('Content-Type')).toBe('application/pdf')
+    expect(res.headers.get('X-Translation-Flags')).toBe('2')
+    expect(res.headers.get('Content-Disposition')).toContain(encodeURIComponent('LoveLab Brand Presentation — English — French.pdf'))
+    expect(Buffer.from(await res.arrayBuffer()).toString()).toBe('%PDF-1.4 fake')
     expect(mockEngine).toHaveBeenCalledWith({
       file: expect.objectContaining({ path: PDF }),
       language: expect.objectContaining({ code: 'fr' }),
