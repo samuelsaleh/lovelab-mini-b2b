@@ -208,8 +208,9 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
       const flags = Number(job.flags || 0)
       setTranslateMsg({
         ok: true,
-        text: `${file.name} → ${language.name}: downloaded${flags ? `. ${flags} paragraph${flags > 1 ? 's' : ''} to check (did not fit or not translated).` : '.'}`,
+        text: `${file.name} → ${language.name}: downloaded and added to the list${flags ? `. ${flags} paragraph${flags > 1 ? 's' : ''} to check (did not fit or not translated).` : '.'}`,
       })
+      loadTranslations()
     } catch (err) {
       setTranslateMsg({ ok: false, text: `${file.name} → ${language.name}: ${err.message}` })
     } finally {
@@ -217,6 +218,27 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
     }
   }
   const translateProps = isAdmin ? { onTranslate: translateDoc, translatingPath } : {}
+
+  // Translated documents (admin only) are listed in the folder of the document they came from,
+  // as rows like the others: download, tick to email.
+  const [translations, setTranslations] = useState([])
+  const loadTranslations = () => {
+    if (!isAdmin || typeof fetch !== 'function') return
+    try {
+      Promise.resolve(fetch('/api/doc-translations'))
+        .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r?.status}`))))
+        .then((d) => setTranslations(Array.isArray(d?.translations) ? d.translations : []))
+        .catch((err) => console.error('[ResourcesCard] translated documents failed to load:', err?.message))
+    } catch (err) {
+      console.error('[ResourcesCard] translated documents failed to load:', err?.message)
+    }
+  }
+  useEffect(() => { loadTranslations() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+  const translatedRows = (originals) => {
+    const sources = new Set(originals.map((f) => f.path))
+    return translations.filter((t) => sources.has(t.source_path)).map((t) => ({ name: t.name, path: t.path }))
+  }
+  const withTranslated = (originals) => [...originals, ...translatedRows(originals)]
 
   // Pack order templates are generated per pack and listed dynamically, so the
   // filenames always reflect each pack's current label (admin only).
@@ -262,7 +284,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
 
   // Flatten all folders into a single lookup so we can resolve selected paths
   // back to {name, path} regardless of which folder they came from.
-  const allFiles = [...CATALOGUE_FILES, ...IGI_FILES, ...packsFiles, ...PRICE_LIST_FILES, ...EAN_FILES, ...BRAND_DOCUMENT_FILES]
+  const allFiles = [...withTranslated(CATALOGUE_FILES), ...IGI_FILES, ...packsFiles, ...withTranslated(PRICE_LIST_FILES), ...EAN_FILES, ...withTranslated(BRAND_DOCUMENT_FILES)]
   const selectedFiles = allFiles.filter(f => selected.has(f.path))
   const count = selectedFiles.length
   const sendLabel = count === 1
@@ -271,12 +293,13 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
 
   // Build a human-readable "where these came from" string for the modal subtitle.
   const folderLabels = []
-  if (selectedFiles.some(f => CATALOGUE_FILES.includes(f))) folderLabels.push(t('resources.catalogue'))
+  const isIn = (originals) => (f) => originals.includes(f) || translatedRows(originals).some((r) => r.path === f.path)
+  if (selectedFiles.some(isIn(CATALOGUE_FILES))) folderLabels.push(t('resources.catalogue'))
   if (selectedFiles.some(f => IGI_FILES.includes(f)))       folderLabels.push(t('resources.igi'))
   if (selectedFiles.some(f => packsFiles.includes(f)))      folderLabels.push(t('resources.packs'))
-  if (selectedFiles.some(f => PRICE_LIST_FILES.includes(f))) folderLabels.push(t('resources.priceList'))
+  if (selectedFiles.some(isIn(PRICE_LIST_FILES))) folderLabels.push(t('resources.priceList'))
   if (selectedFiles.some(f => EAN_FILES.includes(f)))       folderLabels.push(t('resources.eanCodes'))
-  if (selectedFiles.some(f => BRAND_DOCUMENT_FILES.includes(f))) folderLabels.push(t('resources.brandDocuments'))
+  if (selectedFiles.some(isIn(BRAND_DOCUMENT_FILES))) folderLabels.push(t('resources.brandDocuments'))
   const folderSummary = folderLabels.join(' · ')
 
   return (
@@ -361,11 +384,11 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                   </svg>
                   {t('resources.documents')}
                 </div>
-                <DownloadFolder label={t('resources.catalogue')} files={CATALOGUE_FILES} selected={selected} onToggle={toggle} {...translateProps} />
+                <DownloadFolder label={t('resources.catalogue')} files={withTranslated(CATALOGUE_FILES)} selected={selected} onToggle={toggle} {...translateProps} />
                 {isAdmin && (<>
                 <DownloadFolder label={t('resources.igi')}       files={IGI_FILES}       selected={selected} onToggle={toggle} />
                 <DownloadFolder label={t('resources.packs')}     files={packsFiles}      selected={selected} onToggle={toggle} status={packsStatus} onRetry={retryPacks} />
-                <DownloadFolder label={t('resources.priceList')} files={PRICE_LIST_FILES} selected={selected} onToggle={toggle} {...translateProps} />
+                <DownloadFolder label={t('resources.priceList')} files={withTranslated(PRICE_LIST_FILES)} selected={selected} onToggle={toggle} {...translateProps} />
                 <button
                   type="button"
                   onClick={() => setAnnounceOpen(true)}
@@ -384,7 +407,7 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
                 </button>
                 <DownloadFolder label={t('resources.eanCodes')}  files={EAN_FILES}        selected={selected} onToggle={toggle} />
                 </>)}
-                <DownloadFolder label={t('resources.brandDocuments')} files={BRAND_DOCUMENT_FILES} selected={selected} onToggle={toggle} {...translateProps} />
+                <DownloadFolder label={t('resources.brandDocuments')} files={withTranslated(BRAND_DOCUMENT_FILES)} selected={selected} onToggle={toggle} {...translateProps} />
                 {translateMsg && (
                   <div role="status" style={{ fontSize: 12, fontFamily: fonts.body, color: translateMsg.ok ? colors.inkPlum : '#b91c1c', padding: '2px 4px' }}>
                     {translateMsg.text}
