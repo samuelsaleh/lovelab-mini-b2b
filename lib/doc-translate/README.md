@@ -11,3 +11,20 @@ Admin "Translate to…" for LoveLab PDFs: the text changes language, the layout 
 Tests: `npx jest lib/doc-translate` (orchestration, Claude batches) and `npm run test:pdf` (real PDF work; MuPDF is ESM + WASM so it runs under node:test, not jest).
 
 Known limits: text inside images is not translated; rotated pages are skipped; Vercel caps a function response at 4.5 MB (the translated catalogue is ~8.8 MB), so large files need storage and a download link.
+
+## Jobs and storage
+
+`POST /api/doc-translate` no longer returns the PDF. It creates a row in
+`translation_jobs`, answers `202 { id }` and runs the translation after the
+response (`after()` in `app/api/doc-translate/route.js`, up to `maxDuration`).
+The finished PDF goes in the private `translated-documents` bucket and
+`GET /api/doc-translate/[id]` returns the status; when done it carries a
+10-minute signed link, the page count and the number of flagged paragraphs.
+The Resources card polls every 2 s. A job that stops reporting for 6 min shows
+as failed.
+
+Needs, run by Sam: `supabase/migrations/20261019120000_translation_jobs.sql`
+(table + bucket). Without it the button answers "Translation failed".
+
+The engine (`translateDocument`) is called only from `jobs.js`, so a different
+engine (e.g. a managed agent) can replace it without touching routes or UI.

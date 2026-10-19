@@ -3,20 +3,19 @@
  * language, keeping the PDF layout identical (admin only).
  *
  * Body: { path: '/BRAND PRESENTATION DOCS/….pdf', language: 'fr' }
- * Response: the translated PDF (application/pdf). X-Translation-Flags is the
- * number of paragraphs that need a human look (did not fit, not translated).
+ * Response: 202 { id }. The translation runs in the background (lib/doc-translate/jobs)
+ * and GET /api/doc-translate/[id] reports it and, when done, gives the download link.
  *
- * The request is validated here (admin, known PDF, supported language), then
- * handed to the extract → translate → render pipeline in lib/doc-translate.
+ * The request is validated here (admin, known PDF, supported language).
  */
 
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextResponse, after } from 'next/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/app/api/_lib/access'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { findB2BFileByPath } from '@/lib/b2b-files'
 import { TRANSLATION_LANGUAGES } from '@/lib/doc-translate/languages'
-import { translateDocument } from '@/lib/doc-translate/engine'
+import { createJob, runJob } from '@/lib/doc-translate/jobs'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -39,21 +38,11 @@ export async function POST(request) {
     const language = TRANSLATION_LANGUAGES.find((l) => l.code === body?.language)
     if (!language) return NextResponse.json({ error: 'Unsupported language' }, { status: 400 })
 
-    const result = await translateDocument({ file, language })
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status || 500 })
-
-    const base = file.name.replace(/\.pdf$/i, '')
-    const filename = `${base} — ${language.name}.pdf`
-    return new NextResponse(result.pdf, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="translated.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-        'X-Translation-Flags': String(result.flags.length),
-        'X-Translation-Pages': String(result.stats.pages),
-        'Cache-Control': 'no-store',
-      },
-    })
+    const admin = createAdminClient()
+    const id = await createJob(admin, { userId: user.id, file, language })
+    // Keeps running after the 202 is sent; the browser polls /api/doc-translate/[id].
+    after(() => runJob(admin, { id, file, language }))
+    return NextResponse.json({ id }, { status: 202, headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     console.error('[doc-translate POST] Exception:', err?.message)
     return NextResponse.json({ error: 'Translation failed' }, { status: 500 })

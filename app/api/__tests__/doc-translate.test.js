@@ -3,19 +3,23 @@
  *
  * /api/doc-translate — request validation and admin gating.
  */
-const mockEngine = jest.fn()
+const mockCreateJob = jest.fn()
+const mockRunJob = jest.fn()
 const mockCtx = jest.fn()
-jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn().mockResolvedValue({}) }))
+const mockAfter = jest.fn((fn) => fn())
+jest.mock('next/server', () => ({ ...jest.requireActual('next/server'), after: (fn) => mockAfter(fn) }))
+jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn().mockResolvedValue({}), createAdminClient: () => ({ admin: true }) }))
 jest.mock('@/app/api/_lib/access', () => ({ getUserContext: (...a) => mockCtx(...a) }))
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: () => null }))
-jest.mock('@/lib/doc-translate/engine', () => ({ translateDocument: (...a) => mockEngine(...a) }))
+jest.mock('@/lib/doc-translate/jobs', () => ({ createJob: (...a) => mockCreateJob(...a), runJob: (...a) => mockRunJob(...a) }))
 
 const { POST } = require('../doc-translate/route')
 const PDF = '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf'
 const req = (body) => ({ json: jest.fn().mockResolvedValue(body), headers: new Map() })
 
 beforeEach(() => {
-  mockEngine.mockReset()
+  mockCreateJob.mockReset().mockResolvedValue('job-1')
+  mockRunJob.mockReset().mockResolvedValue()
   mockCtx.mockReset().mockResolvedValue({ user: { id: 'a' }, isAdmin: true })
 })
 
@@ -23,13 +27,13 @@ describe('POST /api/doc-translate', () => {
   it('rejects anonymous users with 401', async () => {
     mockCtx.mockResolvedValue({ user: null, isAdmin: false })
     expect((await POST(req({ path: PDF, language: 'fr' }))).status).toBe(401)
-    expect(mockEngine).not.toHaveBeenCalled()
+    expect(mockCreateJob).not.toHaveBeenCalled()
   })
 
   it('rejects non-admins with 403', async () => {
     mockCtx.mockResolvedValue({ user: { id: 'b' }, isAdmin: false })
     expect((await POST(req({ path: PDF, language: 'fr' }))).status).toBe(403)
-    expect(mockEngine).not.toHaveBeenCalled()
+    expect(mockCreateJob).not.toHaveBeenCalled()
   })
 
   it('rejects an unknown path and a non-PDF file with 400', async () => {
@@ -41,24 +45,21 @@ describe('POST /api/doc-translate', () => {
     expect((await POST(req({ path: PDF, language: 'xx' }))).status).toBe(400)
   })
 
-  it('hands a valid request to the engine and returns the PDF', async () => {
-    mockEngine.mockResolvedValue({ ok: true, pdf: Buffer.from('%PDF-1.4 fake'), flags: [{}, {}], stats: { pages: 11, units: 200, shortened: 3 } })
+  it('starts a job in the background and answers 202 with its id', async () => {
     const res = await POST(req({ path: PDF, language: 'fr' }))
-    expect(res.status).toBe(200)
-    expect(res.headers.get('Content-Type')).toBe('application/pdf')
-    expect(res.headers.get('X-Translation-Flags')).toBe('2')
-    expect(res.headers.get('Content-Disposition')).toContain(encodeURIComponent('LoveLab Brand Presentation — English — French.pdf'))
-    expect(Buffer.from(await res.arrayBuffer()).toString()).toBe('%PDF-1.4 fake')
-    expect(mockEngine).toHaveBeenCalledWith({
+    expect(res.status).toBe(202)
+    expect(await res.json()).toEqual({ id: 'job-1' })
+    expect(mockCreateJob).toHaveBeenCalledWith({ admin: true }, {
+      userId: 'a',
       file: expect.objectContaining({ path: PDF }),
       language: expect.objectContaining({ code: 'fr' }),
     })
+    expect(mockRunJob).toHaveBeenCalledWith({ admin: true }, expect.objectContaining({ id: 'job-1' }))
   })
 
-  it('passes the engine error status through', async () => {
-    mockEngine.mockResolvedValue({ ok: false, status: 501, error: 'not connected' })
-    const res = await POST(req({ path: PDF, language: 'fr' }))
-    expect(res.status).toBe(501)
-    expect((await res.json()).error).toBe('not connected')
+  it('answers 500 when the job cannot be created', async () => {
+    mockCreateJob.mockRejectedValue(new Error('no table'))
+    expect((await POST(req({ path: PDF, language: 'fr' }))).status).toBe(500)
+    expect(mockRunJob).not.toHaveBeenCalled()
   })
 })
