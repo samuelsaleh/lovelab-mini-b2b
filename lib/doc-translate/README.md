@@ -28,3 +28,17 @@ files yet; they are 3-9 MB each.
 
 The engine (`translateDocument`) is called only from `jobs.js`, so a different engine (e.g. a
 managed agent) can replace it without touching routes or UI.
+
+## Library of translated documents
+
+A finished translation is also listed in the Resources card, in the folder of the document it
+came from (Brand Documents, Catalogue, Price List), as a row like the others: download, tick to
+email. Admin only (`lib/doc-translate/library.js`):
+
+- `translations/index.json` in the `documents` bucket keeps the newest translation per
+  (document, language); it is rebuilt from the job files if it does not exist.
+- `GET /api/doc-translations` lists them, `GET /api/doc-translations/<id>/file` downloads one.
+- `/api/resources/send-email` accepts those file paths (admin only) and attaches the PDF from storage,
+  like order packs.
+- Not offered to agents: unchecked machine translations are not sent to clients by accident.
+  Nothing deletes a translation yet.

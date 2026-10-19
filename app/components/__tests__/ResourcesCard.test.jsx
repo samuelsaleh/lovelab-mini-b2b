@@ -257,9 +257,12 @@ describe('ResourcesCard — Packs folder states', () => {
   })
 
   it('shows an error with a working "Try again" when the API fails', async () => {
-    global.fetch = jest.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) })
-      .mockResolvedValueOnce(okResponse())
+    let packCalls = 0
+    global.fetch = jest.fn((url) => {
+      if (String(url) === '/api/doc-translations') return Promise.resolve({ ok: true, json: async () => ({ translations: [] }) })
+      packCalls += 1
+      return Promise.resolve(packCalls === 1 ? { ok: false, status: 500, json: async () => ({}) } : okResponse())
+    })
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     try {
       render(<ResourcesCard isAdmin={true} userEmail="admin@example.com" />)
@@ -268,7 +271,7 @@ describe('ResourcesCard — Packs folder states', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Could not load the files.')
 
       await act(async () => { fireEvent.click(screen.getByText('Try again')) })
-      expect(global.fetch).toHaveBeenCalledTimes(2)
+      expect(global.fetch.mock.calls.filter(([u]) => String(u).startsWith('/api/pack-templates'))).toHaveLength(2)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getByText('LoveLab_Order_Template_Pack_2.xlsx')).toBeInTheDocument()
     } finally {
@@ -327,6 +330,9 @@ describe('ResourcesCard — Translate to… (admin only)', () => {
       if (String(url).startsWith('/api/pack-templates')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) })
       }
+      if (String(url) === '/api/doc-translations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ translations: [] }) })
+      }
       return translate(url)
     })
   }
@@ -379,7 +385,7 @@ describe('ResourcesCard — Translate to… (admin only)', () => {
     HTMLAnchorElement.prototype.click = function () { clicked.push({ href: this.href, name: this.download }) }
     try {
       await pickLanguage(EN_BRAND, /German/)
-      expect(await screen.findByText(/German: downloaded\. 2 paragraphs to check/)).toBeInTheDocument()
+      expect(await screen.findByText(/German: downloaded and added to the list\. 2 paragraphs to check/)).toBeInTheDocument()
       expect(clicked).toEqual([{ href: 'https://signed/x.pdf', name: 'Brand — German.pdf' }])
       expect(global.fetch.mock.calls.filter(([u]) => u === '/api/doc-translate/job-1')).toHaveLength(2)
     } finally {
@@ -393,3 +399,90 @@ describe('ResourcesCard — Translate to… (admin only)', () => {
     expect(await screen.findByText(/Dutch: This PDF has no text to translate/)).toBeInTheDocument()
   })
 })
+
+describe('ResourcesCard — translated documents in the folders', () => {
+  const EN_BRAND_PATH = '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf'
+  const OCT_PRICE_PATH = '/Price Lists/Pricelist_LoveLab_2026_October.pdf'
+  const original = global.fetch
+  afterEach(() => { global.fetch = original })
+
+  const translations = [
+    { id: 't1', name: 'LoveLab Brand Presentation — English — French.pdf', path: '/api/doc-translations/t1/file', source_path: EN_BRAND_PATH, language: 'fr' },
+    { id: 't2', name: 'Pricelist_LoveLab_2026_October — Dutch.pdf', path: '/api/doc-translations/t2/file', source_path: OCT_PRICE_PATH, language: 'nl' },
+  ]
+  const mockLibrary = (list = translations) => {
+    global.fetch = jest.fn((url) => {
+      if (String(url) === '/api/doc-translations') return Promise.resolve({ ok: true, json: () => Promise.resolve({ translations: list }) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) })
+    })
+  }
+
+  it('lists a translation in the folder of its source document, as a row like the others', async () => {
+    mockLibrary()
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Brand Documents'))
+    const link = (await screen.findByText('LoveLab Brand Presentation — English — French.pdf')).closest('a')
+    expect(link.getAttribute('href')).toBe('/api/doc-translations/t1/file')
+    expect(link.getAttribute('download')).toBe('LoveLab Brand Presentation — English — French.pdf')
+    expect(screen.getByLabelText('Select LoveLab Brand Presentation — English — French.pdf')).toBeInTheDocument()
+    // not under the price list, and no "Translate to…" on a translated row
+    expect(screen.queryByText('Pricelist_LoveLab_2026_October — Dutch.pdf')).not.toBeInTheDocument()
+    const row = link.closest('div')
+    expect(row.querySelector('button[aria-haspopup="listbox"]')).toBeNull()
+  })
+
+  it('can be ticked and emailed together with other documents', async () => {
+    mockLibrary()
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Brand Documents'))
+    fireEvent.click(await screen.findByLabelText('Select LoveLab Brand Presentation — English — French.pdf'))
+    fireEvent.click(screen.getByLabelText('Select LoveLab Brand Presentation — English.pdf'))
+    expect(screen.getByText(/Send 2 files by email/i)).toBeInTheDocument()
+  })
+
+  it('shows the price-list translation in the Price List folder', async () => {
+    mockLibrary()
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Price List'))
+    expect(await screen.findByText('Pricelist_LoveLab_2026_October — Dutch.pdf')).toBeInTheDocument()
+  })
+
+  it('never asks for translated documents when the user is not an admin', async () => {
+    mockLibrary()
+    await act(async () => { render(<ResourcesCard isAdmin={false} />) })
+    expect(global.fetch.mock.calls.some(([u]) => String(u) === '/api/doc-translations')).toBe(false)
+  })
+
+  it('still renders the folders when the list cannot be loaded', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) }))
+    await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+    fireEvent.click(screen.getByText('Brand Documents'))
+    expect(screen.getByText('LoveLab Brand Presentation — English.pdf')).toBeInTheDocument()
+  })
+
+  it('reloads the list after a translation finishes', async () => {
+    let calls = 0
+    global.fetch = jest.fn((url) => {
+      const u = String(url)
+      if (u === '/api/doc-translations') { calls += 1; return Promise.resolve({ ok: true, json: () => Promise.resolve({ translations: calls > 1 ? translations : [] }) }) }
+      if (u === '/api/doc-translate') return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({ id: 'job-1' }) })
+      if (u.startsWith('/api/doc-translate/')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'done', url: 'https://signed/x.pdf', filename: 'x.pdf', flags: 0, pages: 11 }) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ templates: [] }) })
+    })
+    const origClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () {}
+    try {
+      await act(async () => { render(<ResourcesCard isAdmin={true} />) })
+      fireEvent.click(screen.getByText('Brand Documents'))
+      expect(screen.queryByText('LoveLab Brand Presentation — English — French.pdf')).not.toBeInTheDocument()
+      const row = screen.getByText('LoveLab Brand Presentation — English.pdf').closest('div')
+      fireEvent.click(row.querySelector('button[aria-haspopup="listbox"]'))
+      await act(async () => { fireEvent.mouseDown(screen.getByRole('option', { name: /French/ })) })
+      expect(await screen.findByText('LoveLab Brand Presentation — English — French.pdf')).toBeInTheDocument()
+    } finally {
+      HTMLAnchorElement.prototype.click = origClick
+    }
+  })
+})
+

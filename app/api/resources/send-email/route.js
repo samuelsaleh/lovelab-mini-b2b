@@ -8,6 +8,7 @@ import { clientResourcesEmail } from '@/lib/email-templates';
 import { packTemplateIdFromPath, resolvePackTemplate } from '@/lib/packTemplates';
 import { ALLOWED_RESOURCE_PATH_RE, publicAssetHref } from '@/lib/publicAssetHref';
 import { isAgentResourcePath } from '@/lib/b2b-files';
+import { translationIdFromPath, getTranslatedFile } from '@/lib/doc-translate/library';
 
 export const runtime = 'nodejs';
 
@@ -135,6 +136,24 @@ export async function POST(request) {
         }
         attachments.push({ filename: resolved.fileName, content: resolved.buffer.toString('base64') });
         fileNames.push(resolved.fileName);
+        continue;
+      }
+
+      // Translated documents (made by an admin, stored privately): resolve through storage.
+      // Not an agent path, so the admin check above already keeps everyone else out.
+      const translationId = translationIdFromPath(filePath);
+      if (translationId) {
+        const translated = await getTranslatedFile(admin, translationId);
+        if (!translated) {
+          return NextResponse.json({ error: `Translated document not found: ${filePath}` }, { status: 404 });
+        }
+        totalBytes += translated.buffer.length;
+        if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+          const mb = (MAX_TOTAL_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(0);
+          return NextResponse.json({ error: `Attachments exceed ${mb} MB total` }, { status: 413 });
+        }
+        attachments.push({ filename: translated.fileName, content: translated.buffer.toString('base64') });
+        fileNames.push(translated.fileName);
         continue;
       }
 
