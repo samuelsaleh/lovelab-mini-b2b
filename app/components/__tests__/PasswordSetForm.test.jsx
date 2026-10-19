@@ -4,10 +4,9 @@
  * Shared form used by /set-password and /reset-password. Confirms:
  *   - Renders the supplied headline/subtext/submitLabel
  *   - Validates length and confirmation match before calling Supabase
- *   - Calls supabase.auth.updateUser then PATCH /api/me/password-set
+ *   - Sends the password to PATCH /api/me/password-set when markPasswordSet=true
  *   - Calls onSuccess on success, surfaces server errors to the UI
- *   - markPasswordSet=false skips the PATCH call (used by /reset-password
- *     when we don't care about the has_password_set flag)
+ *   - markPasswordSet=false updates Supabase directly and skips the PATCH call
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -70,7 +69,7 @@ describe('PasswordSetForm', () => {
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
-  it('calls updateUser, marks password-set, then onSuccess on happy path', async () => {
+  it('sends the password to the trusted route before onSuccess on happy path', async () => {
     const onSuccess = jest.fn();
     const user = userEvent.setup();
     render(<PasswordSetForm onSuccess={onSuccess} />);
@@ -78,14 +77,21 @@ describe('PasswordSetForm', () => {
     await user.type(screen.getByPlaceholderText(/repeat/i), 'newgoodpw1!');
     await user.click(screen.getByRole('button', { name: /save/i }));
 
-    await waitFor(() => expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'newgoodpw1!' }));
     await waitFor(() =>
-      expect(global.fetch).toHaveBeenCalledWith('/api/me/password-set', expect.objectContaining({ method: 'PATCH' })),
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/me/password-set',
+        expect.objectContaining({
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: 'newgoodpw1!' }),
+        }),
+      ),
     );
+    expect(mockUpdateUser).not.toHaveBeenCalled();
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
-  it('skips the PATCH call when markPasswordSet=false', async () => {
+  it('updates Supabase directly and skips the PATCH call when markPasswordSet=false', async () => {
     const onSuccess = jest.fn();
     const user = userEvent.setup();
     render(<PasswordSetForm onSuccess={onSuccess} markPasswordSet={false} />);
@@ -98,8 +104,11 @@ describe('PasswordSetForm', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
   });
 
-  it('surfaces Supabase error and does not call onSuccess', async () => {
-    mockUpdateUser.mockResolvedValueOnce({ data: null, error: { message: 'Invalid token' } });
+  it('surfaces trusted route errors and does not call onSuccess', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Invalid token' }),
+    });
     const onSuccess = jest.fn();
     const user = userEvent.setup();
     render(<PasswordSetForm onSuccess={onSuccess} />);
@@ -110,14 +119,15 @@ describe('PasswordSetForm', () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
-  it('does not block on PATCH failure (best-effort flag flip)', async () => {
-    global.fetch.mockRejectedValueOnce(new Error('network down'));
+  it('surfaces Supabase errors when markPasswordSet=false', async () => {
+    mockUpdateUser.mockResolvedValueOnce({ data: null, error: { message: 'Invalid token' } });
     const onSuccess = jest.fn();
     const user = userEvent.setup();
-    render(<PasswordSetForm onSuccess={onSuccess} />);
+    render(<PasswordSetForm onSuccess={onSuccess} markPasswordSet={false} />);
     await user.type(screen.getByPlaceholderText(/at least 8/i), 'newgoodpw1!');
     await user.type(screen.getByPlaceholderText(/repeat/i), 'newgoodpw1!');
     await user.click(screen.getByRole('button', { name: /save/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(await screen.findByText(/invalid token/i)).toBeInTheDocument();
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });

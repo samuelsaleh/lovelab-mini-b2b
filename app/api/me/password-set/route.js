@@ -7,11 +7,31 @@ export async function PATCH(request) {
   if (rateLimitRes) return rateLimitRes;
 
   try {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) {
+      return NextResponse.json(
+        { error: updateError.message || 'Failed to update password' },
+        { status: 400 },
+      );
     }
 
     const adminSupabase = createAdminClient();
