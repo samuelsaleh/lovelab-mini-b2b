@@ -347,19 +347,49 @@ describe('ResourcesCard — Translate to… (admin only)', () => {
     expect(row.querySelector('button[aria-haspopup="listbox"]')).toBeNull()
   })
 
-  it('posts the document path and language, and reports a failure', async () => {
-    mockFetch(() => Promise.resolve({ ok: false, status: 501, json: () => Promise.resolve({ error: 'Translation engine is not connected yet' }) }))
+  const json = (body, ok = true, status = 200) => Promise.resolve({ ok, status, json: () => Promise.resolve(body) })
+  const pickLanguage = async (fileName, lang) => {
     await act(async () => { render(<ResourcesCard isAdmin={true} />) })
     fireEvent.click(screen.getByText('Brand Documents'))
-    const row = screen.getByText(EN_BRAND).closest('div')
+    const row = screen.getByText(fileName).closest('div')
     fireEvent.click(row.querySelector('button[aria-haspopup="listbox"]'))
-    await act(async () => { fireEvent.mouseDown(screen.getByRole('option', { name: /French/ })) })
+    await act(async () => { fireEvent.mouseDown(screen.getByRole('option', { name: lang })) })
+  }
+
+  it('posts the document path and language, and reports a failure', async () => {
+    mockFetch(() => json({ error: 'Admin access required' }, false, 403))
+    await pickLanguage(EN_BRAND, /French/)
     const call = global.fetch.mock.calls.find(([u]) => u === '/api/doc-translate')
     expect(call).toBeTruthy()
     expect(JSON.parse(call[1].body)).toEqual({
       path: '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf',
       language: 'fr',
     })
-    expect(await screen.findByText(/French: Translation engine is not connected yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/French: Admin access required/)).toBeInTheDocument()
+  })
+
+  it('waits for the job, then downloads from the signed link and says how many paragraphs need a look', async () => {
+    const statuses = [
+      { status: 'running' },
+      { status: 'done', url: 'https://signed/x.pdf', filename: 'Brand — German.pdf', flags: 2, pages: 11 },
+    ]
+    mockFetch((url) => (url === '/api/doc-translate' ? json({ id: 'job-1' }, true, 202) : json(statuses.shift())))
+    const clicked = []
+    const origClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () { clicked.push({ href: this.href, name: this.download }) }
+    try {
+      await pickLanguage(EN_BRAND, /German/)
+      expect(await screen.findByText(/German: downloaded\. 2 paragraphs to check/)).toBeInTheDocument()
+      expect(clicked).toEqual([{ href: 'https://signed/x.pdf', name: 'Brand — German.pdf' }])
+      expect(global.fetch.mock.calls.filter(([u]) => u === '/api/doc-translate/job-1')).toHaveLength(2)
+    } finally {
+      HTMLAnchorElement.prototype.click = origClick
+    }
+  })
+
+  it('shows the reason when the job fails', async () => {
+    mockFetch((url) => (url === '/api/doc-translate' ? json({ id: 'job-1' }, true, 202) : json({ status: 'failed', error: 'This PDF has no text to translate' })))
+    await pickLanguage(EN_BRAND, /Dutch/)
+    expect(await screen.findByText(/Dutch: This PDF has no text to translate/)).toBeInTheDocument()
   })
 })

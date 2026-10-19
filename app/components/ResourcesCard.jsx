@@ -153,6 +153,10 @@ function LinkButton({ href, children, variant = 'outline' }) {
   )
 }
 
+// How often to ask whether a translation is done, and when to give up.
+const TRANSLATE_POLL_MS = process.env.NODE_ENV === 'test' ? 5 : 2000
+const TRANSLATE_MAX_WAIT_MS = 6 * 60 * 1000
+
 export default function ResourcesCard({ isAdmin = false, userEmail, organizationId }) {
   const { lang, t } = useI18n()
   const previewCatalogues = getVisibleCatalogues({ isAdmin, userEmail, organizationId })
@@ -181,10 +185,31 @@ export default function ResourcesCard({ isAdmin = false, userEmail, organization
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: file.path, language: language.code }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      if (data.downloadUrl) window.open(data.downloadUrl, '_blank', 'noreferrer')
-      setTranslateMsg({ ok: true, text: `${file.name} → ${language.name}` })
+      const started = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(started.error || `HTTP ${res.status}`)
+
+      // The translation runs in the background; ask until it is done.
+      let job = { status: 'queued' }
+      for (let waited = 0; job.status === 'queued' || job.status === 'running'; waited += TRANSLATE_POLL_MS) {
+        if (waited > TRANSLATE_MAX_WAIT_MS) throw new Error('This is taking too long. Please try again.')
+        await new Promise((r) => setTimeout(r, TRANSLATE_POLL_MS))
+        const poll = await fetch(`/api/doc-translate/${started.id}`)
+        job = await poll.json().catch(() => ({}))
+        if (!poll.ok) throw new Error(job.error || `HTTP ${poll.status}`)
+      }
+      if (job.status !== 'done') throw new Error(job.error || 'Translation failed')
+
+      const a = document.createElement('a')
+      a.href = job.url
+      a.download = job.filename || `${file.name.replace(/\.pdf$/i, '')} — ${language.name}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      const flags = Number(job.flags || 0)
+      setTranslateMsg({
+        ok: true,
+        text: `${file.name} → ${language.name}: downloaded${flags ? `. ${flags} paragraph${flags > 1 ? 's' : ''} to check (did not fit or not translated).` : '.'}`,
+      })
     } catch (err) {
       setTranslateMsg({ ok: false, text: `${file.name} → ${language.name}: ${err.message}` })
     } finally {

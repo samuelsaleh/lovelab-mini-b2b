@@ -49,3 +49,4 @@ public/Packshot Folder/
 # Database backups (contain production data)
 backups/
 showroom-accestory-identifiants.txt
+__pycache__/

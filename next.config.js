@@ -5,6 +5,12 @@ const nextConfig = {
   experimental: {
     proxyClientMaxBodySize: '25mb',
   },
+  // MuPDF is an ESM + WASM package: load it from node_modules at runtime instead
+  // of bundling it, and ship its fonts and the source PDFs with the translate route.
+  serverExternalPackages: ['mupdf'],
+  outputFileTracingIncludes: {
+    '/api/doc-translate': ['./lib/doc-translate/fonts/**/*', './public/**/*.pdf'],
+  },
   turbopack: {},
   webpack: (config, { isServer }) => {
     if (!isServer) {
