@@ -5,13 +5,14 @@
  */
 const mockCreateJob = jest.fn()
 const mockRunJob = jest.fn()
+const mockBusy = jest.fn()
 const mockCtx = jest.fn()
 const mockAfter = jest.fn((fn) => fn())
 jest.mock('next/server', () => ({ ...jest.requireActual('next/server'), after: (fn) => mockAfter(fn) }))
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn().mockResolvedValue({}), createAdminClient: () => ({ admin: true }) }))
 jest.mock('@/app/api/_lib/access', () => ({ getUserContext: (...a) => mockCtx(...a) }))
 jest.mock('@/lib/rateLimit', () => ({ checkRateLimit: () => null }))
-jest.mock('@/lib/doc-translate/jobs', () => ({ createJob: (...a) => mockCreateJob(...a), runJob: (...a) => mockRunJob(...a) }))
+jest.mock('@/lib/doc-translate/jobs', () => ({ createJob: (...a) => mockCreateJob(...a), runJob: (...a) => mockRunJob(...a), jobsAreBusy: () => mockBusy() }))
 
 const { POST } = require('../doc-translate/route')
 const PDF = '/BRAND PRESENTATION DOCS/LoveLab_Brand_Presentation_General_EN.pdf'
@@ -20,6 +21,7 @@ const req = (body) => ({ json: jest.fn().mockResolvedValue(body), headers: new M
 beforeEach(() => {
   mockCreateJob.mockReset().mockResolvedValue('job-1')
   mockRunJob.mockReset().mockResolvedValue()
+  mockBusy.mockReset().mockReturnValue(false)
   mockCtx.mockReset().mockResolvedValue({ user: { id: 'a' }, isAdmin: true })
 })
 
@@ -55,6 +57,13 @@ describe('POST /api/doc-translate', () => {
       language: expect.objectContaining({ code: 'fr' }),
     })
     expect(mockRunJob).toHaveBeenCalledWith({ admin: true }, expect.objectContaining({ id: 'job-1', userId: 'a' }))
+  })
+
+  it('answers 429 when too many translations are already running', async () => {
+    mockBusy.mockReturnValue(true)
+    const res = await POST(req({ path: PDF, language: 'fr' }))
+    expect(res.status).toBe(429)
+    expect(mockCreateJob).not.toHaveBeenCalled()
   })
 
   it('answers 500 when the job cannot be created', async () => {

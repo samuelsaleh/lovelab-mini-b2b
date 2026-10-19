@@ -15,7 +15,7 @@ import { getUserContext } from '@/app/api/_lib/access'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { findB2BFileByPath } from '@/lib/b2b-files'
 import { TRANSLATION_LANGUAGES } from '@/lib/doc-translate/languages'
-import { createJob, runJob } from '@/lib/doc-translate/jobs'
+import { createJob, runJob, jobsAreBusy } from '@/lib/doc-translate/jobs'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -37,6 +37,8 @@ export async function POST(request) {
     }
     const language = TRANSLATION_LANGUAGES.find((l) => l.code === body?.language)
     if (!language) return NextResponse.json({ error: 'Unsupported language' }, { status: 400 })
+
+    if (jobsAreBusy()) return NextResponse.json({ error: 'Other translations are running. Please try again in a minute.' }, { status: 429 })
 
     const admin = createAdminClient()
     const id = await createJob(admin, { userId: user.id, file, language })
