@@ -54,7 +54,7 @@ describe('POST /api/doc-translate', () => {
       file: expect.objectContaining({ path: PDF }),
       language: expect.objectContaining({ code: 'fr' }),
     })
-    expect(mockRunJob).toHaveBeenCalledWith({ admin: true }, expect.objectContaining({ id: 'job-1' }))
+    expect(mockRunJob).toHaveBeenCalledWith({ admin: true }, expect.objectContaining({ id: 'job-1', userId: 'a' }))
   })
 
   it('answers 500 when the job cannot be created', async () => {

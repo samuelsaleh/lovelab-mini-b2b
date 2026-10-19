@@ -14,17 +14,17 @@ Known limits: text inside images is not translated; rotated pages are skipped; V
 
 ## Jobs and storage
 
-`POST /api/doc-translate` no longer returns the PDF. It creates a row in
-`translation_jobs`, answers `202 { id }` and runs the translation after the
-response (`after()` in `app/api/doc-translate/route.js`, up to `maxDuration`).
-The finished PDF goes in the private `translated-documents` bucket and
-`GET /api/doc-translate/[id]` returns the status; when done it carries a
-10-minute signed link, the page count and the number of flagged paragraphs.
-The Resources card polls every 2 s. A job that stops reporting for 6 min shows
-as failed.
+`POST /api/doc-translate` no longer returns the PDF. It writes a job file, answers
+`202 { id }` and runs the translation after the response (`after()` in
+`app/api/doc-translate/route.js`, up to `maxDuration`). The finished PDF is stored and
+`GET /api/doc-translate/[id]` returns the status; when done it carries a 10-minute signed
+link, the page count and the number of flagged paragraphs. The Resources card polls every
+2 s. A job that stops reporting for 6 min shows as failed.
 
-Needs, run by Sam: `supabase/migrations/20261019120000_translation_jobs.sql`
-(table + bucket). Without it the button answers "Translation failed".
+Nothing to migrate: everything is in the private `documents` bucket the app already uses
+(server-side, admin client), under `translations/<job id>/`:
+`job.json` (status, who asked, flags) and `<name> — <Language>.pdf`. Nothing deletes old
+files yet; they are 3-9 MB each.
 
-The engine (`translateDocument`) is called only from `jobs.js`, so a different
-engine (e.g. a managed agent) can replace it without touching routes or UI.
+The engine (`translateDocument`) is called only from `jobs.js`, so a different engine (e.g. a
+managed agent) can replace it without touching routes or UI.

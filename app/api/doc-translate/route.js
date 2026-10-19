@@ -41,7 +41,7 @@ export async function POST(request) {
     const admin = createAdminClient()
     const id = await createJob(admin, { userId: user.id, file, language })
     // Keeps running after the 202 is sent; the browser polls /api/doc-translate/[id].
-    after(() => runJob(admin, { id, file, language }))
+    after(() => runJob(admin, { id, userId: user.id, file, language }))
     return NextResponse.json({ id }, { status: 202, headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     console.error('[doc-translate POST] Exception:', err?.message)
