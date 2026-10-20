@@ -8,12 +8,17 @@ import { fetchAllDocuments } from '@/lib/fetchAllDocuments'
 import { normalizeCountry } from '@/lib/countries'
 import { deriveCity, cityFoldKey, buildCityLabels } from '@/lib/clientAddress'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
+import {
+  diamondLinesOf, hasDiamondFilter, lineMatchesDiamond, sumLines, diamondOptions, diamondSummary, modelSummary,
+} from '@/lib/diamondLines'
+import DiamondFilter, { caratFormat } from './DiamondFilter'
 
 // ─── Column config ─────────────────────────────────────────────────────────
 
-const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Channel', 'Agent', 'Type', 'Source', 'Amount']
+const ALL_COLUMNS = ['Date', 'Client', 'Country', 'City', 'Event', 'Channel', 'Agent', 'Type', 'Model', 'Diamond', 'Source', 'Amount']
 
 const NEW_COLUMNS = ['Channel', 'Agent']
+const DIAMOND_COLUMNS = ['Model', 'Diamond']
 
 const UNKNOWN_CITY = 'Unknown'
 
@@ -48,6 +53,9 @@ function getCellValue(row, col) {
     case 'Channel': return row.channel ? row.channel.toUpperCase() : '—'
     case 'Agent':  return row.agentName || '—'
     case 'Type':   return row.document_type
+    // One entry per line break; the table shows them stacked, Excel joins them.
+    case 'Model':  return modelSummary(row.shownLines || []).join('\n')
+    case 'Diamond': return diamondSummary(row.shownLines || []).join('\n')
     case 'Source': return row.sourceLabel
     case 'Amount': return row.amount != null ? String(row.amount) : '0'
     default: return ''
@@ -66,6 +74,9 @@ const initialFilters = {
   channel: 'all',
   agentIds: [],
   source: 'all',
+  models: [],
+  carats: [],
+  shapes: [],
   search: '',
   minAmount: '',
   maxAmount: '',
@@ -84,6 +95,7 @@ export function filtersFromSavedConfig(cfg = {}) {
   next.eventIds = Array.isArray(next.eventIds) ? next.eventIds.filter(Boolean) : []
   next.eventTypes = Array.isArray(next.eventTypes) ? next.eventTypes.filter(Boolean) : []
   next.agentIds = Array.isArray(next.agentIds) ? next.agentIds.filter(Boolean) : []
+  for (const k of ['models', 'carats', 'shapes']) next[k] = Array.isArray(next[k]) ? next[k].filter(Boolean) : []
   if (!CHANNELS.some((c) => c.key === next.channel)) next.channel = 'all'
   if (next.source !== 'document' && next.source !== 'salesforce') next.source = 'all'
   if (!next.eventIds.length && typeof eventId === 'string' && eventId) next.eventIds = [eventId]
@@ -210,6 +222,7 @@ export default function ReportsDashboard() {
       dateISO: d.created_at ? new Date(d.created_at).toISOString().slice(0, 10) : '',
       clientLabel: d.client_company || d.client_name || 'Unknown',
       eventLabel: d.events?.name || 'No Event',
+      lines: diamondLinesOf(d),
     }))
   }, [documents])
 
@@ -234,6 +247,7 @@ export default function ReportsDashboard() {
         eventLabel: 'Salesforce import',
         document_type: 'account',
         event_id: null,
+        lines: [],
       }))
   }, [clients])
 
@@ -256,8 +270,28 @@ export default function ReportsDashboard() {
 
   useEffect(() => { setPage(0) }, [filters])
 
+  const diamondOn = hasDiamondFilter(filters)
+
+  // With a diamond filter an order is judged on its matching lines: it drops
+  // out when none match, and its amount shrinks to those lines. Salesforce
+  // accounts have no lines, so they drop out too.
+  const scopedRows = useMemo(() => {
+    return rows.flatMap((r) => {
+      if (!diamondOn) return [{ ...r, shownLines: r.lines }]
+      if (r.rowType !== 'document') return []
+      const shownLines = r.lines.filter((l) => lineMatchesDiamond(l, filters))
+      if (!shownLines.length) return []
+      return [{ ...r, shownLines, amount: sumLines(shownLines).total }]
+    })
+  }, [rows, filters.models, filters.carats, filters.shapes, diamondOn])
+
+  const diamondChoices = useMemo(
+    () => diamondOptions(documentRows),
+    [documentRows],
+  )
+
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
+    return scopedRows.filter((r) => {
       if (!matchesEventFilter(r, filters)) return false
       if (!matchesSalesFilters(r, filters)) return false
       if (filters.country !== 'all' && r.country !== filters.country) return false
@@ -284,7 +318,7 @@ export default function ReportsDashboard() {
       }
       return true
     })
-  }, [rows, filters])
+  }, [scopedRows, filters])
 
   const kpis = useMemo(() => {
     const documentOnly = filteredRows.filter((r) => r.rowType === 'document')
@@ -296,7 +330,8 @@ export default function ReportsDashboard() {
           .filter((r) => r.document_type === 'order')
           .reduce((sum, r) => sum + r.amount, 0) / totalOrders
       : 0
-    return { totalRevenue, totalOrders, totalQuotes, avgOrderValue }
+    const totalPieces = documentOnly.reduce((sum, r) => sum + sumLines(r.shownLines).qty, 0)
+    return { totalRevenue, totalOrders, totalQuotes, avgOrderValue, totalPieces }
   }, [filteredRows])
 
   const countryOptions = useMemo(() => {
@@ -428,8 +463,9 @@ export default function ReportsDashboard() {
       ? filters.agentIds.map(id => agentOptions.find(a => a.id === id)?.name).filter(Boolean).join(', ')
       : ''
     const sourceLabel = filters.source === 'document' ? 'Orders only' : filters.source === 'salesforce' ? 'Salesforce only' : ''
+    const diamondLabel = [...filters.models, ...filters.carats.map(caratFormat), ...filters.shapes].join(', ')
     const subtitleCell = ws.getCell('A2')
-    subtitleCell.value = [reportLabel, eventLabel, channelLabel, agentLabel, sourceLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
+    subtitleCell.value = [reportLabel, eventLabel, channelLabel, agentLabel, sourceLabel, diamondLabel, countryLabel, dateLabel].filter(Boolean).join('   ·   ')
     subtitleCell.font  = { size: 10, color: { argb: 'FFCFAECF' }, italic: true, name: 'Calibri' }
     subtitleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: PLUM } }
     subtitleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
@@ -503,7 +539,7 @@ export default function ReportsDashboard() {
           cell.font   = { bold: true, color: { argb: PLUM }, size: 11, name: 'Calibri' }
           cell.alignment = { horizontal: 'right', vertical: 'middle' }
         } else {
-          cell.value = getCellValue(r, col) || ''
+          cell.value = String(getCellValue(r, col) || '').replace(/\n/g, ', ')
           cell.font  = { size: 10, color: { argb: TEXT_GRAY }, name: 'Calibri' }
           cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
         }
@@ -533,7 +569,7 @@ export default function ReportsDashboard() {
     })
 
     // ── Column widths ────────────────────────────────────────────────────────
-    const colWidths = { Date: 14, Client: 30, Country: 18, City: 18, Event: 26, Channel: 11, Agent: 22, Type: 12, Source: 14, Amount: 16 }
+    const colWidths = { Date: 14, Client: 30, Country: 18, City: 18, Event: 26, Channel: 11, Agent: 22, Type: 12, Model: 24, Diamond: 28, Source: 14, Amount: 16 }
     activeColumns.forEach((col, i) => {
       ws.getColumn(i + 1).width = colWidths[col] || 16
     })
@@ -571,8 +607,9 @@ export default function ReportsDashboard() {
     if (Array.isArray(cfg.visibleColumns) && cfg.visibleColumns.length > 0) {
       const restored = new Set(cfg.visibleColumns.filter(c => ALL_COLUMNS.includes(c)))
       // A preset saved before Channel and Agent existed can't have chosen to
-      // hide them, so they come back switched on.
+      // hide them, so they come back switched on. Same for Model and Diamond.
       if (!('channel' in cfg)) NEW_COLUMNS.forEach((c) => restored.add(c))
+      if (!('models' in cfg)) DIAMOND_COLUMNS.forEach((c) => restored.add(c))
       setVisibleColumns(restored)
     } else {
       setVisibleColumns(new Set(ALL_COLUMNS))
@@ -713,6 +750,28 @@ export default function ReportsDashboard() {
               <option value="document">Orders only</option>
               <option value="salesforce">Salesforce only</option>
             </select>
+            <DiamondFilter
+              name="models"
+              allLabel="All models"
+              options={diamondChoices.models}
+              selected={filters.models}
+              onChange={(models) => setFilters((p) => ({ ...p, models }))}
+            />
+            <DiamondFilter
+              name="carats"
+              allLabel="All carats"
+              options={diamondChoices.carats}
+              selected={filters.carats}
+              onChange={(carats) => setFilters((p) => ({ ...p, carats }))}
+              format={caratFormat}
+            />
+            <DiamondFilter
+              name="shapes"
+              allLabel="All shapes"
+              options={diamondChoices.shapes}
+              selected={filters.shapes}
+              onChange={(shapes) => setFilters((p) => ({ ...p, shapes }))}
+            />
             <input
               value={filters.search}
               onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
@@ -739,6 +798,7 @@ export default function ReportsDashboard() {
           <Kpi label="Orders" value={kpis.totalOrders} />
           <Kpi label="Quotes" value={kpis.totalQuotes} />
           <Kpi label="Average Order" value={fmt(kpis.avgOrderValue)} />
+          {diamondOn && <Kpi label="Pieces matching" value={kpis.totalPieces} />}
         </div>
 
         <div style={{ background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 12, padding: 12, marginBottom: 14 }}>
@@ -875,6 +935,9 @@ export default function ReportsDashboard() {
                             }
                             if (col === 'Source') {
                               return <td key={col} style={tdStyle} title={r.sourceComment || ''}>{r.sourceLabel}</td>
+                            }
+                            if (DIAMOND_COLUMNS.includes(col)) {
+                              return <td key={col} style={{ ...tdStyle, whiteSpace: 'pre-line', verticalAlign: 'top' }}>{getCellValue(r, col) || '—'}</td>
                             }
                             return <td key={col} style={tdStyle}>{getCellValue(r, col)}</td>
                           })}
