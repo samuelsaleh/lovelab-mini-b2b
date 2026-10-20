@@ -46,7 +46,9 @@ ssh_cmd() {
   SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e ssh -n -o StrictHostKeyChecking=accept-new "${SERVER_USER}@${SERVER_HOST}" "$@"
 }
 
-get_local_val() { grep -m1 "^$1=" "$LOCAL_ENV" | cut -d= -f2-; }
+# `|| true`: under `set -e`, a key missing from .env made grep fail and the
+# whole script exit silently (20 Oct 2026). Now it reports "empty/unset".
+get_local_val() { { grep -m1 "^$1=" "$LOCAL_ENV" || true; } | cut -d= -f2-; }
 get_server_val() { ssh_cmd "grep '^$1=' '$SERVER_ENV' 2>/dev/null | cut -d= -f2-" || true; }
 
 is_protected() {
