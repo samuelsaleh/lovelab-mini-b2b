@@ -18,6 +18,10 @@ import {
 } from '@/lib/analyticsBreakdowns'
 import { clientNameFromDoc } from '@/lib/analyticsAliases'
 import AnalyticsChatPanel from './AnalyticsChatPanel'
+import DiamondFilter, { caratFormat } from './DiamondFilter'
+import {
+  EMPTY_DIAMOND_FILTER, diamondLinesOf, diamondOptions, hasDiamondFilter, scopeDocToDiamond, sumLines,
+} from '@/lib/diamondLines'
 import { safeFetch } from '@/lib/api'
 import { buildHousingSold, NOT_SPECIFIED } from '@/lib/housingColorStock'
 import {
@@ -448,6 +452,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   // (individual customers, no fairs/vitrines) so wholesale and website sales
   // don't blur together.
   const [channelScope, setChannelScope] = useState('all')
+  const [diamondFilter, setDiamondFilter] = useState(EMPTY_DIAMOND_FILTER)
   // Sales Timeline grouping: 'day' | 'week' | 'month'.
   const [timelineGroup, setTimelineGroup] = useState('day')
   const [colorSort, setColorSort] = useState('qty')
@@ -533,11 +538,44 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   // ─── Filtered docs based on the event OR agent selector ───────────────
   // (drafts + non-revenue channels are already excluded at load time)
+  // Model / carat / shape filter. Each order keeps only its matching lines and
+  // its total shrinks to their share, so every panel below follows the filter.
+  const diamondOn = hasDiamondFilter(diamondFilter)
+  const diamondChoices = useMemo(() => diamondOptions(channelDocs), [channelDocs])
+  const scopedChannelDocs = useMemo(() => {
+    if (!diamondOn) return channelDocs
+    return channelDocs.map(d => scopeDocToDiamond(d, diamondFilter)).filter(Boolean)
+  }, [channelDocs, diamondFilter, diamondOn])
   const docs = useMemo(() => {
-    if (selectedAgentId) return channelDocs.filter(d => d.agent_id === selectedAgentId)
-    if (selectedEventId) return channelDocs.filter(d => d.event_id === selectedEventId)
-    return channelDocs
-  }, [channelDocs, selectedEventId, selectedAgentId])
+    if (selectedAgentId) return scopedChannelDocs.filter(d => d.agent_id === selectedAgentId)
+    if (selectedEventId) return scopedChannelDocs.filter(d => d.event_id === selectedEventId)
+    return scopedChannelDocs
+  }, [scopedChannelDocs, selectedEventId, selectedAgentId])
+  const diamondLabel = [
+    ...diamondFilter.models, ...diamondFilter.carats.map(caratFormat), ...diamondFilter.shapes,
+  ].join(', ')
+  const diamondPieces = useMemo(
+    () => (diamondOn ? docs.reduce((n, d) => n + sumLines(diamondLinesOf(d)).qty, 0) : 0),
+    [docs, diamondOn],
+  )
+
+  // Pieces per model and carat, for the Diamond by model table.
+  const diamondGrid = useMemo(() => {
+    const cell = new Map()
+    const models = new Map()
+    const carats = new Set()
+    docs.forEach(d => diamondLinesOf(d).forEach(l => {
+      if (!l.model || !l.carat) return
+      carats.add(l.carat)
+      models.set(l.model, (models.get(l.model) || 0) + l.qty)
+      cell.set(`${l.model}|${l.carat}`, (cell.get(`${l.model}|${l.carat}`) || 0) + l.qty)
+    }))
+    return {
+      cell,
+      models: [...models.entries()].sort((a, b) => b[1] - a[1]),
+      carats: [...carats].sort((a, b) => parseFloat(a) - parseFloat(b)),
+    }
+  }, [docs])
 
   // ─── Excel export ─────────────────────────────────────────────────────
   // Exports exactly what the dashboard is showing: the channel pills and the
@@ -560,8 +598,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       const subtitle = [
         selectedEventName || 'All Events',
         channelScope === 'all' ? 'All channels' : channelScope.toUpperCase(),
+        diamondLabel,
         `${rows.length} row${rows.length === 1 ? '' : 's'}`,
-      ].join('   ·   ')
+      ].filter(Boolean).join('   ·   ')
       const buffer = await generateAnalyticsWorkbookBuffer({ rows, subtitle })
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -604,7 +643,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const revenuePerFair = useMemo(() => {
     if (selectedEventId) return []
     const map = new Map()
-    channelDocs.forEach(d => {
+    scopedChannelDocs.forEach(d => {
       if (d.document_type !== 'order') return
       const eid = d.event_id || '__none__'
       const eName = d.events?.name || 'No Event'
@@ -614,7 +653,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       entry.orders++
     })
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [channelDocs, selectedEventId])
+  }, [scopedChannelDocs, selectedEventId])
 
   // ─── Revenue per agent (who brought the order) ────────────────────────
   // Uses documents.agent_id, so an order an admin typed on Bastian's behalf
@@ -629,8 +668,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   // "At fair F, agent A brought N orders." Only meaningful on the global view.
   const agentFairMatrix = useMemo(() => {
     if (selectedEventId || selectedAgentId) return { fairs: [], agents: [], cells: new Map() }
-    return buildAgentFairMatrix(channelDocs, { agentNameById, fairNameById, fairIds })
-  }, [channelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
+    return buildAgentFairMatrix(scopedChannelDocs, { agentNameById, fairNameById, fairIds })
+  }, [scopedChannelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => buildCountryBreakdown(docs), [docs])
@@ -691,6 +730,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     const packMap = new Map()
     const cordMap = new Map()
     const sizeMap = new Map()
+    const modelMap = new Map()
 
     docs.forEach(d => {
       const fs = d.metadata?.formState
@@ -704,6 +744,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       (fs.rows || []).forEach(r => {
         if (!isValidRow(r)) return
         const qty = parseInt(r.quantity) || 0
+        { const k = matchCollectionLabel(r.collection); if (k) modelMap.set(k, (modelMap.get(k) || 0) + qty) }
         if (r.carat) { const k = r.carat.trim(); caratMap.set(k, (caratMap.get(k) || 0) + qty) }
         if (r.shape) { const k = r.shape.trim(); shapeMap.set(k, (shapeMap.get(k) || 0) + qty) }
         if (r.colorCord) { const k = r.colorCord.trim(); cordMap.set(k, (cordMap.get(k) || 0) + qty) }
@@ -713,6 +754,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
     const toSorted = (m) => Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
     return {
+      models: toSorted(modelMap),
       carats: toSorted(caratMap),
       shapes: toSorted(shapeMap),
       packaging: toSorted(packMap),
@@ -740,9 +782,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       ? events.find(e => e.id === selectedEventId)?.name || 'Unknown'
       : 'All Events'
     const scopeLabel = channelScope === 'b2c' ? 'B2C (website/individual sales)' : channelScope === 'b2b' ? 'B2B (wholesale)' : 'All channels'
-    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName} · scope: ${scopeLabel})`, '---']
+    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName} · scope: ${scopeLabel}${diamondLabel ? ` · diamond: ${diamondLabel}; amounts are the matching lines' share of each order; vitrines not included` : ''})`, '---']
 
-    lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} | Vitrines: ${kpis.totalVitrines} | Total Documents: ${kpis.totalDocs}`)
+    lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} ${diamondOn ? '' : `| Vitrines: ${kpis.totalVitrines} `}| Total Documents: ${kpis.totalDocs}`)
     lines.push('---')
 
     if (revenuePerFair.length > 0) {
@@ -763,7 +805,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       lines.push('---')
     }
 
-    if (vitrineData.rows.length > 0) {
+    if (!diamondOn && vitrineData.rows.length > 0) {
       lines.push(`VITRINE BREAKDOWN (${vitrineData.totalQty} total):`)
       vitrineData.rows.forEach(r => lines.push(`- ${r.company}: ${r.qty} vitrine${r.qty > 1 ? 's' : ''}, order total ${fmt(r.total)}`))
       lines.push('---')
@@ -790,7 +832,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     }
 
     return lines.join('\n')
-  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, colorBreakdown, quickStats, selectedEventId, events, channelScope])
+  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, colorBreakdown, quickStats, selectedEventId, events, channelScope, diamondOn, diamondLabel])
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -888,6 +930,31 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
               );
             })}
           </select>
+          <DiamondFilter
+            compact
+            name="models"
+            allLabel="All models"
+            options={diamondChoices.models}
+            selected={diamondFilter.models}
+            onChange={(models) => setDiamondFilter(p => ({ ...p, models }))}
+          />
+          <DiamondFilter
+            compact
+            name="carats"
+            allLabel="All carats"
+            options={diamondChoices.carats}
+            selected={diamondFilter.carats}
+            onChange={(carats) => setDiamondFilter(p => ({ ...p, carats }))}
+            format={caratFormat}
+          />
+          <DiamondFilter
+            compact
+            name="shapes"
+            allLabel="All shapes"
+            options={diamondChoices.shapes}
+            selected={diamondFilter.shapes}
+            onChange={(shapes) => setDiamondFilter(p => ({ ...p, shapes }))}
+          />
           {isB2C && (
             <span style={{ fontSize: 12, color: colors.lovelabMuted }}>
               Website / individual sales only
@@ -943,8 +1010,11 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           <KpiCard label="Avg. Order Value" value={fmt(kpis.avgOrder)} />
           {isB2C ? (
             <KpiCard label="Customers" value={fmtStat(kpis.uniqueCustomers)} sub="unique buyers" accent={colors.gradientDeep} />
-          ) : (
+          ) : !diamondOn && (
             <KpiCard label="Vitrines" value={fmtStat(kpis.totalVitrines)} sub={isHideRevenue() ? '—' : `${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
+          )}
+          {diamondOn && (
+            <KpiCard label="Pieces" value={fmtStat(diamondPieces)} sub="matching lines" accent={colors.gradientDeep} />
           )}
         </div>
 
@@ -1181,7 +1251,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           )}
 
           {/* Vitrine Summary */}
-          {vitrineData.rows.length > 0 && (
+          {!diamondOn && vitrineData.rows.length > 0 && (
             <Section title={isHideRevenue() ? 'Vitrine Summary' : `Vitrine Summary (${vitrineData.totalQty} total)`}>
               <RankedTable
                 columns={[
@@ -1233,9 +1303,71 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           <HousingColorTable rows={housingRows} />
         </Section>
 
+        {/* ─── Row 4c: Diamond by model — pieces per model and carat ─── */}
+        <Section
+          title="Diamond by model"
+          style={{ marginBottom: gridGap }}
+          actions={diamondOn ? (
+            <button
+              type="button"
+              onClick={() => setDiamondFilter(EMPTY_DIAMOND_FILTER)}
+              style={{ border: 'none', background: 'transparent', color: colors.inkPlum, cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: fonts.body }}
+            >
+              Clear diamond filters
+            </button>
+          ) : null}
+        >
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
+            Pieces per model and carat. Follows the filters above. Click a cell to filter on it.
+          </div>
+          {diamondGrid.models.length === 0 ? (
+            <div style={{ color: '#999', fontSize: 13, padding: 20, textAlign: 'center' }}>No diamond data</div>
+          ) : (
+            <div data-testid="diamond-table" style={{ overflowX: 'auto', border: `1px solid ${colors.lineGray}`, borderRadius: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: fonts.body }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...thStyleMini, textAlign: 'left' }}>Model</th>
+                    {diamondGrid.carats.map(c => <th key={c} style={{ ...thStyleMini, textAlign: 'right' }}>{c} ct</th>)}
+                    <th style={{ ...thStyleMini, textAlign: 'right' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diamondGrid.models.map(([model, total]) => (
+                    <tr key={model}>
+                      <td style={tdStyleMini}>{model}</td>
+                      {diamondGrid.carats.map(c => {
+                        const v = diamondGrid.cell.get(`${model}|${c}`) || 0
+                        return (
+                          <td
+                            key={c}
+                            data-testid={`diamond-cell-${model}-${c}`}
+                            onClick={v ? () => setDiamondFilter(p => ({ ...p, models: [model], carats: [c] })) : undefined}
+                            style={{
+                              ...tdStyleMini, textAlign: 'right',
+                              cursor: v ? 'pointer' : 'default',
+                              background: v ? '#f4f0f5' : 'transparent',
+                              color: v ? colors.inkPlum : '#ccc',
+                              fontWeight: v ? 700 : 400,
+                            }}
+                          >
+                            {v ? fmtStat(v) : '—'}
+                          </td>
+                        )
+                      })}
+                      <td style={{ ...tdStyleMini, textAlign: 'right', fontWeight: 700, color: colors.inkPlum }}>{fmtStat(total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
         {/* ─── Row 5: Quick Stats Grid ─── */}
         <Section title="Quick Stats" style={{ marginBottom: gridGap }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <MiniStat label="Models" items={quickStats.models} />
             <MiniStat label="Carat Breakdown" items={quickStats.carats} />
             <MiniStat label="Top Shapes" items={quickStats.shapes} />
             <MiniStat label="Sizes" items={quickStats.sizes} />
