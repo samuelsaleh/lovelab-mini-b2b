@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 jest.mock('../OrgCommissionsTable', () => () => <div data-testid="org-commissions-table-mock" />);
@@ -89,6 +89,25 @@ describe('OrgSettlementCard reports + payments', () => {
     expect(within(failed).getByText('No Drive copy')).toBeInTheDocument();
     expect(within(failed).getByText('Awaiting payment')).toBeInTheDocument();
     expect(within(failed).getByText('Delete')).toBeInTheDocument();
+    // A report without a Drive copy can be pushed to Drive by hand; one that
+    // already has it cannot.
+    expect(within(failed).getByText('Save to Drive')).toBeInTheDocument();
+    expect(within(sent).queryByText('Save to Drive')).not.toBeInTheDocument();
+  });
+
+  test('"Save to Drive" posts to the drive route and refreshes the list', async () => {
+    render(<OrgSettlementCard organizationId={ORG} organizationName="Sarah Goutard Organization" />);
+    await waitFor(() => expect(screen.getByTestId('org-report-rep-failed')).toBeInTheDocument());
+    const before = global.fetch.mock.calls.length;
+
+    fireEvent.click(within(screen.getByTestId('org-report-rep-failed')).getByText('Save to Drive'));
+
+    await waitFor(() => {
+      const call = global.fetch.mock.calls.find(([url, opts]) => String(url) === '/api/commission-reports/rep-failed/drive' && opts?.method === 'POST');
+      expect(call).toBeTruthy();
+    });
+    // The list reloads afterwards (ledger fetched again).
+    await waitFor(() => expect(global.fetch.mock.calls.length).toBeGreaterThan(before + 1));
   });
 
   test('lists every organization payment with its linked report', async () => {

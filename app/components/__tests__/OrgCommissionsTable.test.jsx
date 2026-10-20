@@ -51,6 +51,9 @@ function installFetch({ failList = false } = {}) {
     if (/\/api\/commissions\/[^/]+\/customer-paid$/.test(path)) {
       return Promise.resolve({ ok: true, json: async () => ({ commission: {} }) });
     }
+    if (/\/api\/commissions\/[^/]+$/.test(path) && options.method === 'DELETE') {
+      return Promise.resolve({ ok: true, json: async () => ({ deleted: true }) });
+    }
     if (path === '/api/commissions/customer-paid-bulk') {
       return Promise.resolve({ ok: true, json: async () => ({ updated: [] }) });
     }
@@ -153,6 +156,31 @@ describe('OrgCommissionsTable', () => {
     });
     await waitFor(() => expect(screen.queryByTestId('org-commissions-bulk-bar')).not.toBeInTheDocument());
     expect(within(screen.getByTestId('org-commissions-row-c2')).getByText('Ready')).toBeInTheDocument();
+  });
+
+  test('Delete removes a cancelled order\'s line after confirmation', async () => {
+    installFetch();
+    const { onChanged } = await renderTable();
+    jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    fireEvent.click(within(screen.getByTestId('org-commissions-row-c2')).getByText('Delete'));
+
+    await waitFor(() => {
+      expect(calls.find((c) => c.path === '/api/commissions/c2' && c.method === 'DELETE')).toBeTruthy();
+    });
+    await waitFor(() => expect(screen.queryByTestId('org-commissions-row-c2')).not.toBeInTheDocument());
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  test('Delete does nothing when the confirmation is declined', async () => {
+    installFetch();
+    await renderTable();
+    jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    fireEvent.click(within(screen.getByTestId('org-commissions-row-c2')).getByText('Delete'));
+
+    expect(calls.find((c) => c.method === 'DELETE')).toBeFalsy();
+    expect(screen.getByTestId('org-commissions-row-c2')).toBeInTheDocument();
   });
 
   test('a failed load shows an inline error with Retry', async () => {
