@@ -50,11 +50,25 @@ export default function DiamondFilter({
   }, [open])
 
   const active = selected.length > 0
+  // A selection the current data no longer offers (say, 0.30 ct after switching
+  // to B2C) stays visible and untickable instead of silently emptying the page.
+  const shownOptions = [
+    ...options,
+    ...selected.filter((v) => !options.some((o) => o.value === v)).map((value) => ({ value, count: 0 })),
+  ]
   const label = !active
     ? allLabel
     : selected.length <= 2
       ? selected.map(format).join(', ')
       : `${selected.length} ${name}`
+
+  // Keep the panel on screen: open it towards the left when the button sits near the right edge.
+  const [alignRight, setAlignRight] = useState(false)
+  useEffect(() => {
+    if (!open || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    setAlignRight(r.left + 240 > window.innerWidth - 16)
+  }, [open])
 
   const toggle = (v) => onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v])
 
@@ -87,14 +101,14 @@ export default function DiamondFilter({
 
       {open && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          position: 'absolute', top: 'calc(100% + 6px)', ...(alignRight ? { right: 0 } : { left: 0 }), zIndex: 200,
           background: '#fff', border: `1px solid ${colors.lineGray}`, borderRadius: 10,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, minWidth: 200, width: 'max-content', maxWidth: '90vw',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, minWidth: 200, width: 'max-content', maxWidth: 'calc(100vw - 32px)',
         }}>
           <div style={{ maxHeight: 240, overflowY: 'auto', margin: '0 -4px' }}>
-            {options.length === 0 ? (
+            {shownOptions.length === 0 ? (
               <div style={{ padding: '10px 14px', fontSize: 12, color: '#999' }}>No {name} on these orders.</div>
-            ) : options.map((o) => {
+            ) : shownOptions.map((o) => {
               const on = selected.includes(o.value)
               return (
                 <label key={o.value} style={{

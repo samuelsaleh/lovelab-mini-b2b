@@ -69,8 +69,16 @@ describe('diamond filters on Reports', () => {
     const row = rowOf('Mixed Shop');
     expect(row.textContent).toContain('0.15 ct Heart');
     expect(row.textContent).not.toContain('0.10 ct Round');
-    expect(row.textContent).toMatch(/1[.,\s]?480/);
+    // 3500 is the order's grand total; the 0.15 ct line is 1480 of 3220 in line prices.
+    expect(row.textContent).toMatch(/1[.,\s\u00a0]?608/);
     expect(row.textContent).not.toMatch(/3[.,\s]?500/);
+  });
+
+  test('an order where every line matches keeps its full amount', async () => {
+    await renderReports();
+    pick('models', /^CUTY/);
+    expect(rowOf('Mixed Shop').textContent).toMatch(/3[.,\s]?500/);
+    expect(screen.queryByRole('cell', { name: 'Round Only Shop' })).not.toBeInTheDocument();
   });
 
   test('shows how many pieces match, and drops Salesforce accounts', async () => {

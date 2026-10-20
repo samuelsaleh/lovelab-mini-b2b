@@ -62,6 +62,17 @@ describe('AnalyticsDashboard — diamond', () => {
     expect(screen.getByText('matching lines')).toBeInTheDocument()
   }, 12000)
 
+  it('a model filter, picked from the dropdown, narrows the table and hides vitrines', async () => {
+    await renderAnalytics()
+    expect(screen.getByText('Vitrines')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^models:/i }))
+    fireEvent.click(screen.getByLabelText(/^CUBIX/))
+    const table = screen.getByTestId('diamond-table')
+    expect(within(table).queryByText('CUTY')).not.toBeInTheDocument()
+    expect(within(table).getByTestId('diamond-cell-CUBIX-0.10')).toHaveTextContent('3')
+    expect(screen.queryByText('Vitrines')).not.toBeInTheDocument()
+  }, 12000)
+
   it('clicking a cell filters on that model and carat', async () => {
     await renderAnalytics()
     fireEvent.click(screen.getByTestId('diamond-cell-CUBIX-0.10'))

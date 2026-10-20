@@ -538,20 +538,22 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
 
   // ─── Filtered docs based on the event OR agent selector ───────────────
   // (drafts + non-revenue channels are already excluded at load time)
-  const eventDocs = useMemo(() => {
-    if (selectedAgentId) return channelDocs.filter(d => d.agent_id === selectedAgentId)
-    if (selectedEventId) return channelDocs.filter(d => d.event_id === selectedEventId)
-    return channelDocs
-  }, [channelDocs, selectedEventId, selectedAgentId])
-
   // Model / carat / shape filter. Each order keeps only its matching lines and
-  // its total shrinks to them, so every panel below follows the filter.
+  // its total shrinks to their share, so every panel below follows the filter.
   const diamondOn = hasDiamondFilter(diamondFilter)
   const diamondChoices = useMemo(() => diamondOptions(channelDocs), [channelDocs])
+  const scopedChannelDocs = useMemo(() => {
+    if (!diamondOn) return channelDocs
+    return channelDocs.map(d => scopeDocToDiamond(d, diamondFilter)).filter(Boolean)
+  }, [channelDocs, diamondFilter, diamondOn])
   const docs = useMemo(() => {
-    if (!diamondOn) return eventDocs
-    return eventDocs.map(d => scopeDocToDiamond(d, diamondFilter)).filter(Boolean)
-  }, [eventDocs, diamondFilter, diamondOn])
+    if (selectedAgentId) return scopedChannelDocs.filter(d => d.agent_id === selectedAgentId)
+    if (selectedEventId) return scopedChannelDocs.filter(d => d.event_id === selectedEventId)
+    return scopedChannelDocs
+  }, [scopedChannelDocs, selectedEventId, selectedAgentId])
+  const diamondLabel = [
+    ...diamondFilter.models, ...diamondFilter.carats.map(caratFormat), ...diamondFilter.shapes,
+  ].join(', ')
   const diamondPieces = useMemo(
     () => (diamondOn ? docs.reduce((n, d) => n + sumLines(diamondLinesOf(d)).qty, 0) : 0),
     [docs, diamondOn],
@@ -596,8 +598,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       const subtitle = [
         selectedEventName || 'All Events',
         channelScope === 'all' ? 'All channels' : channelScope.toUpperCase(),
+        diamondLabel,
         `${rows.length} row${rows.length === 1 ? '' : 's'}`,
-      ].join('   ·   ')
+      ].filter(Boolean).join('   ·   ')
       const buffer = await generateAnalyticsWorkbookBuffer({ rows, subtitle })
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -640,7 +643,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   const revenuePerFair = useMemo(() => {
     if (selectedEventId) return []
     const map = new Map()
-    channelDocs.forEach(d => {
+    scopedChannelDocs.forEach(d => {
       if (d.document_type !== 'order') return
       const eid = d.event_id || '__none__'
       const eName = d.events?.name || 'No Event'
@@ -650,7 +653,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       entry.orders++
     })
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [channelDocs, selectedEventId])
+  }, [scopedChannelDocs, selectedEventId])
 
   // ─── Revenue per agent (who brought the order) ────────────────────────
   // Uses documents.agent_id, so an order an admin typed on Bastian's behalf
@@ -665,8 +668,8 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
   // "At fair F, agent A brought N orders." Only meaningful on the global view.
   const agentFairMatrix = useMemo(() => {
     if (selectedEventId || selectedAgentId) return { fairs: [], agents: [], cells: new Map() }
-    return buildAgentFairMatrix(channelDocs, { agentNameById, fairNameById, fairIds })
-  }, [channelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
+    return buildAgentFairMatrix(scopedChannelDocs, { agentNameById, fairNameById, fairIds })
+  }, [scopedChannelDocs, agentNameById, fairNameById, fairIds, selectedEventId, selectedAgentId])
 
   // ─── Client countries ─────────────────────────────────────────────────
   const countryData = useMemo(() => buildCountryBreakdown(docs), [docs])
@@ -779,9 +782,9 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       ? events.find(e => e.id === selectedEventId)?.name || 'Unknown'
       : 'All Events'
     const scopeLabel = channelScope === 'b2c' ? 'B2C (website/individual sales)' : channelScope === 'b2b' ? 'B2B (wholesale)' : 'All channels'
-    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName} · scope: ${scopeLabel})`, '---']
+    const lines = [`ANALYTICS SUMMARY (filtered by: ${eventName} · scope: ${scopeLabel}${diamondLabel ? ` · diamond: ${diamondLabel}; amounts are the matching lines' share of each order; vitrines not included` : ''})`, '---']
 
-    lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} | Vitrines: ${kpis.totalVitrines} | Total Documents: ${kpis.totalDocs}`)
+    lines.push(`KPIs: Total Revenue: ${fmt(kpis.totalRevenue)} | Orders: ${kpis.orderCount} | Quotes: ${kpis.quoteCount} | Avg Order: ${fmt(kpis.avgOrder)} ${diamondOn ? '' : `| Vitrines: ${kpis.totalVitrines} `}| Total Documents: ${kpis.totalDocs}`)
     lines.push('---')
 
     if (revenuePerFair.length > 0) {
@@ -802,7 +805,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
       lines.push('---')
     }
 
-    if (vitrineData.rows.length > 0) {
+    if (!diamondOn && vitrineData.rows.length > 0) {
       lines.push(`VITRINE BREAKDOWN (${vitrineData.totalQty} total):`)
       vitrineData.rows.forEach(r => lines.push(`- ${r.company}: ${r.qty} vitrine${r.qty > 1 ? 's' : ''}, order total ${fmt(r.total)}`))
       lines.push('---')
@@ -829,7 +832,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
     }
 
     return lines.join('\n')
-  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, colorBreakdown, quickStats, selectedEventId, events, channelScope])
+  }, [kpis, revenuePerFair, productData, clientData, vitrineData, countryData, colorBreakdown, quickStats, selectedEventId, events, channelScope, diamondOn, diamondLabel])
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -1007,7 +1010,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           <KpiCard label="Avg. Order Value" value={fmt(kpis.avgOrder)} />
           {isB2C ? (
             <KpiCard label="Customers" value={fmtStat(kpis.uniqueCustomers)} sub="unique buyers" accent={colors.gradientDeep} />
-          ) : (
+          ) : !diamondOn && (
             <KpiCard label="Vitrines" value={fmtStat(kpis.totalVitrines)} sub={isHideRevenue() ? '—' : `${vitrineData.rows.length} orders with vitrines`} accent={colors.gradientDeep} />
           )}
           {diamondOn && (
@@ -1248,7 +1251,7 @@ export default function AnalyticsDashboard({ initialEventId = null, dataScope = 
           )}
 
           {/* Vitrine Summary */}
-          {vitrineData.rows.length > 0 && (
+          {!diamondOn && vitrineData.rows.length > 0 && (
             <Section title={isHideRevenue() ? 'Vitrine Summary' : `Vitrine Summary (${vitrineData.totalQty} total)`}>
               <RankedTable
                 columns={[

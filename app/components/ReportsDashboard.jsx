@@ -9,7 +9,7 @@ import { normalizeCountry } from '@/lib/countries'
 import { deriveCity, cityFoldKey, buildCityLabels } from '@/lib/clientAddress'
 import { EXCLUDED_ORDER_CHANNELS } from '@/lib/organizations/teamStats'
 import {
-  diamondLinesOf, hasDiamondFilter, lineMatchesDiamond, sumLines, diamondOptions, diamondSummary, modelSummary,
+  diamondLinesOf, hasDiamondFilter, lineMatchesDiamond, proratedAmount, sumLines, diamondOptions, diamondSummary, modelSummary,
 } from '@/lib/diamondLines'
 import DiamondFilter, { caratFormat } from './DiamondFilter'
 
@@ -281,7 +281,7 @@ export default function ReportsDashboard() {
       if (r.rowType !== 'document') return []
       const shownLines = r.lines.filter((l) => lineMatchesDiamond(l, filters))
       if (!shownLines.length) return []
-      return [{ ...r, shownLines, amount: sumLines(shownLines).total }]
+      return [{ ...r, shownLines, amount: proratedAmount(r.amount, r.lines, shownLines) }]
     })
   }, [rows, filters.models, filters.carats, filters.shapes, diamondOn])
 
@@ -539,7 +539,8 @@ export default function ReportsDashboard() {
           cell.font   = { bold: true, color: { argb: PLUM }, size: 11, name: 'Calibri' }
           cell.alignment = { horizontal: 'right', vertical: 'middle' }
         } else {
-          cell.value = String(getCellValue(r, col) || '').replace(/\n/g, ', ')
+          const raw = getCellValue(r, col) || ''
+          cell.value = DIAMOND_COLUMNS.includes(col) ? String(raw).replace(/\n/g, ', ') : raw
           cell.font  = { size: 10, color: { argb: TEXT_GRAY }, name: 'Calibri' }
           cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
         }
