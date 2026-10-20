@@ -239,6 +239,26 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
     }
   }
 
+  // A cancelled order whose commission line is still here (the agent page
+  // has the same action). The row disappears; the order itself is untouched.
+  const handleDelete = async (row) => {
+    const label = clientLabel(row)
+    if (!window.confirm(`Delete the ${label} commission line for ${agentLabel(row)} (${fmt(row.commission_amount)})? This cannot be undone.`)) return
+    setActionError(null)
+    markBusy(row.id, true)
+    try {
+      const res = await fetch(`/api/commissions/${row.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      setRows((prev) => prev.filter((r) => r.id !== row.id))
+      setSelected((prev) => { const next = new Set(prev); next.delete(row.id); return next })
+      notifyChanged()
+    } catch (err) {
+      setActionError(err?.message || 'Failed to delete the line.')
+    }
+    markBusy(row.id, false)
+  }
+
   // Reported / Force paid / Undo change more than one field (and may cascade
   // onto a bonus line), so the table reloads instead of guessing the result.
   const runRowAction = async (row, url, body) => {
@@ -541,6 +561,19 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
                             style={rowActionStyle(colors.inkPlum, rowBusy)}
                           >
                             Undo
+                          </button>
+                        </div>
+                      )}
+                      {isRealRow(row) && (
+                        <div style={{ marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(row)}
+                            disabled={rowBusy}
+                            title="Delete this commission line permanently — for an order that was cancelled."
+                            style={rowActionStyle('#b91c1c', rowBusy)}
+                          >
+                            {rowBusy ? '…' : 'Delete'}
                           </button>
                         </div>
                       )}

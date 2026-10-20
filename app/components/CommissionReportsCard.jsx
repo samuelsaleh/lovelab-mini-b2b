@@ -202,7 +202,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${LINE}`, fontSize: 13, fontWeight: 700, color: PLUM, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>Commission Reports</span>
         <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>
-          Excel + email to Dionne only · also saved to Google Drive
+          Excel + email to Dionne, Debbie and Dahlia · also saved to Google Drive
         </span>
       </div>
 
@@ -342,6 +342,23 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
 function ReportRow({ r, agentName, onDeleted }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+  const [savingDrive, setSavingDrive] = useState(false);
+
+  // The Drive copy is best-effort at generation time; when it failed this
+  // pushes the archived file to Drive without sending the report again.
+  const handleSaveToDrive = async () => {
+    setSavingDrive(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/commission-reports/${r.id}/drive`, { method: 'POST' });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+      onDeleted?.();
+    } catch (err) {
+      setDeleteError(err?.message || 'Google Drive upload failed');
+    }
+    setSavingDrive(false);
+  };
 
   const handleDelete = async () => {
     if (!window.confirm(
@@ -404,6 +421,17 @@ function ReportRow({ r, agentName, onDeleted }) {
               >
                 Drive
               </a>
+            )}
+            {!isHideRevenue() && !r.drive_view_link && r.storage_path && (
+              <button
+                type="button"
+                onClick={handleSaveToDrive}
+                disabled={savingDrive}
+                title="Upload this report's Excel to Google Drive now (the copy failed when it was sent)"
+                style={{ fontSize: 11, fontWeight: 600, color: PLUM, background: '#fff', padding: '4px 8px', border: `1px solid ${PLUM}`, borderRadius: 6, cursor: savingDrive ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+              >
+                {savingDrive ? 'Saving…' : 'Save to Drive'}
+              </button>
             )}
             {!isHideRevenue() && r.storage_path && (
               <a

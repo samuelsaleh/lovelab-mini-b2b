@@ -278,7 +278,7 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
           Record payment
         </button>
         <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: '1 1 260px', lineHeight: 1.4 }}>
-          <strong style={{ color: colors.charcoal }}>Send org report now</strong> takes every member&apos;s Ready lines (customer paid, not yet reported) into one Excel — agent named on each line, per-agent totals at the bottom — emails it to Dionne and saves it to Google Drive.
+          <strong style={{ color: colors.charcoal }}>Send org report now</strong> takes every member&apos;s Ready lines (customer paid, not yet reported) into one Excel — agent named on each line, per-agent totals at the bottom — emails it to Dionne, Debbie and Dahlia and saves it to Google Drive.
         </span>
         {sendResult && (
           <span
@@ -308,7 +308,7 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
           <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Organization reports
           </span>
-          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>Excel + email to Dionne only · copy on Google Drive</span>
+          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>Excel + email to Dionne, Debbie and Dahlia · copy on Google Drive</span>
         </div>
         {reports.length === 0 ? (
           <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>
@@ -538,6 +538,24 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
 function OrgReportRow({ report: r, orgName, payment, onDeleted }) {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
+  const [savingDrive, setSavingDrive] = useState(false)
+
+  // The Drive copy is best-effort at generation time. When it failed (no
+  // credentials on the server, for months), this pushes the archived file
+  // to Drive without sending the report again.
+  const handleSaveToDrive = async () => {
+    setSavingDrive(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/commission-reports/${r.id}/drive`, { method: 'POST' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`)
+      onDeleted?.()
+    } catch (err) {
+      setDeleteError(err?.message || 'Google Drive upload failed')
+    }
+    setSavingDrive(false)
+  }
 
   const handleDelete = async () => {
     if (!window.confirm(
@@ -603,6 +621,17 @@ function OrgReportRow({ report: r, orgName, payment, onDeleted }) {
               <a href={r.drive_view_link} target="_blank" rel="noopener noreferrer" title="Open in Google Drive" style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, padding: '4px 8px', border: `1px solid ${colors.lineGray}`, borderRadius: 6, textDecoration: 'none' }}>
                 Drive
               </a>
+            )}
+            {!isHideRevenue() && !r.drive_view_link && r.storage_path && (
+              <button
+                type="button"
+                onClick={handleSaveToDrive}
+                disabled={savingDrive}
+                title="Upload this report's Excel to Google Drive now (the copy failed when it was sent)"
+                style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, background: '#fff', padding: '4px 8px', border: `1px solid ${colors.inkPlum}`, borderRadius: 6, cursor: savingDrive ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+              >
+                {savingDrive ? 'Saving…' : 'Save to Drive'}
+              </button>
             )}
             {!isHideRevenue() && r.storage_path && (
               <a href={`/api/commission-reports/${r.id}/download`} download={`${orgName} - ${r.period_key || r.period_label}.xlsx`} title="Download .xlsx" style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: colors.inkPlum, padding: '4px 10px', borderRadius: 6, textDecoration: 'none' }}>
