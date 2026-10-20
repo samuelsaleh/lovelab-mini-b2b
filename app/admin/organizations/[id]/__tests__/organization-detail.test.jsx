@@ -399,3 +399,40 @@ describe('Admin organization detail redesign', () => {
     await waitFor(() => expect(screen.getAllByText('10%').length).toBeGreaterThan(0))
   })
 })
+
+// A big team's members table pushes the Payments section far down the page,
+// so it folds away. Open by default; the choice sticks per browser.
+describe('Members section toggle', () => {
+  beforeEach(() => {
+    push.mockClear()
+    installFetch()
+    window.localStorage.clear()
+  })
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  it('hides and shows the invite form and members table, remembering the choice', async () => {
+    render(<AdminOrganizationDetailPage />)
+    await screen.findByTestId('organization-member-owner-1')
+    expect(screen.getByTestId('team-invite-form')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide members' }))
+    expect(screen.queryByTestId('organization-member-owner-1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('team-invite-form')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('table').length).toBe(0)
+    expect(window.localStorage.getItem('lovelab:admin-org:members-open')).toBe('closed')
+
+    fireEvent.click(screen.getByRole('button', { name: /Show members \(2\)/ }))
+    expect(await screen.findByTestId('organization-member-owner-1')).toBeInTheDocument()
+    expect(window.localStorage.getItem('lovelab:admin-org:members-open')).toBe('open')
+  })
+
+  it('starts closed when it was closed last time', async () => {
+    window.localStorage.setItem('lovelab:admin-org:members-open', 'closed')
+    render(<AdminOrganizationDetailPage />)
+    await screen.findByRole('heading', { name: 'Maison Lumière' })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Show members/ })).toBeInTheDocument())
+    expect(screen.queryByTestId('organization-member-owner-1')).not.toBeInTheDocument()
+  })
+})
