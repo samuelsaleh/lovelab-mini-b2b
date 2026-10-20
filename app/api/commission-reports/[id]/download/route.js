@@ -51,7 +51,7 @@ export async function GET(request, { params }) {
 
     const { data: report, error: rErr } = await adminSupabase
       .from('commission_reports')
-      .select('id, storage_path, period_key, agent_id, period_label, agent:profiles(full_name, email)')
+      .select('id, storage_path, period_key, agent_id, period_label, agent:profiles(full_name, email), organization:snapshot_data->organization')
       .eq('id', id)
       .maybeSingle();
 
@@ -84,7 +84,9 @@ export async function GET(request, { params }) {
     }
 
     const buffer = Buffer.from(await blob.arrayBuffer());
-    const agentName = report.agent?.full_name || report.agent?.email || 'agent';
+    // An organization report (Phase 31) is keyed to the owner but is the
+    // team's file: name it after the organization, not after the owner.
+    const agentName = report.organization?.name || report.agent?.full_name || report.agent?.email || 'agent';
     const safeName = String(agentName)
       .replace(/[\\/:*?"<>|]/g, '-')
       .replace(/\s+/g, ' ')

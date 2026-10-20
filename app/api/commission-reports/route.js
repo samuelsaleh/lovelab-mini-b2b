@@ -6,9 +6,13 @@
  *   - The admin overview / debugging.
  *
  * Query params (all optional):
- *   ?agent_id=<uuid>   filter by agent
- *   ?month=<YYYY-MM>   filter by period_key
- *   ?limit=<n>         page size, default 50, max 200
+ *   ?agent_id=<uuid>          filter by agent
+ *   ?organization_id=<uuid>   admin only — the organization's own reports
+ *                             (Phase 31). Org reports are keyed to the owner
+ *                             and tagged in their snapshot; this returns only
+ *                             those, never the owner's personal reports.
+ *   ?month=<YYYY-MM>          filter by period_key
+ *   ?limit=<n>                page size, default 50, max 200
  *
  * Returns:
  *   { reports: [{ id, agent_id, period_label, period_key, total_due,
@@ -27,6 +31,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { resolveAgentIds } from '@/app/api/_lib/access';
+import { reportOrganizationId } from '@/lib/organizations/settlementScope';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONTH_REGEX = /^\d{4}-\d{2}$/;
@@ -81,12 +86,16 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const agentIdParam = searchParams.get('agent_id');
+    const organizationIdParam = isAdmin ? searchParams.get('organization_id') : null;
     const month = searchParams.get('month');
     const limitRaw = Number(searchParams.get('limit') || '50');
     const limit = Math.min(Math.max(Math.floor(limitRaw) || 50, 1), 200);
 
     if (agentIdParam && !UUID_REGEX.test(agentIdParam)) {
       return NextResponse.json({ error: 'agent_id must be UUID' }, { status: 400 });
+    }
+    if (organizationIdParam && !UUID_REGEX.test(organizationIdParam)) {
+      return NextResponse.json({ error: 'organization_id must be UUID' }, { status: 400 });
     }
     if (month && !MONTH_REGEX.test(month)) {
       return NextResponse.json({ error: 'month must be YYYY-MM' }, { status: 400 });
@@ -96,17 +105,39 @@ export async function GET(request) {
     // sharing the same email (handles re-invited agents) so a fresh re-add
     // still surfaces the historical reports.
     let agentIdFilter = null;
-    if (isAdmin) {
+    if (organizationIdParam) {
+      // Org reports live under the owner's profile. No owner → nothing to list.
+      const { data: ownerRow, error: ownerErr } = await adminSupabase
+        .from('organization_memberships')
+        .select('user_id')
+        .eq('organization_id', organizationIdParam)
+        .eq('role', 'owner')
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+      if (ownerErr) {
+        console.error('[commission-reports GET] owner lookup error:', ownerErr.message);
+        return NextResponse.json({ error: 'Failed to load reports' }, { status: 500 });
+      }
+      if (!ownerRow?.user_id) return NextResponse.json({ reports: [] });
+      agentIdFilter = ownerRow.user_id;
+    } else if (isAdmin) {
       agentIdFilter = agentIdParam || null;
     } else {
       agentIdFilter = user.id;
     }
 
+    // The organization tag is only read in org mode; the JSON path keeps the
+    // whole snapshot (every order row) out of the response.
+    const selectCols = organizationIdParam
+      ? `${SELECT_COLS}, organization:snapshot_data->organization`
+      : SELECT_COLS;
+
     let q = adminSupabase
       .from('commission_reports')
-      .select(SELECT_COLS)
+      .select(selectCols)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .limit(organizationIdParam ? 200 : limit);
 
     if (agentIdFilter) {
       const allIds = await resolveAgentIds(adminSupabase, agentIdFilter);
@@ -120,7 +151,16 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Failed to load reports' }, { status: 500 });
     }
 
-    return NextResponse.json({ reports: data || [] });
+    let reports = data || [];
+    if (organizationIdParam) {
+      // Keep the owner's org reports, drop their personal (pre-org) ones.
+      reports = reports
+        .filter((r) => reportOrganizationId(r) === organizationIdParam)
+        .slice(0, limit)
+        .map(({ organization, ...rest }) => ({ ...rest, organization_id: organization?.id || null }));
+    }
+
+    return NextResponse.json({ reports });
   } catch (err) {
     console.error('[commission-reports GET] exception:', err);
     return NextResponse.json(

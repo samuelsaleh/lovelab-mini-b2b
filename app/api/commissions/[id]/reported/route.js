@@ -23,8 +23,49 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
+import { getOrgSettlementScope, reportOrganizationId } from '@/lib/organizations/settlementScope';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const REPORT_COLS = 'id, period_label, period_key, created_at';
+
+/**
+ * The report a hand-marked line should join.
+ *
+ * Solo agents: their own latest report. Members of a multi-member
+ * organization (Phase 31): the organization's latest report, which is
+ * keyed to the owner and tagged in its snapshot — a report in the member's
+ * own name never exists, so searching for one left every "Mark reported"
+ * click on a team member with "no report yet".
+ */
+async function findReportForLine(adminSupabase, row) {
+  const scope = await getOrgSettlementScope(adminSupabase, row.agent_id);
+  if (scope?.multiMember && scope.ownerId) {
+    const { data: ownerReports, error } = await adminSupabase
+      .from('commission_reports')
+      .select(`${REPORT_COLS}, organization:snapshot_data->organization`)
+      .eq('agent_id', scope.ownerId)
+      .order('created_at', { ascending: false })
+      .limit(24);
+    if (error) return { error };
+    const orgReport = (ownerReports || []).find((r) => reportOrganizationId(r) === scope.organizationId);
+    if (orgReport) {
+      const { organization, ...report } = orgReport;
+      return { report };
+    }
+    return { report: null, scope };
+  }
+
+  const { data: latest, error } = await adminSupabase
+    .from('commission_reports')
+    .select(REPORT_COLS)
+    .eq('agent_id', row.agent_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { error };
+  return { report: latest || null, scope };
+}
 
 export async function PATCH(request, { params }) {
   try {
@@ -94,13 +135,7 @@ export async function PATCH(request, { params }) {
     let report = null;
 
     if (body.reported) {
-      const { data: latest, error: reportErr } = await adminSupabase
-        .from('commission_reports')
-        .select('id, period_label, period_key, created_at')
-        .eq('agent_id', row.agent_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { report: latest, error: reportErr, scope } = await findReportForLine(adminSupabase, row);
 
       if (reportErr) {
         console.error('[reported PATCH] Report lookup error:', reportErr.message);
@@ -108,7 +143,11 @@ export async function PATCH(request, { params }) {
       }
       if (!latest) {
         return NextResponse.json(
-          { error: 'This agent has no report yet — send a report first.' },
+          {
+            error: scope?.multiMember
+              ? 'This organization has no report yet — send an org report first.'
+              : 'This agent has no report yet — send a report first.',
+          },
           { status: 409 },
         );
       }

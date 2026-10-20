@@ -213,7 +213,7 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
             This agent is part of {orgSettlement.organizationName} — commissions are settled with one report and one payment for the whole team.
           </span>
           <a
-            href={`/admin/organizations/${orgSettlement.organizationId}`}
+            href={`/admin/organizations/${orgSettlement.organizationId}#payments`}
             style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: PLUM, padding: '7px 14px', borderRadius: 8, textDecoration: 'none' }}
           >
             Go to organization settlement
@@ -302,7 +302,16 @@ export default function CommissionReportsCard({ agentId, agentName, orgSettlemen
         )}
         {!loadingList && !listError && reports.length === 0 && (
           <div style={{ padding: 16, fontSize: 13, color: MUTED }}>
-            No reports yet. Click <strong style={{ color: PLUM }}>Send report now</strong> above to create the first one.
+            {orgSettlement ? (
+              <>
+                No personal reports for this agent. Team reports are listed under{' '}
+                <a href={`/admin/organizations/${orgSettlement.organizationId}#payments`} style={{ color: PLUM, fontWeight: 700 }}>
+                  {orgSettlement.organizationName}
+                </a>.
+              </>
+            ) : (
+              <>No reports yet. Click <strong style={{ color: PLUM }}>Send report now</strong> above to create the first one.</>
+            )}
           </div>
         )}
         {!loadingList && reports.length > 0 && (

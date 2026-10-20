@@ -3,21 +3,26 @@
 /**
  * OrgSettlementCard — "one payment per organization" (Phase 31).
  *
- * Sits at the top of the admin organization detail page. Shows the org's
- * global money picture in one strip (earned / paid out / OWED), with two
- * actions:
+ * The "Payments" section of the admin organization detail page. Top to
+ * bottom:
+ *
+ *   - OrgCommissionsTable: every member's commission lines with the agent
+ *     named on each, Ready vs Awaiting at a glance, Paid? ticks, invoice
+ *     numbers and the hand overrides (same endpoints as the agent page).
  *
  *   - "Send org report"  → POST /api/commission-reports/generate with
  *     { organization_id }: ONE report sweeping every member's ready
- *     commissions, keyed to the org owner, with a per-agent breakdown
- *     inside the xlsx.
+ *     commissions, keyed to the org owner, agent named on every xlsx line
+ *     plus a per-agent breakdown. Emailed to Dionne, copied to Drive.
  *
  *   - "Record payment"   → POST /api/agent-payments against the owner,
  *     optionally linked to an org report so ALL members' commissions on
  *     that report settle (status → paid) in one action.
  *
- * Per-agent tracking is untouched — the TeamDashboard below this card
- * still shows each sub-agent's own revenue / orders / commission.
+ *   - Organization reports (Drive / Download / Delete, email status) and
+ *     the organization payments ledger. Reports come from
+ *     /api/commission-reports?organization_id=… so the owner's personal
+ *     (pre-org) reports stay out of the list.
  *
  * Admin-only by construction (only rendered on /admin/organizations/[id];
  * the APIs it calls are admin-gated server-side anyway).
@@ -26,13 +31,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { colors } from '@/lib/styles'
 import { isHideRevenue } from '@/lib/utils'
+import OrgCommissionsTable from '@/app/components/OrgCommissionsTable'
 
 const fmt = (n) => {
   if (isHideRevenue()) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n) || 0)
 }
 
-export default function OrgSettlementCard({ organizationId }) {
+export default function OrgSettlementCard({ organizationId, organizationName = '' }) {
   const [ledger, setLedger] = useState(null)
   const [reports, setReports] = useState([])
   const [payments, setPayments] = useState([])
@@ -57,14 +63,20 @@ export default function OrgSettlementCard({ organizationId }) {
   // Per-member breakdown, needed at payout time only
   const [breakdownOpen, setBreakdownOpen] = useState(false)
 
+  // Bumped after Send report / Record payment so the commissions table
+  // refetches its rows (their report_id / status just changed server-side).
+  const [tableReloadToken, setTableReloadToken] = useState(0)
+
   const owner = useMemo(
     () => (ledger?.per_member || []).find((m) => m.role === 'owner') || null,
     [ledger],
   )
 
-  const loadData = useCallback(async () => {
+  // `silent` refreshes the numbers in place (after a tick in the table)
+  // instead of swapping the whole card for the loading placeholder.
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     if (!organizationId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const ledgerRes = await fetch(`/api/organizations/${organizationId}/ledger`)
@@ -75,21 +87,27 @@ export default function OrgSettlementCard({ organizationId }) {
       const ownerRow = (ledgerData?.per_member || []).find((m) => m.role === 'owner')
       if (ownerRow?.user_id) {
         const [repRes, payRes] = await Promise.all([
-          fetch(`/api/commission-reports?agent_id=${encodeURIComponent(ownerRow.user_id)}&limit=24`),
+          fetch(`/api/commission-reports?organization_id=${encodeURIComponent(organizationId)}&limit=24`),
           fetch(`/api/agent-payments?agent_id=${encodeURIComponent(ownerRow.user_id)}`),
         ])
-        const repData = repRes.ok ? await repRes.json() : { reports: [] }
-        const payData = payRes.ok ? await payRes.json() : { payments: [] }
-        setReports(repData.reports || [])
-        setPayments(payData.payments || [])
+        const repData = repRes.ok ? await repRes.json().catch(() => ({})) : { reports: [] }
+        const payData = payRes.ok ? await payRes.json().catch(() => ({})) : { payments: [] }
+        setReports(Array.isArray(repData?.reports) ? repData.reports : [])
+        setPayments(Array.isArray(payData?.payments) ? payData.payments : [])
       }
     } catch {
       setError('Failed to load organization settlement data.')
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }, [organizationId])
 
   useEffect(() => { loadData() }, [loadData])
+
+  const refreshAll = useCallback(async () => {
+    await loadData({ silent: true })
+    setTableReloadToken((t) => t + 1)
+  }, [loadData])
+  const refreshLedger = useCallback(() => loadData({ silent: true }), [loadData])
 
   // Reports that have not been paid against yet (no payment references them).
   const openReports = useMemo(() => {
@@ -111,11 +129,22 @@ export default function OrgSettlementCard({ organizationId }) {
       if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`)
       const r = j?.result
       if (r?.skipped) {
-        setSendResult({ kind: 'skipped', message: 'Nothing ready to pay — no report was created. Tick "Customer paid?" on orders first.' })
+        setSendResult({ kind: 'skipped', message: 'Nothing ready to pay — no report was created. Tick "Paid?" on the orders the customer has paid first.' })
       } else {
-        setSendResult({ kind: 'success', message: `Org report created — total due ${fmt(r?.totals?.grandTotal || 0)}.` })
+        const driveNote = r?.drive?.ok ? 'saved to Google Drive' : `Google Drive copy failed${r?.drive?.error ? ` (${r.drive.error})` : ''}`
+        if (r?.email?.sent === false) {
+          setSendResult({
+            kind: 'partial',
+            message: `Excel created (${driveNote}) but the email FAILED: ${r?.email?.reason || r?.email?.error || 'unknown'}`,
+          })
+        } else {
+          setSendResult({
+            kind: r?.drive?.ok ? 'success' : 'partial',
+            message: `Org report sent to ${r?.email?.recipient || 'Dionne'} — total due ${fmt(r?.totals?.grandTotal || 0)}, ${driveNote}.`,
+          })
+        }
       }
-      await loadData()
+      await refreshAll()
     } catch (err) {
       setSendResult({ kind: 'error', message: err?.message || 'Failed to generate the org report.' })
     }
@@ -166,14 +195,14 @@ export default function OrgSettlementCard({ organizationId }) {
           : 'Payment recorded.',
       )
       setPayOpen(false)
-      await loadData()
+      await refreshAll()
     } catch (err) {
       setPayError(err?.message || 'Failed to record the payment.')
     }
     setPaying(false)
   }
 
-  if (loading) {
+  if (loading && !ledger) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${colors.lineGray}`, padding: 20, marginBottom: 20, fontSize: 13, color: colors.lovelabMuted }}>
         Loading settlement…
@@ -181,11 +210,11 @@ export default function OrgSettlementCard({ organizationId }) {
     )
   }
 
-  if (error) {
+  if (error && !ledger) {
     return (
       <div style={{ background: '#fef2f2', borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: '#dc2626', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {error}
-        <button onClick={loadData} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>Retry</button>
+        <button onClick={() => loadData()} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>Retry</button>
       </div>
     )
   }
@@ -229,6 +258,15 @@ export default function OrgSettlementCard({ organizationId }) {
           Set a rate under <strong>Edit settings</strong> or on each agent&apos;s page — unpaid amounts will recalculate automatically.
         </div>
       )}
+
+      {/* Every member's lines, agent named on each — what is Ready vs not. */}
+      <OrgCommissionsTable
+        organizationId={organizationId}
+        members={members}
+        summary={summary}
+        reloadToken={tableReloadToken}
+        onChanged={refreshLedger}
+      />
 
       {/* One organization payment, transparently allocated back to each member
           through the commissions settled by the linked report. The per-member
@@ -307,13 +345,6 @@ export default function OrgSettlementCard({ organizationId }) {
           </table>
         </div>
         )}
-        {payments.length > 0 && (
-          <div style={{ padding: '10px 18px', borderTop: `1px solid ${colors.lineGray}`, fontSize: 11, color: colors.lovelabMuted }}>
-            <strong style={{ color: colors.charcoal }}>Latest organization payment:</strong>{' '}
-            {fmt(payments[0].amount)} on {new Date(payments[0].payment_date).toLocaleDateString('en-GB')}
-            {payments[0].invoice_number ? ` · Invoice ${payments[0].invoice_number}` : ''}
-          </div>
-        )}
       </div>
 
       {/* Actions */}
@@ -334,8 +365,8 @@ export default function OrgSettlementCard({ organizationId }) {
         >
           Record payment
         </button>
-        <span style={{ fontSize: 11, color: colors.lovelabMuted }}>
-          The report includes every member&apos;s ready commissions with a per-agent breakdown.
+        <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: '1 1 260px', lineHeight: 1.4 }}>
+          <strong style={{ color: colors.charcoal }}>Send org report</strong> takes every member&apos;s Ready lines (customer paid, not yet reported) into one Excel — agent named on each line, per-agent totals at the bottom — emails it to Dionne and saves it to Google Drive.
         </span>
         {sendResult && (
           <span
@@ -344,6 +375,7 @@ export default function OrgSettlementCard({ organizationId }) {
               fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600,
               ...(sendResult.kind === 'success' && { background: '#f0fdf4', color: '#166534' }),
               ...(sendResult.kind === 'skipped' && { background: '#fffbeb', color: '#92400e' }),
+              ...(sendResult.kind === 'partial' && { background: '#fef3c7', color: '#7c2d12' }),
               ...(sendResult.kind === 'error' && { background: '#fee2e2', color: '#991b1b' }),
             }}
           >
@@ -354,6 +386,93 @@ export default function OrgSettlementCard({ organizationId }) {
           <span role="status" style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>
             {paySuccess}
           </span>
+        )}
+      </div>
+
+      {/* Organization reports — the team's Excel files, with the email and
+          Drive outcome visible so a failed send is never silent. */}
+      <div data-testid="org-reports" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Organization reports
+          </span>
+          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>Excel + email to Dionne only · copy on Google Drive</span>
+        </div>
+        {reports.length === 0 ? (
+          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>
+            No organization report yet. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> on the orders the customer has paid, then click <strong style={{ color: colors.charcoal }}>Send org report</strong>.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={tableHead}>Report</th>
+                  <th style={moneyHead}>Total due</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Email</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Drive</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Payment</th>
+                  <th style={{ ...tableHead, textAlign: 'right' }}>Files</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <OrgReportRow
+                    key={r.id}
+                    report={r}
+                    orgName={organizationName || 'Organization'}
+                    payment={payments.find((p) => p.report_id === r.id) || null}
+                    onDeleted={refreshAll}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Organization payments ledger */}
+      <div data-testid="org-payments" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Organization payments
+          </span>
+          {owner?.user_id && (
+            <a href={`/admin/agents/${owner.user_id}`} style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none' }}>
+              Edit or delete a payment on {owner.profile?.full_name || 'the owner'}&apos;s page →
+            </a>
+          )}
+        </div>
+        {payments.length === 0 ? (
+          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>No payments recorded yet.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={tableHead}>Date</th>
+                  <th style={moneyHead}>Amount</th>
+                  <th style={tableHead}>Invoice #</th>
+                  <th style={tableHead}>Report</th>
+                  <th style={tableHead}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => {
+                  const rep = reports.find((r) => r.id === p.report_id)
+                  return (
+                    <tr key={p.id} data-testid={`org-payment-${p.id}`}>
+                      <td style={tableCell}>{p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB') : '—'}</td>
+                      <td style={{ ...moneyCell, fontWeight: 700, color: colors.inkPlum }}>{fmt(p.amount)}</td>
+                      <td style={tableCell}>{p.invoice_number || '—'}</td>
+                      <td style={tableCell}>{rep ? (rep.period_label || rep.period_key) : (p.report_id ? 'Report' : '—')}</td>
+                      <td style={{ ...tableCell, color: colors.lovelabMuted }}>{p.notes || '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -413,6 +532,103 @@ export default function OrgSettlementCard({ organizationId }) {
         </div>
       )}
     </div>
+  )
+}
+
+function OrgReportRow({ report: r, orgName, payment, onDeleted }) {
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+
+  const handleDelete = async () => {
+    if (!window.confirm(
+      `Delete this report (${r.period_label || r.period_key})? Every member's lines on it go back to Ready so you can Send again. The file in storage is removed; the Google Drive copy is kept.`,
+    )) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/commission-reports/${r.id}`, { method: 'DELETE' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`)
+      onDeleted?.()
+    } catch (err) {
+      setDeleteError(err?.message || 'Delete failed')
+      setDeleting(false)
+    }
+  }
+
+  const emailed = r.status === 'sent' || !!r.email_sent_at
+  const email = emailed
+    ? { label: 'Sent', bg: '#f0fdf4', fg: '#166534', title: r.email_recipient ? `Sent to ${r.email_recipient}` : 'Sent' }
+    : r.email_error
+      ? { label: 'Email failed', bg: '#fee2e2', fg: '#991b1b', title: r.email_error }
+      : { label: 'Not sent', bg: '#f3f4f6', fg: '#374151', title: 'Generated without email' }
+  const drive = r.drive_view_link
+    ? { label: 'Saved', bg: '#f0fdf4', fg: '#166534' }
+    : { label: 'No Drive copy', bg: '#fee2e2', fg: '#991b1b' }
+  const generatedAt = r.created_at ? new Date(r.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+
+  return (
+    <>
+      <tr data-testid={`org-report-${r.id}`}>
+        <td style={tableCell}>
+          <div style={{ fontWeight: 700, color: colors.charcoal }}>{r.period_label || r.period_key}</div>
+          <div style={{ fontSize: 10, color: colors.lovelabMuted }}>
+            {(r.order_count || 0)} order{r.order_count === 1 ? '' : 's'}
+            {r.bonus_count > 0 ? ` · ${r.bonus_count} bonus${r.bonus_count === 1 ? '' : 'es'}` : ''}
+            {' · '}{generatedAt}
+          </div>
+        </td>
+        <td style={{ ...moneyCell, fontWeight: 700, color: colors.inkPlum }}>{fmt(r.total_due)}</td>
+        <td style={{ ...tableCell, textAlign: 'center' }}>
+          <span title={email.title} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: email.bg, color: email.fg }}>{email.label}</span>
+          {!emailed && r.email_error && (
+            <div style={{ fontSize: 10, color: '#991b1b', marginTop: 3, maxWidth: 180, wordBreak: 'break-word' }}>{r.email_error}</div>
+          )}
+        </td>
+        <td style={{ ...tableCell, textAlign: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: drive.bg, color: drive.fg }}>{drive.label}</span>
+        </td>
+        <td style={{ ...tableCell, textAlign: 'center' }}>
+          {payment ? (
+            <span title={payment.invoice_number ? `Invoice ${payment.invoice_number}` : undefined} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: '#16a34a', color: '#fff' }}>
+              Paid {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-GB') : ''}
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: '#eef2ff', color: '#3730a3' }}>Awaiting payment</span>
+          )}
+        </td>
+        <td style={{ ...tableCell, textAlign: 'right' }}>
+          <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {!isHideRevenue() && r.drive_view_link && (
+              <a href={r.drive_view_link} target="_blank" rel="noopener noreferrer" title="Open in Google Drive" style={{ fontSize: 11, fontWeight: 600, color: colors.inkPlum, padding: '4px 8px', border: `1px solid ${colors.lineGray}`, borderRadius: 6, textDecoration: 'none' }}>
+                Drive
+              </a>
+            )}
+            {!isHideRevenue() && r.storage_path && (
+              <a href={`/api/commission-reports/${r.id}/download`} download={`${orgName} - ${r.period_key || r.period_label}.xlsx`} title="Download .xlsx" style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: colors.inkPlum, padding: '4px 10px', borderRadius: 6, textDecoration: 'none' }}>
+                Download
+              </a>
+            )}
+            {!payment && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Delete this report — its lines go back to Ready"
+                style={{ fontSize: 11, fontWeight: 600, color: deleting ? colors.lovelabMuted : '#b91c1c', background: 'none', border: `1px solid ${deleting ? colors.lineGray : '#fecaca'}`, borderRadius: 6, padding: '4px 8px', cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+              >
+                {deleting ? '…' : 'Delete'}
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {deleteError && (
+        <tr>
+          <td colSpan={6} style={{ padding: '4px 12px 8px', fontSize: 11, color: '#b91c1c' }}>{deleteError}</td>
+        </tr>
+      )}
+    </>
   )
 }
 

@@ -1038,7 +1038,7 @@ export default function AgentDetail({ kind = 'agent' }) {
                 </button>
                 {usesOrgSettlement ? (
                   <button
-                    onClick={() => router.push(`/admin/organizations/${agent.organization_id}`)}
+                    onClick={() => router.push(`/admin/organizations/${agent.organization_id}#payments`)}
                     title="Multi-member organizations are paid once from the organization settlement page."
                     style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.inkPlum, color: '#fff', cursor: 'pointer', fontFamily: fonts.body, fontSize: 12, fontWeight: 700 }}
                   >

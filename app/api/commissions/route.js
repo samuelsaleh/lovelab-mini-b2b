@@ -3,7 +3,36 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { resolveAgentIds } from '@/app/api/_lib/access';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every profile id behind an organization's active members. Re-invited
+ * agents can own two profiles with the same email; `resolveAgentIds` folds
+ * those in so a member's older rows still show up on the org page.
+ * Returns [] when the organization has no active member.
+ */
+async function resolveOrganizationAgentIds(adminSupabase, organizationId) {
+  const { data: memberships, error } = await adminSupabase
+    .from('organization_memberships')
+    .select('user_id')
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null);
+  if (error) throw error;
+  const ids = new Set();
+  for (const m of memberships || []) {
+    if (!m?.user_id) continue;
+    for (const id of await resolveAgentIds(adminSupabase, m.user_id)) ids.add(id);
+  }
+  return [...ids];
+}
+
 // GET - List commissions. Agents see their own; admins see all.
+//
+// Admin filters:
+//   ?agent_id=<uuid>          one agent (plus the duplicate profiles behind it)
+//   ?organization_id=<uuid>   every active member of an organization. Each row
+//                             then also carries `agent: { id, full_name, email }`
+//                             so the organization page can say whose line it is.
 export async function GET(request) {
   try {
     const rateLimitRes = checkRateLimit(request, { maxRequests: 60, prefix: 'commissions' });
@@ -28,20 +57,40 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const agentIdFilter = searchParams.get('agent_id');
+    const organizationIdFilter = searchParams.get('organization_id');
     const statusFilter = searchParams.get('status');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const perPage = Math.min(500, Math.max(1, parseInt(searchParams.get('per_page') || '200', 10)));
     const offset = (page - 1) * perPage;
 
-    // Agents can only see their own; admins can filter by agent_id
-    const targetAgentId = isAdmin ? (agentIdFilter || null) : user.id;
+    // Agents can only see their own; admins can filter by agent_id or by
+    // organization_id (the latter wins when both are sent).
+    const orgMode = isAdmin && !!organizationIdFilter;
+    if (orgMode && !UUID_REGEX.test(organizationIdFilter)) {
+      return NextResponse.json({ error: 'organization_id must be a UUID' }, { status: 400 });
+    }
+    const targetAgentId = isAdmin ? (orgMode ? null : (agentIdFilter || null)) : user.id;
 
     const adminSupabase = createAdminClient();
 
     // Resolve all profile IDs sharing the same email (handles re-invited agents)
-    const allAgentIds = targetAgentId
+    let allAgentIds = targetAgentId
       ? await resolveAgentIds(adminSupabase, targetAgentId)
       : null;
+
+    if (orgMode) {
+      allAgentIds = await resolveOrganizationAgentIds(adminSupabase, organizationIdFilter);
+      if (allAgentIds.length === 0) {
+        // `.in('agent_id', [])` is a PostgREST error, not an empty list.
+        return NextResponse.json({
+          commissions: [],
+          summary: null,
+          total_count: 0,
+          page,
+          per_page: perPage,
+        });
+      }
+    }
 
     const applyFilters = (q) => {
       if (allAgentIds) {
@@ -131,9 +180,27 @@ export async function GET(request) {
       }
     }
 
+    // Organization mode: name the agent on every row. One lookup for the
+    // distinct agent ids on this page, never one per row.
+    let agentsById = null;
+    if (orgMode) {
+      const pageAgentIds = [...new Set((commissions || []).map((c) => c.agent_id).filter(Boolean))];
+      agentsById = {};
+      if (pageAgentIds.length > 0) {
+        const { data: agentProfiles } = await adminSupabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', pageAgentIds);
+        for (const p of agentProfiles || []) {
+          agentsById[p.id] = { id: p.id, full_name: p.full_name || null, email: p.email || null };
+        }
+      }
+    }
+
     const commissionsWithDocs = (commissions || []).map(c => ({
       ...c,
       document: c.document_id ? docsMap[c.document_id] || null : null,
+      ...(agentsById ? { agent: agentsById[c.agent_id] || { id: c.agent_id, full_name: null, email: null } } : {}),
     }));
 
     // Fetch agent payments to calculate true pending balance

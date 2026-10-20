@@ -3,6 +3,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { NextResponse } from 'next/server';
 import { resolveAgentIds } from '@/app/api/_lib/access';
 import { settleReportPayment } from '@/lib/commissionPaidOut';
+import { getOrgSettlementScope } from '@/lib/organizations/settlementScope';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -84,22 +85,15 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    if (agent.organization_id) {
-      const { data: activeMembers, error: memberError } = await adminSupabase
-        .from('organization_memberships')
-        .select('user_id, role')
-        .eq('organization_id', agent.organization_id)
-        .is('deleted_at', null);
-      if (memberError) throw memberError;
-      if ((activeMembers || []).length > 1) {
-        const owner = activeMembers.find((member) => member.role === 'owner');
-        if (!owner || agent_id !== owner.user_id) {
-          return NextResponse.json(
-            { error: 'Multi-member organizations must be paid once through the organization settlement.' },
-            { status: 409 },
-          );
-        }
-      }
+    // Phase 31: a multi-member organization is paid once, on its owner.
+    const scope = await getOrgSettlementScope(adminSupabase, agent_id, {
+      organizationId: agent.organization_id || null,
+    });
+    if (scope?.multiMember && (!scope.ownerId || agent_id !== scope.ownerId)) {
+      return NextResponse.json(
+        { error: 'Multi-member organizations must be paid once through the organization settlement.' },
+        { status: 409 },
+      );
     }
 
     const cleanInvoice = invoice_number == null
