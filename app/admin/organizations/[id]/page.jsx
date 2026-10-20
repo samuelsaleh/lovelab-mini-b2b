@@ -30,6 +30,8 @@ import { colors } from '@/lib/styles'
 import { resolveEffectiveRate } from '@/lib/effectiveRate'
 import { isHideRevenue } from '@/lib/utils'
 
+const MEMBERS_OPEN_KEY = 'lovelab:admin-org:members-open'
+
 const formatMoney = (value) => {
   if (isHideRevenue()) return '—'
   return new Intl.NumberFormat('en-US', {
@@ -75,6 +77,20 @@ export default function AdminOrganizationDetailPage() {
 
   // Member management (resend invite / pause / remove)
   const [busyUserId, setBusyUserId] = useState(null)
+
+  // The members table is long for a big team and sits above Payments, so it
+  // can be folded away. The choice is remembered per browser.
+  const [membersOpen, setMembersOpen] = useState(true)
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(MEMBERS_OPEN_KEY) === 'closed') setMembersOpen(false)
+    } catch { /* storage unavailable: stay open */ }
+  }, [])
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MEMBERS_OPEN_KEY, membersOpen ? 'open' : 'closed')
+    } catch { /* ignore */ }
+  }, [membersOpen])
 
   // "Go to organization settlement" links here with #payments. The page
   // renders a loading state first, so the browser's own hash scroll fires
@@ -357,10 +373,23 @@ export default function AdminOrganizationDetailPage() {
         </section>
 
         <section aria-labelledby="members-heading" style={{ ...cardStyle, marginBottom: 28, overflow: 'hidden' }}>
-          <div style={{ padding: '18px 20px', borderBottom: `1px solid ${colors.borderLight}` }}>
-            <h2 id="members-heading" style={sectionHeading}>Members</h2>
-            <p style={sectionSubheading}>Everything per team member: activity, rate, status and access.</p>
+          <div style={{ padding: '18px 20px', borderBottom: membersOpen ? `1px solid ${colors.borderLight}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <h2 id="members-heading" style={sectionHeading}>Members</h2>
+              <p style={sectionSubheading}>Everything per team member: activity, rate, status and access.</p>
+            </div>
+            <button
+              type="button"
+              data-testid="members-toggle"
+              onClick={() => setMembersOpen((open) => !open)}
+              aria-expanded={membersOpen}
+              aria-controls="members-body"
+              style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, background: '#fff', color: colors.inkPlum, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {membersOpen ? 'Hide members' : `Show members (${members.length})`}
+            </button>
           </div>
+          {membersOpen && (<>
           <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.borderLight}`, background: '#fcfbfd' }}>
             <TeamInviteForm organizationId={organizationId} adminView onInvited={load} />
           </div>
@@ -466,6 +495,7 @@ export default function AdminOrganizationDetailPage() {
               </table>
             </div>
           )}
+          </>)}
         </section>
 
         <section id="payments" aria-labelledby="payments-heading" style={{ marginBottom: 28, scrollMarginTop: 16 }}>

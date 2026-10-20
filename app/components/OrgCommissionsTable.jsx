@@ -558,7 +558,7 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
           <span style={{ color: '#92400e', fontWeight: 600 }}>Showing the {rows.length} most recent of {totalCount} lines. </span>
         )}
         Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> when the customer settles an order (→ <strong style={{ color: colors.charcoal }}>Ready</strong>).{' '}
-        <strong style={{ color: colors.charcoal }}>Send org report</strong> below emails Dionne one Excel with every Ready line, agent named on each, and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>.{' '}
+        <strong style={{ color: colors.charcoal }}>Send org report now</strong> above emails Dionne one Excel with every Ready line, agent named on each, and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>.{' '}
         <strong style={{ color: colors.charcoal }}>Record payment</strong> against that report settles them all as <strong style={{ color: colors.charcoal }}>Paid</strong>.
       </div>
     </div>

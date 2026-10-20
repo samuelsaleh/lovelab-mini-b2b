@@ -259,6 +259,90 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
         </div>
       )}
 
+      {/* Actions */}
+      <div style={{ padding: '14px 18px', borderTop: `1px solid ${colors.lineGray}`, background: '#fafafa', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          data-testid="org-send-report"
+          onClick={handleSendReport}
+          disabled={sending || isHideRevenue()}
+          style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: sending ? '#aaa' : colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700, cursor: sending ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+        >
+          {sending ? 'Sending…' : 'Send org report now'}
+        </button>
+        <button
+          data-testid="org-record-payment"
+          onClick={openPayModal}
+          disabled={!owner}
+          style={{ padding: '9px 18px', borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, fontSize: 12, fontWeight: 700, cursor: owner ? 'pointer' : 'default', opacity: owner ? 1 : 0.5, fontFamily: 'inherit' }}
+        >
+          Record payment
+        </button>
+        <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: '1 1 260px', lineHeight: 1.4 }}>
+          <strong style={{ color: colors.charcoal }}>Send org report now</strong> takes every member&apos;s Ready lines (customer paid, not yet reported) into one Excel — agent named on each line, per-agent totals at the bottom — emails it to Dionne and saves it to Google Drive.
+        </span>
+        {sendResult && (
+          <span
+            role="status"
+            style={{
+              fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600,
+              ...(sendResult.kind === 'success' && { background: '#f0fdf4', color: '#166534' }),
+              ...(sendResult.kind === 'skipped' && { background: '#fffbeb', color: '#92400e' }),
+              ...(sendResult.kind === 'partial' && { background: '#fef3c7', color: '#7c2d12' }),
+              ...(sendResult.kind === 'error' && { background: '#fee2e2', color: '#991b1b' }),
+            }}
+          >
+            {sendResult.message}
+          </span>
+        )}
+        {paySuccess && (
+          <span role="status" style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>
+            {paySuccess}
+          </span>
+        )}
+      </div>
+
+      {/* Organization reports — the team's Excel files, with the email and
+          Drive outcome visible so a failed send is never silent. */}
+      <div data-testid="org-reports" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Organization reports
+          </span>
+          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>Excel + email to Dionne only · copy on Google Drive</span>
+        </div>
+        {reports.length === 0 ? (
+          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>
+            No organization report yet. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> on the orders the customer has paid, then click <strong style={{ color: colors.charcoal }}>Send org report now</strong> above.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={tableHead}>Report</th>
+                  <th style={moneyHead}>Total due</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Email</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Drive</th>
+                  <th style={{ ...tableHead, textAlign: 'center' }}>Payment</th>
+                  <th style={{ ...tableHead, textAlign: 'right' }}>Files</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <OrgReportRow
+                    key={r.id}
+                    report={r}
+                    orgName={organizationName || 'Organization'}
+                    payment={payments.find((p) => p.report_id === r.id) || null}
+                    onDeleted={refreshAll}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Every member's lines, agent named on each — what is Ready vs not. */}
       <OrgCommissionsTable
         organizationId={organizationId}
@@ -267,6 +351,51 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
         reloadToken={tableReloadToken}
         onChanged={refreshLedger}
       />
+
+      {/* Organization payments ledger */}
+      <div data-testid="org-payments" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
+        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Organization payments
+          </span>
+          {owner?.user_id && (
+            <a href={`/admin/agents/${owner.user_id}`} style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none' }}>
+              Edit or delete a payment on {owner.profile?.full_name || 'the owner'}&apos;s page →
+            </a>
+          )}
+        </div>
+        {payments.length === 0 ? (
+          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>No payments recorded yet.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={tableHead}>Date</th>
+                  <th style={moneyHead}>Amount</th>
+                  <th style={tableHead}>Invoice #</th>
+                  <th style={tableHead}>Report</th>
+                  <th style={tableHead}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => {
+                  const rep = reports.find((r) => r.id === p.report_id)
+                  return (
+                    <tr key={p.id} data-testid={`org-payment-${p.id}`}>
+                      <td style={tableCell}>{p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB') : '—'}</td>
+                      <td style={{ ...moneyCell, fontWeight: 700, color: colors.inkPlum }}>{fmt(p.amount)}</td>
+                      <td style={tableCell}>{p.invoice_number || '—'}</td>
+                      <td style={tableCell}>{rep ? (rep.period_label || rep.period_key) : (p.report_id ? 'Report' : '—')}</td>
+                      <td style={{ ...tableCell, color: colors.lovelabMuted }}>{p.notes || '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* One organization payment, transparently allocated back to each member
           through the commissions settled by the linked report. The per-member
@@ -344,135 +473,6 @@ export default function OrgSettlementCard({ organizationId, organizationName = '
             </tbody>
           </table>
         </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ padding: '14px 18px', borderTop: `1px solid ${colors.lineGray}`, background: '#fafafa', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button
-          data-testid="org-send-report"
-          onClick={handleSendReport}
-          disabled={sending || isHideRevenue()}
-          style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: sending ? '#aaa' : colors.inkPlum, color: '#fff', fontSize: 12, fontWeight: 700, cursor: sending ? 'wait' : 'pointer', fontFamily: 'inherit' }}
-        >
-          {sending ? 'Generating…' : 'Send org report'}
-        </button>
-        <button
-          data-testid="org-record-payment"
-          onClick={openPayModal}
-          disabled={!owner}
-          style={{ padding: '9px 18px', borderRadius: 8, border: `1.5px solid ${colors.inkPlum}`, background: '#fff', color: colors.inkPlum, fontSize: 12, fontWeight: 700, cursor: owner ? 'pointer' : 'default', opacity: owner ? 1 : 0.5, fontFamily: 'inherit' }}
-        >
-          Record payment
-        </button>
-        <span style={{ fontSize: 11, color: colors.lovelabMuted, flex: '1 1 260px', lineHeight: 1.4 }}>
-          <strong style={{ color: colors.charcoal }}>Send org report</strong> takes every member&apos;s Ready lines (customer paid, not yet reported) into one Excel — agent named on each line, per-agent totals at the bottom — emails it to Dionne and saves it to Google Drive.
-        </span>
-        {sendResult && (
-          <span
-            role="status"
-            style={{
-              fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600,
-              ...(sendResult.kind === 'success' && { background: '#f0fdf4', color: '#166534' }),
-              ...(sendResult.kind === 'skipped' && { background: '#fffbeb', color: '#92400e' }),
-              ...(sendResult.kind === 'partial' && { background: '#fef3c7', color: '#7c2d12' }),
-              ...(sendResult.kind === 'error' && { background: '#fee2e2', color: '#991b1b' }),
-            }}
-          >
-            {sendResult.message}
-          </span>
-        )}
-        {paySuccess && (
-          <span role="status" style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, fontWeight: 600, background: '#f0fdf4', color: '#166534' }}>
-            {paySuccess}
-          </span>
-        )}
-      </div>
-
-      {/* Organization reports — the team's Excel files, with the email and
-          Drive outcome visible so a failed send is never silent. */}
-      <div data-testid="org-reports" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
-        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Organization reports
-          </span>
-          <span style={{ fontSize: 11, color: colors.lovelabMuted }}>Excel + email to Dionne only · copy on Google Drive</span>
-        </div>
-        {reports.length === 0 ? (
-          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>
-            No organization report yet. Tick <strong style={{ color: colors.charcoal }}>Paid?</strong> on the orders the customer has paid, then click <strong style={{ color: colors.charcoal }}>Send org report</strong>.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-              <thead>
-                <tr style={{ background: '#fafafa' }}>
-                  <th style={tableHead}>Report</th>
-                  <th style={moneyHead}>Total due</th>
-                  <th style={{ ...tableHead, textAlign: 'center' }}>Email</th>
-                  <th style={{ ...tableHead, textAlign: 'center' }}>Drive</th>
-                  <th style={{ ...tableHead, textAlign: 'center' }}>Payment</th>
-                  <th style={{ ...tableHead, textAlign: 'right' }}>Files</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.map((r) => (
-                  <OrgReportRow
-                    key={r.id}
-                    report={r}
-                    orgName={organizationName || 'Organization'}
-                    payment={payments.find((p) => p.report_id === r.id) || null}
-                    onDeleted={refreshAll}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Organization payments ledger */}
-      <div data-testid="org-payments" style={{ borderTop: `1px solid ${colors.lineGray}` }}>
-        <div style={{ padding: '11px 18px', background: '#fcfbfd', borderBottom: `1px solid ${colors.lineGray}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Organization payments
-          </span>
-          {owner?.user_id && (
-            <a href={`/admin/agents/${owner.user_id}`} style={{ fontSize: 11, fontWeight: 700, color: colors.inkPlum, textDecoration: 'none' }}>
-              Edit or delete a payment on {owner.profile?.full_name || 'the owner'}&apos;s page →
-            </a>
-          )}
-        </div>
-        {payments.length === 0 ? (
-          <div style={{ padding: '12px 18px', fontSize: 12, color: colors.lovelabMuted }}>No payments recorded yet.</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-              <thead>
-                <tr style={{ background: '#fafafa' }}>
-                  <th style={tableHead}>Date</th>
-                  <th style={moneyHead}>Amount</th>
-                  <th style={tableHead}>Invoice #</th>
-                  <th style={tableHead}>Report</th>
-                  <th style={tableHead}>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => {
-                  const rep = reports.find((r) => r.id === p.report_id)
-                  return (
-                    <tr key={p.id} data-testid={`org-payment-${p.id}`}>
-                      <td style={tableCell}>{p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-GB') : '—'}</td>
-                      <td style={{ ...moneyCell, fontWeight: 700, color: colors.inkPlum }}>{fmt(p.amount)}</td>
-                      <td style={tableCell}>{p.invoice_number || '—'}</td>
-                      <td style={tableCell}>{rep ? (rep.period_label || rep.period_key) : (p.report_id ? 'Report' : '—')}</td>
-                      <td style={{ ...tableCell, color: colors.lovelabMuted }}>{p.notes || '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
 
