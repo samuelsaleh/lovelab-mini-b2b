@@ -76,6 +76,15 @@ export default function AdminOrganizationDetailPage() {
   // Member management (resend invite / pause / remove)
   const [busyUserId, setBusyUserId] = useState(null)
 
+  // "Go to organization settlement" links here with #payments. The page
+  // renders a loading state first, so the browser's own hash scroll fires
+  // before the section exists; redo it once the content is on screen.
+  useEffect(() => {
+    if (loading || typeof window === 'undefined') return
+    if (window.location.hash !== '#payments') return
+    document.getElementById('payments')?.scrollIntoView({ block: 'start' })
+  }, [loading])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -459,12 +468,12 @@ export default function AdminOrganizationDetailPage() {
           )}
         </section>
 
-        <section aria-labelledby="payments-heading" style={{ marginBottom: 28 }}>
+        <section id="payments" aria-labelledby="payments-heading" style={{ marginBottom: 28, scrollMarginTop: 16 }}>
           <div style={{ marginBottom: 14 }}>
             <h2 id="payments-heading" style={sectionHeading}>Payments</h2>
-            <p style={sectionSubheading}>One report, one payment — settle the whole team through the owner.</p>
+            <p style={sectionSubheading}>Every member&apos;s commissions in one place — one report, one payment, settled through the owner.</p>
           </div>
-          <OrgSettlementCard organizationId={organizationId} />
+          <OrgSettlementCard organizationId={organizationId} organizationName={organization?.name || ''} />
         </section>
 
         <section aria-label="Revenue by fair">

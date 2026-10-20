@@ -137,6 +137,8 @@ describe('Admin organization detail redesign', () => {
     expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Payments' })).toBeInTheDocument()
     expect(screen.getByTestId('settlement-card')).toBeInTheDocument()
+    // "Go to organization settlement" on the agent page links to #payments.
+    expect(document.getElementById('payments')).toContainElement(screen.getByTestId('settlement-card'))
     expect(screen.getByTestId('team-invite-form')).toBeInTheDocument()
     expect(screen.getByTestId('revenue-by-fair-chart')).toBeInTheDocument()
   })
