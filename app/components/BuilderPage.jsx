@@ -692,9 +692,9 @@ export default function BuilderPage({ lines, setLines, onGenerateQuote, budget, 
   // Resolve once per render so every downstream getter / calculator sees the
   // same year, even if the parent passes a stale or undefined value mid-flight.
   const activePricelist = resolvePricelist(pricelistYear)
-  // October is the default for everyone. 2025 / 2026 stay available only for
-  // Alberto and Dionne (see canSeePricelist). The active list is always offered
-  // so reopening a legacy-priced document still shows the matching button.
+  // October is the only list anyone can choose (Dionne, 21 Oct 2026; see
+  // canSeePricelist). The active list is always offered so reopening a
+  // legacy-priced document still shows the matching button.
   const offeredPricelists = useMemo(
     () => getVisiblePricelists(isAdmin ? { ...profile, role: 'admin' } : profile, activePricelist),
     [isAdmin, profile, activePricelist],
