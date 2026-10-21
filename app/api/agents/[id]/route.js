@@ -78,6 +78,36 @@ export async function GET(request, { params }) {
   }
 }
 
+function siteUrlFor(request) {
+  return process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+}
+
+/**
+ * Email an agent that their access is back, with a one-click sign-in link
+ * (falls back to the login page if the link cannot be generated). Never
+ * throws: returns true only when the email was handed to Resend.
+ */
+async function sendAccessRestoredEmail(adminSupabase, profile, siteUrl) {
+  if (!process.env.RESEND_API_KEY || !profile?.email) return false;
+  try {
+    let signInUrl = `${siteUrl}/login`;
+    const { data: magicData } = await adminSupabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: profile.email.toLowerCase(),
+      options: { redirectTo: `${siteUrl}/auth/callback` },
+    });
+    if (magicData?.properties?.action_link) signInUrl = magicData.properties.action_link;
+
+    const agentName = profile.full_name || profile.email;
+    const { subject, html } = restoreAgentEmail(agentName, signInUrl, siteUrl);
+    const result = await sendEmail({ to: profile.email, subject, html });
+    return result?.sent !== false;
+  } catch (emailErr) {
+    console.error('[Agent PUT] Access-restored email error (non-blocking):', emailErr.message);
+    return false;
+  }
+}
+
 // PUT - Update agent profile/rate/status (admin only)
 export async function PUT(request, { params }) {
   try {
@@ -98,7 +128,7 @@ export async function PUT(request, { params }) {
     // Verify agent exists
     const { data: existing } = await adminSupabase
       .from('profiles')
-      .select('id, is_agent')
+      .select('id, is_agent, agent_status')
       .eq('id', id)
       .single();
 
@@ -128,28 +158,7 @@ export async function PUT(request, { params }) {
           console.error('[Agent PUT] grantAccess error (non-blocking):', allowErr.message);
         }
 
-        // Generate a new magic link and send a "your access has been restored" email
-        const resendApiKey = process.env.RESEND_API_KEY;
-        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
-        if (resendApiKey) {
-          try {
-            let magicLinkUrl = `${siteUrl}/login`;
-            const { data: magicData } = await adminSupabase.auth.admin.generateLink({
-              type: 'magiclink',
-              email: restored.email.toLowerCase(),
-              options: { redirectTo: `${siteUrl}/auth/callback` },
-            });
-            if (magicData?.properties?.action_link) {
-              magicLinkUrl = magicData.properties.action_link;
-            }
-
-            const agentName = restored.full_name || restored.email;
-            const { subject, html } = restoreAgentEmail(agentName, magicLinkUrl, siteUrl);
-            await sendEmail({ to: restored.email, subject, html });
-          } catch (emailErr) {
-            console.error('[Agent PUT] Restore email error (non-blocking):', emailErr.message);
-          }
-        }
+        await sendAccessRestoredEmail(adminSupabase, restored, siteUrlFor(request));
       }
 
       return NextResponse.json({ agent: restored, message: 'Agent restored.' });
@@ -259,7 +268,16 @@ export async function PUT(request, { params }) {
       }
     }
 
-    return NextResponse.json({ agent });
+    // Reactivation from the agent page (Sam, 21 Oct 2026): with `notify`,
+    // a paused or inactive agent coming back to 'active' is emailed a
+    // "your access has been restored" message with a sign-in link.
+    let notified = false;
+    const wasBlocked = existing.agent_status === 'paused' || existing.agent_status === 'inactive';
+    if (body.notify === true && updates.agent_status === 'active' && wasBlocked && agent?.email) {
+      notified = await sendAccessRestoredEmail(adminSupabase, agent, siteUrlFor(request));
+    }
+
+    return NextResponse.json({ agent, notified });
   } catch (err) {
     console.error('[Agent PUT] Exception:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
