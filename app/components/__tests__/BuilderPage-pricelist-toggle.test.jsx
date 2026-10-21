@@ -25,6 +25,13 @@ jest.mock('@/lib/api', () => ({
 }))
 
 const BuilderPage = require('../BuilderPage').default
+// Production offers only October (Dionne, 21 Oct 2026). These tests exercise
+// the toggle itself, so they put Alberto and Dionne back on the legacy
+// allowlist for their duration.
+const { LEGACY_PRICELIST_EMAILS } = require('@/lib/collectionAccess')
+const LEGACY_TEST_EMAILS = ['alberto@love-lab.com', 'albertosaleh@gmail.com', 'dionne@love-lab.com']
+beforeEach(() => { for (const e of LEGACY_TEST_EMAILS) LEGACY_PRICELIST_EMAILS.add(e) })
+afterEach(() => { for (const e of LEGACY_TEST_EMAILS) LEGACY_PRICELIST_EMAILS.delete(e) })
 const { mkLine } = require('../BuilderPage')
 const { COLLECTIONS, PRICELISTS, PRICELIST_LABELS } = require('@/lib/catalog')
 
