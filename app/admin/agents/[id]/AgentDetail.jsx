@@ -92,6 +92,9 @@ export default function AgentDetail({ kind = 'agent' }) {
   const [commissionFilter, setCommissionFilter] = useState('all');
   // Free text over customer / invoice / order number (lib/commissionSearch).
   const [commissionSearch, setCommissionSearch] = useState('');
+  // Pause / reactivate platform access from the agent page (Sam, 21 Oct 2026).
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null); // { kind, text }
   const [organizationMembers, setOrganizationMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
@@ -129,6 +132,38 @@ export default function AgentDetail({ kind = 'agent' }) {
 
   // Organization context (editing/settlement now lives on the org page).
   const [orgData, setOrgData] = useState(null);
+
+  // Paused / inactive agents are refused at sign-in (lib/auth/isUserAllowed);
+  // setting the status back to 'active' is all it takes to let them in again.
+  const handleSetAgentStatus = async (nextStatus) => {
+    if (!agentId || !agent) return;
+    const name = agent.full_name || agent.email || 'this agent';
+    const question = nextStatus === 'active'
+      ? `Reactivate ${name}? They can sign in to the platform again with their usual password (or “Forgot password” on the login page).`
+      : `Pause ${name}? They will no longer be able to sign in. Orders, commissions and reports are kept, and you can reactivate them at any time.`;
+    if (!window.confirm(question)) return;
+    setStatusBusy(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_status: nextStatus }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update the status');
+      setAgent((prev) => ({ ...prev, ...(json.agent || {}), agent_status: json.agent?.agent_status || nextStatus }));
+      setStatusMessage({
+        kind: 'success',
+        text: nextStatus === 'active'
+          ? `${name} is active again and can sign in.`
+          : `${name} is paused and can no longer sign in.`,
+      });
+    } catch (err) {
+      setStatusMessage({ kind: 'error', text: err?.message || 'Failed to update the status' });
+    }
+    setStatusBusy(false);
+  };
 
   const load = useCallback(async () => {
     if (!agentId) return;
@@ -954,10 +989,39 @@ export default function AgentDetail({ kind = 'agent' }) {
                     <h1 style={{ fontFamily: fonts.heading, fontSize: 24, fontWeight: 700, color: colors.charcoal, margin: 0 }}>
                       {agent?.full_name || agent?.email}
                     </h1>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: agent?.agent_status === 'active' ? '#166534' : '#6b7280', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f3f4f6', border: `1px solid ${agent?.agent_status === 'active' ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 20, padding: '3px 9px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span data-testid="agent-status-badge" style={{ fontSize: 10, fontWeight: 800, color: agent?.agent_status === 'active' ? '#166534' : '#6b7280', background: agent?.agent_status === 'active' ? '#f0fdf4' : '#f3f4f6', border: `1px solid ${agent?.agent_status === 'active' ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 20, padding: '3px 9px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {agent?.agent_status || 'unknown'}
                     </span>
+                    {(agent?.agent_status === 'paused' || agent?.agent_status === 'inactive') && (
+                      <button
+                        type="button"
+                        data-testid="agent-reactivate"
+                        onClick={() => handleSetAgentStatus('active')}
+                        disabled={statusBusy}
+                        title="Give this agent access to the platform again. They sign in with their usual password (or “Forgot password”)."
+                        style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, border: 'none', background: '#16a34a', color: '#fff', cursor: statusBusy ? 'wait' : 'pointer', fontFamily: fonts.body, opacity: statusBusy ? 0.6 : 1 }}
+                      >
+                        {statusBusy ? 'Saving…' : 'Reactivate'}
+                      </button>
+                    )}
+                    {agent?.agent_status === 'active' && (
+                      <button
+                        type="button"
+                        data-testid="agent-pause"
+                        onClick={() => handleSetAgentStatus('paused')}
+                        disabled={statusBusy}
+                        title="Block this agent from signing in. Orders, commissions and reports stay; Reactivate gives access back."
+                        style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: `1px solid ${colors.lineGray}`, background: '#fff', color: colors.lovelabMuted, cursor: statusBusy ? 'wait' : 'pointer', fontFamily: fonts.body, opacity: statusBusy ? 0.6 : 1 }}
+                      >
+                        {statusBusy ? 'Saving…' : 'Pause access'}
+                      </button>
+                    )}
                   </div>
+                  {statusMessage && (
+                    <div role="status" data-testid="agent-status-message" style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: statusMessage.kind === 'error' ? '#b91c1c' : '#166534' }}>
+                      {statusMessage.text}
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: colors.lovelabMuted }}>{agent?.email}</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     {(() => {
