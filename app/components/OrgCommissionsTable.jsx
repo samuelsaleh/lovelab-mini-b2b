@@ -28,6 +28,7 @@ import { colors } from '@/lib/styles'
 import { isHideRevenue } from '@/lib/utils'
 import { commissionSettlementStage } from '@/lib/organizations/settlement'
 import { applyCustomerPaidLocally, selectableForBulk, sendBulkCustomerPaid } from '@/lib/bulkCustomerPaid'
+import { commissionMatchesQuery } from '@/lib/commissionSearch'
 
 const PAGE_SIZE = 500
 const MAX_BULK_IDS = 200
@@ -108,6 +109,7 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
 
   const [filter, setFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [busyIds, setBusyIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -164,8 +166,9 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
 
   const visibleRows = useMemo(() => rows.filter((r) =>
     (filter === 'all' || commissionSettlementStage(r) === filter) &&
-    (!agentFilter || r.agent_id === agentFilter)
-  ), [rows, filter, agentFilter])
+    (!agentFilter || r.agent_id === agentFilter) &&
+    commissionMatchesQuery(r, search)
+  ), [rows, filter, agentFilter, search])
 
   const selectableVisibleIds = visibleRows.filter(canToggleCustomerPaid).map((r) => r.id)
   const selectedVisibleIds = selectableVisibleIds.filter((id) => selected.has(id))
@@ -356,12 +359,21 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
             </button>
           )
         })}
+        <input
+          type="search"
+          data-testid="org-commissions-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search customer, invoice #, order…"
+          aria-label="Search commissions"
+          style={{ marginLeft: 'auto', minWidth: 220, fontSize: 12, padding: '5px 10px', borderRadius: 20, border: `1px solid ${colors.lineGray}`, fontFamily: 'inherit', color: colors.charcoal, background: '#fff' }}
+        />
         <select
           data-testid="org-commissions-agent-filter"
           value={agentFilter}
           onChange={(e) => setAgentFilter(e.target.value)}
           aria-label="Filter by agent"
-          style={{ marginLeft: 'auto', fontSize: 11, padding: '4px 8px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, fontFamily: 'inherit', color: colors.charcoal, background: '#fff' }}
+          style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, border: `1px solid ${colors.lineGray}`, fontFamily: 'inherit', color: colors.charcoal, background: '#fff' }}
         >
           <option value="">All agents</option>
           {agentOptions.map((a) => (
@@ -417,7 +429,9 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
       ) : rows.length === 0 ? (
         <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No commissions for this team yet.</div>
       ) : visibleRows.length === 0 ? (
-        <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>No {ORG_COMMISSION_FILTERS.find((f) => f.key === filter)?.label?.toLowerCase() || ''} commissions{agentFilter ? ' for this agent' : ''}.</div>
+        <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>
+          No {ORG_COMMISSION_FILTERS.find((f) => f.key === filter)?.label?.toLowerCase() || ''} commissions{agentFilter ? ' for this agent' : ''}{search.trim() ? ` matching “${search.trim()}”` : ''}.
+        </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>

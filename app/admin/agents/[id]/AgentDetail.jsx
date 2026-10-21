@@ -24,6 +24,7 @@ import AddQuickOrderModal from '@/app/components/AddQuickOrderModal';
 import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 import SynaliaAgentTab from '@/app/components/SynaliaAgentTab';
+import { commissionMatchesQuery } from '@/lib/commissionSearch';
 import {
   isSynaliaAgentEmail,
   isSynaliaJewelerGroup,
@@ -89,6 +90,8 @@ export default function AgentDetail({ kind = 'agent' }) {
   const [docDerivedRows, setDocDerivedRows] = useState([]);
   // Commission History status filter ('all' | awaiting | ready | reported | paid | cancelled)
   const [commissionFilter, setCommissionFilter] = useState('all');
+  // Free text over customer / invoice / order number (lib/commissionSearch).
+  const [commissionSearch, setCommissionSearch] = useState('');
   const [organizationMembers, setOrganizationMembers] = useState([]);
   const [memberEmail, setMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
@@ -1204,9 +1207,10 @@ export default function AgentDetail({ kind = 'agent' }) {
                       return acc;
                     }, {});
                     const activeFilter = commissionFilter;
-                    const visibleRows = activeFilter === 'all'
+                    const visibleRows = (activeFilter === 'all'
                       ? allRows
-                      : allRows.filter((r) => commissionStatusKey(r) === activeFilter);
+                      : allRows.filter((r) => commissionStatusKey(r) === activeFilter)
+                    ).filter((r) => commissionMatchesQuery(r, commissionSearch));
                     // Orders where the new-client bonus is still an open
                     // decision. Empty unless the agent has a bonus amount and
                     // a mode other than 'off'.
@@ -1292,6 +1296,15 @@ export default function AgentDetail({ kind = 'agent' }) {
                               </button>
                             );
                           })}
+                          <input
+                            type="search"
+                            value={commissionSearch}
+                            onChange={(e) => setCommissionSearch(e.target.value)}
+                            placeholder="Search customer, invoice #, order…"
+                            aria-label="Search commissions"
+                            data-testid="commission-search"
+                            style={{ marginLeft: 'auto', minWidth: 220, fontSize: 12, padding: '5px 10px', borderRadius: 20, border: `1px solid ${colors.lineGray}`, fontFamily: fonts.body, color: colors.charcoal, background: '#fff' }}
+                          />
                         </div>
                         {selectedCount > 0 && (
                           <div
@@ -1329,7 +1342,7 @@ export default function AgentDetail({ kind = 'agent' }) {
                         )}
                         {visibleRows.length === 0 ? (
                           <div style={{ padding: 16, fontSize: 13, color: colors.lovelabMuted }}>
-                            No {activeFilter} commissions.
+                            No {activeFilter} commissions{commissionSearch.trim() ? ` matching “${commissionSearch.trim()}”` : ''}.
                           </div>
                         ) : (
                         <div style={{ overflowX: 'auto' }}>
