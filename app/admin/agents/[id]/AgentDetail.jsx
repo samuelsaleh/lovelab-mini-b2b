@@ -139,7 +139,7 @@ export default function AgentDetail({ kind = 'agent' }) {
     if (!agentId || !agent) return;
     const name = agent.full_name || agent.email || 'this agent';
     const question = nextStatus === 'active'
-      ? `Reactivate ${name}? They can sign in to the platform again with their usual password (or “Forgot password” on the login page).`
+      ? `Reactivate ${name}? They can sign in to the platform again, and they get an email (${agent.email}) saying their access is restored, with a sign-in link.`
       : `Pause ${name}? They will no longer be able to sign in. Orders, commissions and reports are kept, and you can reactivate them at any time.`;
     if (!window.confirm(question)) return;
     setStatusBusy(true);
@@ -148,7 +148,9 @@ export default function AgentDetail({ kind = 'agent' }) {
       const res = await fetch(`/api/agents/${agentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_status: nextStatus }),
+        body: JSON.stringify(nextStatus === 'active'
+          ? { agent_status: nextStatus, notify: true }
+          : { agent_status: nextStatus }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update the status');
@@ -156,7 +158,9 @@ export default function AgentDetail({ kind = 'agent' }) {
       setStatusMessage({
         kind: 'success',
         text: nextStatus === 'active'
-          ? `${name} is active again and can sign in.`
+          ? json.notified
+            ? `${name} is active again and can sign in. An email with a sign-in link went to ${agent.email}.`
+            : `${name} is active again and can sign in. The email could not be sent — let them know yourself.`
           : `${name} is paused and can no longer sign in.`,
       });
     } catch (err) {

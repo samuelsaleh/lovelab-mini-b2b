@@ -40,8 +40,9 @@ function installFetch() {
     if (href === '/api/agents/agent-1' && method === 'PUT') {
       if (!putOk) return json({ error: 'Failed to update agent' }, false);
       const body = JSON.parse(opts.body);
-      agentRow = { ...agentRow, ...body };
-      return json({ agent: agentRow });
+      const { notify, ...fields } = body;
+      agentRow = { ...agentRow, ...fields };
+      return json({ agent: agentRow, notified: notify === true });
     }
     if (href.startsWith('/api/agents')) return json({ agents: [agentRow] });
     if (href.startsWith('/api/commissions?')) return json({ commissions: [], summary: {} });
@@ -84,8 +85,11 @@ test('a paused agent can be reactivated from the page', async () => {
   fireEvent.click(button);
 
   await waitFor(() => expect(screen.getByTestId('agent-status-badge')).toHaveTextContent('active'));
-  expect(putCalls()).toEqual([{ url: '/api/agents/agent-1', method: 'PUT', body: { agent_status: 'active' } }]);
-  expect(screen.getByTestId('agent-status-message')).toHaveTextContent('Marc Schlund is active again and can sign in.');
+  // Reactivating asks the server to email the agent a sign-in link.
+  expect(putCalls()).toEqual([{ url: '/api/agents/agent-1', method: 'PUT', body: { agent_status: 'active', notify: true } }]);
+  expect(screen.getByTestId('agent-status-message')).toHaveTextContent(
+    'Marc Schlund is active again and can sign in. An email with a sign-in link went to m.schlund@example.com.',
+  );
   // The button flips to the opposite action.
   expect(screen.getByTestId('agent-pause')).toBeInTheDocument();
   expect(screen.queryByTestId('agent-reactivate')).not.toBeInTheDocument();
