@@ -159,7 +159,7 @@ export async function GET(request) {
     if (docIds.length > 0) {
       const { data: docs } = await adminSupabase
         .from('documents')
-        .select('id, client_name, client_company, document_type, created_at, event_id, total_amount, order_channel, metadata')
+        .select('id, client_name, client_company, document_type, created_at, event_id, total_amount, order_channel, metadata, file_name')
         .in('id', docIds);
 
       const eventIds = [...new Set((docs || []).map((doc) => doc.event_id).filter(Boolean))];

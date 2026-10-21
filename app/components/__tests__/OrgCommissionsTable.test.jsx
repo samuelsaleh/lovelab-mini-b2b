@@ -120,6 +120,23 @@ describe('OrgCommissionsTable', () => {
     expect(screen.queryByTestId('org-commissions-row-c2')).not.toBeInTheDocument();
   });
 
+  test('the search box finds a line by customer or invoice number', async () => {
+    installFetch();
+    await renderTable();
+    serverRows[0].invoice_number = '260318';
+
+    const box = screen.getByTestId('org-commissions-search');
+    fireEvent.change(box, { target: { value: 'shop c3' } });
+    expect(screen.getByTestId('org-commissions-row-c3')).toBeInTheDocument();
+    expect(screen.queryByTestId('org-commissions-row-c1')).not.toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: 'nothing-like-this' } });
+    expect(screen.getByText(/No all commissions matching/)).toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: '' } });
+    expect(screen.getByTestId('org-commissions-row-c1')).toBeInTheDocument();
+  });
+
   test('the agent select narrows the rows to one member', async () => {
     installFetch();
     await renderTable();
