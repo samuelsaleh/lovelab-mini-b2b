@@ -51,6 +51,13 @@ function installFetch({ failList = false } = {}) {
     if (/\/api\/commissions\/[^/]+\/customer-paid$/.test(path)) {
       return Promise.resolve({ ok: true, json: async () => ({ commission: {} }) });
     }
+    if (/\/api\/commissions\/[^/]+$/.test(path) && options.method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      const id = path.split('/').pop();
+      const commission = { id, ...body };
+      if (body.order_total !== undefined && body.commission_amount === undefined) commission.commission_amount = body.order_total * 0.2;
+      return Promise.resolve({ ok: true, json: async () => ({ success: true, commission }) });
+    }
     if (/\/api\/commissions\/[^/]+$/.test(path) && options.method === 'DELETE') {
       return Promise.resolve({ ok: true, json: async () => ({ deleted: true }) });
     }
@@ -181,6 +188,41 @@ describe('OrgCommissionsTable', () => {
 
     expect(calls.find((c) => c.method === 'DELETE')).toBeFalsy();
     expect(screen.getByTestId('org-commissions-row-c2')).toBeInTheDocument();
+  });
+
+  test('typing a new net saves it and shows the recalculated commission', async () => {
+    installFetch();
+    const { onChanged } = await renderTable();
+    const net = within(screen.getByTestId('org-commissions-row-c2')).getByLabelText(/Net for SHOP c2/);
+    expect(net).toHaveValue('1000.00');
+
+    fireEvent.change(net, { target: { value: '1800' } });
+    fireEvent.blur(net, { target: { value: '1800' } });
+
+    await waitFor(() => {
+      expect(calls.find((c) => c.path === '/api/commissions/c2' && c.method === 'PATCH')).toMatchObject({ body: { order_total: 1800 } });
+    });
+    const commission = within(screen.getByTestId('org-commissions-row-c2')).getByLabelText(/Commission for SHOP c2/);
+    await waitFor(() => expect(commission).toHaveValue('360.00'));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  test('an unchanged amount is not sent', async () => {
+    installFetch();
+    await renderTable();
+    const net = within(screen.getByTestId('org-commissions-row-c2')).getByLabelText(/Net for SHOP c2/);
+    fireEvent.blur(net, { target: { value: '1000.00' } });
+    expect(calls.find((c) => c.method === 'PATCH')).toBeFalsy();
+  });
+
+  test('Cancel line sends status cancelled and reloads', async () => {
+    installFetch();
+    const { onChanged } = await renderTable();
+    fireEvent.click(within(screen.getByTestId('org-commissions-row-c2')).getByText('Cancel line'));
+    await waitFor(() => {
+      expect(calls.find((c) => c.path === '/api/commissions/c2' && c.method === 'PATCH')).toMatchObject({ body: { status: 'cancelled' } });
+    });
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
   test('a failed load shows an inline error with Retry', async () => {

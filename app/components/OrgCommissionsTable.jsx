@@ -239,6 +239,36 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
     }
   }
 
+  // Net / Commission typed by hand. A new net recalculates the commission
+  // server-side from the line's rate; the row takes whatever comes back.
+  const [amountDrafts, setAmountDrafts] = useState({}) // `${id}:${field}` → text
+  const [amountState, setAmountState] = useState(null) // { key, kind, message }
+  const handleSaveAmount = async (row, field, raw) => {
+    const key = `${row.id}:${field}`
+    const text = String(raw ?? '').trim().replace(',', '.')
+    const current = Number(row[field]) || 0
+    const clearDraft = () => setAmountDrafts((prev) => { const next = { ...prev }; delete next[key]; return next })
+    if (text === '' || Number(text) === current) { clearDraft(); return }
+    const value = Number(text)
+    if (!Number.isFinite(value) || value < 0) {
+      setAmountState({ key, kind: 'error', message: 'Not a valid amount' })
+      return
+    }
+    setAmountState({ key, kind: 'saving', message: 'Saving…' })
+    try {
+      const json = await patchJson(`/api/commissions/${row.id}`, { [field]: value })
+      const c = json?.commission || {}
+      setRows((prev) => prev.map((r) => (r.id === row.id
+        ? { ...r, order_total: c.order_total ?? r.order_total, commission_amount: c.commission_amount ?? r.commission_amount }
+        : r)))
+      clearDraft()
+      setAmountState({ key, kind: 'success', message: 'Saved' })
+      notifyChanged()
+    } catch (err) {
+      setAmountState({ key, kind: 'error', message: err?.message || 'Not saved' })
+    }
+  }
+
   // A cancelled order whose commission line is still here (the agent page
   // has the same action). The row disappears; the order itself is untouched.
   const handleDelete = async (row) => {
@@ -473,9 +503,38 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
                     </td>
                     <td style={{ ...td, fontSize: 11, color: colors.lovelabMuted }}>{isBonus ? '—' : fairLabel}</td>
                     <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted, whiteSpace: 'nowrap' }}>{isBonus ? '—' : fmt(grossTotal)}</td>
-                    <td style={{ ...td, textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>{isBonus ? '—' : fmt(netTotal)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {isBonus ? '—' : canToggle ? (
+                        <AmountInput
+                          row={row}
+                          field="order_total"
+                          label={`Net for ${label}`}
+                          title="Type the net amount (order total minus shipping) and click away to save. The commission is recalculated from the rate."
+                          drafts={amountDrafts}
+                          setDrafts={setAmountDrafts}
+                          state={amountState}
+                          setState={setAmountState}
+                          onSave={handleSaveAmount}
+                        />
+                      ) : fmt(netTotal)}
+                    </td>
                     <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : `${rate}%`}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal, whiteSpace: 'nowrap' }}>{fmt(row.commission_amount)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal, whiteSpace: 'nowrap' }}>
+                      {canToggle ? (
+                        <AmountInput
+                          row={row}
+                          field="commission_amount"
+                          label={`Commission for ${label}`}
+                          title="Type the commission to pay for this line and click away to save."
+                          bold
+                          drafts={amountDrafts}
+                          setDrafts={setAmountDrafts}
+                          state={amountState}
+                          setState={setAmountState}
+                          onSave={handleSaveAmount}
+                        />
+                      ) : fmt(row.commission_amount)}
+                    </td>
                     <td style={td}>
                       {isRealRow(row) ? (
                         <div>
@@ -564,6 +623,32 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
                           </button>
                         </div>
                       )}
+                      {canToggle && (
+                        <div style={{ marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => runRowAction(row, `/api/commissions/${row.id}`, { status: 'cancelled' })}
+                            disabled={rowBusy}
+                            title="Cancel this commission line — it leaves every total and report, but stays visible under Cancelled. The order itself is untouched."
+                            style={rowActionStyle('#9a3412', rowBusy)}
+                          >
+                            Cancel line
+                          </button>
+                        </div>
+                      )}
+                      {isCancelled && isRealRow(row) && (
+                        <div style={{ marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => runRowAction(row, `/api/commissions/${row.id}`, { status: 'pending' })}
+                            disabled={rowBusy}
+                            title="Bring this line back to Awaiting / Ready"
+                            style={rowActionStyle(colors.inkPlum, rowBusy)}
+                          >
+                            Restore
+                          </button>
+                        </div>
+                      )}
                       {isRealRow(row) && (
                         <div style={{ marginTop: 4 }}>
                           <button
@@ -594,6 +679,40 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
         <strong style={{ color: colors.charcoal }}>Send org report now</strong> above emails Dionne one Excel with every Ready line, agent named on each, and marks them <strong style={{ color: colors.charcoal }}>Reported</strong>.{' '}
         <strong style={{ color: colors.charcoal }}>Record payment</strong> against that report settles them all as <strong style={{ color: colors.charcoal }}>Paid</strong>.
       </div>
+    </div>
+  )
+}
+
+/** Right-aligned money input that saves on blur / Enter; shows Saved / error under it. */
+function AmountInput({ row, field, label, title, bold = false, drafts, setDrafts, state, setState, onSave }) {
+  const key = `${row.id}:${field}`
+  const current = Number(row[field]) || 0
+  const draft = drafts[key]
+  const own = state?.key === key ? state : null
+  return (
+    <div>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft ?? current.toFixed(2)}
+        aria-label={label}
+        title={title}
+        disabled={own?.kind === 'saving'}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => {
+          const value = e.target.value
+          setDrafts((prev) => ({ ...prev, [key]: value }))
+          if (own) setState(null)
+        }}
+        onBlur={(e) => onSave(row, field, e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+        style={{ width: 92, fontSize: 12, fontWeight: bold ? 700 : 400, textAlign: 'right', padding: '3px 6px', border: `1px solid ${own?.kind === 'error' ? '#dc2626' : colors.lineGray}`, borderRadius: 4, fontFamily: 'inherit', color: colors.charcoal, background: '#fff' }}
+      />
+      {own && (
+        <div role="status" style={{ marginTop: 2, fontSize: 9, color: own.kind === 'error' ? '#dc2626' : '#16a34a', textAlign: 'right' }}>
+          {own.message}
+        </div>
+      )}
     </div>
   )
 }
