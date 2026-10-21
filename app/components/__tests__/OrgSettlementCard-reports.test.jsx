@@ -81,14 +81,14 @@ describe('OrgSettlementCard reports + payments', () => {
     expect(within(sent).getByText('Download')).toHaveAttribute('href', '/api/commission-reports/rep-sent/download');
     expect(within(sent).getByText('Download')).toHaveAttribute('download', 'Sarah Goutard Organization - 2026-10-18-0900.xlsx');
     // Already paid → cannot be deleted from here.
-    expect(within(sent).queryByText('Delete')).not.toBeInTheDocument();
+    expect(within(sent).queryByText('Cancel report')).not.toBeInTheDocument();
 
     const failed = screen.getByTestId('org-report-rep-failed');
     expect(within(failed).getByText('Email failed')).toBeInTheDocument();
     expect(within(failed).getByText('no_api_key')).toBeInTheDocument();
     expect(within(failed).getByText('No Drive copy')).toBeInTheDocument();
     expect(within(failed).getByText('Awaiting payment')).toBeInTheDocument();
-    expect(within(failed).getByText('Delete')).toBeInTheDocument();
+    expect(within(failed).getByText('Cancel report')).toBeInTheDocument();
     // A report without a Drive copy can be pushed to Drive by hand; one that
     // already has it cannot.
     expect(within(failed).getByText('Save to Drive')).toBeInTheDocument();

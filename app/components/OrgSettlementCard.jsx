@@ -559,7 +559,7 @@ function OrgReportRow({ report: r, orgName, payment, onDeleted }) {
 
   const handleDelete = async () => {
     if (!window.confirm(
-      `Delete this report (${r.period_label || r.period_key})? Every member's lines on it go back to Ready so you can Send again. The file in storage is removed; the Google Drive copy is kept.`,
+      `Cancel this report (${r.period_label || r.period_key})? Every member's lines on it go back to Ready, so you can fix amounts or cancel lines and then Send org report now again. The archived file is removed; the Google Drive copy and the emails already sent are kept.`,
     )) return
     setDeleting(true)
     setDeleteError(null)
@@ -643,10 +643,10 @@ function OrgReportRow({ report: r, orgName, payment, onDeleted }) {
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                title="Delete this report — its lines go back to Ready"
+                title="Cancel this report to make changes — its lines go back to Ready, then send again"
                 style={{ fontSize: 11, fontWeight: 600, color: deleting ? colors.lovelabMuted : '#b91c1c', background: 'none', border: `1px solid ${deleting ? colors.lineGray : '#fecaca'}`, borderRadius: 6, padding: '4px 8px', cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit' }}
               >
-                {deleting ? '…' : 'Delete'}
+                {deleting ? '…' : 'Cancel report'}
               </button>
             )}
           </div>
