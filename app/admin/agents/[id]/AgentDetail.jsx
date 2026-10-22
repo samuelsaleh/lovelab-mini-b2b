@@ -25,6 +25,7 @@ import NewClientBonusModal from '@/app/components/NewClientBonusModal';
 import CommissionReportsCard from '@/app/components/CommissionReportsCard';
 import SynaliaAgentTab from '@/app/components/SynaliaAgentTab';
 import { commissionMatchesQuery } from '@/lib/commissionSearch';
+import { AmountInput } from '@/app/components/OrgCommissionsTable';
 import {
   isSynaliaAgentEmail,
   isSynaliaJewelerGroup,
@@ -734,6 +735,67 @@ export default function AgentDetail({ kind = 'agent' }) {
   // page-level `error`: one declined click must not replace the whole
   // commission history.
   const [rowActionError, setRowActionError] = useState('');
+
+  // Net / Commission typed by hand, and Cancel line / Restore — the same
+  // tools as the organization table (Sam, 22 Oct 2026: "for all the agents,
+  // not only Sarah Goutard"). PATCH /api/commissions/[id] recalculates the
+  // commission from the line's rate when only the net changes.
+  const [amountDrafts, setAmountDrafts] = useState({}); // `${id}:${field}` → text
+  const [amountState, setAmountState] = useState(null); // { key, kind, message }
+  const handleSaveAmount = useCallback(async (row, field, raw) => {
+    const key = `${row.id}:${field}`;
+    const text = String(raw ?? '').trim().replace(',', '.');
+    const current = Number(row[field]) || 0;
+    const clearDraft = () => setAmountDrafts((prev) => { const next = { ...prev }; delete next[key]; return next; });
+    if (text === '' || Number(text) === current) { clearDraft(); return; }
+    const value = Number(text);
+    if (!Number.isFinite(value) || value < 0) {
+      setAmountState({ key, kind: 'error', message: 'Not a valid amount' });
+      return;
+    }
+    setAmountState({ key, kind: 'saving', message: 'Saving…' });
+    try {
+      const res = await fetch(`/api/commissions/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Not saved');
+      const c = json?.commission || {};
+      setCommissions((prev) => prev.map((r) => (r.id === row.id
+        ? { ...r, order_total: c.order_total ?? r.order_total, commission_amount: c.commission_amount ?? r.commission_amount }
+        : r)));
+      clearDraft();
+      setAmountState({ key, kind: 'success', message: 'Saved' });
+      // Earned / outstanding cards follow the new amount.
+      refreshCommissions();
+    } catch (err) {
+      setAmountState({ key, kind: 'error', message: err.message || 'Not saved' });
+    }
+  }, [refreshCommissions]);
+
+  const handleSetLineStatus = useCallback(async (commissionId, nextStatus) => {
+    if (!commissionId || inFlightPaidRef.current.has(commissionId)) return;
+    inFlightPaidRef.current.add(commissionId);
+    markToggling([commissionId], true);
+    setRowActionError('');
+    try {
+      const res = await fetch(`/api/commissions/${commissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to update the line');
+      await refreshCommissions();
+    } catch (err) {
+      setRowActionError(err.message || 'Failed to update the line');
+    } finally {
+      inFlightPaidRef.current.delete(commissionId);
+      markToggling([commissionId], false);
+    }
+  }, [refreshCommissions, markToggling]);
 
   // Force a row into or out of "Reported" by hand.
   //
@@ -1571,9 +1633,38 @@ export default function AgentDetail({ kind = 'agent' }) {
                                     {isBonus ? '—' : fairLabel}
                                   </td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{isBonus ? '—' : fmt2(grossTotal)}</td>
-                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt2(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>{isBonus ? '—' : fmt2(netTotal)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontSize: 12, color: hasShipping ? colors.charcoal : colors.lovelabMuted, fontWeight: hasShipping ? 600 : 400 }} title={hasShipping ? `Shipping deducted: ${fmt2(grossTotal - netTotal)}` : 'No shipping recorded — net = gross.'}>
+                                    {isBonus ? '—' : canToggle ? (
+                                      <AmountInput
+                                        row={row}
+                                        field="order_total"
+                                        label={`Net for ${clientLabel}`}
+                                        title="Type the net amount (order total minus shipping) and click away to save. The commission is recalculated from the rate."
+                                        drafts={amountDrafts}
+                                        setDrafts={setAmountDrafts}
+                                        state={amountState}
+                                        setState={setAmountState}
+                                        onSave={handleSaveAmount}
+                                      />
+                                    ) : fmt2(netTotal)}
+                                  </td>
                                   <td style={{ ...td, textAlign: 'right', fontSize: 12, color: colors.lovelabMuted }}>{displayRate == null ? '—' : `${displayRate}%`}</td>
-                                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>{fmt2(row.commission_amount)}</td>
+                                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: colors.charcoal }}>
+                                    {canToggle ? (
+                                      <AmountInput
+                                        row={row}
+                                        field="commission_amount"
+                                        label={`Commission for ${clientLabel}`}
+                                        title="Type the commission to pay for this line and click away to save."
+                                        bold
+                                        drafts={amountDrafts}
+                                        setDrafts={setAmountDrafts}
+                                        state={amountState}
+                                        setState={setAmountState}
+                                        onSave={handleSaveAmount}
+                                      />
+                                    ) : fmt2(row.commission_amount)}
+                                  </td>
                                   <td style={td}>
                                     {canEditInvoice ? (
                                       <div>
@@ -1660,6 +1751,32 @@ export default function AgentDetail({ kind = 'agent' }) {
                                           style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
                                         >
                                           Undo
+                                        </button>
+                                      </div>
+                                    )}
+                                    {canToggle && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSetLineStatus(row.id, 'cancelled')}
+                                          disabled={rowBusy}
+                                          title="Cancel this commission line — it leaves every total and report, but stays visible under Cancelled. The order itself is untouched."
+                                          style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
+                                        >
+                                          Cancel line
+                                        </button>
+                                      </div>
+                                    )}
+                                    {isCancelled && !isDerived && !!row.id && !String(row.id).startsWith('doc-') && (
+                                      <div style={{ marginTop: 4 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSetLineStatus(row.id, 'pending')}
+                                          disabled={rowBusy}
+                                          title="Bring this line back to Awaiting / Ready"
+                                          style={{ fontSize: 10, fontWeight: 700, color: colors.inkPlum, background: 'none', border: 'none', cursor: rowBusy ? 'default' : 'pointer', padding: 0, textDecoration: 'underline', fontFamily: 'inherit', opacity: rowBusy ? 0.5 : 1 }}
+                                        >
+                                          Restore
                                         </button>
                                       </div>
                                     )}
