@@ -168,7 +168,7 @@ describe('BuilderPage e2e — toggling the October list', () => {
       '0.20 ct - €100',
       '0.40 ct - €165',
       '0.70 ct - €200',
-      '1.01 ct - €320',
+      '1.00 ct - €320',
     ])
   })
 

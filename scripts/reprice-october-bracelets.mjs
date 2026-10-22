@@ -63,20 +63,23 @@ const SHAPY = {
 
 // Moonlight data rows on the page-2 raster.
 // Baselines measured from the extracted page-2 PNG (top-of-page points).
+// MOONLIGHT LONG 0,05 (€67 / €255) was dropped on 22 Oct 2026: the raster still
+// holds 13 Moonlight bands, so all 13 are erased and the 12 rows below are drawn
+// from the top, leaving the last band blank (same treatment as Sienna One).
+const MOONLIGHT_RASTER_ROWS = 13
 const MOONLIGHT_ROWS = [
-  { name: 'MOONLIGHT LONG',     carat: '0,05', b2b: '€67',  b2c: '€255' },
   { name: 'MOONLIGHT LONG',     carat: '0,1',  b2b: '€85',  b2c: '€255' },
   { name: 'MOONLIGHT LONG',     carat: '0,3',  b2b: '€120', b2c: '€360' },
   { name: 'MOONLIGHT MULTI',    carat: '0,2',  b2b: '€100', b2c: '€300' },
   { name: 'MOONLIGHT MULTI',    carat: '0,4',  b2b: '€165', b2c: '€495' },
   { name: 'MOONLIGHT MULTI',    carat: '0,7',  b2b: '€200', b2c: '€600' },
-  { name: 'MOONLIGHT MULTI',    carat: '1,01', b2b: '€320', b2c: '€960' },
+  { name: 'MOONLIGHT MULTI',    carat: '1,00',  b2b: '€320', b2c: '€960' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,1',  b2b: '€70',  b2c: '€210' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,2',  b2b: '€90',  b2c: '€270' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,3',  b2b: '€120', b2c: '€360' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,5',  b2b: '€250', b2c: '€750' },
   { name: 'MOONLIGHT ORIGINAL', carat: '0,7',  b2b: '€300', b2c: '€900' },
-  { name: 'MOONLIGHT ORIGINAL', carat: '1,01', b2b: '€460', b2c: '€1.380' },
+  { name: 'MOONLIGHT ORIGINAL', carat: '1,00',  b2b: '€460', b2c: '€1.380' },
 ]
 
 const MOONLIGHT = {
@@ -345,7 +348,7 @@ function eraseCells(doc, pageIndex, cells) {
 
 function moonlightBands() {
   const bands = []
-  for (let k = 0; k < MOONLIGHT_ROWS.length; k++) {
+  for (let k = 0; k < MOONLIGHT_RASTER_ROWS; k++) {
     bands.push([
       MOONLIGHT.eraseX,
       MOONLIGHT.bandTop + k * MOONLIGHT.bandPitch + ROW_INSET,

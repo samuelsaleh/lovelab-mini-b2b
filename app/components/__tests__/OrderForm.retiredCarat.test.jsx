@@ -108,9 +108,10 @@ describe('OrderForm — a carat retired from the catalog', () => {
     renderForm(retiredSizeQuote())
     const carat = caratSelects().find((s) => s.value === '0.20')
     const labels = Array.from(carat.options).map((o) => o.text)
-    expect(labels).toContain('0.05 ct')
     expect(labels).toContain('0.10 ct')
     expect(labels).toContain('0.30 ct')
+    // Long 0.05 was dropped on 22 Oct 2026 — never offered on a new row.
+    expect(labels).not.toContain('0.05 ct')
   })
 
   it('renders the row total from the saved unit price, not a re-lookup', () => {
@@ -143,7 +144,7 @@ describe('OrderForm — a carat retired from the catalog', () => {
     const labels = Array.from(carat.options).map((o) => o.text)
     expect(labels).toContain('0.20 ct')
     expect(labels).not.toContain('0.70 ct')
-    expect(labels).not.toContain('1.01 ct')
+    expect(labels).not.toContain('1.00 ct')
   })
 
   // The badge sits in the printed page header, so whatever it says lands on the
@@ -180,6 +181,6 @@ describe('OrderForm — a carat retired from the catalog', () => {
     const carat = caratSelects().find((s) => s.value === '0.40')
     const labels = Array.from(carat.options).map((o) => o.text)
     expect(labels).toContain('0.70 ct')
-    expect(labels).toContain('1.01 ct')
+    expect(labels).toContain('1.00 ct')
   })
 })

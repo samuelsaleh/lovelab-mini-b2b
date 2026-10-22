@@ -52,7 +52,7 @@ function normalizeCarat(raw) {
   const cleaned = String(raw ?? '').replace(/ct/i, '').replace(',', '.').trim()
   const n = Number.parseFloat(cleaned)
   if (!Number.isFinite(n)) return null
-  // 1.01 keeps two decimals; everything else is a 2-decimal carat too, so a
+  // 1.00 keeps two decimals; everything else is a 2-decimal carat too, so a
   // single toFixed(2) covers the whole sheet.
   return n.toFixed(2)
 }

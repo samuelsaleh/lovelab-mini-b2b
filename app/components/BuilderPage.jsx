@@ -67,7 +67,7 @@ export function cardsForFamilyEntry(entry) {
 // Cheapest and dearest piece across a set of collections, on one price list.
 //
 // Reads the sizes each collection actually SELLS on that list rather than
-// walking col.carats end to end: Multi Moonlight lists 0.70 and 1.01 but prices
+// walking col.carats end to end: Multi Moonlight lists 0.70 and 1.00 but prices
 // them null before October, and getPrice answers 0 there — so the old
 // first-to-last card range rendered "€75 – €0". Returns null when nothing in
 // the set is priced, which the caller renders as no range at all.
