@@ -697,8 +697,11 @@ export default function OrgCommissionsTable({ organizationId, members = [], summ
   )
 }
 
-/** Right-aligned money input that saves on blur / Enter; shows Saved / error under it. */
-function AmountInput({ row, field, label, title, bold = false, drafts, setDrafts, state, setState, onSave }) {
+/**
+ * Right-aligned money input that saves on blur / Enter; shows Saved / error
+ * under it. Shared with the agent page's Orders & Commission table.
+ */
+export function AmountInput({ row, field, label, title, bold = false, drafts, setDrafts, state, setState, onSave }) {
   const key = `${row.id}:${field}`
   const current = Number(row[field]) || 0
   const draft = drafts[key]
