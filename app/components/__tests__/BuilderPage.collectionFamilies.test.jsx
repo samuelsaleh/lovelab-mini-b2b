@@ -297,13 +297,14 @@ describe('BuilderPage — where Sam wanted each product', () => {
 // ─── Necklaces tab ───────────────────────────────────────────────────────────
 
 describe('BuilderPage — the necklace tab', () => {
-  it('groups the three Multi necklaces and leaves the rest alone', () => {
+  it('groups the Multi necklaces and leaves the rest alone', () => {
     renderBuilder()
     fireEvent.click(screen.getByText('Necklaces'))
 
-    expect(family('FAM_MULTI_NECK')).toHaveTextContent('3 products')
+    // Oct 2026: Multi Five necklace retired, so the folder holds Three + Four.
+    expect(family('FAM_MULTI_NECK')).toHaveTextContent('2 products')
     expect(card('CUTY_NECK')).toBeInTheDocument()
-    expect(card('SSF_NECK')).toBeInTheDocument()
+    expect(card('SSPF_NECK')).toBeInTheDocument()
     expect(queryCard('M3_NECK')).not.toBeInTheDocument()
   })
 
@@ -325,10 +326,10 @@ describe('BuilderPage — the necklace tab', () => {
 
     fireEvent.click(screen.getByText('Necklaces'))
     fireEvent.click(family('FAM_MULTI_NECK'))
-    fireEvent.click(card('M5_NECK'))
+    fireEvent.click(card('M4_NECK'))
 
     const lines = continueToConfigure(setLines)
-    expect(lines.map(l => l.collectionId)).toEqual(['M5_NECK'])
+    expect(lines.map(l => l.collectionId)).toEqual(['M4_NECK'])
   })
 })
 

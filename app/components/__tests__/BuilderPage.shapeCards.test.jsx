@@ -41,6 +41,8 @@ const { COLLECTIONS } = require('@/lib/catalog')
 const { familyById } = require('@/lib/collectionFamilies')
 
 const SSF_NECK = COLLECTIONS.find(c => c.id === 'SSF_NECK')
+// SSF_NECK is retired (Oct 2026), so the grid tests use the Sparkle necklace.
+const SSPF_NECK = COLLECTIONS.find(c => c.id === 'SSPF_NECK')
 const CUTY_NECK = COLLECTIONS.find(c => c.id === 'CUTY_NECK')
 
 function renderBuilder({ lines = [], setLines = jest.fn(), isAdmin = true } = {}) {
@@ -133,12 +135,12 @@ describe('BuilderPage — general cards in the selection grid', () => {
     fireEvent.click(screen.getByText('Necklaces'))
   }
 
-  it('renders SHAPY SHINE NECKLACE exactly once, with no shape suffix', () => {
+  it('renders SHAPY SPARKLE NECKLACE exactly once, with no shape suffix', () => {
     openNecklaceTab()
-    expect(screen.getAllByText('SHAPY SHINE NECKLACE')).toHaveLength(1)
+    expect(screen.getAllByText('SHAPY SPARKLE NECKLACE')).toHaveLength(1)
     // No per-shape cards any more.
-    SSF_NECK.shapes.forEach(shape => {
-      expect(screen.queryByText(`SHAPY SHINE NECKLACE — ${shape}`)).not.toBeInTheDocument()
+    SSPF_NECK.shapes.forEach(shape => {
+      expect(screen.queryByText(`SHAPY SPARKLE NECKLACE — ${shape}`)).not.toBeInTheDocument()
     })
   })
 
@@ -162,11 +164,11 @@ describe('BuilderPage — selecting a general necklace card creates an un-locked
     return typeof updater === 'function' ? updater([]) : updater
   }
 
-  it('selecting SHAPY SHINE NECKLACE creates a single SSF_NECK line with NO presetShape', () => {
-    const lines = selectAndContinue('SHAPY SHINE NECKLACE')
-    const ssfLines = lines.filter(l => l.collectionId === 'SSF_NECK')
-    expect(ssfLines).toHaveLength(1)
-    expect(ssfLines[0].presetShape).toBeUndefined()
-    expect(ssfLines[0].colorConfigs).toEqual([])
+  it('selecting SHAPY SPARKLE NECKLACE creates a single SSPF_NECK line with NO presetShape', () => {
+    const lines = selectAndContinue('SHAPY SPARKLE NECKLACE')
+    const sspfLines = lines.filter(l => l.collectionId === 'SSPF_NECK')
+    expect(sspfLines).toHaveLength(1)
+    expect(sspfLines[0].presetShape).toBeUndefined()
+    expect(sspfLines[0].colorConfigs).toEqual([])
   })
 })
